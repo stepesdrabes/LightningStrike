@@ -1,9 +1,11 @@
 # Handover
 
-State as of 2026-08-18 (round 7 closed, round 8 opening): the MAP LOOP IS CLOSED end
-to end at v23 / SHOW 17 / CONTEXT 3, the judge path has been audited and repaired, and
-the owner has named the next goal: MULTI-TEMPO TRACKS (see the first-hour list). The
-map loop: A hand-drawn map decides its track outright - grid
+State as of 2026-08-18 (round 8 in flight): v23 / SHOW 18 / CONTEXT 3, everything
+committed through `0a90511`, 827 tests green. Multi-tempo is researched and three
+slices have shipped. **ONE DEFECT IS OPEN AND IT IS THE FIRST THING TO FIX** - the
+section editor does not honour the owner's drawn boundaries and the preview toggle
+sticks; the whole task is written up in `docs/BRIEF-section-editor.md`, with measured
+evidence. The map loop, which the defect sits on top of: A hand-drawn map decides its track outright - grid
 and sections both - and it is heard THE NEXT PLAY, not the next version bump: the
 analysis stamps the map it adopted (`TrackAnalysis.handMap`) and ingest re-analyses
 on any difference, redraw and delete included. Adoption is room-confirmed: Blinding
@@ -415,14 +417,23 @@ this call and it shipped at v15).
 
 ## If you are the next session: the first hour
 
-1. Read this file to the end, then round2-record.md's TAIL - the **round-7 verdicts**
-   section first (four room answers, package C's death, the map-loop hole, the
-   pounding band raise), then round 7's first half and round 6 above it.
-   `docs/EFFECT_POLISHING.md` is the method.
-2. NOTHING IS COMMITTED. The whole round is staged in the working tree; the owner
-   commits on their word only. Do not stage `docs/hardware.html` or
-   `packages/preview3d/*` (the owner's own in-flight work).
-3. **MULTI-TEMPO: RESEARCHED, AND THREE SLICES SHIPPED (round 8).** The tempo is now read
+1. **START WITH `docs/BRIEF-section-editor.md`.** The open defect, reported three times,
+   with three of this session's fixes having each addressed something real and left the
+   owner's actual complaint standing. Two parts, both with file:line suspects in the
+   brief: (a) a grid cut re-walks the WHOLE bar table instead of splitting the one bar
+   it falls in, so one deliberately off-grid boundary moved ELEVEN of the owner's
+   sixteen on Melanz, by up to 1.68 s - measured, table in the brief; (b) the
+   Preview/Original toggle sticks on Preview, most likely because saving a map now
+   triggers a re-analysis that replaces `show`, breaking `togglePreview`'s
+   `show === previewShow` identity check so the shelved show is dropped. Verify before
+   fixing; do not delete that identity check, it guards a real case.
+2. Then this file to the end, then round2-record.md's TAIL - the **round-7 verdicts**
+   and the round-8 section (multi-tempo). `docs/EFFECT_POLISHING.md` is the method.
+3. Everything is COMMITTED through `0a90511` and the tree is clean, except
+   `docs/BRIEF-section-editor.md` which is deliberately uncommitted. Do not stage
+   `docs/hardware.html` or `packages/preview3d/*` (the owner's own in-flight work).
+   Only commit when the owner says so.
+4. **MULTI-TEMPO: RESEARCHED, AND THREE SLICES SHIPPED (round 8).** The tempo is now read
    AT THE BAR (`bpmAt`/`beatPeriodAt` in core), which closed a live breach of the 8 Hz
    strobe ceiling - 9.2 Hz on SICKO MODE's fast movement, passed by a linter reading the
    same median the planner sized from. The tempo map is on screen: the player bar reads
@@ -454,7 +465,7 @@ this call and it shipped at v15).
    Shape the design around the owner's movement mark as the trusted anchor, per-movement
    level and phase read from the model's own beats inside the marked span, the tempo map
    shown in the UI, and candidate switches SUGGESTED for confirmation rather than applied.
-4. MULTI-SONG slice 1 is BUILT AND UNHEARD: a
+5. MULTI-SONG slice 1 is BUILT AND UNHEARD: a
    "New song starts here" mark in the judge panel gives the new song its own downbeat,
    a section seam nothing can merge away, and its own energy levelling. Ask the owner to
    mark SICKO MODE (its switch is at 63.5s) and Melanz, then listen. The engine slice -
@@ -462,7 +473,7 @@ this call and it shipped at v15).
    designed and deliberately NOT shipped on top of an unheard change; the design notes
    are in the record's multi-song section, including the trap that a cue with no palette
    resolves against the SHOW palette rather than the previous cue.
-5. THE ROOM HAS NOT HEARD SHOW 17. It has heard v23 adoption and liked it
+6. THE ROOM HAS NOT HEARD SHOW 17. It has heard v23 adoption and liked it
    (Blinding Lights 3* -> 5* "almost perfect", Ponyboy 2* -> "way better", Hannah's
    sectioning praised). SHOW 17's band raise is unheard, and it moves TWO PRAISE
    SENTINELS - Pistacie 5* (5 of 12 cues) and EARFQUAKE 5* (2 of 11, a lightning
@@ -470,7 +481,7 @@ this call and it shipped at v15).
    question for Ponyboy is whether "a bit more aggressive" is now right, too much,
    or still short, and whether its GROOVES (which pound at ~1.0 kicks/beat and were
    deliberately left alone to keep the drops stepping up) should rise too.
-6. A map is LAW on its track, and it is heard on the NEXT PLAY: `TrackAnalysis.handMap`
+7. A map is LAW on its track, and it is heard on the NEXT PLAY: `TrackAnalysis.handMap`
    stamps the map that was adopted and ingest re-analyses on any difference. So the
    loop to offer the owner is listen -> redraw in the panel -> play. A map error is a
    show error until it is redrawn, which is the owner's accepted trade. Note the maps
@@ -478,16 +489,16 @@ this call and it shipped at v15).
    beat off its own confirmed bar line and Blinding Lights' outro on a mid-bar beat,
    both rounded onto bar lines by the adoption and neither treated as a grid edit.
    The owner offers measurements on request - ask.
-7. Adoption blinds `bench/mapscore.ts` on any played cache: it would measure the
+8. Adoption blinds `bench/mapscore.ts` on any played cache: it would measure the
    adoption, not the analyser, and report ~100% forever. Run the eval on a cache
    regenerated with `bench/reanalyse.ts --no-hand-maps`.
-8. PACKAGE C IS CLOSED, and now with ground truth on both sides: Snooze's map
+9. PACKAGE C IS CLOSED, and now with ground truth on both sides: Snooze's map
    choruses (24/56/79/83) match the lyric hook starts (23/55/79/82) within a bar,
    while Blinding Lights' (23/39/63/79/113) miss its hook starts (33/72/104/128) by
    ten bars and more. Hook-placed choruses fix one and wreck the other, and no
    measurable column separates the two cases - the P6 vocabulary-blind failure again.
    Do not rebuild it. Snooze is fixed by its own map instead.
-9. Smaller open threads, in value order: Snooze's DP first chorus is bar 17 where the
+10. Smaller open threads, in value order: Snooze's DP first chorus is bar 17 where the
    map says 24 - seven bars, the refine-margin class, and the class now holds nine
    pairs (bad guy 23->24, KITN 21->22, PROVENZA 79->80, Thinkin 2->1, Cigo 50->49,
    Titi 73->72, plus Blinding Lights' three one-bar-early choruses); Self Aware kit
@@ -500,13 +511,13 @@ this call and it shipped at v15).
    it (harmless at a version bump, pre-existing for every context change);
    An Ending's phantom share; Praha's restart edge at 0.63 vs the 0.6 floor;
    Back In Black double-time (parked, owner ground truth on file).
-10. The model loop: 6 of the 15 maps that freeze the eval now exist (Snooze joined).
+11. The model loop: 6 of the 15 maps that freeze the eval now exist (Snooze joined).
    Protocol note - four of the first five were drawn by EDITING the analyser's own
    sections (98-100% agreement before adoption), so they are partly derivative and
    cannot carry an independent eval. Maps on tracks the analyser gets WRONG are worth
    several agreeing ones: Ponyboy (35%) and Snooze (7 bars out) are the valuable
    pair so far. The memo lives outside the repo by the owner's hand - ask for it.
-11. Floors and gates, current at v23 / SHOW 17: suite 827; typecheck clean; earlybars
+12. Floors and gates, current at v23 / SHOW 18: suite 827; typecheck clean; earlybars
    20 hit / 0 closer / 8 same / 0 worse of 28 (MV_CACHE_DIR at cache-C for
    Kisses/WTSA audio) - inert by design, since analyzeTrack reads no judgement;
    structscore raveform 0.394/0.540, harmonix 0.202/0.532 (unmoved at v23);
@@ -516,7 +527,7 @@ this call and it shipped at v15).
    judged 36 at SHOW 16 vs 17 = 9 changed / 27 identical, transient layer only.
    Land edits BETWEEN background runs - the contamination incident in the record is
    what skipping that costs.
-12. THE JUDGE PATH WAS AUDITED AND REPAIRED (round-7 tail, full detail in the record).
+13. THE JUDGE PATH WAS AUDITED AND REPAIRED (round-7 tail, full detail in the record).
    Three reports of "the preview does not work" turned out to be four distinct causes,
    and the audits found five ways the judge file could LOSE DATA. What changed, all of
    it shipped: the preview re-sections the per-bar column and stages its own analysis;
@@ -530,7 +541,14 @@ this call and it shipped at v15).
    the grid to itself in both the preview and the next analysis, so the drawn moment
    becomes a real bar line. Older maps carry no flag and still imply nothing, which is
    what protects Safir's confirmed grid.
-13. App C is rebuilt at v23 / SHOW 17 (2026-08-18). Rebuild via
+14. What shipped after the judge audit, all committed: the tempo read AT THE BAR
+   (`bpmAt`/`beatPeriodAt`, closing a 9.2 Hz breach of the 8 Hz strobe ceiling on SICKO
+   MODE's fast movement); `tempoSegments` and the tempo map on screen (player bar reads
+   the local tempo with an "N tempi" chip, timeline tempo lane, inspector listing, and
+   the judge offering each change point as a movement candidate); and the scrubber's
+   names row plus the editor's keyboard nudge, in-lane movement dividers, undo and
+   keyboard kind picker. The last of those is what the open defect sits on.
+15. App C is rebuilt at v23 / SHOW 18 (2026-08-18 02:36). Rebuild via
    `npm run bundle -w @mv/desktop` then `npx tauri build --bundles app` from
    apps/desktop, `rm -rf` the target before copying (the nesting trap). Every track
    re-analyses once on its next play (~30-60 s) because the analysis version bumped,

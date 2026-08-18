@@ -1296,3 +1296,44 @@ reason the measurements above make plain.
   the beat period steps, and they already misfire on the idle transition (40 bpm against a
   track's 130). The effect gate has never run a tempo step - all 97 effects were admitted on
   constant-tempo evidence.
+
+### The section editor is still wrong, and three fixes in a row missed it
+
+The owner, after the scrubber and editor work landed: "The editor is STILL fucked up and
+does not care about my drawn sections. They get saved correctly, but the switching between
+Preview/Original is broken - only the Preview remained there? Also the subsections ignore
+my boundaries. They rescale and snap to other beats."
+
+Measured on the owner's real 16-section Melanz map, with ONE boundary nudged a beat off its
+bar line and flagged `offGrid` - exactly what the editor's shift-drag produces:
+
+**11 of 16 drawn boundaries did not land where they were drawn**, by up to 1.68 s. One of
+them moved even though it sits BEFORE the cut. Two compounding faults:
+
+1. A cut re-walks the whole bar table through `barStartsAtCuts` instead of splitting the
+   one bar that contains it, so every later bar line shifts and every boundary that WAS on
+   a line rounds onto a different one.
+2. The re-walk does not reproduce the cached table even before the cut, so the preview's
+   grid can differ everywhere.
+
+The surgical shape - a cut SPLITS one bar and leaves the rest of the table alone - is
+recorded in the brief rather than built here, because this needs measuring before designing
+and the session that found it had already shipped three fixes that each addressed something
+real and left the complaint standing.
+
+The second half, unverified and written up as a hypothesis: `togglePreview` restores the
+shelved show only when `show === previewShow`, and saving a map now triggers a re-analysis
+(the map stamp) which replaces `show` - so the identity fails, the shelved show is dropped
+and the preview stays on stage. That matches "only the Preview remained there" and must be
+reproduced before it is fixed; the identity check itself guards a real case and must not
+simply be deleted.
+
+Written up in full, with the measurement table, the file:line suspects, the rules, the mute
+protocol for testing and a definition of done: `docs/BRIEF-section-editor.md`.
+
+**The method failure worth keeping.** Three rounds of fixes, each correct about something:
+the per-bar section column really was stale, the writers really were erasing each other,
+the two consumers really did round a tie in opposite directions. None of them was what the
+owner was looking at. What finally found it was feeding the owner's OWN map through the real
+code path and printing where every boundary landed - four lines of arithmetic that should
+have been the first move each time, not the fourth.
