@@ -1,11 +1,13 @@
 # Handover
 
 State as of 2026-08-18 (round 8 in flight): v23 / SHOW 18 / CONTEXT 3, everything
-committed through `0a90511`, 827 tests green. Multi-tempo is researched and three
-slices have shipped. **ONE DEFECT IS OPEN AND IT IS THE FIRST THING TO FIX** - the
-section editor does not honour the owner's drawn boundaries and the preview toggle
-sticks; the whole task is written up in `docs/BRIEF-section-editor.md`, with measured
-evidence. The map loop, which the defect sits on top of: A hand-drawn map decides its track outright - grid
+committed through `2a46900`, 827 tests green. This file is the CAMPAIGN - the analysis,
+the engine and what the room hears. Multi-tempo is researched and three slices have
+shipped; step 4 of it is the owner's to do together, and the room owes two rounds a
+listen. One defect is open and is owned by a SEPARATE session against
+`docs/BRIEF-section-editor.md` (the section editor ignoring drawn boundaries): do not
+work it here, and stay out of its files - the list is in the first-hour item 0. The map
+loop that both efforts stand on: A hand-drawn map decides its track outright - grid
 and sections both - and it is heard THE NEXT PLAY, not the next version bump: the
 analysis stamps the map it adopted (`TrackAnalysis.handMap`) and ingest re-analyses
 on any difference, redraw and delete included. Adoption is room-confirmed: Blinding
@@ -417,22 +419,26 @@ this call and it shipped at v15).
 
 ## If you are the next session: the first hour
 
-1. **START WITH `docs/BRIEF-section-editor.md`.** The open defect, reported three times,
-   with three of this session's fixes having each addressed something real and left the
-   owner's actual complaint standing. Two parts, both with file:line suspects in the
-   brief: (a) a grid cut re-walks the WHOLE bar table instead of splitting the one bar
-   it falls in, so one deliberately off-grid boundary moved ELEVEN of the owner's
-   sixteen on Melanz, by up to 1.68 s - measured, table in the brief; (b) the
-   Preview/Original toggle sticks on Preview, most likely because saving a map now
-   triggers a re-analysis that replaces `show`, breaking `togglePreview`'s
-   `show === previewShow` identity check so the shelved show is dropped. Verify before
-   fixing; do not delete that identity check, it guards a real case.
-2. Then this file to the end, then round2-record.md's TAIL - the **round-7 verdicts**
+0. **A SEPARATE SESSION OWNS THE SECTION EDITOR.** `docs/BRIEF-section-editor.md` is
+   its task, not yours: the editor does not honour the owner's drawn boundaries and the
+   Preview/Original toggle sticks. THIS file is the campaign - analysis, engine, the
+   room. Stay out of its files so the two sessions cannot collide:
+   `apps/web/src/lib/components/ShowStrip.svelte`, `JudgePanel.svelte`,
+   `Scrubber.svelte`, `apps/web/src/routes/+page.svelte`,
+   `apps/web/src/lib/server/previewArrangement.ts`, and
+   `packages/analysis/src/gridedits.ts` / `handSections.ts`. If the campaign needs a
+   change in one of those, say so and let the owner sequence it.
+1. Read this file to the end, then round2-record.md's TAIL - the **round-7 verdicts**
    and the round-8 section (multi-tempo). `docs/EFFECT_POLISHING.md` is the method.
-3. Everything is COMMITTED through `0a90511` and the tree is clean, except
-   `docs/BRIEF-section-editor.md` which is deliberately uncommitted. Do not stage
+2. Everything is COMMITTED through `2a46900` and the tree is clean, except
+   `docs/BRIEF-section-editor.md` which belongs to that other session. Do not stage
    `docs/hardware.html` or `packages/preview3d/*` (the owner's own in-flight work).
    Only commit when the owner says so.
+3. **THE ROOM IS OWED A LISTEN, and that outranks new work.** Unheard in the room:
+   SHOW 17's pounding band raise (which moved two 5-star sentinels, Pistacie and
+   EARFQUAKE - the owner cleared both by ear, so this is confirmed and only the rest of
+   the corpus is unheard), and SHOW 18's tempo-at-the-bar, which changes the strobe rate
+   on any track that changes tempo. Hand back a SHORT list, never the whole corpus.
 4. **MULTI-TEMPO: RESEARCHED, AND THREE SLICES SHIPPED (round 8).** The tempo is now read
    AT THE BAR (`bpmAt`/`beatPeriodAt` in core), which closed a live breach of the 8 Hz
    strobe ceiling - 9.2 Hz on SICKO MODE's fast movement, passed by a linter reading the
