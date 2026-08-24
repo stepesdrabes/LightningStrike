@@ -41,11 +41,9 @@ trio (section editor, typed hit marks, arrangement preview), the v22 cuts path +
 settle gate + SOPHIE fixture + genre provenance, the engine round (SHOW 16), and
 the records. `packages/preview3d/` is the owner's own work - tracked and clean as of
 2026-08-18, so leave it alone rather than sweeping it into a commit; stage explicit
-paths only. `docs/hardware.html` is not in the working tree because it is STASHED:
-`stash@{0}`, written by GitHub Desktop on 2026-08-17, holds it along with a whole
-`cache-eval` snapshot (78 files, 290k lines of audio and blobs). DO NOT DROP THAT
-STASH - it is the only copy of that file - and if it is ever popped, neither
-`docs/hardware.html` nor `cache-eval/` may be staged. The sectioning-model memo was moved OUT of the repo by the
+paths only. `docs/hardware.html` is COMMITTED now (`049dd22`): the owner's hardware plan for
+the frame, which had lived only in a GitHub Desktop stash. It is theirs, so change it
+only when asked. The sectioning-model memo was moved OUT of the repo by the
 owner on purpose (a second research agent must not read it) - do not recreate it.
 
 ANALYSIS_VERSION 23, SHOW_VERSION 18, CONTEXT_VERSION 3 (SHOW 18 = the tempo read at
@@ -458,8 +456,10 @@ this call and it shipped at v15).
 2. The tree is CLEAN: the section-editor round landed in three commits (item 0) and this
    file and the record in the one after them. When you next commit, stage explicit paths,
    leave `packages/preview3d/*` alone (the owner's own work; clean today), and only commit
-   when the owner says so. There is one stash, `stash@{0}` from GitHub Desktop, holding
-   the owner's `docs/hardware.html` and a `cache-eval` snapshot: leave it alone. Note the subject style: the last commits all read
+   when the owner says so. `stash@{0}` from GitHub Desktop still exists; everything in it
+   worth keeping is now committed, and the rest is a 58 MB `cache-eval` snapshot (15 audio
+   files, 62 derived blobs, no judgements) that is regenerable and now gitignored. The
+   owner can drop that stash whenever they like. Note the subject style: the last commits all read
    `NOISSUE <sentence>`, while CLAUDE.md still specifies Conventional Commits - the
    history is what was followed here, and the discrepancy is the owner's to settle.
 3. **THE ROOM IS OWED A LISTEN, and that outranks new work.** Unheard in the room:

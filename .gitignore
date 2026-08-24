@@ -5,6 +5,7 @@ build/
 *.tsbuildinfo
 cache/
 cache114/
+cache-eval/
 shows/
 .DS_Store
 bench/corpus/
