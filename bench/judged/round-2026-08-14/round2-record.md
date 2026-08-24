@@ -1329,7 +1329,8 @@ reproduced before it is fixed; the identity check itself guards a real case and 
 simply be deleted.
 
 Written up in full, with the measurement table, the file:line suspects, the rules, the mute
-protocol for testing and a definition of done: `docs/BRIEF-section-editor.md`.
+protocol for testing and a definition of done: `docs/BRIEF-section-editor.md`. (That brief
+was spent and deleted once the defect closed; the section below carries what it held.)
 
 **The method failure worth keeping.** Three rounds of fixes, each correct about something:
 the per-bar section column really was stale, the writers really were erasing each other,
@@ -1337,3 +1338,123 @@ the two consumers really did round a tie in opposite directions. None of them wa
 owner was looking at. What finally found it was feeding the owner's OWN map through the real
 code path and printing where every boundary landed - four lines of arithmetic that should
 have been the first move each time, not the fourth.
+
+
+## The section editor closed: two grid faults and a proxy (2026-08-18)
+
+The brief's own instruction paid for itself twice. Feeding the owner's REAL map through the
+real code path before touching anything reproduced the brief's table exactly - and then showed
+that the map on disk TODAY was in worse shape than the synthetic case the brief had measured,
+and that the second defect was not the thing the brief hypothesised at all.
+
+### Defect 1, fault A: a cut re-phased the grid for the rest of the track
+
+`barStartsAtCuts` absorbs a cut as one short bar and then counts full bars FROM the mark, so
+every bar line after it moves. That is right for the case it was built for - Safir's record
+really did insert beats, and a movement mark really does start a new song's count - and wrong
+for a map's fine drag, which says "this section starts here" and nothing about the rest.
+
+Measured on the owner's live Melanz map, whose single `offGrid` boundary at 41.60 sits three
+beats into bar 24:
+
+| | before | after |
+|---|---|---|
+| Melanz, the owner's live map | 10 of 16 boundaries moved, up to 2.24 s | **0** |
+| SICKO MODE | 11 of 15 moved | **1**, by 0.08 s |
+| the brief's synthetic nudge | 11 moved, 13 preview/adoption disagreements | 6 moved, **0 disagreements** |
+| the other seven judged maps | unchanged | unchanged |
+
+Every one of those ten was drawn EXACTLY on a bar line; the cut is what took them off it. The
+six that remain on the brief's older map are its unflagged off-bar boundaries, which round by
+policy - the same six that moved with no nudge at all, so the cut itself now costs nothing.
+SICKO's 0.08 s is a boundary drawn between two tracked beats, and a bar line can only sit on
+a beat.
+
+The owner chose the shape, given the alternative: **the count re-starts at the mark and is
+handed back at the next drawn boundary already on a bar line**, absorbing the offset as one
+short bar ending there. The rejected alternative was splitting the containing bar, which
+disturbs nothing but opens the new section with a one-beat bar - and a section's first bar is
+where slams land. Both cost the same number of odd bars; this one puts them at a section's
+END, which is the shape the listener cut already uses and the reason it never stretches a
+pre-arrival gesture.
+
+An unflagged off-bar boundary is passed over rather than snapped to, so a map with no fine
+drag implies nothing and Safir's confirmed grid stays put. A movement mark deliberately does
+NOT hand the count back: the rest of the track belongs to the new song.
+
+### Defect 1, fault B: the preview threw away the cuts the grid already carried
+
+`regridForMap` re-derived the whole bar table from a uniform walk, discarding the three cuts
+Melanz's cached table already held (12.20 / 137.60 / 181.64). That is why the brief saw 41.60
+move when the cut was at 106.60 - a boundary moving BEFORE the cut that supposedly caused it -
+and it split the two consumers apart on 13 of 16 boundaries. The preview now asks `handMapGrid`
+for its cut list instead of deriving one, including the residue branch, so the two cannot read
+one map two ways again. That was the whole class: `nearestBar` gave the ROUNDING one home last
+round, and this gives the CUTS one home.
+
+### And the re-sync must not depend on a cached blob
+
+First shipped inside `handMapGrid`, measuring "already on a bar line" against the grid the map
+was drawn on - which is read out of the cached analysis. Driving a real ingest with that blob
+deleted put all ten Melanz boundaries back where they had been: `drawnOn` is null, so there was
+nothing to measure against and the re-sync silently did nothing. A cache cleared behind a kept
+judgement would have degraded a map permanently, since the next analysis would then carry the
+re-phased grid forward.
+
+The rule now lives at the WALK (`resyncedCuts`), which both consumers always have, and walks
+its own reference grid instead of reading one. Re-verified through a real ingest with no cached
+analysis present: all 16 boundaries land exactly, same two short bars, identical to the run
+with the blob.
+
+### Defect 2 was a Svelte proxy, not the re-analysis
+
+The brief's hypothesis - that saving a map triggers a re-analysis which replaces `show` and
+breaks the `show === previewShow` identity - is wrong, and the app said so in one measurement:
+with no edit at all, no save and no re-analysis, the cue count went 21 -> 22 -> 22. Probing the
+real branch: `identical:false` while `sameCues:true, sameSeed:true`. The preview WAS still on
+stage; the check could not see it.
+
+`$state` wraps a plain object in a proxy per variable, so `previewShow = data.show` and
+`show = data.show` hold two different proxies of one object and the identity can never hold.
+Svelte's `proxy()` short-circuits only on a value that is already a proxy - so reading the
+stage back (`previewShow = show`) hands over the same one. The identity check itself is kept:
+it guards the case where something else legitimately replaced the show, and both branches now
+say which case they serve.
+
+Verified by driving the app: 21 -> 22 -> 21 -> 22 -> 21, and with a boundary nudged while
+previewing, 21 -> 22 -> edit -> 22 -> **21**.
+
+### What was deliberately left, with its number
+
+**A short bar reports a fast local tempo.** `f.beatPeriod` is the bar's duration over
+`beatsPerBar`, so the one-beat re-sync bar reads 4x fast for the second it lasts, and the
+three-beat cut bar 33% fast for three. It is NOT a strobe-ceiling risk, and that is worth
+stating because it was first written up as one: `strobePerBeat` allows FEWER flashes as bpm
+rises, and the planner, the linter and the renderer all read the same local bpm off the same
+bar table, so the delivered rate stays under the ceiling by construction. What remains is
+cosmetic - a second of fast flicker in the bar before a drawn boundary. The class is not new
+(every listener cut since Safir has a short bar, room-confirmed), and the honest fix needs the
+per-bar BEAT COUNT, which the bar table does not carry: durations cannot tell a cut bar from a
+fast one, which is exactly what `cutsFromBarTimes` says. That is a `TempoGrid` change and an
+`ANALYSIS_VERSION` bump - the whole library re-analysed and composition moved on every cut
+track - so it wants the owner's ear rather than a quiet ship.
+
+**No component-level regression test for defect 2.** The trap is an assignment inside a
+component; reaching it needs a harness that mounts the page with the real runtime, and vitest
+here is plain node with no svelte plugin. The guard that exists is a source-level one that does
+fail before and pass after, and its docblock says why it is a string.
+
+### Gates and where it landed
+
+Committed as `607ab59` (the grid), `1448ff1` (the preview and its toggle) and `a1e32e9`
+(the scrubber's section names, removed at the owner's ask along with the preview
+recomposing on every edit while it is up).
+
+836 tests (827 + 9, every one proven failing against its bug first - the re-sync ones by
+neutering the re-sync rather than by removing the function, so they fail on behaviour and not
+on a missing symbol), typecheck clean, 2/2 lint-clean on the shows composed over the cut grid.
+The owner's 117 judge files across all four stores verified byte-identical to backup with no
+files added; every app test ran against a scratch cache.
+
+The instrument is `bench/mapland.ts`: it prints, for one track, where every drawn boundary
+lands in the preview and in the adoption and whether the two agree, and it never writes.

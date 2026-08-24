@@ -1,12 +1,12 @@
 # Handover
 
 State as of 2026-08-18 (round 8 in flight): v23 / SHOW 18 / CONTEXT 3, everything
-committed through `2a46900`, 827 tests green. This file is the CAMPAIGN - the analysis,
+committed through the section-editor round (`607ab59`, `1448ff1`, `a1e32e9`), 836 tests
+green. This file is the CAMPAIGN - the analysis,
 the engine and what the room hears. Multi-tempo is researched and three slices have
 shipped; step 4 of it is the owner's to do together, and the room owes two rounds a
-listen. One defect is open and is owned by a SEPARATE session against
-`docs/BRIEF-section-editor.md` (the section editor ignoring drawn boundaries): do not
-work it here, and stay out of its files - the list is in the first-hour item 0. The map
+listen. The section-editor defect (it ignored the owner's drawn boundaries, and the
+Preview/Original toggle stuck) is FIXED and unheard - first-hour item 0. The map
 loop that both efforts stand on: A hand-drawn map decides its track outright - grid
 and sections both - and it is heard THE NEXT PLAY, not the next version bump: the
 analysis stamps the map it adopted (`TrackAnalysis.handMap`) and ingest re-analyses
@@ -39,18 +39,23 @@ Everything through the finishing wave is COMMITTED (seven commits 2026-08-15,
 b5c3fbc..49bf891): the v20+v21 analyser slices, the bench instruments, the judge
 trio (section editor, typed hit marks, arrangement preview), the v22 cuts path +
 settle gate + SOPHIE fixture + genre provenance, the engine round (SHOW 16), and
-the records. The owner's own in-flight work stays uncommitted: `docs/hardware.html`
-and everything under `packages/preview3d/` - DO NOT touch or commit those; stage
-explicit paths only. The sectioning-model memo was moved OUT of the repo by the
+the records. `packages/preview3d/` is the owner's own work - tracked and clean as of
+2026-08-18, so leave it alone rather than sweeping it into a commit; stage explicit
+paths only. `docs/hardware.html` is not in the working tree because it is STASHED:
+`stash@{0}`, written by GitHub Desktop on 2026-08-17, holds it along with a whole
+`cache-eval` snapshot (78 files, 290k lines of audio and blobs). DO NOT DROP THAT
+STASH - it is the only copy of that file - and if it is ever popped, neither
+`docs/hardware.html` nor `cache-eval/` may be staged. The sectioning-model memo was moved OUT of the repo by the
 owner on purpose (a second research agent must not read it) - do not recreate it.
 
-ANALYSIS_VERSION 23, SHOW_VERSION 17, CONTEXT_VERSION 3 (round 7: the map->cuts
-carry-forward, corroborated residues, map adoption, the map stamp that makes a
-fresh map audible on the next play, kick-corroborated genre families, and SHOW 17's
-pounding band raise - all UNCOMMITTED at handover time unless the owner said commit;
+ANALYSIS_VERSION 23, SHOW_VERSION 18, CONTEXT_VERSION 3 (SHOW 18 = the tempo read at
+the bar, round 8; round 7 was the map->cuts carry-forward, corroborated residues, map
+adoption, the map stamp that makes a fresh map audible on the next play,
+kick-corroborated genre families, and SHOW 17's pounding band raise - all now committed
+through `2a46900`;
 the previous state was v22 / SHOW 16 / CONTEXT 2, the finishing wave:
 v20 boundary slice, v21 pounding arm, v22 listener-cut grids + settle gate +
-audioGenres; SHOW 16 = group-final peaks + the leaving pass). 806 tests green,
+audioGenres; SHOW 16 = group-final peaks + the leaving pass). 836 tests green,
 `npm run check` clean. earlybars at v23: 20 hit / 0 closer / 8 same / 0 worse of
 28 - THE FLOOR, and inert by design: analyzeTrack reads no judgement, so adoption
 cannot flatter it. structscore v22 identical to v20/21 (sweep-record.md). Judged-36
@@ -308,9 +313,11 @@ structure.ts docblock names them).
   original judgements, already fully mined into snapshot.json).
 - `LightningStrike (B).app` = round 1 (v17/v13) on `cache-B` (round-1 A/B verdicts
   in its judge/).
-- `LightningStrike (C).app` = ROUND 4 FINAL (v19/v15 + the playhead fix) on
-  `cache-C` (round-2 and round-3 verdicts in its judge/, all mined; the round-4
-  listening verdicts LAND HERE and are the next session's first read).
+- `LightningStrike (C).app` = CURRENT, and the app the owner judges in: v23 / SHOW 18
+  WITH the section-editor round in it, rebuilt and reinstalled 2026-08-18 16:18, on
+  `cache-C`. 43 hand maps in its judge/ (untouched, verified byte-identical); its
+  analyses and shows were CLEARED on the same day, so the library re-derives on play.
+  Its judge/ is the next session's first read.
 - Round 5 hands over by replacing C again (after mining its judge/) or adding D -
   ask the owner which.
 - **THE INSTALL TRAP**: `cp -R new.app "/Applications/X.app"` onto an existing bundle
@@ -348,10 +355,11 @@ rounds taught:
 
 ## Gates and probes (run all before any handover)
 
-1. `npm test` (764) and `npm run check`. If check errors with TS6305 after deleting
+1. `npm test` (836) and `npm run check`. If check errors with TS6305 after deleting
    dist/, `npx tsc --build --force packages/analysis` (stale tsbuildinfo).
-2. `node bench/earlybars.ts` - 15 hit / 0 worse (of 28 rows) is the floor; any
-   WORSE is a stop.
+2. `node bench/earlybars.ts` - 20 hit / 0 worse (of 28 rows) is the floor; any
+   WORSE is a stop. Needs MV_CACHE_DIR on a cache holding Kisses/WTSA audio (cache-C),
+   and it re-derives from audio, so the cleared cache does not affect it.
 3. `node bench/structscore.ts --dataset raveform|harmonix --limit 60 --variant current`
    after analyser changes (baselines in sweep-record.md; label columns are BLIND to
    same-kind merges and lyric effects - read F0.5/F3/sections).
@@ -359,7 +367,8 @@ rounds taught:
    reanalyse - it diffs sections/phantoms/peaks/hits vs snapshot.json. IT DOES NOT
    LINT: the R2 ship-blocker (the button lint-deleting shows) was invisible to it.
    Always ALSO run `node bench/lintsweep.ts` (composes + lints the whole library;
-   46/46 lint-clean is the floor, and the app fails DARK on lint errors).
+   47/47 lint-clean is the floor, and the app fails DARK on lint errors). It reads the
+   DESKTOP `cache` (app A, 47 analyses), which the cache-C clear did not touch.
 5. `MV_CACHE_DIR=.../cache114 node bench/reanalyse.ts` then
    `MV_CACHE_DIR=... node bench/showprobe.ts` - 0 lint / 0 misfires / 100% quiet
    coverage, dark bars <= 2 (the known pair). Env var must prefix EACH command
@@ -419,26 +428,50 @@ this call and it shipped at v15).
 
 ## If you are the next session: the first hour
 
-0. **A SEPARATE SESSION OWNS THE SECTION EDITOR.** `docs/BRIEF-section-editor.md` is
-   its task, not yours: the editor does not honour the owner's drawn boundaries and the
-   Preview/Original toggle sticks. THIS file is the campaign - analysis, engine, the
-   room. Stay out of its files so the two sessions cannot collide:
-   `apps/web/src/lib/components/ShowStrip.svelte`, `JudgePanel.svelte`,
-   `Scrubber.svelte`, `apps/web/src/routes/+page.svelte`,
-   `apps/web/src/lib/server/previewArrangement.ts`, and
-   `packages/analysis/src/gridedits.ts` / `handSections.ts`. If the campaign needs a
-   change in one of those, say so and let the owner sequence it.
+0. **THE SECTION EDITOR DEFECT IS FIXED AND COMMITTED, AND THE ROOM HAS NOT HEARD IT.**
+   `607ab59` the grid, `1448ff1` the preview and its toggle, `a1e32e9` the scrubber. The
+   brief that carried it is spent and deleted; everything it held is in round2-record.md's
+   tail, "The section editor closed". A drawn boundary lands where it was drawn in both the preview and the
+   adoption - Melanz went from 10 of 16 boundaries moved (up to 2.24 s) to 0, SICKO MODE from
+   11 of 15 to 1 - and the Preview/Original toggle restores repeatedly, including after an
+   edit. Three things to know before touching this area:
+   - A map's fine drag re-starts the bar count at the mark and HANDS IT BACK at the next
+     drawn boundary already on a bar line (`resyncedCuts`). A movement mark deliberately does
+     not hand it back. An unflagged off-bar boundary still implies nothing, which is what
+     protects Safir.
+   - The preview no longer derives its own cuts; `handMapGrid` is the one home for the cut
+     list the way `nearestBar` is for the rounding. Keep it that way, or the two consumers
+     read one map two ways again - which is what every round of this defect has been.
+   - `$state` proxies per variable, so two variables handed one object are not identical.
+     `previewShow = show`, never `previewShow = data.show`.
+   Two interface changes rode along on the owner's ask, both verified in the app: the
+   preview now RECOMPOSES on every committed map edit while it is up (bursts coalesce -
+   the last draft wins, one compose per gesture), and the scrubber's section-name row
+   ("Groove", "Drop" over the player) is GONE, along with the text ruler, fit test and
+   ResizeObserver that served only it. Do not re-add it.
+   Left open, needing the owner's ear rather than a fix: a short bar reports a fast local
+   tempo (4x for the one second a re-sync bar lasts). It is cosmetic, not a strobe-ceiling
+   risk - planner, linter and renderer all read the same local bpm - and the honest fix needs
+   per-bar beat counts in `TempoGrid`, an ANALYSIS_VERSION bump and a library re-analysis.
 1. Read this file to the end, then round2-record.md's TAIL - the **round-7 verdicts**
    and the round-8 section (multi-tempo). `docs/EFFECT_POLISHING.md` is the method.
-2. Everything is COMMITTED through `2a46900` and the tree is clean, except
-   `docs/BRIEF-section-editor.md` which belongs to that other session. Do not stage
-   `docs/hardware.html` or `packages/preview3d/*` (the owner's own in-flight work).
-   Only commit when the owner says so.
+2. The tree is CLEAN: the section-editor round landed in three commits (item 0) and this
+   file and the record in the one after them. When you next commit, stage explicit paths,
+   leave `packages/preview3d/*` alone (the owner's own work; clean today), and only commit
+   when the owner says so. There is one stash, `stash@{0}` from GitHub Desktop, holding
+   the owner's `docs/hardware.html` and a `cache-eval` snapshot: leave it alone. Note the subject style: the last commits all read
+   `NOISSUE <sentence>`, while CLAUDE.md still specifies Conventional Commits - the
+   history is what was followed here, and the discrepancy is the owner's to settle.
 3. **THE ROOM IS OWED A LISTEN, and that outranks new work.** Unheard in the room:
    SHOW 17's pounding band raise (which moved two 5-star sentinels, Pistacie and
    EARFQUAKE - the owner cleared both by ear, so this is confirmed and only the rest of
-   the corpus is unheard), and SHOW 18's tempo-at-the-bar, which changes the strobe rate
-   on any track that changes tempo. Hand back a SHORT list, never the whole corpus.
+   the corpus is unheard), SHOW 18's tempo-at-the-bar, which changes the strobe rate
+   on any track that changes tempo, and the section-editor round, which moves the GRID on
+   the two mapped tracks that carry a fine drag - Melanz (its downbeats between 41.60 and
+   73.60 shift by a beat, because the owner's mark says so) and SICKO MODE (14 fine-drag
+   marks, so it exercises this hardest). Those two are the sharpest listen available and
+   they re-analyse on their own first play. Hand back a SHORT list, never the whole
+   corpus.
 4. **MULTI-TEMPO: RESEARCHED, AND THREE SLICES SHIPPED (round 8).** The tempo is now read
    AT THE BAR (`bpmAt`/`beatPeriodAt` in core), which closed a live breach of the 8 Hz
    strobe ceiling - 9.2 Hz on SICKO MODE's fast movement, passed by a linter reading the
@@ -523,11 +556,13 @@ this call and it shipped at v15).
    cannot carry an independent eval. Maps on tracks the analyser gets WRONG are worth
    several agreeing ones: Ponyboy (35%) and Snooze (7 bars out) are the valuable
    pair so far. The memo lives outside the repo by the owner's hand - ask for it.
-12. Floors and gates, current at v23 / SHOW 18: suite 827; typecheck clean; earlybars
+12. Floors and gates, ALL RE-RUN AND GREEN on 2026-08-18 after the section-editor
+   round: suite 836 (827 plus that round); typecheck clean; earlybars
    20 hit / 0 closer / 8 same / 0 worse of 28 (MV_CACHE_DIR at cache-C for
    Kisses/WTSA audio) - inert by design, since analyzeTrack reads no judgement;
    structscore raveform 0.394/0.540, harmonix 0.202/0.532 (unmoved at v23);
-   47/47 lint-clean, 0 rejected; showprobe 0 lint / 0 misfires / 100% quiet, dark 2,
+   47/47 lint-clean, 0 rejected (re-run 2026-08-18); showprobe 0 lint / 0 misfires /
+   100% quiet, dark 2,
    contrast 2.75, hue jumps 2745 (contrast and jumps drifted from 2.76/2585 with the
    band raise - that drift IS the change, and the new numbers are the baseline);
    judged 36 at SHOW 16 vs 17 = 9 changed / 27 identical, transient layer only.
@@ -551,11 +586,14 @@ this call and it shipped at v15).
    (`bpmAt`/`beatPeriodAt`, closing a 9.2 Hz breach of the 8 Hz strobe ceiling on SICKO
    MODE's fast movement); `tempoSegments` and the tempo map on screen (player bar reads
    the local tempo with an "N tempi" chip, timeline tempo lane, inspector listing, and
-   the judge offering each change point as a movement candidate); and the scrubber's
-   names row plus the editor's keyboard nudge, in-lane movement dividers, undo and
-   keyboard kind picker. The last of those is what the open defect sits on.
-15. App C is rebuilt at v23 / SHOW 18 (2026-08-18 02:36). Rebuild via
-   `npm run bundle -w @mv/desktop` then `npx tauri build --bundles app` from
-   apps/desktop, `rm -rf` the target before copying (the nesting trap). Every track
-   re-analyses once on its next play (~30-60 s) because the analysis version bumped,
-   every context re-enriches once, and every show recomposes.
+   the judge offering each change point as a movement candidate); and the editor's
+   keyboard nudge, in-lane movement dividers, undo and keyboard kind picker, which is
+   what the section-editor round then sat on. A scrubber section-name row shipped in the
+   same batch and has since been REMOVED at the owner's ask - see item 0.
+15. App C is rebuilt AND reinstalled at 2026-08-18 16:18, carrying the section-editor
+   round, and its cache was CLEARED at the owner's ask: every `*.analysis.json` and
+   `*.show.json` deleted (66 files), audio, meta, context and judge kept. So every track
+   re-analyses once on its next play (~30-60 s), every context is already at CONTEXT 3,
+   and every show recomposes. Rebuild via `npm run bundle -w @mv/desktop` then
+   `npx tauri build --bundles app` from apps/desktop, `rm -rf` the target before copying
+   (the nesting trap), and `xattr -dr com.apple.quarantine` the installed bundle.
