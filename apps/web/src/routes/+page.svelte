@@ -141,6 +141,8 @@
 	/** And the real analysis, whose section table the preview replaces for as long as it runs. */
 	let shelvedAnalysis: TrackAnalysis | null = null;
 	let previewFetching = false;
+	/** A draft that arrived while a compose was in flight, so the last edit always wins. */
+	let previewPending = false;
 
 	// Read once: the shell injects it before any of this runs and never changes it.
 	const shell = readShell();
@@ -385,6 +387,9 @@
 	function applySections(list: JudgedSection[]) {
 		if (!trackId) return;
 		sectionDraft = list;
+		// The preview follows the hand drawing it, rather than freezing at whatever the map
+		// said when the button was pressed.
+		if (previewShow) void stagePreview(false);
 		// The map and the grid it was drawn against; the panel's fields are none of the
 		// editor's business and are left to the file.
 		void saveJudgement({
@@ -457,8 +462,10 @@
 		if (!viz) return;
 		if (!on) {
 			if (!previewShow) return;
-			// Something else may have replaced the show while previewing; only put the
-			// shelved one back when the preview is still the one on stage.
+			// Two cases, and only the first is ours to undo: either the preview is still the
+			// show on stage, and the shelf belongs back; or something else replaced it while
+			// previewing - a reroll, a re-analysis, the agent - and that show owns the stage
+			// now, so restoring would clobber it and the shelf is simply dropped.
 			if (show === previewShow) {
 				show = shelvedShow;
 				if (shelvedAnalysis) analysis = shelvedAnalysis;
@@ -470,49 +477,88 @@
 			shelvedAnalysis = null;
 			return;
 		}
-		if (!trackId || !analysis || previewShow || previewFetching) return;
+		if (previewShow) return;
+		await stagePreview(true);
+	}
+
+	/**
+	 * Compose the map as it stands and put it on stage.
+	 *
+	 * Run again after every edit while the preview is up: a preview of the map as it was a
+	 * gesture ago is not a preview of anything, and the room is the only place the change can
+	 * actually be judged. The shelf is taken on the FIRST staging only - re-staging must never
+	 * shelve the preview it is replacing, or the real show is lost behind it.
+	 */
+	async function stagePreview(first: boolean) {
+		if (!trackId || !analysis || !viz) return;
+		// A burst of nudges outruns the round trip. Rather than dropping the ones that arrive
+		// mid-flight - which would leave the room showing an arrangement nobody is drawing any
+		// more - the last draft is remembered and composed as soon as the wire is free.
+		if (previewFetching) {
+			previewPending = true;
+			return;
+		}
 		previewFetching = true;
 		try {
-			const res = await fetch(`/api/track/${trackId}/preview-arrangement`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				// The draft while the editor is armed, so pressing this hears the edit that is
-				// on screen rather than the last one saved. Without a draft the server falls
-				// back to the saved map.
-				body: JSON.stringify({ sections: sectionDraft ?? undefined })
-			});
-			if (!res.ok) throw new Error((await res.text()).slice(0, 300));
-			const data = (await res.json()) as { show: Show; analysis: TrackAnalysis };
-			shelvedShow = show;
-			shelvedAnalysis = analysis;
-			previewShow = data.show;
-			show = data.show;
-			// The map's own section table goes on stage with it, so the strip, the scrubber
-			// and the inspector describe the arrangement being previewed rather than the one
-			// it replaced. Restored intact when the preview comes off.
-			analysis = data.analysis;
-			viz.loadShow(data.analysis, data.show);
-			// A section starts on a bar line or not at all, so a boundary placed between two
-			// of them is rounded onto the nearer one. Say so, with the worst offender: silent
-			// rounding is what made the preview look like it was ignoring the map.
-			const drawn = sectionDraft ?? judgements[trackId]?.sections ?? [];
-			let moved = 0;
-			let worst = 0;
-			for (let i = 0; i < Math.min(drawn.length, data.analysis.sections.length); i++) {
-				const by = Math.abs(data.analysis.sections[i].startTime - drawn[i].startTime);
-				if (by > 0.05) {
-					moved++;
-					worst = Math.max(worst, by);
+			while (true) {
+				previewPending = false;
+				const res = await fetch(`/api/track/${trackId}/preview-arrangement`, {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					// The draft while the editor is armed, so this hears the edit that is on
+					// screen rather than the last one saved. Without a draft the server falls
+					// back to the saved map.
+					body: JSON.stringify({ sections: sectionDraft ?? undefined })
+				});
+				if (!res.ok) throw new Error((await res.text()).slice(0, 300));
+				const data = (await res.json()) as { show: Show; analysis: TrackAnalysis };
+				if (first && !previewShow) {
+					shelvedShow = show;
+					shelvedAnalysis = analysis;
 				}
-			}
-			note(
-				`previewing the hand-drawn arrangement: ${data.show.cues.length} cues, ` +
-					`${data.analysis.sections.length} sections` +
-					(moved > 0
+				show = data.show;
+				// Read the staged value BACK rather than remembering the same raw object:
+				// `$state` wraps a plain object in a proxy per variable, so two variables
+				// assigned one object hold two different proxies and the check in
+				// `togglePreview` could never hold. That is what stranded the preview on stage
+				// with the toggle reset - "only the Preview remained there". Assigning an
+				// already-proxied value hands over that same proxy.
+				previewShow = show;
+				// The map's own section table goes on stage with it, so the strip, the scrubber
+				// and the inspector describe the arrangement being previewed rather than the
+				// one it replaced. Restored intact when the preview comes off.
+				analysis = data.analysis;
+				viz.loadShow(data.analysis, data.show);
+				// A section starts on a bar line or not at all, so a boundary placed between
+				// two of them is rounded onto the nearer one. Say so, with the worst offender:
+				// silent rounding is what made the preview look like it was ignoring the map.
+				const drawn = sectionDraft ?? judgements[trackId]?.sections ?? [];
+				let moved = 0;
+				let worst = 0;
+				for (let i = 0; i < Math.min(drawn.length, data.analysis.sections.length); i++) {
+					const by = Math.abs(data.analysis.sections[i].startTime - drawn[i].startTime);
+					if (by > 0.05) {
+						moved++;
+						worst = Math.max(worst, by);
+					}
+				}
+				const rounded =
+					moved > 0
 						? ` - ${moved} boundary${moved === 1 ? '' : 's'} rounded onto a bar line, ` +
 							`up to ${worst.toFixed(2)}s`
-						: '')
-			);
+						: '';
+				// Every gesture would otherwise write a line of its own; while editing, only a
+				// rounding is worth saying, because that is the one thing the lane cannot show.
+				if (first) {
+					note(
+						`previewing the hand-drawn arrangement: ${data.show.cues.length} cues, ` +
+							`${data.analysis.sections.length} sections${rounded}`
+					);
+				} else if (rounded) {
+					note(`preview recomposed${rounded}`);
+				}
+				if (!previewPending) break;
+			}
 		} catch (e) {
 			note(`ERROR ${(e as Error).message}`);
 		} finally {
