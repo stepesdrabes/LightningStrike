@@ -21,13 +21,8 @@
 	} = $props();
 
 	let el: HTMLDivElement | undefined = $state();
-	let namesEl: HTMLDivElement | undefined = $state();
-	let width = $state(0);
 	let dragging = $state(false);
 	let hoverAt = $state<number | null>(null);
-
-	/** The gap after a boundary plus air before the next one, so a name never touches a rule. */
-	const NAME_ROOM = 10;
 
 	const played = $derived(duration > 0 ? Math.min(1, position / duration) : 0);
 
@@ -73,43 +68,6 @@
 		return { left: `${l.toFixed(3)}%`, width: `${w.toFixed(3)}%` };
 	}
 
-	/** Built once, from the row's own font, so what is measured is what will be drawn. */
-	let ruler: CanvasRenderingContext2D | null = null;
-
-	/**
-	 * Whether a name fits inside `px` whole.
-	 *
-	 * Measured rather than estimated, because the alternative to a fit test is a truncated
-	 * name, and a section reading "Break..." says less than an unlabelled one.
-	 */
-	function fits(text: string, px: number): boolean {
-		if (!ruler) {
-			const host = namesEl;
-			const ctx = document.createElement('canvas').getContext('2d');
-			if (!host || !ctx) return false;
-			const style = getComputedStyle(host);
-			ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-			ruler = ctx;
-		}
-		return px >= ruler.measureText(text).width + NAME_ROOM;
-	}
-
-	/** The name row: a boundary per section, and the name where the section can hold it. */
-	const marks = $derived.by(() => {
-		const sections = analysis?.sections;
-		if (!sections || duration <= 0 || width <= 0) return [];
-		return sections.map((s) => {
-			const name = titleCase(s.kind);
-			const px = ((s.endTime - s.startTime) / duration) * width;
-			return { index: s.index, ...span(s.startTime, s.endTime), label: fits(name, px) ? name : '' };
-		});
-	});
-
-	/** Which section is sounding now, so the map can say where in itself the room is. */
-	const liveIndex = $derived(
-		analysis?.sections.find((s) => position >= s.startTime && position < s.endTime)?.index ?? -1
-	);
-
 	/**
 	 * Where a new song starts inside this one. Absent on nearly every track, which is why it is
 	 * drawn as the exception rather than as another lane.
@@ -136,15 +94,6 @@
 			bpm: analysis ? bpmAt(analysis.tempo, bar).toFixed(0) : ''
 		};
 	});
-
-	$effect(() => {
-		const host = el;
-		if (!host) return;
-		const observer = new ResizeObserver(([entry]) => (width = entry.contentRect.width));
-		observer.observe(host);
-		width = host.getBoundingClientRect().width;
-		return () => observer.disconnect();
-	});
 </script>
 
 <div class="scrubber" class:active={dragging}>
@@ -167,18 +116,6 @@
 			if (e.key === 'ArrowLeft') onseek(Math.max(0, position - 5));
 			if (e.key === 'ArrowRight') onseek(Math.min(duration, position + 5));
 		}}>
-		<!-- Names above the ribbon rather than in it: the ribbon is five pixels tall, which is
-		     no place for a word. -->
-		<div class="names" bind:this={namesEl}>
-			{#each marks as m (m.index)}
-				<div class="name" style:left={m.left} style:width={m.width}>
-					{#if m.label}
-						<span class:live={m.index === liveIndex}>{m.label}</span>
-					{/if}
-				</div>
-			{/each}
-		</div>
-
 		<div class="rail">
 			<!-- The sections ARE the progress bar. There is no separate timeline to consult. -->
 			<div class="sections">
@@ -258,34 +195,6 @@
 		flex-direction: column;
 		cursor: pointer;
 		touch-action: none;
-	}
-	.names {
-		position: relative;
-		flex: none;
-		height: 13px;
-		font-size: 10.5px;
-	}
-	.name {
-		position: absolute;
-		top: 0;
-		bottom: 0;
-		display: flex;
-		align-items: center;
-		padding-left: 5px;
-		/* A hairline where the section starts, aligned with the seam in the ribbon below. No
-		   overflow rule: a name is only drawn once it has been measured to fit. */
-		border-left: 1px solid var(--border);
-		line-height: 1;
-		color: var(--muted-foreground);
-		white-space: nowrap;
-	}
-	/* The start of the track is not a boundary, so it gets no rule. */
-	.name:first-child {
-		border-left: none;
-	}
-	/* Only the section actually sounding is at full brightness; the rest are a map. */
-	.name .live {
-		color: var(--foreground);
 	}
 	.rail {
 		position: relative;
