@@ -1,9 +1,6 @@
 import type { BarRow, Moment, SectionKind, SectionSpan, TrackAnalysis } from '@mv/core';
 import { SECTION_KINDS, barAtTime, barTimeAt, nearestBar } from '@mv/core';
-import { barStartsAtCuts } from '@mv/analysis';
-
-/** Float noise between two copies of the same instant, not a tolerance. */
-const SAME_INSTANT = 1e-6;
+import { barStartsAtCuts, deriveGridCuts, handMapGrid, resyncedCuts } from '@mv/analysis';
 import type { JudgedSection } from './judge.ts';
 
 /**
@@ -28,6 +25,12 @@ import type { JudgedSection } from './judge.ts';
  * ending exactly at the mark. This does the same thing to the cached table so the preview
  * shows what the next analysis will produce, rather than a rounded stand-in for it.
  *
+ * WHICH cuts is not this side's decision: `handMapGrid` answers it and `resyncedCuts` says
+ * where the bar count is handed back, exactly as the next analysis will ask them. Two
+ * consumers reading one map through two readings of the same rule is the bug this whole area
+ * keeps producing - deriving the cuts here independently lost the ones the cached table
+ * already carried, which moved boundaries the owner drew nowhere near the cut.
+ *
  * Returns null when the map implies no cuts, which is the common case and needs no work.
  */
 function regridForMap(
@@ -45,21 +48,32 @@ function regridForMap(
 		}
 		return best;
 	};
-	const onBarLine = (t: number) =>
-		tempo.barTimes.some((b) => Math.abs(b - t) <= SAME_INSTANT);
 
-	// Only boundaries the editor recorded as DELIBERATELY off the grid. An older map's
-	// off-bar boundaries are beat-snapping artefacts and imply nothing about the meter, so
-	// cutting the grid to them would move bar lines the owner never asked to move.
-	const cutBeats = [
-		...new Set(
-			hand
-				.slice(1)
-				.filter((s) => s.offGrid === true && Number.isFinite(s.startTime) && !onBarLine(s.startTime))
-				.map((s) => beatAt(s.startTime))
-				.filter((i) => i > 0 && i < beats.length - 1)
-		)
-	].sort((a, b) => a - b);
+	// Skipping the first everywhere: its start is where the track begins, not a statement
+	// about a bar line, and the analysis reads the map off the same slice.
+	const boundaries = hand.slice(1).map((s) => s.startTime);
+	const deliberate = hand
+		.slice(1)
+		.filter((s) => s.offGrid === true && Number.isFinite(s.startTime))
+		.map((s) => s.startTime);
+	const grid = handMapGrid(
+		boundaries,
+		{ beats, barTimes: tempo.barTimes, beatsPerBar: tempo.beatsPerBar },
+		deliberate
+	);
+	// The analysis reads a map drawn on a UNIFORM grid through its residues instead, so the
+	// preview has to as well, or the two split apart on exactly the maps that carry no flag.
+	const cutTimes =
+		grid.gridCuts ??
+		deriveGridCuts(boundaries, Float64Array.from(beats), tempo.beatsPerBar, tempo.downbeatPhase);
+	const cutBeats = resyncedCuts(
+		cutTimes.filter(Number.isFinite).map(beatAt),
+		deliberate.map(beatAt),
+		boundaries.filter(Number.isFinite).map(beatAt),
+		beats.length,
+		tempo.beatsPerBar,
+		tempo.downbeatPhase
+	).filter((i) => i > 0 && i < beats.length - 1);
 	if (cutBeats.length === 0) return null;
 
 	const starts = barStartsAtCuts(beats.length, tempo.beatsPerBar, tempo.downbeatPhase, cutBeats);

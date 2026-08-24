@@ -17,7 +17,7 @@ import { chromagram, estimateKey, estimateKeySpan } from './chroma.ts';
 import { detectDrums, snapTimesToOnsets, type DrumStream } from './drums.ts';
 import { extractFeatures } from './features.ts';
 import { detectMeter, type Meter } from './downbeats.ts';
-import { barStartsAtCuts, deriveGridCuts } from './gridedits.ts';
+import { barStartsAtCuts, deriveGridCuts, resyncedCuts } from './gridedits.ts';
 import { handMapFingerprint, handSectionBars, type HandSection } from './handSections.ts';
 import { applyHeadLabels, type SectionPosteriors } from './headLabels.ts';
 import { assessMetricalLevel } from './metricalLevel.ts';
@@ -231,19 +231,34 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	};
 	const mapCuts =
 		input.gridCuts && input.gridCuts.length > 0
-			? input.gridCuts.map((t) => grid.beats[beatAt(t)])
+			? input.gridCuts.map(beatAt)
 			: input.sectionMapBoundaries && input.sectionMapBoundaries.length > 0
-				? deriveGridCuts(input.sectionMapBoundaries, grid.beats, meter.beatsPerBar, meter.phase)
+				? deriveGridCuts(
+						input.sectionMapBoundaries,
+						grid.beats,
+						meter.beatsPerBar,
+						meter.phase
+					).map(beatAt)
 				: [];
 	// A new song does not inherit the old one's count of one. Marked movements are cuts for
 	// exactly the same reason listener-marked edits are, and through the same walk: the bar
-	// containing the switch is shortened so the switch itself lands on a bar line.
-	const movementCuts = (input.movements ?? []).map((t) => grid.beats[beatAt(t)]);
-	const cuts = [...new Set([...mapCuts, ...movementCuts])].sort((a, b) => a - b);
+	// containing the switch is shortened so the switch itself lands on a bar line. Unlike a
+	// map's fine drag they do NOT hand the count back: the rest of the track belongs to the
+	// new song, so it keeps counting from the switch.
+	const movementCuts = (input.movements ?? []).map(beatAt);
+	const drawn = (input.handSections ?? []).slice(1);
+	const cuts = resyncedCuts(
+		[...mapCuts, ...movementCuts],
+		drawn.filter((s) => s.offGrid).map((s) => beatAt(s.startTime)),
+		drawn.map((s) => beatAt(s.startTime)),
+		grid.beats.length,
+		meter.beatsPerBar,
+		meter.phase
+	);
 	if (cuts.length > 0) {
 		bars = barSynchronousAt(
 			beatFeatures,
-			barStartsAtCuts(grid.beats.length, meter.beatsPerBar, meter.phase, cuts.map(beatAt))
+			barStartsAtCuts(grid.beats.length, meter.beatsPerBar, meter.phase, cuts)
 		);
 	}
 	bars ??= barSynchronous(beatFeatures, meter.beatsPerBar, meter.phase);

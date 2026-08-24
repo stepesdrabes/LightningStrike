@@ -1,7 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { barStartsAtCuts, cutsFromBarTimes, deriveGridCuts, handMapGrid } from './gridedits.ts';
+import {
+	barStartsAtCuts,
+	cutsFromBarTimes,
+	deriveGridCuts,
+	handMapGrid,
+	resyncedCuts
+} from './gridedits.ts';
 
 describe('barStartsAtCuts', () => {
 	it('absorbs each cut as a short bar ending exactly on it', () => {
@@ -105,5 +111,55 @@ describe('a hand map drawn on a piecewise grid', () => {
 
 	it('falls back to residues when the drawing grid is unknown', () => {
 		expect(handMapGrid([4, 9], null).sectionMapBoundaries).toEqual([4, 9]);
+	});
+});
+
+describe('a deliberate cut re-syncs at the next drawn boundary', () => {
+	/** Beats every 0.5 s, bars every 2 s, so a bar line sits on every even second. */
+	const uniform = {
+		beats: Array.from({ length: 240 }, (_, i) => i * 0.5),
+		barTimes: Array.from({ length: 60 }, (_, i) => i * 2),
+		beatsPerBar: 4
+	};
+	const beatAt = (t: number) => Math.round(t / 0.5);
+	// One boundary dragged off the grid on purpose; the rest drawn on bar lines.
+	const boundaries = [17, 32, 48];
+	const cuts = (deliberate: number[]) =>
+		resyncedCuts(deliberate.map(beatAt), deliberate.map(beatAt), boundaries.map(beatAt), 240, 4, 0);
+
+	it('hands the count back at the first boundary already on a bar line', () => {
+		expect(cuts([17])).toEqual([beatAt(17), beatAt(32)]);
+	});
+
+	it('leaves every bar line after the re-sync exactly where it was', () => {
+		const times = barStartsAtCuts(240, 4, 0, cuts([17])).map((i) => uniform.beats[i]);
+		// The drawn boundaries all land, and the tail is the untouched grid.
+		expect(times).toContain(17);
+		expect(times).toContain(32);
+		expect(times).toContain(48);
+		expect(times.filter((t) => t >= 32)).toEqual(uniform.barTimes.filter((t) => t >= 32));
+	});
+
+	it('walks its own reference grid, so a missing cached analysis changes nothing', () => {
+		// `handMapGrid` reads the grid a map was DRAWN on out of the cached blob, and answers
+		// nothing when there is no blob. The re-sync must not inherit that: a cache cleared
+		// behind a kept judgement would otherwise re-phase the whole map for good.
+		// Without a blob the map still yields its deliberate cut and nothing else - no carried
+		// cuts, and no way to tell which later boundary was on a bar line.
+		expect(handMapGrid(boundaries, null, [17]).gridCuts).toEqual([17]);
+		// The walk supplies the rest anyway.
+		expect(cuts([17])).toEqual([beatAt(17), beatAt(32)]);
+	});
+
+	it('implies no re-sync without a deliberate cut, so a confirmed grid stays put', () => {
+		expect(cuts([])).toEqual([]);
+		expect(handMapGrid(boundaries, uniform).gridCuts).toBeUndefined();
+	});
+
+	it('passes over a boundary that is not on a bar line either', () => {
+		// 17 and 25 are both mid-bar here, so the count is due back at 32, not at 25.
+		expect(
+			resyncedCuts([beatAt(17)], [beatAt(17)], [17, 25, 32].map(beatAt), 240, 4, 0)
+		).toEqual([beatAt(17), beatAt(32)]);
 	});
 });

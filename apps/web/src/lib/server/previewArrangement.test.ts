@@ -52,7 +52,8 @@ function analysis(): TrackAnalysis {
 		bars: Array.from({ length: BARS }, (_, i) => bar(i, i < 16 ? 'intro' : 'groove')),
 		sections: [],
 		moments: [],
-		beats: Array.from({ length: BARS * 4 }, (_, i) => i * 0.5),
+		// One past the last bar line, so the table has a beat to end on the way a real one does.
+		beats: Array.from({ length: BARS * 4 + 1 }, (_, i) => i * 0.5),
 		envelopes: { energy: [], bands: [] },
 		spectrum: { fps: 0, bands: 0, centreHz: [], frames: 0, mag: '' },
 		stereo: { fps: 0, pan: [], width: [] },
@@ -136,6 +137,44 @@ describe('applyHandSections', () => {
 		// And it really is a bar line of the previewed grid, so the cue that opens the section
 		// opens on it too.
 		expect(preview.tempo.barTimes[drop.startBar]).toBeCloseTo(17, 3);
+	});
+
+	it('leaves the boundaries after a deliberate cut where they were drawn', () => {
+		// The cut re-counts bars from the mark, so the outro drawn on a bar line at 48 falls off
+		// the new phase. It comes back at 48 because the map says a section starts there, and
+		// every bar line past it is the untouched grid - one gesture must move one boundary.
+		const fine = [
+			{ kind: 'intro', startTime: 0, endTime: 17, startBar: 0, endBar: 8.5 },
+			{ kind: 'drop', startTime: 17, endTime: 48, startBar: 8.5, endBar: 24, offGrid: true },
+			{ kind: 'outro', startTime: 48, endTime: 64, startBar: 24, endBar: 32 }
+		];
+		const preview = applyHandSections(analysis(), fine)!;
+		expect(preview.sections[2].startTime).toBeCloseTo(48, 3);
+		expect(preview.tempo.barTimes.filter((t) => t >= 48)).toEqual(
+			analysis().tempo.barTimes.filter((t) => t >= 48)
+		);
+	});
+
+	it('keeps the cuts the cached grid already carries', () => {
+		// A track whose bar table is already piecewise - a listener edit the room confirmed, or
+		// a movement mark. Re-deriving the table from a uniform walk loses those, which moved
+		// boundaries BEFORE the new cut on the owner's own map.
+		const piecewise = analysis();
+		const at = piecewise.tempo.barTimes.indexOf(12);
+		piecewise.tempo.barTimes = [
+			...piecewise.tempo.barTimes.slice(0, at),
+			11,
+			...piecewise.tempo.barTimes.slice(at + 1).map((t) => t - 1)
+		];
+		const fine = [
+			{ kind: 'intro', startTime: 0, endTime: 8, startBar: 0, endBar: 4 },
+			{ kind: 'groove', startTime: 8, endTime: 24, startBar: 4, endBar: 12.5 },
+			{ kind: 'drop', startTime: 24, endTime: 63, startBar: 12.5, endBar: 31, offGrid: true }
+		];
+		const preview = applyHandSections(piecewise, fine)!;
+		expect(preview.tempo.barTimes).toContain(11);
+		expect(preview.sections[1].startTime).toBeCloseTo(8, 3);
+		expect(preview.sections[2].startTime).toBeCloseTo(24, 3);
 	});
 
 	it('rounds the same boundary when it was not deliberate', () => {

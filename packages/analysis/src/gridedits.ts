@@ -126,6 +126,51 @@ export function cutsFromBarTimes(grid: DrawingGrid): number[] {
 }
 
 /**
+ * A cut list completed with the point where the bar count is due back.
+ *
+ * A cut re-counts bars from the mark, so every bar line after it moves - and a map whose later
+ * boundaries were drawn ON bar lines then has all of them fall off the grid and get rounded
+ * elsewhere. Measured on the owner's Melanz map, one fine drag moved ten of its sixteen
+ * boundaries, by up to 2.24 s. The map itself says where the count is due back: the next
+ * boundary that already sits on a bar line of the grid WITHOUT that mark. The walk absorbs the
+ * offset as one short bar ending there, which is the shape a cut already uses and which leaves
+ * the odd bar at a section's END, where a pre-arrival gesture keeps its length.
+ *
+ * A boundary sitting between bar lines is passed over rather than snapped to, because an
+ * unflagged off-bar boundary is a beat-snapping artefact and says nothing about the meter -
+ * the rule that protects Safir's confirmed grid. A cut with no such boundary after it runs to
+ * the end of the track, which is the honest answer when the map offers nothing to return to.
+ *
+ * Everything here is beat indices, and the reference grid is WALKED rather than read off a
+ * cached table, so this answers the same way for a track being analysed for the first time as
+ * for one being previewed. An earlier version measured against the blob the map was drawn on,
+ * which silently did nothing whenever that blob was missing.
+ */
+export function resyncedCuts(
+	cutBeats: readonly number[],
+	deliberateBeats: readonly number[],
+	boundaryBeats: readonly number[],
+	beatCount: number,
+	beatsPerBar: number,
+	phase: number
+): number[] {
+	const sorted = (xs: Iterable<number>) => [...new Set(xs)].sort((a, b) => a - b);
+	if (deliberateBeats.length === 0) return sorted(cutBeats);
+
+	const deliberate = new Set(deliberateBeats);
+	const reference = new Set(
+		barStartsAtCuts(beatCount, beatsPerBar, phase, cutBeats.filter((b) => !deliberate.has(b)))
+	);
+	const ordered = sorted(boundaryBeats);
+	const out = new Set(cutBeats);
+	for (const cut of deliberateBeats) {
+		const back = ordered.find((b) => b > cut && reference.has(b));
+		if (back !== undefined) out.add(back);
+	}
+	return sorted(out);
+}
+
+/**
  * What a hand-drawn map says about the GRID, given the analysis it was drawn on.
  *
  * On a uniform drawing surface the map's own residues are the evidence, and the cuts come
@@ -150,6 +195,8 @@ export function handMapGrid(
 	 * something different" from the map. Deliberate is the operative word: the flag comes from
 	 * the editor's fine drag, so maps drawn before the editor snapped to bars, whose off-bar
 	 * boundaries are beat-snapping artefacts rather than statements, still imply nothing.
+	 *
+	 * Where the count is handed BACK afterwards is `resyncedCuts`, applied at the walk.
 	 */
 	placedOffGrid: readonly number[] = []
 ): { gridCuts?: number[]; sectionMapBoundaries?: number[] } {
