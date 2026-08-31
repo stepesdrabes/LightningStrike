@@ -3,16 +3,17 @@
 A Raspberry Pi Pico W that receives the DDP stream from `packages/transport`, lights what it
 has, and reports what actually arrived. Source is in `firmware/`.
 
-It builds as **two fixtures**, one per binary:
+It builds as **three fixtures**, one per binary:
 
 | feature | fixture | pixels | output |
 |---|---|---|---|
-| `frame` (default) | **The Frame**, 3 x 2 m of WS2815 at 60 LED/m | 720 | two PIO data lines on GP2 and GP3 |
+| `frame` (default) | **The Frame**, 3 x 2 m of SK6812 RGBWW at 60 LED/m | 720 | three PIO data lines on GP2, GP3 and GP4 |
 | `bounce` | **The Bounce Lamp**, a salvaged analog RGBW strip | 1 | four MOSFET gates on PWM, GP6-9 |
+| `bench` | **The bench run**, 5 m of SK6812 RGBWW at 60 LED/m | 300 | one PIO data line on GP2 |
 
-Both run the same receive loop and answer the same two questions about themselves. The only
+All three run the same receive loop and answer the same two questions about themselves. The only
 thing that differs is what they do with a frame once it has arrived, which is why `claim`,
-`selftest`, `present` and `blank` are the whole surface between `node.rs` and either one.
+`selftest`, `present` and `blank` are the whole surface between `node.rs` and any of them.
 
 The lamp is a **one-pixel fixture**: every LED on its strip shows the same thing, so the host
 sends it one pixel and this only has to put that on four channels. Everything that used to shape
@@ -89,6 +90,7 @@ export WIFI_PASSWORD='your-password'
 cd firmware/node
 cargo build --release                                          # The Frame
 cargo build --release --no-default-features --features bounce  # The Bounce Lamp
+cargo build --release --no-default-features --features bench   # The bench run
 
 # hold BOOTSEL while plugging the board in, then
 cargo run --release
@@ -96,7 +98,7 @@ cargo run --release
 screen /dev/tty.usbmodem* 115200 # the board reappears as a serial port a second after boot
 ```
 
-The two features are mutually exclusive and one is required; asking for both or neither is a
+The three features are mutually exclusive and one is required; asking for two or for none is a
 `compile_error!` rather than a surprise on the wall.
 
 The protocol half of the crate is a separate library, `firmware/wire`, which imports nothing from
@@ -233,6 +235,106 @@ milliamps it stops reading as a colour and starts reading as glare; a diffused s
 a room is a wash, and its ceiling is its own maximum. Pull it down if the strip is uncomfortable
 out of the housing it came from.
 
+## The Frame, on three lines
+
+720 addresses of four bytes on one Pico. The split is the reels: **A is Frame N + Frame E, B is
+Frame S + Frame W, C is the beam**, 300 / 300 / 120, contiguous in the host's buffer so the host
+sends one stream and `present` slices it. A 5 m reel is exactly one long side plus one short one,
+which is why the two halves come out equal.
+
+**Boot plays a comet down each line, then a bloom**, about 2.3 s, before the radio comes up. The
+three hues say which run is which and a comet that stops partway is where that line breaks, so the
+welcome is also the wiring check: the firmware can answer neither question itself, and a wrong
+answer looks exactly like a wrong show. `bench` keeps its four measurement steps instead, because
+reading numbers off a strip is the whole reason that build exists.
+
+**Three lines rather than one is what makes 60 fps possible at all.** An address is 40 us at four
+bytes, so 720 in a row is 28.8 ms and the room would cap near 34 fps. Awaited together with
+`join3`, three lines cost the longest of them, 12.0 ms, leaving 4.7 ms of a 60 fps frame spare.
+Awaiting them one after another would cost the sum and throw that away, which is the one thing
+`write` exists to prevent.
+
+The pin and DMA budget is not tight but it is exact: cyw43 holds PIO0 SM0 and DMA_CH0, so the three
+lines take PIO1 SM0/SM1/SM2 and DMA_CH2/CH3/CH4, on GP2, GP3 and GP4. `PioWs2812Program` is loaded
+once and shared - the four instructions live in PIO1's instruction memory, not in a state machine -
+so a fourth line would cost a state machine and a DMA channel and nothing else.
+
+**The strip's own facts live in `fixture/rgbww.rs`**, not in either fixture: the byte order, the
+white trim, the latch and the RGB-to-RGBW conversion. `bench` is where they are measured and
+`frame` inherits them, so a reel that turns out to be wired differently is one constant in one
+file rather than two fixtures drifting apart.
+
+## The bench run
+
+5 m of SK6812 RGBWW at 60 LED/m on one data line, on a table, before there is a frame to hang it
+on. It is a real fixture rather than a test program: it joins, receives DDP and runs a show. What
+makes it its own build is that a reel of RGBWW does not come labelled, and three things have to be
+read off the strip by eye before anything above it means anything.
+
+**Which wire byte reaches which emitter.** The same silicon ships as GRBW, RGBW and WWRGB
+depending on who assembled the reel. A WS2814 in its 12-pin package clocks RGBW and its 8-pin sibling
+clocks WRGB, and either way the assembler may have wired the outputs to whichever die was
+convenient. `SLOTS` in `fixture/bench.rs` is where the real order lives, and the first selftest
+step is the measurement: byte 0 alone, then 1, then 2, then 3, whole run,
+1.5 s each. Write the four colours down in that order and `SLOTS` says where each emitter landed.
+The driver is asked for its `Rgbw` packing, which is the identity - field to byte position, in
+order - precisely so that `SLOTS` is the only place this is expressed.
+
+**How many LEDs share one address.** Usually three. A 12 V rail is what it is so that three LEDs
+can sit in series on one driver output, so a four-channel 12 V part at 60 LED/m is 20 ICs to the
+metre and **5 m is 100 addresses, not 300**; only a per-LED part is 300. The second selftest step
+is a ruler: one address in five lit, one in twenty lit on every byte. **One bright mark to the
+metre is 100 addresses; three is 300.** Both marks are written as raw bytes rather than as
+emitters, so a wrong `SLOTS` cannot make them uncountable.
+
+`ADDRESSES` nonetheless ships at 300, because that is the permissive error. A chain shows the words
+it has and passes the surplus out of the last IC into open air, so over-counting costs wire time
+where under-counting rejects every region the app can point at. Drop it to 100 once the ruler has
+been read.
+
+**How much brighter the white emitter is.** The same trap as the Bounce Lamp, for the same reason:
+a phosphor emitter is several times brighter than one colour die, so equal duty is nowhere near
+equal light and an untrimmed white swamps every desaturated colour. The last two selftest steps are
+the measurement, adjacent so the eye can compare them - the white the three colour dies make, then
+the white the phosphor makes, same duty, neither trimmed. Set `TRIM[3]` near the ratio and **err
+low**. They only mean anything once `SLOTS` is right.
+
+Between the ruler and the trim pair, one pixel travels the whole run, so a break shows where it
+stops.
+
+**White is derived on the board, not sent.** `BYTES` is `PIXELS * 3`, not `* 4`: the host sends the
+same RGB24 stream every fixture gets and `present` takes the achromatic part of each pixel,
+`min(r, g, b)`, and **adds** it on the fourth emitter. Subtracting is the textbook conversion and
+the more efficient one, but it only holds when the white emitter shares a white point with the RGB
+mix, and a warm phosphor against a mix near 6000 K does not - every mid-saturation colour would
+shift toward the strip's own tint. Adding cannot shift a hue, because a saturated frame has no
+achromatic part to add. That is the same decision `fixture/bounce.rs` makes, and it is what keeps
+DDP, `packages/transport` and `SHOW_VERSION` out of this entirely.
+
+**Point it at one run, not at the room.** The app feeds a frame device whichever `RoomRegion` it is
+set to, and `all` is 720 pixels against this build's 300. A DDP packet addressing past the end of
+the buffer is rejected whole, so the wrong region does not light a partial strip, it lights
+nothing and counts `oob`. Pick a single run - `Frame N` is 180 - and read `px` on the stats line to
+confirm what actually arrived.
+
+The wire cost is worth knowing before adding a second reel: 300 addresses of four bytes is 12.0 ms
+at 800 kHz, 72 per cent of a 60 fps frame, against 9.0 ms for the same length in three bytes. One
+line is the ceiling at that length; a second halves it. At the 100 addresses a grouped strip
+actually has it is 4.0 ms and the question does not arise.
+
+**A colour-shifted tail is never a data problem.** The IC's logic runs off a shunt regulator fed
+through a dropper from the 12 V rail, and it keeps receiving and forwarding data down to around
+7.7 V - well under the roughly 10.5 V at which three blue or green dies in series fall out of
+constant-current regulation. So a run whose far end has gone off-colour is starved, not
+mis-clocked, and no amount of level shifter, series resistor or shorter data lead will touch it.
+Reach for a second injection point.
+
+Two families this build will not drive, both of which look like candidates until they are ruled
+out. **TM1814** inverts the waveform, carries WRGB, and needs two current-set words in front of
+every frame; it gives itself away by running a test pattern about half a second after data stops,
+so a strip that lights with nothing connected to it is this and nothing here will talk to it.
+**UCS8904B** is 16 bits per channel, 64 per address, and reading 32-bit frames it shows garbage.
+
 ## Answering "are you there"
 
 The stats stream below only goes to whoever is already sending DDP, which leaves a host with
@@ -272,7 +374,7 @@ up 42s  720 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  late 0/0/0  a
 | `gap` | shortest and longest PUSH to PUSH interval. The max is the jitter that matters |
 | `late` | frames arriving more than 20 / 50 / 100 ms after the one before |
 | `asm` | worst first-packet to PUSH span, so how long a frame took to arrive in pieces |
-| `led` | worst frame pushed to the fixture. Every other field here measures the network; this is the only part of the 16.7 ms the board spends itself. On The Frame it is two DMA transfers of 300 and 420 pixels awaited together, around 12.6 ms, so watch it |
+| `led` | worst frame pushed to the fixture. Every other field here measures the network; this is the only part of the 16.7 ms the board spends itself. On The Frame it is three DMA transfers of 300, 300 and 120 addresses awaited together, around 12.3 ms, so watch it |
 | `seqgap` | DDP sequence steps that were not +1 |
 | `bad` | datagrams rejected by the parser |
 | `oob` | writes past the end of the buffer, meaning the host drives more pixels than this build holds |
@@ -326,7 +428,9 @@ node/src/irq.rs      the interrupt table, since two modules bind against it
 node/src/net.rs      console, radio, DHCP, heartbeat
 node/src/node.rs     the socket and the one loop selecting a packet against the 1 Hz report
 node/src/config.rs   credentials and the two ports
-node/src/fixture/    one module per variant, cfg-selected in mod.rs
+node/src/fixture/    one module per variant, cfg-selected in mod.rs. `strips` is not a
+                     fixture: it is the internal feature `frame` and `bench` share, so the
+                     interrupt table names PIO1 and DMA_CH2 once rather than per build
 ```
 
 The receive loop is `recv_from -> parse -> apply -> on PUSH, present and score`. Everything runs
@@ -345,7 +449,7 @@ The host owns gamma. `quantize()` in `packages/core/src/output.ts` encodes at 2.
 the wire, so these bytes reach the strips untouched.
 
 Resource split, fixed by cyw43 taking the first of everything: it holds **PIO0 SM0, DMA_CH0** and
-GPIO 23, 24, 25 and 29, and wants no PWM at all. That leaves PIO1 and DMA_CH2/CH3 for the strips
+GPIO 23, 24, 25 and 29, and wants no PWM at all. That leaves PIO1 and DMA_CH2/CH3/CH4 for the strips
 and PWM slices 3 and 4 for the lamp. The onboard LED is on the CYW43 chip rather than a GPIO, so
 it still cannot indicate anything before WiFi is up: solid means the join has not landed,
 blinking means it has.
@@ -362,11 +466,12 @@ because the show is deterministic and the host can render that far ahead and can
 drift apart over a track, so occupancy has to steer the present period slowly; and a seek or
 pause has to flush, or the room replays stale frames.
 
-**None of the strip code has been run against a strip.** It compiles and it is what the
-arithmetic and the datasheets ask for; it has never lit an LED. The first thing to do is wire one
-run to line A and watch the boot selftest: line A red, line B green, then a single white pixel
-travelling each line. If the order is wrong, or a line stops partway, that is wiring, and nothing
-further up is worth reading until it is fixed.
+**The Frame has not been run against three strips.** `bench` has: one 5 m reel on GP2, measured
+2026-08-31, which is where `SLOTS`, `ADDRESSES` and the white ratio in `fixture/rgbww.rs` come
+from. The reel is 300 addresses, one IC per LED, GRBW, and its white emitter is **dimmer** than
+its three colour dies together, so `TRIM[3]` at a quarter is conservative rather than measured.
+What is untested is three lines at once: the timing above is arithmetic, and `led` on the stats
+line is the number that confirms it.
 
 **Level shift the data lines.** The Pico drives 3.3 V and WS2815 wants its logic high referenced
 to 5 V, so a 74AHCT125 or SN74HCT245 sits between them. Without it the strip usually works, which

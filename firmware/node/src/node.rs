@@ -1,4 +1,4 @@
-use embassy_futures::select::{Either, select};
+use embassy_futures::select::{Either3, select3};
 use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_net::{IpEndpoint, Stack};
 use embassy_time::{Duration, Instant, Timer};
@@ -9,6 +9,10 @@ use room_wire::{ddp, hello};
 
 use crate::config::{DDP_PORT, STATS_PORT};
 use crate::fixture::Fixture;
+
+/// How long after the last frame the room goes back to idling. Two frames at 60 fps is noise; this
+/// is longer than any stall the radio has been measured to produce.
+const IDLE_AFTER: Duration = Duration::from_millis(750);
 
 const IDENTITY: Identity<'static> = Identity {
 	hostname: Fixture::HOSTNAME,
@@ -49,10 +53,11 @@ pub async fn run(stack: Stack<'static>, fixture: &mut Fixture) -> ! {
 	let mut last_push: Option<Instant> = None;
 	let mut frame_start: Option<Instant> = None;
 	let mut peer: Option<IpEndpoint> = None;
+	let mut idle_at = boot;
 
 	loop {
-		match select(socket.recv_from(&mut pkt), Timer::at(report_at)).await {
-			Either::First(Ok((n, meta))) => {
+		match select3(socket.recv_from(&mut pkt), Timer::at(report_at), Timer::at(idle_at)).await {
+			Either3::First(Ok((n, meta))) => {
 				let now = Instant::now();
 
 				// Answered before the parse and on the asker's own port, so discovery needs no
@@ -104,12 +109,9 @@ pub async fn run(stack: Stack<'static>, fixture: &mut Fixture) -> ! {
 					frame_start = None;
 				}
 			}
-			Either::First(Err(_)) => stats.bad += 1,
-			Either::Second(_) => {
+			Either3::First(Err(_)) => stats.bad += 1,
+			Either3::Second(_) => {
 				let now = Instant::now();
-				if stats.frames == 0 {
-					fixture.blank().await;
-				}
 				let line = stats.drain(
 					(now - boot).as_secs(),
 					(now - reported).as_millis(),
@@ -121,6 +123,16 @@ pub async fn run(stack: Stack<'static>, fixture: &mut Fixture) -> ! {
 				}
 				reported = now;
 				report_at = now + Duration::from_secs(1);
+			}
+			// Idling is the room's resting state, not an error one: it runs before the first frame
+			// ever arrives and returns whenever a show stops, which is also what stops the strips
+			// holding the last frame of one.
+			Either3::Third(_) => {
+				let now = Instant::now();
+				if last_push.is_none_or(|t| now - t > IDLE_AFTER) {
+					fixture.idle().await;
+				}
+				idle_at = now + Fixture::IDLE_PERIOD;
 			}
 		}
 	}

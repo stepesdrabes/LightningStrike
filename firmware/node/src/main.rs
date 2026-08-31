@@ -9,6 +9,7 @@ mod net;
 mod node;
 
 use embassy_executor::Spawner;
+use embassy_futures::select::{Either, select};
 
 use crate::fixture::Fixture;
 
@@ -23,6 +24,12 @@ async fn main(spawner: Spawner) -> ! {
 	// never lands cannot hide it.
 	fixture.selftest().await;
 
-	let stack = net::join(spawner, board, Fixture::HOSTNAME).await;
+	// The join takes a second or two and the room should not be dark for it, so the idle animation
+	// races it and loses.
+	let stack =
+		match select(net::join(spawner, board, Fixture::HOSTNAME), fixture.idle_forever()).await {
+			Either::First(stack) => stack,
+			Either::Second(never) => never,
+		};
 	node::run(stack, &mut fixture).await
 }

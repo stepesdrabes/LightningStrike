@@ -1,6 +1,6 @@
 use embassy_rp::Peripherals;
 use embassy_rp::pwm::{Config as PwmConfig, Pwm};
-use embassy_time::Timer;
+use embassy_time::{Duration, Timer};
 use embedded_hal::pwm::SetDutyCycle;
 
 use crate::board::Board;
@@ -56,6 +56,7 @@ impl Fixture {
 	pub const HOSTNAME: &'static str = "room-bounce";
 	pub const PIXELS: usize = 1;
 	pub const BYTES: usize = Self::PIXELS * 3;
+	pub const IDLE_PERIOD: Duration = Duration::from_millis(500);
 
 	/// Slices 3 and 4, which nothing else wants: cyw43 holds PIO0 SM0, DMA_CH0 and GPIO 23, 24,
 	/// 25 and 29, and wants no PWM at all.
@@ -126,6 +127,18 @@ impl Fixture {
 			scale(px[2], TRIM[2]),
 			scale(white, TRIM[3]),
 		);
+	}
+
+	/// Dark, not a twinkle. This lamp sits in peripheral vision, which is markedly more
+	/// flicker-sensitive than the fovea, and a scintillating corner is a distraction rather than a
+	/// welcome.
+	pub async fn idle(&mut self) {
+		self.blank().await;
+	}
+
+	pub async fn idle_forever(&mut self) -> ! {
+		self.blank().await;
+		core::future::pending().await
 	}
 
 	/// A second with no frame in it. Without this the lamp holds the last frame of a stopped show

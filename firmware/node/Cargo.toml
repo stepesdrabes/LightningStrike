@@ -6,9 +6,13 @@ publish = false
 
 [features]
 default = ["frame"]
-# The two fixtures this firmware drives. Exactly one, checked in src/fixture/mod.rs.
-frame = ["dep:smart-leds"]
+# The three fixtures this firmware drives. Exactly one, checked in src/fixture/mod.rs.
+frame = ["strips"]
 bounce = []
+bench = ["strips"]
+# Not a fixture: what the two addressable builds share, so the interrupt table and the
+# dependency name it once rather than listing both every time.
+strips = ["dep:smart-leds"]
 
 [dependencies]
 room-wire = { path = "../wire" }
