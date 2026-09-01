@@ -41,8 +41,9 @@ memory.
 
 ## Where the code stands
 
-**Round 9 is COMMITTED, in six commits on top of `332b451`, and the room has not heard any
-of it:**
+**Round 9 is COMMITTED, in seven commits on top of `faa0d04`, and the room has not heard any
+of it.** (`faa0d04` is the owner's own firmware commit, and it is the real baseline - not
+`332b451`, which is one older.)
 
 | | |
 |---|---|
@@ -52,6 +53,7 @@ of it:**
 | `7d64b91` | the drag clamp that blocked the owner on SICKO MODE |
 | `5f889ca` | `phasegrid.ts`, `punchprobe.ts`, `targets.ts` |
 | `b8e0433` | the stale-yt-dlp diagnosis on the download path |
+| `74ede0a` | the records: this file, the round-9 section, the method note |
 
 Measured green at 862 tests with the owner's in-flight calibration shelved - see first-hour
 item 0 for why that qualifier is needed and why it is not this round's problem.
