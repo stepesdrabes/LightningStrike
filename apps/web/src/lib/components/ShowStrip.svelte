@@ -1,6 +1,14 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { SECTION_KINDS, barAtTime, barTimeAt, type Show, type TrackAnalysis , tempoSegments} from '@mv/core';
+	import {
+		SECTION_KINDS,
+		barAtTime,
+		barDurationAt,
+		barTimeAt,
+		tempoSegments,
+		type Show,
+		type TrackAnalysis
+	} from '@mv/core';
 	import {
 		FULL_WINDOW,
 		buildTimeline,
@@ -172,11 +180,22 @@
 		return barTimeAt(tempo, Math.round(bars));
 	}
 
-	/** A section cannot be shorter than the bar it is addressed in. */
-	const barLen = $derived(
-		analysis ? analysis.tempo.beatPeriod * analysis.tempo.beatsPerBar : 1
-	);
-	const beatLen = $derived(analysis ? analysis.tempo.beatPeriod : 0.25);
+	/**
+	 * A section cannot be shorter than the bar it is addressed in - the LOCAL bar, not the
+	 * median one.
+	 *
+	 * On a track that changes tempo those differ by a factor of two, and a margin in median
+	 * bars refuses a placement the grid allows: SICKO MODE's beat switch sits 1.7 s after the
+	 * boundary before it while the median bar is 3.1 s, so the drag clamped past the switch
+	 * and the owner reported being able to place it "only slightly after it". The keyboard
+	 * nudge already reasons this way; the pointer drag did not.
+	 */
+	function minSpanAt(t: number, fine = false): number {
+		const tempo = analysis?.tempo;
+		if (!tempo) return fine ? 0.25 : 1;
+		const len = barDurationAt(tempo, barAtTime(tempo, t));
+		return fine ? len / Math.max(1, tempo.beatsPerBar) : len;
+	}
 
 	function timeFrom(e: { clientX: number }): number {
 		return fractionAt(view, across(e)) * duration;
@@ -232,9 +251,12 @@
 
 	function handleMove(e: PointerEvent) {
 		if (!drag?.live || !sections) return;
-		const step = e.shiftKey ? beatLen : barLen;
-		const lo = sections[drag.boundary - 1].startTime + step;
-		const hi = sections[drag.boundary].endTime - step;
+		const lo =
+			sections[drag.boundary - 1].startTime +
+			minSpanAt(sections[drag.boundary - 1].startTime, e.shiftKey);
+		const hi =
+			sections[drag.boundary].endTime -
+			minSpanAt(sections[drag.boundary].endTime - 1e-3, e.shiftKey);
 		// Snapped AFTER the clamp: clamping a snapped value pushes it back off the grid, by
 		// however much the local bar differs from the median one.
 		const t = snapT(Math.max(lo, Math.min(hi, timeFrom(e))), e.shiftKey);
@@ -332,8 +354,11 @@
 		flushNudge();
 		const s = sections[index];
 		const t = snapT(timeFrom(e), e.shiftKey);
-		const step = e.shiftKey ? beatLen : barLen;
-		if (t < s.startTime + step || t > s.endTime - step) return;
+		if (
+			t < s.startTime + minSpanAt(s.startTime, e.shiftKey) ||
+			t > s.endTime - minSpanAt(s.endTime - 1e-3, e.shiftKey)
+		)
+			return;
 		const next = sections.map((x) => ({ ...x }));
 		next.splice(index + 1, 0, { ...next[index], startTime: t });
 		next[index] = { ...next[index], endTime: t };
