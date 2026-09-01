@@ -20,35 +20,38 @@ import { chromaBurst } from './chromaBurst.ts';
 import { clapAlong } from './clapAlong.ts';
 import { colorBump } from './colorBump.ts';
 import { comet } from './comet.ts';
-import { counterweight } from './counterweight.ts';
-import { conveyorGlow } from './conveyorGlow.ts';
-import { crownSpill } from './crownSpill.ts';
 import { confetti } from './confetti.ts';
+import { conveyorGlow } from './conveyorGlow.ts';
+import { counterweight } from './counterweight.ts';
+import { crossbeam } from './crossbeam.ts';
+import { crownSpill } from './crownSpill.ts';
 import { discoBall } from './discoBall.ts';
 import { doubleKickGatling } from './doubleKickGatling.ts';
 import { dusk } from './dusk.ts';
-import { emberStorm } from './emberStorm.ts';
+import { emberBump } from './emberBump.ts';
 import { embers } from './embers.ts';
+import { emberStorm } from './emberStorm.ts';
 import { feedbackSwell } from './feedbackSwell.ts';
 import { flexStrobe } from './flexStrobe.ts';
 import { glitchScan } from './glitchScan.ts';
 import { gradientSpin } from './gradientSpin.ts';
 import { halftimeBounce } from './halftimeBounce.ts';
+import { harmonicHaze } from './harmonicHaze.ts';
 import { harmonicRibbon } from './harmonicRibbon.ts';
 import { hatTicker } from './hatTicker.ts';
-import { harmonicHaze } from './harmonicHaze.ts';
 import { headbang } from './headbang.ts';
-import { hearth } from './hearth.ts';
 import { heartbeat } from './heartbeat.ts';
+import { hearth } from './hearth.ts';
 import { hueCarousel } from './hueCarousel.ts';
 import { impulseSpin } from './impulseSpin.ts';
 import { iridescence } from './iridescence.ts';
 import { kickCannon } from './kickCannon.ts';
-import { kitStage } from './kitStage.ts';
 import { kickTunnel } from './kickTunnel.ts';
-import { lanterns } from './lanterns.ts';
+import { kitStage } from './kitStage.ts';
 import { laidbackWave } from './laidbackWave.ts';
+import { lanterns } from './lanterns.ts';
 import { lavaBlobs } from './lavaBlobs.ts';
+import { lean } from './lean.ts';
 import { lightning } from './lightning.ts';
 import { meterBuild } from './meterBuild.ts';
 import { mirrorBall } from './mirrorBall.ts';
@@ -80,10 +83,12 @@ import { splash } from './splash.ts';
 import { stageBlinders } from './stageBlinders.ts';
 import { stopTime } from './stopTime.ts';
 import { strobe } from './strobe.ts';
+import { subBreath } from './subBreath.ts';
 import { subSwell } from './subSwell.ts';
 import { subThrob } from './subThrob.ts';
 import { sweep } from './sweep.ts';
 import { tideBloom } from './tideBloom.ts';
+import { tremor } from './tremor.ts';
 import { undertow } from './undertow.ts';
 import { vocalGlow } from './vocalGlow.ts';
 import { vortex } from './vortex.ts';
@@ -107,6 +112,7 @@ export const BUILT_IN_EFFECTS: readonly EffectDef[] = [
 	chorusBloom,
 	anthemWash,
 	undertow,
+	subBreath,
 	subThrob,
 	spectrumBed,
 	harmonicHaze,
@@ -132,7 +138,9 @@ export const BUILT_IN_EFFECTS: readonly EffectDef[] = [
 	vuTowers,
 	meterBuild,
 	glitchScan,
+	emberBump,
 	heartbeat,
+	lean,
 	cascade,
 	hueCarousel,
 	rainbowRain,
@@ -147,6 +155,7 @@ export const BUILT_IN_EFFECTS: readonly EffectDef[] = [
 	ricochet,
 	snareBlade,
 	counterweight,
+	crossbeam,
 	rippleTank,
 	kitStage,
 	shockwave,
@@ -163,6 +172,7 @@ export const BUILT_IN_EFFECTS: readonly EffectDef[] = [
 	peakDot,
 	pitchRibbon,
 	sparkle,
+	tremor,
 	stageBlinders,
 	vocalGlow,
 	confetti,
