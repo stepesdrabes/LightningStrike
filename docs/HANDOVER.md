@@ -517,30 +517,36 @@ The effects audit was accurate on everything checked, but its counts of the carr
 computed with a predicate that inverted `taste.carries` (absent means it CARRIES), so "three
 carrying accents" was right by luck and "carrying beds: 1" was wrong.
 
-**The last thing to land was not code.** The room's calibration changed underneath the round -
-GAMMA 2.2 -> 2.45 and a new MASTER dimmer at 0.7 - which moved every byte figure in the records
-by about 40%. All of them were re-measured rather than left to rot. The orderings did not move.
+**The last thing to land was not code.** The room's calibration changed underneath the round, and
+then changed again. It settled at **GAMMA 2.45, knee 0.84, MASTER 1**: the owner judged 2.45 on
+real strips and kept it, kept the knee's lift with it, and rejected the 0.7 dimmer as flat on a
+single 5 m reel. Every byte figure in the records was re-measured against that. The dimmer is not
+gone, only at unity, and it is the knob for when all three reels are hanging.
 
 ## If you are the next session: the first hour
 
-0. **THE SUITE IS RED, AND IT IS NOT ROUND 9.** Five tests fail in the working tree:
-   `measure.test.ts` x3, `ambient.test.ts` x1, `effects.test.ts` x1. They all say the same
-   thing - the room is too dark - and they come from the owner's OWN in-flight calibration
-   work, not from this round. Proven rather than assumed: shelve `packages/core/src/output.ts`
-   and `packages/core/src/effects/effects.test.ts` and all 319 tests in those three files pass;
-   restore them and 5 fail. Round 9 measured 862 green with that pair shelved.
+0. **THE SUITE IS RED, AND IT IS NOT ROUND 9.** Two tests fail: `measure.test.ts` x1 ("leaves
+   no bar dark outside a void") and `effects.test.ts` x1 ("every effect claiming to carry a
+   room can actually fill one", where `wash` and `spectrumBed` no longer do). Both come from
+   the calibration, not from this round.
 
-   The cause is `GAMMA` 2.2 -> **2.45** plus a new `MASTER` dimmer at **0.7** (`output.ts:192`
-   and `:207`). Together they take enough light out that **seven effects no longer pass the
-   "every effect claiming to carry a room can actually fill one" test**, four ambient scenes
-   read as dark, and the measure harness reports dark bars away from a void. That is a real
-   finding about the calibration, not a test that needs relaxing: those thresholds are what
-   stop a cue shipping black. Either the dimmer belongs after the carry check rather than
-   before it, or the affected effects need their floors raised for the new exponent. The
-   owner's `geometry.ts`/`geometry.test.ts` changes (run labels, reel-pairing regions) are
-   part of the same hardware bring-up and are fine.
+   The cause is `GAMMA` 2.2 -> **2.45** with the highlight knee 0.78 -> **0.84**
+   (`output.ts:192` and `:37`). The exponent pulls the mids down and the knee lets peaks run
+   closer to full, which is the contrast the owner asked for and judged on real strips. What it
+   costs is the bottom of the range, and those two tests are where that shows.
 
-   **Do not "fix" this by touching those tests.** Ask the owner what the dimmer is for first.
+   **This is a settled decision, not an open one.** It was tried at three calibrations and this
+   is the one that was kept. Do not tune the exponent to make the suite green, and do not
+   relax those thresholds either - they are what stop a cue shipping black, and they are
+   telling the truth. If quiet passages need lifting, the knob is the mixer's **house floor**,
+   which raises beds without giving back any peak contrast. That has not been tried yet and is
+   the obvious next experiment.
+
+   It was briefly worse: a `MASTER` dimmer at 0.7 took seven effects and four ambient scenes
+   under, and was rejected as flat. `MASTER` is still there at unity for when all 12 m hang.
+
+   The `geometry.ts`/`geometry.test.ts` changes (run labels, reel-pairing regions) are part of
+   the hardware bring-up and are fine.
 
 1. **ROUND 9 IS COMMITTED BUT THE ROOM HAS NOT HEARD IT.** Read the round record's "Round 9"
    section and "How round 9 actually went" above, then this list. The owner installed the

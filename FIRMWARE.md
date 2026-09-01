@@ -101,6 +101,19 @@ screen /dev/tty.usbmodem* 115200 # the board reappears as a serial port a second
 The three features are mutually exclusive and one is required; asking for two or for none is a
 `compile_error!` rather than a surprise on the wall.
 
+**All three write to the same path.** `target/thumbv6m-none-eabi/release/room-node` is whichever
+fixture was built last, so building them in a row to check they still compile and then converting
+that path to a UF2 ships the wrong firmware. It costs an evening, because the symptom is a strip
+that does nothing and a board that is working perfectly. Build the one you want alone, and check
+what came out before flashing it:
+
+```sh
+strings target/thumbv6m-none-eabi/release/room-node | grep -E 'room-(frame|bench|bounce)'
+```
+
+The same check works on the `.uf2`, which is the one worth doing since that is what reaches the
+board.
+
 The protocol half of the crate is a separate library, `firmware/wire`, which imports nothing from
 Embassy and therefore builds and tests on the host:
 
@@ -133,6 +146,22 @@ the level the room is meant to sit at. A second gain here could only measure the
 itself, and normalising against the loudest frame of the last half minute leaves every other
 frame below it by construction - a room that reads bright on screen and dim on the wall. The host
 owns exposure, the same way it owns gamma.
+
+**How bright the room is, and how much punch it has, are three constants in
+`packages/core/src/output.ts`.** They are the first place to go when the room is wrong, and the
+only place: nothing downstream of them scales anything.
+
+| | | |
+|---|---|---|
+| `MASTER` | 1 | How much of full scale the room gets. A dimmer, applied **after** gamma, so every ratio the show composed survives it and only the light comes down. The knob for when all 12 m are hanging and the patio is too bright; 0.7 was tried on one reel and read as flat |
+| `GAMMA` | 2.45 | The exponent between the authoring domain and light. Higher pulls the mids down and leaves full scale where it is, which is the only direction that buys a flash any contrast: a peak is already at the top, so the way to make it read brighter is to lower what surrounds it |
+| `knee` | 0.84 | Where `compressHighlights` starts bending. Raising it lets peaks run closer to full at the cost of headroom, and is what actually lifts full scale |
+
+Changing them is judged in the room, not by the suite. Five tests measure the room through this
+encoder and are calibrated against it, so a real change to the curve moves them: effects covering
+less of the room, lounge scenes reading dark, bars reported dark outside a void. Those are the
+consequence and not a bug, and the number to reach for when quiet passages fall out of the bottom
+is the mixer's **house floor**, which lifts beds without giving back any contrast.
 
 The Bounce Lamp's one pixel is derived rather than sampled: `packages/core/src/bounce.ts` takes
 the show's **accent** slot for colour and splits the level between two envelopes, a passage

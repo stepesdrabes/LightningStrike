@@ -251,17 +251,23 @@ furthest pixel move within 120 ms? And it reports the WEAKEST tenth of the hits 
 median, which is what separates the two shapes:
 
 - **calm and kick-forward**: sits near its own median on every hit and cannot spike.
-  `emberBump` 26/27/**27**, `crossbeam` 20/26/**31**, `counterweight` 17/29/**53**.
+  `emberBump` 36/38/**39**, `crossbeam` 42/51/**59**, `counterweight` 24/40/**76**.
 - **wild**: a weakest of ZERO and a maximum near the top of the range, because it fires rarely
-  and enormously. `moshSlam` 0/0/155, `lightning` 0/1/167, `ricochet` 158/164/170.
-- **anticipation**: nothing at the arrival and everything before it. `lean` reads 1/1/1 with an
-  APPROACH of 58. That column had to be added, because without it the effect measured as dead
+  and enormously. `moshSlam` 0/0/233, `lightning` 0/1/245, `ricochet` 237/243/248.
+- **anticipation**: nothing at the arrival and everything before it. `lean` reads 0/1/1 with an
+  APPROACH of 83. That column had to be added, because without it the effect measured as dead
   while doing exactly what it was written to do.
 
-These are BYTES and they move with the room's calibration: taken at GAMMA 2.2 with no master
-dimmer they read about 40% higher than at the shipped GAMMA 2.45 / MASTER 0.7. The ordering did
-not move. Read the table as a ranking, and re-run it rather than comparing absolutes across a
-calibration change.
+These are BYTES and they move with the room's calibration, which is the three constants in
+`packages/core/src/output.ts`. The run above is the shipped one: **GAMMA 2.45, knee 0.84,
+MASTER 1**. An earlier round of this table was taken at MASTER 0.7 and read about 40% lower
+throughout, which is the master and nothing about the effects.
+
+So the absolutes are worth nothing across a calibration change and the ranking is worth most of
+it. Even the ranking is not immune: `crossbeam` and `emberBump` swapped places between those two
+runs, because the knee moved as well as the master and they sit at different heights against it.
+**Re-run `bench/punchprobe.ts` after touching any of the three** rather than reading this table as
+a fact about the catalog.
 
 And the caution the numbers earned: `lean` scored a healthy-looking 33/35/72 before a bug in it
 was fixed, and those numbers were measuring the BUG - a snap at the beat the gesture was written
