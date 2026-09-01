@@ -39,9 +39,10 @@ export const wash: EffectDef = {
 				const breathe = Math.pow(sinewave(f.barPhase), 1.8);
 				// The floor is high because the cue's own intensity already says the passage is
 				// quiet. A bed that dims itself as well is dimmed twice, and two multiplications
-				// of a number under one is how an intro reached byte zero.
+				// of a number under one is how an intro reached byte zero. Raised from 0.55 with
+				// GAMMA, so it emits the light it was chosen for rather than the number.
 				const heard = passage.update(f.energy, f.dt);
-				const target = clamp(0.55 + 0.45 * heard) * p.intensity;
+				const target = clamp(0.59 + 0.41 * heard) * p.intensity;
 				level = envelope(level, target, f.dt, 0.08, 0.5);
 
 				const bright = level * lerp(1 - p.breath, 1, breathe);
@@ -53,7 +54,11 @@ export const wash: EffectDef = {
 				for (let i = 0; i < g.count; i++) {
 					const along = ringU(g, i);
 					const grad = sinewave(frac(along * 0.5 - phase));
-					const u = lerp(SLOT.deep, SLOT.glow, 0.3 + 0.55 * grad) + ctx.hueShift;
+					// Inside `base..glow` rather than starting a third of the way up `deep..base`. The
+				// old span put the dark side of the ring in the x12.5 brightness step, so a bed
+				// whose job is to fill a room spent a third of it near black; this one is the
+				// saturation move, which costs no light and is what a gradient is supposed to be.
+				const u = lerp(SLOT.deep, SLOT.glow, 0.52 + 0.4 * grad) + ctx.hueShift;
 					setSample(out, i, palette, u, bright);
 				}
 			}

@@ -96,6 +96,12 @@ export interface Settings {
 	outputOffsetMs: number;
 	/** Frames a second on the wire. One of `OUTPUT_FPS_CHOICES`. */
 	outputFps: number;
+	/** Master dimmer, `OUTPUT_BRIGHTNESS_MIN`..1. After gamma, so it costs no contrast. */
+	outputBrightness: number;
+	/** The tone curve's exponent, `CONTRAST_MIN`..`CONTRAST_MAX`. */
+	outputContrast: number;
+	/** The lamp's own dimmer, same range as the room's. */
+	outputLampBrightness: number;
 	/** Which wire the fixture is addressed on. */
 	outputProtocol: WireProtocol;
 	/** Whether the radio keeps the queue from running out. */
@@ -124,6 +130,9 @@ export interface SettingsPatch {
 	authorEffort?: AuthorEffort;
 	outputOffsetMs?: number;
 	outputFps?: number;
+	outputBrightness?: number;
+	outputContrast?: number;
+	outputLampBrightness?: number;
 	outputProtocol?: WireProtocol;
 	autopilot?: boolean;
 	lounge?: boolean;
@@ -131,7 +140,6 @@ export interface SettingsPatch {
 	ambientColour?: ColourSource;
 	ambientHue?: number;
 	ambientSat?: number;
-	ambientBrightness?: number;
 	ambientDrift?: number;
 	ambientDwell?: number;
 }

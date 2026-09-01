@@ -8,7 +8,7 @@ import { smoothstep } from './dsl/math.ts';
 import { BounceLamp } from './bounce.ts';
 import { EffectRegistry } from './effects/index.ts';
 import { Mixer } from './mixer.ts';
-import { BrightnessSlew, MeanLevel, compressHighlights, quantize } from './output.ts';
+import { BrightnessSlew, GAMMA, MASTER, MeanLevel, compressHighlights, quantize } from './output.ts';
 import { ShowPlayer } from './player.ts';
 import { AmbientPlayer, type AmbientSettings } from './ambient/player.ts';
 import { IdleClock } from './ambient/idle.ts';
@@ -112,6 +112,23 @@ export class RoomDirector {
 	get sceneName(): string {
 		return this.ambient.sceneName;
 	}
+
+	/**
+	 * The output stage, which belongs to the fixtures rather than to the show.
+	 *
+	 * `brightness` is a dimmer and lands after gamma, so it costs no contrast; `contrast` is the
+	 * exponent, which pulls the mids down and leaves full scale alone. Separate controls because
+	 * "too bright" and "the hits do not land" are different complaints with different answers, and
+	 * turning one down to fix the other is how a room ends up flat. `lampBrightness` is its own
+	 * number because the lamp is a different fixture in a different corner at a different distance.
+	 *
+	 * **Only the server sets these.** The browser leaves them at unity, so the preview keeps
+	 * showing the show rather than the room's dimmer: a screen has its own brightness, and dimming
+	 * the picture to match a patio only makes the picture harder to read.
+	 */
+	brightness = MASTER;
+	contrast = GAMMA;
+	lampBrightness = MASTER;
 
 	set ambientSettings(s: AmbientSettings) {
 		this.ambient.settings = s;
@@ -290,10 +307,10 @@ export class RoomDirector {
 		this.slew.apply(this.frame, dt);
 		this.meanLevel.apply(this.frame, dt, exposed);
 		compressHighlights(this.frame);
-		quantize(this.frame, this.bytes);
+		quantize(this.frame, this.bytes, this.contrast, this.brightness);
 		// After the chain, so the lamp answers the level the frame is actually at rather than the
 		// level the show was authored at.
-		this.lamp.render(this.frame, f, this.accent(w), dt, this.bounce);
+		this.lamp.render(this.frame, f, this.accent(w), dt, this.bounce, this.lampBrightness);
 	}
 }
 

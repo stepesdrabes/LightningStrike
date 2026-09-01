@@ -1,8 +1,6 @@
 <script lang="ts">
 	import type { AmbientSettings, ColourSource } from '@mv/core';
 	import {
-		BRIGHTNESS_MAX,
-		BRIGHTNESS_MIN,
 		COLOUR_SOURCES,
 		DRIFT_MAX,
 		DRIFT_MIN,
@@ -152,20 +150,10 @@
 		{/if}
 	</section>
 
-	<section>
-		<h3>Brightness</h3>
-		<div class="line">
-			<Slider
-				value={ambient.brightness}
-				min={BRIGHTNESS_MIN}
-				max={BRIGHTNESS_MAX}
-				step={0.01}
-				ariaLabel="How bright the room is when it is resting"
-				oninput={(v) => set({ brightness: v })}
-				onchange={(v) => save({ brightness: v })} />
-			<span class="figure mono">{Math.round(ambient.brightness * 100)}%</span>
-		</div>
-	</section>
+	<!--
+		No brightness here. How bright a fixture is belongs to the installation rather than to the
+		resting room, so it is one control in the hardware panel instead of two that disagree.
+	-->
 
 	<section>
 		<h3>Scene</h3>

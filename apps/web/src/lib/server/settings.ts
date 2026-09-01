@@ -3,11 +3,13 @@ import { join } from 'node:path';
 import { CACHE_DIR } from '@mv/analysis';
 import {
 	DEFAULT_OUTPUT_FPS,
+	isContrast,
+	isOutputBrightness,
 	isOutputFps,
 	isWireProtocol,
 	type WireProtocol
 } from '$lib/hardware.ts';
-import { DEFAULT_AMBIENT, type AmbientSettings, type ColourSource } from '@mv/core';
+import { DEFAULT_AMBIENT, GAMMA, MASTER, type AmbientSettings, type ColourSource } from '@mv/core';
 import {
 	AUTHOR_MODELS,
 	CLAUDE,
@@ -54,6 +56,18 @@ interface SettingsFile {
 	outputOffsetMs?: number;
 	/** Frames a second on the wire. Belongs to the fixture, like the trim above it. */
 	outputFps?: number;
+	/**
+	 * The two ends of the tone curve, dialled against the real room and belonging to it.
+	 *
+	 * How bright a fixture reads is a property of how much strip is hanging and how big the space
+	 * is, not of the show, so it cannot be authored. `outputBrightness` is a dimmer applied after
+	 * gamma and costs no contrast; `outputContrast` is the exponent, which is what decides whether
+	 * a hit has anything to be brighter than.
+	 */
+	outputBrightness?: number;
+	outputContrast?: number;
+	/** The lamp is a different fixture in a different corner, so it dims on its own. */
+	outputLampBrightness?: number;
 	/** Which wire the fixture is addressed on. Belongs to the installation too. */
 	outputProtocol?: WireProtocol;
 	/**
@@ -74,7 +88,6 @@ interface SettingsFile {
 	/** Textbook HSV degrees, 0-359, as picked on the wheel. */
 	ambientHue?: number;
 	ambientSat?: number;
-	ambientBrightness?: number;
 	/** Degrees a minute, in `drift`. */
 	ambientDrift?: number;
 	/** Seconds a scene holds when nothing is playing. */
@@ -99,6 +112,9 @@ export interface PublicSettings {
 	authorModels: readonly AuthorModel[];
 	outputOffsetMs: number;
 	outputFps: number;
+	outputBrightness: number;
+	outputContrast: number;
+	outputLampBrightness: number;
 	outputProtocol: WireProtocol;
 	autopilot: boolean;
 	lounge: boolean;
@@ -144,6 +160,13 @@ class Settings {
 			authorModels: AUTHOR_MODELS,
 			outputOffsetMs: file.outputOffsetMs ?? 0,
 			outputFps: isOutputFps(file.outputFps) ? file.outputFps : DEFAULT_OUTPUT_FPS,
+			outputBrightness: isOutputBrightness(file.outputBrightness)
+				? file.outputBrightness
+				: MASTER,
+			outputContrast: isContrast(file.outputContrast) ? file.outputContrast : GAMMA,
+			outputLampBrightness: isOutputBrightness(file.outputLampBrightness)
+				? file.outputLampBrightness
+				: MASTER,
 			outputProtocol: isWireProtocol(file.outputProtocol) ? file.outputProtocol : 'ddp',
 			autopilot: file.autopilot ?? false,
 			lounge: file.lounge ?? false,
@@ -155,7 +178,6 @@ class Settings {
 				hue: file.ambientHue ?? DEFAULT_AMBIENT.hue,
 				sat: file.ambientSat ?? DEFAULT_AMBIENT.sat,
 				drift: file.ambientDrift ?? DEFAULT_AMBIENT.drift,
-				brightness: file.ambientBrightness ?? DEFAULT_AMBIENT.brightness,
 				dwell: file.ambientDwell ?? DEFAULT_AMBIENT.dwell
 			}
 		};

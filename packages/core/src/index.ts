@@ -112,6 +112,7 @@ export {
 	BrightnessSlew,
 	GAMMA,
 	LEVEL_BINS,
+	MASTER,
 	MeanLevel,
 	blend,
 	compressHighlights,

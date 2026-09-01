@@ -227,15 +227,20 @@ export const MASTER = 1;
  * scale where it is, which is the only direction that buys a flash any contrast: a peak is
  * already at 255 and the only way to make it read brighter is to lower what surrounds it.
  */
-export function quantize(buf: Float32Array, out: Uint8Array, gamma = GAMMA): void {
+export function quantize(
+	buf: Float32Array,
+	out: Uint8Array,
+	gamma = GAMMA,
+	master = MASTER
+): void {
 	// Rounded to a whole code, or full scale straddles two of them and white shimmers across the
 	// dither positions, which is the fault the half-code bias below exists to prevent.
-	const master = Math.round(MASTER * 255);
+	const full = Math.round(master * 255);
 	for (let i = 0; i < buf.length; i++) {
 		const v = buf[i] <= 0 ? 0 : buf[i] >= 1 ? 1 : buf[i];
 		// An explicit floor with a half-code bias: without it a full-scale pixel lands on 254
 		// for half the dither positions and white visibly shimmers.
-		const byte = Math.floor(Math.pow(v, gamma) * master + DITHER[i & 7] + 0.5);
+		const byte = Math.floor(Math.pow(v, gamma) * full + DITHER[i & 7] + 0.5);
 		out[i] = byte < 0 ? 0 : byte > 255 ? 255 : byte;
 	}
 }

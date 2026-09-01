@@ -63,19 +63,25 @@ const MIN_HIT_LEVEL = 0.35;
  * cue. Those are brighter as well as livelier, so leaving the floor where it was pushed the
  * drop-to-quiet ratio from 3.43 down to 2.79, under its 3.2 floor: the same contrast, spent twice.
  * The outro comes down least because its bed pool barely changed.
+ *
+ * **These are authoring values chosen for the light they make**, so they moved when `GAMMA` did:
+ * each is the old number raised to `2.2 / 2.45`, which makes `floor ^ 2.45` exactly what
+ * `floor ^ 2.2` used to be. Every floor emits what it always did and every ratio between them is
+ * untouched, which is the point - the contrast above was measured, and a curve change is not a
+ * licence to spend it. Re-derive them the same way if the exponent moves again.
  */
 const SECTION_FLOOR: Record<SectionKind, number> = {
 	void: 0,
-	intro: 0.3,
-	outro: 0.38,
-	breakdown: 0.34,
-	build: 0.38,
-	groove: 0.32,
-	verse: 0.32,
-	drop: 0.09,
+	intro: 0.34,
+	outro: 0.42,
+	breakdown: 0.38,
+	build: 0.42,
+	groove: 0.36,
+	verse: 0.36,
+	drop: 0.115,
 	// A chorus is bright like a drop but arrives by lift, so it keeps a touch more floor:
 	// the room blooms rather than detonating out of black.
-	chorus: 0.14
+	chorus: 0.17
 };
 
 /**

@@ -1,7 +1,10 @@
 <script lang="ts">
 	import {
+		CONTRAST_MAX,
+		CONTRAST_MIN,
 		OFFSET_MAX_MS,
 		OFFSET_MIN_MS,
+		OUTPUT_BRIGHTNESS_MIN,
 		OUTPUT_FPS_CHOICES,
 		WIRE_PROTOCOLS,
 		DEVICE_NAMES,
@@ -27,10 +30,19 @@
 		statuses,
 		offsetMs = 0,
 		fps = 60,
+		brightness = 1,
+		contrast = 2.45,
+		lampBrightness = 1,
 		protocol = 'ddp',
 		onclose,
 		onhost,
 		onfps,
+		onbrightness,
+		onbrightnessdone,
+		oncontrast,
+		oncontrastdone,
+		onlampbrightness,
+		onlampbrightnessdone,
 		onprotocol,
 		onoffset,
 		onoffsetdone,
@@ -45,11 +57,24 @@
 		offsetMs?: number;
 		/** Frames a second on the wire. */
 		fps?: number;
+		/** Master dimmer, 0..1. After gamma, so it costs no contrast. */
+		brightness?: number;
+		/** The tone curve's exponent, which is what decides whether a hit lands. */
+		contrast?: number;
+		/** The lamp's own dimmer. */
+		lampBrightness?: number;
 		/** Which wire the fixture is addressed on. Takes effect the next time output starts. */
 		protocol?: WireProtocol;
 		onclose: () => void;
 		onhost: (role: DeviceRole, host: string) => void;
 		onfps: (fps: number) => void;
+		/** While dragging, then on release. Same split as the trim: one write per gesture. */
+		onbrightness: (v: number) => void;
+		onbrightnessdone: (v: number) => void;
+		oncontrast: (v: number) => void;
+		oncontrastdone: (v: number) => void;
+		onlampbrightness: (v: number) => void;
+		onlampbrightnessdone: (v: number) => void;
 		onprotocol: (protocol: WireProtocol) => void;
 		/** While the trim is being dragged. The running stream picks it up on its next sync. */
 		onoffset: (ms: number) => void;
@@ -146,6 +171,12 @@
 		</span>
 	</header>
 
+	<!--
+		One scroller for everything under the header, rather than one around the device rows. With
+		the settings fixed above it, every control added to them came out of the readout's height
+		instead of the panel's, and the stats ended up in a two-line window.
+	-->
+	<div class="scroll">
 	<div class="address">
 		<div class="field">
 			<Icon name="radio" size={15} />
@@ -192,6 +223,30 @@
 				oninput={onoffset}
 				onchange={onoffsetdone} />
 			<span class="ms mono">{offsetMs > 0 ? '+' : ''}{offsetMs} ms</span>
+		</div>
+		<div class="trim">
+			<span>Level</span>
+			<Slider
+				value={brightness}
+				min={OUTPUT_BRIGHTNESS_MIN}
+				max={1}
+				step={0.01}
+				ariaLabel="How much of full output the room gets"
+				oninput={onbrightness}
+				onchange={onbrightnessdone} />
+			<span class="ms mono">{Math.round(brightness * 100)}%</span>
+		</div>
+		<div class="trim">
+			<span>Punch</span>
+			<Slider
+				value={contrast}
+				min={CONTRAST_MIN}
+				max={CONTRAST_MAX}
+				step={0.05}
+				ariaLabel="How far the mids sit under the hits"
+				oninput={oncontrast}
+				onchange={oncontrastdone} />
+			<span class="ms mono">{contrast.toFixed(2)}</span>
 		</div>
 		<div class="trim">
 			<span>Rate</span>
@@ -243,6 +298,22 @@
 			{/if}
 		</span>
 	</div>
+
+	{#if lamp.host}
+		<!-- Its own, because it is a different fixture at a different distance in a corner. -->
+		<div class="trim">
+			<span>Level</span>
+			<Slider
+				value={lampBrightness}
+				min={OUTPUT_BRIGHTNESS_MIN}
+				max={1}
+				step={0.01}
+				ariaLabel="How much of full output the lamp gets"
+				oninput={onlampbrightness}
+				onchange={onlampbrightnessdone} />
+			<span class="ms mono">{Math.round(lampBrightness * 100)}%</span>
+		</div>
+	{/if}
 
 	<div class="body">
 		<div class="device">
@@ -345,6 +416,7 @@
 				</p>
 			{/if}
 		{/if}
+	</div>
 	</div>
 
 	{#if dark}
@@ -497,10 +569,13 @@
 		min-width: 0;
 	}
 
-	.body {
+	.scroll {
 		flex: 1;
 		overflow-y: auto;
 		min-height: 0;
+	}
+
+	.body {
 		padding: 16px;
 	}
 

@@ -99,6 +99,11 @@ class Output {
 		this.lounge = s.lounge;
 		this.rest = s.rest;
 		this.director.ambientSettings = s.ambient;
+		// Straight onto the director, which re-reads them every frame, so a slider moves the room
+		// under a running show rather than at the next track.
+		this.director.brightness = s.outputBrightness;
+		this.director.contrast = s.outputContrast;
+		this.director.lampBrightness = s.outputLampBrightness;
 		// The interval is the clock, so a new rate means a new interval. Only when it has actually
 		// changed: re-arming on every settings write would drop a frame each time a slider moved.
 		if (s.outputFps !== this.fps) {

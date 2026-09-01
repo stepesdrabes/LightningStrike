@@ -181,6 +181,30 @@ export const OFFSET_MIN_MS = -100;
 export const OFFSET_MAX_MS = 250;
 
 /**
+ * How far down the room can be dimmed. A tenth is already very dark on 12 m of strip, and below
+ * it the dither runs out of codes to spread and the bottom of the range bands.
+ */
+export const OUTPUT_BRIGHTNESS_MIN = 0.1;
+
+/**
+ * The exponent between the authoring domain and light, at both ends of what is usable.
+ *
+ * 2.0 is nearly flat, which reads as a room with no hits in it. 2.8 is Adafruit's, where every
+ * input below a tenth quantises to black and slow fades disappear rather than fade. The room was
+ * judged at 2.45.
+ */
+export const CONTRAST_MIN = 2;
+export const CONTRAST_MAX = 2.8;
+
+export function isOutputBrightness(v: unknown): v is number {
+	return typeof v === 'number' && Number.isFinite(v) && v >= OUTPUT_BRIGHTNESS_MIN && v <= 1;
+}
+
+export function isContrast(v: unknown): v is number {
+	return typeof v === 'number' && Number.isFinite(v) && v >= CONTRAST_MIN && v <= CONTRAST_MAX;
+}
+
+/**
  * How fast the server renders to the wire.
  *
  * 60 is what the show is judged at and what the effects' own time constants assume. The other

@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hsv2rgb, rampHueFor } from '@mv/core';
 import {
-	BRIGHTNESS_MIN,
 	SAT_MAX,
 	SAT_MIN,
 	clamp,
@@ -22,8 +21,6 @@ describe('bounds', () => {
 	it('pins everything that does have ends', () => {
 		expect(clamp(2, SAT_MIN, SAT_MAX)).toBe(SAT_MAX);
 		expect(clamp(-1, SAT_MIN, SAT_MAX)).toBe(SAT_MIN);
-		// A dimmer that reaches zero is a switch, and the room has one of those already.
-		expect(BRIGHTNESS_MIN).toBeGreaterThan(0);
 	});
 
 	it('accepts only the three colour sources', () => {

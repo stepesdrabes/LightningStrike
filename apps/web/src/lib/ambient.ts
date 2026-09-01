@@ -14,15 +14,6 @@ export const SAT_MIN = 0.15;
 export const SAT_MAX = 1;
 
 /**
- * Never all the way off.
- *
- * A dimmer that reaches zero is a switch, and a room resting at zero is indistinguishable from one
- * that has failed. Turning the room off is what turning resting off is for.
- */
-export const BRIGHTNESS_MIN = 0.2;
-export const BRIGHTNESS_MAX = 1;
-
-/**
  * Degrees a minute. At the top it is a lap in twelve minutes, which is the fastest a drift can run
  * and still be something you notice having happened rather than something you watch happening.
  */

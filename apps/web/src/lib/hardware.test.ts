@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+	CONTRAST_MAX,
+	CONTRAST_MIN,
+	OUTPUT_BRIGHTNESS_MIN,
 	faultsIn,
+	isContrast,
+	isOutputBrightness,
 	lightsRoom,
 	parseIdentity,
 	parseTelemetry,
@@ -20,6 +25,27 @@ const STATS =
 const STATS_NO_LATE =
 	'up 42s  720 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  asm 2.1 ms  ' +
 	'seqgap 0  bad 0  oob 0  torn 0';
+
+describe('the output stage', () => {
+	it('never dims all the way off, because that is a switch and the room has one', () => {
+		expect(OUTPUT_BRIGHTNESS_MIN).toBeGreaterThan(0);
+		expect(isOutputBrightness(0)).toBe(false);
+		expect(isOutputBrightness(1)).toBe(true);
+	});
+
+	/**
+	 * Both ends are where they are for a reason the room paid for: below 2 the mids sit level with
+	 * the hits and nothing lands, and at 2.8 every input under a tenth quantises to black, so slow
+	 * fades stop fading. A stored value outside them is refused rather than used.
+	 */
+	it('keeps the exponent inside what a room can be lit at', () => {
+		expect(isContrast(CONTRAST_MIN)).toBe(true);
+		expect(isContrast(CONTRAST_MAX)).toBe(true);
+		expect(isContrast(1)).toBe(false);
+		expect(isContrast(3.2)).toBe(false);
+		expect(isContrast('2.45')).toBe(false);
+	});
+});
 
 describe('parseIdentity', () => {
 	it('reads every field of the discovery answer', () => {

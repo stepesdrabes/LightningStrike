@@ -90,14 +90,22 @@ const REST_FLOOR = 0.52;
  */
 const REST_INTENSITY = 1;
 
+/**
+ * How bright a resting scene is against the show's own full scale.
+ *
+ * A tuned level rather than a dimmer. It was a slider in the lounge panel, which made it the
+ * second brightness control in the app and the one nobody could tell apart from the room's: the
+ * fixture's dimmer is in the hardware panel, where it belongs to the installation. This stays
+ * because 0.85 is what the scenes were judged at, not because anyone should be moving it.
+ */
+const REST_LEVEL = 0.85;
+
 /** Cue-level speed. The `ambient` genre profile settled on about this for the same reason. */
 const REST_MOTION = 0.35;
 /** Nudged up from 0.62. Enough that the scenes read as moving with the track, short of a show. */
 const LOUNGE_MOTION = 0.72;
 
 export interface AmbientSettings extends ColourSettings {
-	/** Master level for the resting room, 0..1. */
-	brightness: number;
 	/** Seconds a scene holds when nothing is playing. */
 	dwell: number;
 }
@@ -115,7 +123,6 @@ export const DEFAULT_AMBIENT: AmbientSettings = {
 	// tinted white rather than as a colour, which is what the slider is for rather than a default.
 	sat: 0.94,
 	drift: 6,
-	brightness: 0.85,
 	dwell: 150
 };
 
@@ -237,7 +244,7 @@ export class AmbientPlayer {
 		}
 
 		this.mixer.palette = this.colour.update(f.dt);
-		this.mixer.brightness = clamp(this.settings.brightness, 0, 1);
+		this.mixer.brightness = REST_LEVEL;
 		this.mixer.motion = live ? LOUNGE_MOTION : REST_MOTION;
 
 		// How far open the room is. Resting it is a constant, because nothing is happening and a

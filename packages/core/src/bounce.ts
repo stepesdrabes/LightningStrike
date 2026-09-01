@@ -1,6 +1,6 @@
 import type { ShowFrame } from './contracts/frame.ts';
 import { Follower } from './dsl/env.ts';
-import { GAMMA, LEVEL_BINS, perceivedLevel, quantize } from './output.ts';
+import { GAMMA, LEVEL_BINS, MASTER, perceivedLevel, quantize } from './output.ts';
 
 /**
  * Level this fixture holds while a show is running, as a fraction of the light it can make.
@@ -82,7 +82,8 @@ export class BounceLamp {
 		f: ShowFrame,
 		tint: ArrayLike<number>,
 		dt: number,
-		out: Uint8Array
+		out: Uint8Array,
+		master = MASTER
 	): void {
 		// A percentile commutes with gamma, so raising the one number is the whole conversion.
 		const lit = Math.pow(perceivedLevel(room, this.hist), GAMMA);
@@ -101,7 +102,7 @@ export class BounceLamp {
 		this.frame[0] = tint[0] * scale;
 		this.frame[1] = tint[1] * scale;
 		this.frame[2] = tint[2] * scale;
-		quantize(this.frame, out);
+		quantize(this.frame, out, GAMMA, master);
 	}
 
 	reset(): void {

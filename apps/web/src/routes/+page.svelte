@@ -5,7 +5,7 @@
 	import { QueueClient } from '$lib/queue.svelte.ts';
 	import { HardwareClient } from '$lib/hardware.svelte.ts';
 	import { installHint, readShell } from '$lib/shell.svelte.ts';
-	import { DEFAULT_AMBIENT, type AmbientSettings } from '@mv/core';
+	import { DEFAULT_AMBIENT, GAMMA, MASTER, type AmbientSettings } from '@mv/core';
 	import { indexOfKey } from '$lib/queueModel.ts';
 	import { DEFAULT_OUTPUT_FPS, type WireProtocol } from '$lib/hardware.ts';
 	import { FULL_WINDOW, type TimeWindow } from '$lib/timeline.ts';
@@ -79,6 +79,9 @@
 		authorModels: [],
 		outputOffsetMs: 0,
 		outputFps: DEFAULT_OUTPUT_FPS,
+		outputBrightness: MASTER,
+		outputContrast: GAMMA,
+		outputLampBrightness: MASTER,
 		outputProtocol: 'ddp',
 		autopilot: false,
 		lounge: false,
@@ -655,6 +658,40 @@
 		void patchSettings({ outputFps });
 	}
 
+	/**
+	 * The output stage: what reaches the strips and the lamp, and nothing else.
+	 *
+	 * These deliberately do not touch the browser's own renderer, so the 3D room keeps showing the
+	 * show rather than the installation's dimmer. Moving one only tracks the slider's own readout
+	 * until it is released; the release writes, and the server's renderer picks it up there.
+	 */
+	function moveBrightness(outputBrightness: number) {
+		settings = { ...settings, outputBrightness };
+	}
+
+	function saveBrightness(outputBrightness: number) {
+		moveBrightness(outputBrightness);
+		void patchSettings({ outputBrightness });
+	}
+
+	function moveContrast(outputContrast: number) {
+		settings = { ...settings, outputContrast };
+	}
+
+	function saveContrast(outputContrast: number) {
+		moveContrast(outputContrast);
+		void patchSettings({ outputContrast });
+	}
+
+	function moveLampBrightness(outputLampBrightness: number) {
+		settings = { ...settings, outputLampBrightness };
+	}
+
+	function saveLampBrightness(outputLampBrightness: number) {
+		moveLampBrightness(outputLampBrightness);
+		void patchSettings({ outputLampBrightness });
+	}
+
 	function chooseProtocol(outputProtocol: WireProtocol) {
 		settings = { ...settings, outputProtocol };
 		void patchSettings({ outputProtocol });
@@ -686,7 +723,6 @@
 			ambientHue: next.hue,
 			ambientSat: next.sat,
 			ambientDrift: next.drift,
-			ambientBrightness: next.brightness,
 			ambientDwell: next.dwell
 		});
 	}
@@ -1355,10 +1391,19 @@
 	onclose={() => (hardwareOpen = false)}
 	offsetMs={settings.outputOffsetMs}
 	fps={settings.outputFps}
+	brightness={settings.outputBrightness}
+	contrast={settings.outputContrast}
+	lampBrightness={settings.outputLampBrightness}
 	protocol={settings.outputProtocol}
 	onhost={(role, h) => void hardware.setHost(role, h)}
 	onregion={(r) => void hardware.setRegion(r)}
 	onfps={chooseFps}
+	onbrightness={moveBrightness}
+	onbrightnessdone={saveBrightness}
+	oncontrast={moveContrast}
+	oncontrastdone={saveContrast}
+	onlampbrightness={moveLampBrightness}
+	onlampbrightnessdone={saveLampBrightness}
 	onprotocol={chooseProtocol}
 	onoffset={moveOffset}
 	onoffsetdone={saveOffset}
