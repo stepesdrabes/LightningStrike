@@ -4,6 +4,7 @@ import { SLOT } from '../contracts/palette.ts';
 import { setSample } from '../color/palette.ts';
 import { clamp, envelope, lerp } from '../dsl/math.ts';
 import { setPixel } from '../dsl/buffer.ts';
+import { bandBetween } from '../dsl/spectrum.ts';
 import { BeatHold } from '../dsl/env.ts';
 import { beatRelease, INTENSITY, param } from './helpers.ts';
 
@@ -50,17 +51,21 @@ export const subSwell: EffectDef = {
 			render(out, ctx) {
 				const { f, p, palette, hueShift } = ctx;
 
+				// The spectrum, not the band: `f.bands` steps once a beat and glides between,
+				// so a 12 ms attack asked of it is an attack the signal cannot make. The gain
+				// is 2.1 where the band read 1.4 because the two are not the same scale - the
+				// band's p90 measures 1.46x the spectrum's over the gate's own journey, which
+				// is the ratio bassRing paid when it moved (1.5 -> 2.2).
 				env = envelope(
 					env,
-					clamp(f.bands[Band.Sub] * 1.4),
+					clamp(bandBetween(f, 0, 0.12) * 2.1),
 					f.dt,
 					0.012,
 					beatRelease(f.beatPeriod, 0.7)
 				);
 				const reach = env * (0.35 + p.reach * 0.65);
-				// The band may carry the REACH continuously, which is what this effect is, but
-				// its own frame-to-frame noise is several per cent: brightness taken from it
-				// directly shimmers against a beat it has no relationship to, so it lands on one.
+				// Level stays on the envelope, latched to the beat: how loud a passage is, is
+				// exactly what the band is good for, and it is the reach that has to articulate.
 				const level01 = level.update(
 					clamp(0.45 + 0.55 * f.bands[Band.Sub]),
 					f.beat,

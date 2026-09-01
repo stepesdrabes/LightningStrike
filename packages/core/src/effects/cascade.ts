@@ -64,10 +64,10 @@ export const cascade: EffectDef = {
 				const warm = tilt.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				// Where the arrangement sits picks the walls' colour, so the same chase reads
 				// as body under a bass passage and as texture when the top opens up.
-				// A spectral term may only walk the slot inside base..glow. Slot space is a ring whose
-				// positions differ in VALUE - white is 3.7x glow's luminance - so a walk that crosses it
-				// is a spectrum driving BRIGHTNESS through the palette, which is the blinking the
-				// mixer already had to be rescued from once.
+				// A spectral term may only walk the slot inside base..glow. That span is safe because it
+				// is a SATURATION move at constant flux (measured x1.03 over 24 hues); crossing to
+				// white is x2.66, a spectrum driving BRIGHTNESS through the palette, which is the
+				// blinking the mixer already had to be rescued from once.
 				const wallLit = lerp(SLOT.base, SLOT.glow, clamp(warm * 0.7));
 
 				for (let s = 0; s < 4; s++) {

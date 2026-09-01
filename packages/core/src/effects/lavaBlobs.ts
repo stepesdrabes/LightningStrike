@@ -65,10 +65,10 @@ export const lavaBlobs: EffectDef = {
 				const tilt = lean.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const spread = (tilt - 0.5) * 0.16;
 				// Hotter as the mix opens up, and never past a hue the show declared.
-				// A spectral term may only walk the slot inside base..glow. Slot space is a ring whose
-				// positions differ in VALUE - white is 3.7x glow's luminance - so a walk that crosses it
-				// is a spectrum driving BRIGHTNESS through the palette, which is the blinking the
-				// mixer already had to be rescued from once.
+				// A spectral term may only walk the slot inside base..glow. That span is safe because it
+				// is a SATURATION move at constant flux (measured x1.03 over 24 hues); crossing to
+				// white is x2.66, a spectrum driving BRIGHTNESS through the palette, which is the
+				// blinking the mixer already had to be rescued from once.
 				const hot = lerp(SLOT.base, SLOT.glow, clamp(tilt * 1.3));
 
 				// Two incommensurate sines per centre: organic drift, still deterministic.

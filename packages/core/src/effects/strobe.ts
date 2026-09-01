@@ -25,8 +25,8 @@ export const strobe: EffectDef = {
 	],
 	create(g) {
 		// Alternating pairs rather than the whole room: perceived flash rate at any point in
-		// the room is half the strobe rate, which is what keeps a 2-per-beat burst inside
-		// the 3 Hz ceiling at club tempos.
+		// the room is half the strobe rate, so a 2-per-beat burst at club tempos sits near
+		// 2 Hz locally against the room's own `STROBE_MAX_HZ` of 8.
 		const groupA = new Set<number>();
 		for (const s of g.strips) if (s.inPerimeter && stripAxis(s) === 'x') groupA.add(s.id);
 

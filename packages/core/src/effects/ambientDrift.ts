@@ -79,10 +79,10 @@ export const ambientDrift: EffectDef = {
 				const stretch = 0.7 + reach * listen * 0.5;
 				// Kept inside the base hue. A walk between two of the show's hues spends most of
 				// its time on a colour the show never declared.
-				// A spectral term may only walk the slot inside base..glow. Slot space is a ring whose
-				// positions differ in VALUE - white is 3.7x glow's luminance - so a walk that crosses it
-				// is a spectrum driving BRIGHTNESS through the palette, which is the blinking the
-				// mixer already had to be rescued from once.
+				// A spectral term may only walk the slot inside base..glow. That span is safe because it
+				// is a SATURATION move at constant flux (measured x1.03 over 24 hues); crossing to
+				// white is x2.66, a spectrum driving BRIGHTNESS through the palette, which is the
+				// blinking the mixer already had to be rescued from once.
 				const top = lerp(SLOT.base, SLOT.glow, clamp(reach * listen));
 
 				for (let k = 0; k < TAPS; k++) {

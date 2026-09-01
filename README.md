@@ -108,7 +108,7 @@ packages/transport    DDP and sACN over UDP       -> core
 packages/author-ai    Agent SDK, tools, backends  -> core, analysis, author-engine
 packages/author-engine  deterministic show generation + the linter  -> core
 packages/analysis     ffmpeg -> PCM -> SuperFlux -> beat grid -> bars -> sections  -> core
-packages/core         contracts, geometry, colour, DSL, 89 effects, mixer, player, director
+packages/core         contracts, geometry, colour, DSL, 94 effects, mixer, player, director
 ```
 
 The layering is enforced by separate `package.json` files rather than by convention: `core`
@@ -211,11 +211,12 @@ into a texture, measured in this room at 9.4 Hz on a 140 bpm track where the sam
 half the rate still reads as events.
 
 Colour is spent the same way. The palette slots are one ramp - deep, base, glow, white, third,
-accent - and the first three are a single hue at three lightnesses, so a gradient that stops at
-glow is a brightness ramp wearing a palette's clothes. Reaching a second colour means crossing
-past white. Positions in that ramp differ in luminance as well as hue, so a spectral term
-driving the slot is also driving brightness: colour that varies by POSITION in the room is free,
-colour that varies over TIME has to move slowly or it becomes a flicker.
+accent - and its three spans are not alike. Measured over 24 hues through the real ramp, deep to
+base is x12.5 in flux, base to glow is x1.03, and glow to white is x2.66. So the bottom of the
+ramp is a brightness step, reaching a second colour means crossing past white and paying for it,
+and the one span in the middle is a saturation move that costs no light at all. Colour that
+varies by POSITION in the room is free; colour that varies over TIME has to move slowly, or stay
+inside base..glow, where a fast signal changes saturation rather than brightness.
 
 The gate answers whether an effect is legal, which is not the same question as whether it looks
 like anything, so an admitted effect is also measured: how much of the room it lights, how
@@ -476,7 +477,7 @@ wins over the stored one.
 
 ```sh
 npm run dev            # the app
-npm test               # 724 tests
+npm test               # 861 tests
 npm run check          # tsc --build across all packages, then svelte-check
 ```
 

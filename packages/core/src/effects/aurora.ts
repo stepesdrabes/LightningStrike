@@ -74,10 +74,10 @@ export const aurora: EffectDef = {
 				const walk = tilt * 0.3;
 				// The lightest layer tints toward white with it. Inside one hue on purpose: a walk
 				// between two of the show's hues spends most of its time on neither.
-				// A spectral term may only walk the slot inside base..glow. Slot space is a ring whose
-				// positions differ in VALUE - white is 3.7x glow's luminance - so a walk that crosses it
-				// is a spectrum driving BRIGHTNESS through the palette, which is the blinking the
-				// mixer already had to be rescued from once.
+				// A spectral term may only walk the slot inside base..glow. That span is safe because it
+				// is a SATURATION move at constant flux (measured x1.03 over 24 hues); crossing to
+				// white is x2.66, a spectrum driving BRIGHTNESS through the palette, which is the
+				// blinking the mixer already had to be rescued from once.
 				const top = lerp(SLOT.base, SLOT.glow, clamp(tilt));
 
 				for (let i = 0; i < g.count; i++) {

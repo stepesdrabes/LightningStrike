@@ -27,6 +27,21 @@ export const chromaBurst: EffectDef = {
 	},
 	params: [INTENSITY, param('trigger', 'Trigger', 0, 0, 1, 1)],
 	create(g) {
+		// Every LED on this fixture is coplanar, so `g.dist` starts at the beam's middle and
+		// never reaches 0: swept against the raw figure the shells spend the first half of
+		// their two beats on empty space and arrive with a quarter of their gain left. The
+		// room measured 0.000 fill against silhouette's 0.833. Re-based on the room's own
+		// range, the way kickTunnel and subSwell already are.
+		const depth = new Float32Array(g.count);
+		let near = Infinity;
+		let far = 0;
+		for (let i = 0; i < g.count; i++) {
+			if (g.dist[i] < near) near = g.dist[i];
+			if (g.dist[i] > far) far = g.dist[i];
+		}
+		const span = Math.max(1e-3, far - near);
+		for (let i = 0; i < g.count; i++) depth[i] = (g.dist[i] - near) / span;
+
 		const rgb: [number, number, number] = [0, 0, 0];
 		const edge = new Edge();
 		let burstT = -1;
@@ -71,10 +86,10 @@ export const chromaBurst: EffectDef = {
 					for (let s = 0; s < 3; s++) {
 						const radius = (u * (1 + s * 0.18) - s * 0.06) * maxR;
 						if (radius < 0) continue;
-						const d = Math.abs(g.dist[i] * maxR - radius);
+						const d = Math.abs(depth[i] * maxR - radius);
 						if (d > 0.28) continue;
 						const v = Math.pow(1 - d / 0.28, 2);
-						sample(palette, paletteArc(g.dist[i] * 0.8 + s * 0.33 + hueShift), v * gain, rgb);
+						sample(palette, paletteArc(depth[i] * 0.8 + s * 0.33 + hueShift), v * gain, rgb);
 						r += rgb[0];
 						gr += rgb[1];
 						b += rgb[2];

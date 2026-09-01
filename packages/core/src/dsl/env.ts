@@ -220,16 +220,27 @@ export class Presence {
 		this.sinceHit = Infinity;
 	}
 
-	/** `env` is the instrument's hit envelope, e.g. `f.kickEnv`. */
+	/**
+	 * `env` is the instrument's hit envelope, e.g. `f.kickEnv`.
+	 *
+	 * Time is accumulated in BEATS, not in seconds compared against a beat-derived threshold.
+	 * The two are algebraically identical while the tempo holds - which is every constant-tempo
+	 * track, so nothing in the library renders differently - and they part company the moment
+	 * it steps. Measured against seconds, a hold recomputed from the CURRENT period
+	 * retroactively re-decides whether hits that already happened still count: SICKO MODE goes
+	 * 136 to 77 bpm mid-track, which moves a four-beat hold from 1.72 s to 3.12 s in one frame,
+	 * and every kit-gated effect jumps its permission level with it. The idle transition does
+	 * the same thing harder, at 40 bpm against a track's 130.
+	 */
 	update(env: number, dt: number, beatPeriod: number): number {
 		if (env > this.level) {
 			this.level = env;
 			this.sinceHit = 0;
 		} else {
-			this.sinceHit += dt;
-			if (this.sinceHit > this.holdBeats * Math.max(1e-3, beatPeriod)) {
-				const tau = Math.max(1e-3, (this.releaseBeats * beatPeriod) / 3);
-				this.level *= Math.exp(-dt / tau);
+			this.sinceHit += dt / Math.max(1e-3, beatPeriod);
+			if (this.sinceHit > this.holdBeats) {
+				const tau = Math.max(1e-3, this.releaseBeats / 3);
+				this.level *= Math.exp(-dt / Math.max(1e-3, beatPeriod) / tau);
 			}
 		}
 		return this.level;

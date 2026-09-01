@@ -92,11 +92,13 @@ Two traps that have each cost a rewrite:
   passage, the spectrum is a fixed window well under it, so swapping one for the other at the
   same gain changes how much room an effect fills. Read the spectrum through a `Follower` for
   anything that should answer the music; use the envelopes for how loud a passage is.
-- **The `SLOT` ramp is not a hue wheel.** `deep`, `base` and `glow` are one hue at three
-  lightnesses, so a gradient across them is a brightness ramp; a second colour means crossing
-  past `white` toward `third`. Positions also differ in luminance, so a slot driven by a fast
-  signal is a brightness driven by a fast signal. Vary colour by POSITION freely; vary it over
-  TIME only slowly.
+- **The `SLOT` ramp is not a hue wheel, and its three spans are not alike.** Measured over 24
+  hues through the real ramp: `deep` to `base` is x12.5 in flux, a brightness step; `base` to
+  `glow` is x1.03 flux and x0.86 peak channel, a SATURATION move at constant light; `glow` to
+  `white` is x2.66. So a second colour means crossing past `white` toward `third`, and that
+  crossing is a brightness event. Vary colour by POSITION freely; vary it over TIME only
+  slowly, and only inside `base..glow`, which is the one span that costs no light - which also
+  makes `glow -> base` on a hit the cheapest punch in the system.
 
 Reach for the DSL before writing the loop by hand: `ringU`, `alphaFor`, `setPixel`,
 `fillSolid`, `stampOnStrip`, `ringsFor`/`scatter`, `fadeToBlack`, `Follower`, `PulseEnv`,
