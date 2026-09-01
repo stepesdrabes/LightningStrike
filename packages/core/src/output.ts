@@ -34,7 +34,7 @@ export function blend(
 }
 
 /** Uniform scale of all three channels, so hue and saturation survive exactly. */
-export function compressHighlights(buf: Float32Array, knee = 0.78, desat = 0.05): void {
+export function compressHighlights(buf: Float32Array, knee = 0.84, desat = 0.05): void {
 	const range = 1 - knee;
 	for (let i = 0; i < buf.length; i += 3) {
 		const max = Math.max(buf[i], buf[i + 1], buf[i + 2]);
@@ -189,7 +189,24 @@ const DITHER = [0, 4, 2, 6, 1, 5, 3, 7].map((v) => v / 8 - 0.5);
  * where the two are told apart. Anything reasoning about how bright something will actually be
  * has to cross it deliberately.
  */
-export const GAMMA = 2.2;
+export const GAMMA = 2.45;
+
+/**
+ * How much of the fixture's output the room actually gets, 0..1.
+ *
+ * A dimmer, not a curve: it lands after gamma, so every ratio the show composed survives it
+ * exactly and only the light comes down. Scaling before gamma would dim by `k^gamma` instead,
+ * which is the same picture at a different number but crushes the deep shades far faster.
+ *
+ * Unity, because the room is still being judged on one 5 m reel and the fixture is three. This is
+ * the knob for when all 12 m are hanging and the patio is too bright, and it is deliberately not
+ * gamma: dimming belongs here, where it costs no contrast, rather than in an exponent.
+ *
+ * 0.7 was tried against the reel and read as flat. The bottom of the range goes first - beds stop
+ * filling the room and lounge scenes stop reading as lit - so pair any real cut with the mixer's
+ * house floor rather than taking it alone.
+ */
+export const MASTER = 1;
 
 /**
  * Authoring domain to 8-bit PWM, with gamma and ordered dither. Applied exactly once, here.
@@ -200,16 +217,25 @@ export const GAMMA = 2.2;
  * round - the sRGB direction, which is what a monitor wants - drives that same value at 73 per
  * cent, and the whole show comes out washed out and pale with nothing left at the top.
  *
- * 2.2 rather than Adafruit's 2.8: at 2.8 every input from 1 to 27 maps to byte 0, so deep
- * shades vanish entirely, and that dead zone is exactly where slow fades live. WLED's realtime
- * path disables its own gamma by default precisely so the host can own this step.
+ * 2.45 rather than Adafruit's 2.8: at 2.8 every input from 1 to 27 maps to byte 0, so deep shades
+ * vanish entirely, and that dead zone is exactly where slow fades live. At 2.45 it is 1 to 20,
+ * which slow fades survive. WLED's realtime path disables its own gamma by default precisely so
+ * the host can own this step.
+ *
+ * It sat at 2.2 until the room was judged on real strips, where the floor read brighter than the
+ * hits it was supposed to sit under. Raising the exponent pulls the mids down and leaves full
+ * scale where it is, which is the only direction that buys a flash any contrast: a peak is
+ * already at 255 and the only way to make it read brighter is to lower what surrounds it.
  */
 export function quantize(buf: Float32Array, out: Uint8Array, gamma = GAMMA): void {
+	// Rounded to a whole code, or full scale straddles two of them and white shimmers across the
+	// dither positions, which is the fault the half-code bias below exists to prevent.
+	const master = Math.round(MASTER * 255);
 	for (let i = 0; i < buf.length; i++) {
 		const v = buf[i] <= 0 ? 0 : buf[i] >= 1 ? 1 : buf[i];
 		// An explicit floor with a half-code bias: without it a full-scale pixel lands on 254
 		// for half the dither positions and white visibly shimmers.
-		const byte = Math.floor(Math.pow(v, gamma) * 255 + DITHER[i & 7] + 0.5);
+		const byte = Math.floor(Math.pow(v, gamma) * master + DITHER[i & 7] + 0.5);
 		out[i] = byte < 0 ? 0 : byte > 255 ? 255 : byte;
 	}
 }

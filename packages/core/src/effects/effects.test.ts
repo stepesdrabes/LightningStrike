@@ -1,6 +1,6 @@
 import { makePalette } from '../color/palette.ts';
 import { describe, expect, it } from 'vitest';
-import { quantize } from '../output.ts';
+import { MASTER, quantize } from '../output.ts';
 import { DEFAULT_ROOM, buildGeometry } from '../geometry.ts';
 import { Mixer } from '../mixer.ts';
 import { BUILT_IN_EFFECTS } from './index.ts';
@@ -190,22 +190,29 @@ describe('output stage', () => {
 		// The exponent is gamma, not 1/gamma. An LED is linear in PWM duty and the eye is not,
 		// so half-brightness is about 22 per cent duty. Encoding the sRGB way round drives it at
 		// 73 per cent and every show comes out pale.
+		// Against MASTER rather than 255, because the dimmer is a scale on the encoder's output
+		// and not a change of curve: what this pins is the exponent's direction, which shows up
+		// as half-brightness landing near a fifth of full scale rather than near three quarters.
+		const full = Math.round(255 * MASTER);
 		const buf = Float32Array.from([1, 0.5, 0.25, 0, 0, 0]);
 		const out = new Uint8Array(6);
 		quantize(buf, out, 2.2);
-		expect(out[0]).toBe(255);
-		expect(out[1]).toBeGreaterThan(50);
-		expect(out[1]).toBeLessThan(62);
-		expect(out[2]).toBeGreaterThan(8);
-		expect(out[2]).toBeLessThan(16);
+		expect(out[0]).toBe(full);
+		expect(out[1] / full).toBeGreaterThan(0.19);
+		expect(out[1] / full).toBeLessThan(0.25);
+		expect(out[2] / full).toBeGreaterThan(0.03);
+		expect(out[2] / full).toBeLessThan(0.07);
 		expect(out[3]).toBe(0);
 	});
 
-	it('never shimmers a full-scale pixel below 255', () => {
+	it('never shimmers a full-scale pixel', () => {
+		// Full scale is whatever the master leaves of 255. What must not vary is that every dither
+		// position agrees on it.
+		const full = Math.round(255 * MASTER);
 		const buf = new Float32Array(24).fill(1);
 		const out = new Uint8Array(24);
 		quantize(buf, out, 2.2);
-		for (const byte of out) expect(byte).toBe(255);
+		for (const byte of out) expect(byte).toBe(full);
 	});
 
 	it('keeps deep shades reachable rather than crushing them to black', () => {
