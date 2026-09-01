@@ -249,9 +249,13 @@ function ringSpans(ringStart: number, ringLen: number, centre: number, count: nu
  * to walk order rather than inventing one.
  */
 function cornerLabel(a: StripSpec, b: StripSpec): string {
-	const short = (s: StripSpec) => s.name.split(' ').pop() ?? s.name;
-	const [p, q] = [short(a), short(b)];
+	const [p, q] = [runLabel(a), runLabel(b)];
 	return q === 'N' || q === 'S' ? `${q}${p}` : `${p}${q}`;
+}
+
+/** What tells a run from its neighbours, which for the frame is its compass letter. */
+function runLabel(s: StripSpec): string {
+	return s.name.split(' ').pop() ?? s.name;
 }
 
 function region(id: string, name: string, spans: LedSpan[]): RoomRegion {
@@ -268,12 +272,27 @@ function region(id: string, name: string, spans: LedSpan[]): RoomRegion {
  */
 export function roomRegions(g: Geometry): RoomRegion[] {
 	const out: RoomRegion[] = [region('all', 'Whole room', [{ firstLed: 0, ledCount: g.count }])];
+	const ring = g.strips.filter((s) => s.inPerimeter);
+
+	// The perimeter as it is wired rather than as it is drawn. A 5 m reel reaches one long run and
+	// one short one, so an output drives a pair and a bring-up has to be able to point at exactly
+	// what is built so far. Two spans rather than one, because contiguity is a property of how
+	// `stripSpecs` happens to lay the ring out and not something a region should assume. The beam
+	// is its own reel and is already a region below.
+	for (let i = 0; i + 1 < ring.length; i += 2) {
+		const [a, b] = [ring[i], ring[i + 1]];
+		out.push(
+			region(`line-${a.id}-${b.id}`, `${a.name} + ${runLabel(b)}`, [
+				{ firstLed: a.offset, ledCount: a.count },
+				{ firstLed: b.offset, ledCount: b.count }
+			])
+		);
+	}
 
 	for (const s of g.strips) {
 		out.push(region(`strip-${s.id}`, s.name, [{ firstLed: s.offset, ledCount: s.count }]));
 	}
 
-	const ring = g.strips.filter((s) => s.inPerimeter);
 	if (ring.length < 2) return out;
 
 	const ringStart = ring[0].offset;

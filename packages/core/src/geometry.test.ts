@@ -72,6 +72,18 @@ describe('regions', () => {
 		expect(ids).toContain('NW corner');
 	});
 
+	/**
+	 * One 5 m reel is one long run plus one short one, so this is the unit a board is fed during
+	 * a bring-up. It has to come out at exactly a reel, or the region is useless for the job.
+	 */
+	it('pairs the perimeter into the reels it is wired from', () => {
+		const lines = roomRegions(g).filter((r) => r.id.startsWith('line-'));
+		expect(lines.map((r) => r.name)).toEqual(['Frame N + E', 'Frame S + W']);
+		for (const line of lines) expect(line.count).toBe(300);
+		expect(lines[0].spans[0].firstLed).toBe(0);
+		expect(lines[1].spans[0].firstLed).toBe(g.strips[2].offset);
+	});
+
 	it('keeps a corner inside the ring rather than walking onto the beam', () => {
 		const beam = g.strips[4];
 		for (const region of roomRegions(g).filter((r) => r.id.startsWith('corner-'))) {
