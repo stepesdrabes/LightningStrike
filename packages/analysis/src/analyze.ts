@@ -18,6 +18,7 @@ import { detectDrums, snapTimesToOnsets, type DrumStream } from './drums.ts';
 import { extractFeatures } from './features.ts';
 import { detectMeter, type Meter } from './downbeats.ts';
 import { barStartsAtCuts, deriveGridCuts, resyncedCuts } from './gridedits.ts';
+import { barLinesFrom, phaseSegments } from './downbeatPhase.ts';
 import { handMapFingerprint, handSectionBars, type HandSection } from './handSections.ts';
 import { applyHeadLabels, type SectionPosteriors } from './headLabels.ts';
 import { assessMetricalLevel } from './metricalLevel.ts';
@@ -106,6 +107,12 @@ export interface AnalyzeInput {
 	tuning?: StructureTuning;
 	/** Labelling-stage dials, same contract as `tuning`. */
 	labels?: LabelTuning;
+	/**
+	 * What a downbeat-phase restart costs, same contract as `tuning`: a bench dial, never
+	 * passed by shipping code. `Infinity` pins the track to one phase for its whole length,
+	 * which is the grid that shipped before the walk existed and so is the A side of any A/B.
+	 */
+	phaseResetCost?: number;
 	/**
 	 * Per-frame section posteriors from the learned labeller (MusicFM + section head),
 	 * when the caller ran it. Replaces the rules' kind assignment and the lyric
@@ -221,6 +228,9 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// symmetric under it), it declined on the one track with verified edits and
 	// hallucinated one on a praised sentinel. Its postmortem lives in the round record;
 	// it may return only with an asymmetric voter, and behind the same instruments.
+	// Set below, once the walk has had its say on a track the listener has marked.
+	let barPhase = meter.phase;
+
 	let bars = null as ReturnType<typeof barSynchronous> | null;
 	const beatAt = (t: number): number => {
 		let best = 0;
@@ -237,7 +247,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 						input.sectionMapBoundaries,
 						grid.beats,
 						meter.beatsPerBar,
-						meter.phase
+						barPhase
 					).map(beatAt)
 				: [];
 	// A new song does not inherit the old one's count of one. Marked movements are cuts for
@@ -245,7 +255,39 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// containing the switch is shortened so the switch itself lands on a bar line. Unlike a
 	// map's fine drag they do NOT hand the count back: the rest of the track belongs to the
 	// new song, so it keeps counting from the switch.
-	const movementCuts = (input.movements ?? []).map(beatAt);
+	//
+	// WHICH beat, though, is not the listener's to supply: a press carries one to two seconds
+	// of reaction lag and the handover is explicit that no sub-bar meaning may be read from a
+	// mark. So the mark says which bar and the model's own downbeats say which beat inside it
+	// - `phaseSegments` walks the downbeat stream and its restarts are read here, within one
+	// bar of the mark and nowhere else. On SICKO MODE that lands the switch on 60.38 s where
+	// the owner marked 60.5, the kick/snare phase profile scores +1.024 for the same beat, and
+	// the shipped uniform grid was a beat late for the remaining 232 seconds of the track.
+	//
+	// Deliberately NOT applied off a mark. The unrestricted walk raises phase carry across the
+	// whole low-confidence cohort - Cigo 32% -> 66%, Safir 52% -> 87% - but re-bars those
+	// tracks, and `bench/phasegrid.ts` scores that at five worse against boundaries the room
+	// has praised. Carry is not a thing the room has ever heard. The walk is measurable there
+	// whenever it is worth re-opening; here it only sharpens an assertion already made.
+	const phasing =
+		input.downbeats && input.downbeats.length > 2 && (input.movements?.length ?? 0) > 0
+			? phaseSegments(grid.beats, input.downbeats, meter.beatsPerBar, input.phaseResetCost)
+			: null;
+	// A mark says the track is several records, so the FIRST one is owed its own count of one
+	// as much as the others are. Taking the walk's opening phase here and nothing else is what
+	// separates this from re-phasing the library: no bar line moves that a mark did not ask
+	// for, and an unmarked track never reaches this line at all. SICKO MODE's carry is 70.8%
+	// on the meter's phase and 85.8% on the walk's.
+	if (phasing) barPhase = phasing[0].phase;
+	const phaseLines = phasing
+		? barLinesFrom(phasing, grid.beats.length, meter.beatsPerBar)
+		: [];
+	const movementCuts = (input.movements ?? []).map((t) => {
+		const mark = beatAt(t);
+		const inReach = phaseLines.filter((b) => Math.abs(b - mark) <= meter.beatsPerBar);
+		if (inReach.length === 0) return mark;
+		return inReach.reduce((best, b) => (Math.abs(b - mark) < Math.abs(best - mark) ? b : best));
+	});
 	const drawn = (input.handSections ?? []).slice(1);
 	const cuts = resyncedCuts(
 		[...mapCuts, ...movementCuts],
@@ -253,15 +295,15 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		drawn.map((s) => beatAt(s.startTime)),
 		grid.beats.length,
 		meter.beatsPerBar,
-		meter.phase
+		barPhase
 	);
 	if (cuts.length > 0) {
 		bars = barSynchronousAt(
 			beatFeatures,
-			barStartsAtCuts(grid.beats.length, meter.beatsPerBar, meter.phase, cuts)
+			barStartsAtCuts(grid.beats.length, meter.beatsPerBar, barPhase, cuts)
 		);
 	}
-	bars ??= barSynchronous(beatFeatures, meter.beatsPerBar, meter.phase);
+	bars ??= barSynchronous(beatFeatures, meter.beatsPerBar, barPhase);
 
 	// Detection before structure, because a boundary is refined onto the bar the kit returns
 	// at. Only the QUANTISE step needs to know which bars repeat which, and it still runs
@@ -375,7 +417,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		quantiseOnsets(stream, {
 			beats: grid.beats,
 			beatsPerBar: meter.beatsPerBar,
-			downbeatPhase: meter.phase,
+			downbeatPhase: barPhase,
 			barGroup,
 			duration
 		});
@@ -568,12 +610,17 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		});
 	}
 
+	// On the whole-file scale, because these two are what `energyRank` sorts, and a rank is a
+	// comparison ACROSS the track by definition. Two movements each levelled against
+	// themselves both reach 1.0, so ranking on the per-movement column hands the peak - the
+	// one look the catalog reserves - to whichever song has the tighter distribution rather
+	// than to the loudest passage. Identical on a track with no movement marked.
 	const sections: SectionSpan[] = plan.segments.map((s, index) => {
 		let sum = 0;
 		let peak = 0;
 		for (let b = s.startBar; b < s.endBar; b++) {
-			sum += plan.energy[b];
-			if (plan.energy[b] > peak) peak = plan.energy[b];
+			sum += plan.energyGlobal[b];
+			if (plan.energyGlobal[b] > peak) peak = plan.energyGlobal[b];
 		}
 		const len = Math.max(1, s.endBar - s.startBar);
 		return {
@@ -616,12 +663,26 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// it by interpolating between bar centres also leads the audio by half a bar.
 	const beatCount = Math.max(0, beatFeatures.count);
 	const beatDb = bandLevels(features.spec, beatFeatures.time, beatCount);
+	// Levelled within each movement, exactly as the bar table's own energy is. They are the
+	// same measurement at two resolutions, so a track where one is levelled per movement and
+	// the other across the whole file has cues written against one idea of loud and light
+	// driven by another - and only on the tracks a mark exists for, which is the worst place
+	// for them to disagree. The spans are in beats here because that is what this call counts.
+	const movementBeats = movementBars.map((b) => {
+		const t = bars.time[b];
+		let best = 0;
+		for (let i = 1; i < beatCount; i++) {
+			if (Math.abs(beatFeatures.time[i] - t) < Math.abs(beatFeatures.time[best] - t)) best = i;
+		}
+		return best;
+	});
 	const beat = levelEnvelopes(
 		beatDb,
 		loudness.shortTerm,
 		loudness.shortTermFps,
 		beatFeatures.time,
-		beatCount
+		beatCount,
+		movementBeats
 	);
 
 	// Assessed on the grid that is actually shipping, so a track corrected once does not keep
@@ -650,7 +711,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 			firstBeat: round6(grid.firstBeat),
 			beatPeriod: round6(grid.beatPeriod),
 			beatsPerBar: meter.beatsPerBar,
-			downbeatPhase: meter.phase,
+			downbeatPhase: barPhase,
 			phraseAnchorBar: plan.phraseAnchorBar,
 			barsPerPhrase: BARS_PER_PHRASE,
 			constant: grid.constant,
@@ -675,6 +736,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		movements: movementBars.length > 0 ? movementBars : undefined,
 		moments: buildMoments(barRows, sections),
 		beats: Array.from(grid.beats, round3),
+		downbeats: input.downbeats ? input.downbeats.map(round3) : undefined,
 		envelopes: {
 			energy: Array.from(beat.energy, pct),
 			bands: Array.from(beat.bands, pct)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { carveRingOut, snapToPhrases, type Segment } from './arrange.ts';
+import { carveRingOut, levelEnvelopes, snapToPhrases, type Segment } from './arrange.ts';
 
 /** A 16-bar final drop whose last `ring` bars have the kick out and the level collapsed. */
 function ringOut(ring: number): { segments: Segment[]; energy: Float32Array; kicks: Int32Array } {
@@ -102,5 +102,48 @@ describe('snapToPhrases', () => {
 			{ startBar: 73, endBar: 82, kind: 'groove', group: 1 },
 			{ startBar: 82, endBar: 98, kind: 'drop', group: 2 }
 		]);
+	});
+});
+
+describe('levelEnvelopes', () => {
+	/** Two movements, the second 20 dB hotter than the first. */
+	function twoSongs(bars: number) {
+		const bandsDb = new Float32Array(bars * 4);
+		for (let b = 0; b < bars; b++) {
+			const level = b < bars / 2 ? -40 : -20;
+			// A little spread inside each half, so normalising within one is not a divide by zero.
+			for (let k = 0; k < 4; k++) bandsDb[b * 4 + k] = level + (b % 5);
+		}
+		const time = Float64Array.from({ length: bars + 1 }, (_, b) => b);
+		const shortTerm = new Float32Array(bars);
+		for (let b = 0; b < bars; b++) shortTerm[b] = b < bars / 2 ? -40 : -20;
+		return { bandsDb, time, shortTerm };
+	}
+
+	it('levels each movement against itself, and the whole file against itself', () => {
+		const bars = 40;
+		const { bandsDb, time, shortTerm } = twoSongs(bars);
+		const { energy, energyGlobal } = levelEnvelopes(bandsDb, shortTerm, 1, time, bars, [bars / 2]);
+		const meanOf = (a: Float32Array, from: number, to: number) => {
+			let sum = 0;
+			for (let b = from; b < to; b++) sum += a[b];
+			return sum / (to - from);
+		};
+		const quietWithin = meanOf(energy, 0, bars / 2);
+		const loudWithin = meanOf(energy, bars / 2, bars);
+		const quietWhole = meanOf(energyGlobal, 0, bars / 2);
+		const loudWhole = meanOf(energyGlobal, bars / 2, bars);
+		// Levelled within, the quiet song reaches the loud one: that is the point of the
+		// column, and the reason nothing may COMPARE the two on it.
+		expect(Math.abs(quietWithin - loudWithin)).toBeLessThan(0.1);
+		// Levelled across the file, 20 dB apart stays 20 dB apart.
+		expect(loudWhole - quietWhole).toBeGreaterThan(0.5);
+	});
+
+	it('returns one and the same column when no movement is marked', () => {
+		const bars = 40;
+		const { bandsDb, time, shortTerm } = twoSongs(bars);
+		const { energy, energyGlobal } = levelEnvelopes(bandsDb, shortTerm, 1, time, bars);
+		expect(Array.from(energyGlobal)).toEqual(Array.from(energy));
 	});
 });

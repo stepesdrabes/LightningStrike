@@ -1,6 +1,6 @@
 import type { SectionKind } from './frame.ts';
 
-export const ANALYSIS_VERSION = 23;
+export const ANALYSIS_VERSION = 24;
 
 export interface TempoGrid {
 	/** Median over the track. For display and for a default time constant, never for timing. */
@@ -247,6 +247,16 @@ export interface TrackAnalysis {
 	moments: Moment[];
 	/** Every tracked beat, seconds. Exact even where the constant grid is only a fit. */
 	beats: number[];
+	/**
+	 * The tracker's own downbeats, seconds, when a model ran; absent when none did.
+	 *
+	 * A strict subset of `beats` (verified across the cached corpus to the sample), and about
+	 * 900 bytes on a four-minute track against the spectrum's 400 KB. Stored because the bar
+	 * table is a DECISION made from these, and without them nothing downstream can ask whether
+	 * that decision was right, re-run the phase walk at another price, or A/B a grid without
+	 * loading a 79 MB graph again.
+	 */
+	downbeats?: number[];
 	envelopes: Envelopes;
 	spectrum: SpectrumTrack;
 	stereo: StereoImage;

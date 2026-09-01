@@ -687,6 +687,35 @@ describe('marked movements', () => {
 		expect(analysis.movements).toBeUndefined();
 	});
 
+	// A press carries a second or two of reaction lag, and the handover forbids reading any
+	// sub-bar meaning from a mark. So the mark chooses the bar and the model's own downbeats
+	// choose the beat inside it: SICKO MODE's switch is marked at 60.5 s and belongs at 60.38,
+	// which no rounding of the mark alone can reach.
+	it('places a movement on the model downbeat rather than on the pressed beat', () => {
+		const period = 60 / fixture.bpm;
+		const beats = Array.from({ length: Math.floor(fixture.duration / period) }, (_, i) => i * period);
+		// Downbeats on phase 2, so the mark's own nearest beat is never the answer by luck.
+		const downbeats = beats.filter((_, i) => i >= 2 && (i - 2) % 4 === 0);
+		const trueDownbeat = 82;
+		const base = {
+			mono: fixture.mono,
+			sampleRate: fixture.sampleRate,
+			duration: fixture.duration,
+			hash: 'test',
+			trackId: 'file-000000000000' as const,
+			title: 'Synthetic Arrangement',
+			// Pressed nine tenths of a beat late, so the nearest beat is the WRONG one.
+			movements: [beats[trueDownbeat] + period * 0.9]
+		};
+		const guided = analyzeTrack({ ...base, beats, downbeats });
+		const blind = analyzeTrack({ ...base, beats });
+		const barOf = (a: ReturnType<typeof analyzeTrack>) => barTimeAt(a.tempo, a.movements![0]);
+		expect(barOf(guided)).toBeCloseTo(beats[trueDownbeat], 2);
+		// And the same call without the downbeat stream lands on the pressed beat instead,
+		// which is the behaviour this exists to replace.
+		expect(barOf(blind)).toBeCloseTo(beats[trueDownbeat + 1], 2);
+	});
+
 	it('starts a section on the marked bar and reports it', () => {
 		const marked = withMovement(stageTime(3));
 		expect(marked.movements).toHaveLength(1);

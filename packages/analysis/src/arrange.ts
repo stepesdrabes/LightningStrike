@@ -33,8 +33,13 @@ export interface Segment {
 
 export interface Arrangement {
 	segments: Segment[];
-	/** count per bar, 0..1. */
+	/** count per bar, 0..1, levelled within each movement. */
 	energy: Float32Array;
+	/**
+	 * The same, levelled across the whole file: the one scale every ACROSS-movement comparison
+	 * has to be made on. Identical to `energy` unless a movement is marked.
+	 */
+	energyGlobal: Float32Array;
 	/** count * NUM_BANDS per bar, 0..1. */
 	bands: Float32Array;
 	events: EventTag[][];
@@ -283,17 +288,33 @@ export function levelEnvelopes(
 	time: Float64Array,
 	count: number,
 	movements: readonly number[] = []
-): { energy: Float32Array; bands: Float32Array } {
+): { energy: Float32Array; energyGlobal: Float32Array; bands: Float32Array } {
 	const starts = spansFor(movements, count);
+	const whole = [0, count];
 	const bands = new Float32Array(count * NUM_BANDS);
+	const bandsWhole = new Float32Array(count * NUM_BANDS);
 	for (let k = 0; k < NUM_BANDS; k++) {
 		const slice = new Float32Array(count);
 		for (let b = 0; b < count; b++) slice[b] = bandsDb[b * NUM_BANDS + k];
 		const n = normaliseWithin(slice, starts);
-		for (let b = 0; b < count; b++) bands[b * NUM_BANDS + k] = n[b];
+		const w = starts.length === 2 ? n : normaliseWithin(slice, whole);
+		for (let b = 0; b < count; b++) {
+			bands[b * NUM_BANDS + k] = n[b];
+			bandsWhole[b * NUM_BANDS + k] = w[b];
+		}
 	}
+	const energy = barEnergy(bands, count, loudnessOn(shortTerm, shortTermFps, time, count, starts));
 	return {
-		energy: barEnergy(bands, count, loudnessOn(shortTerm, shortTermFps, time, count, starts)),
+		energy,
+		// The same measurement levelled across the whole file. Two movements each levelled
+		// against themselves both reach 1.0, so any comparison BETWEEN them is arithmetic on
+		// two different scales - and "which passage is the peak of this show" is exactly such
+		// a comparison. Identical to `energy` on the single-span track, which is nearly all of
+		// them, so nothing without a mark can tell the two apart.
+		energyGlobal:
+			starts.length === 2
+				? energy
+				: barEnergy(bandsWhole, count, loudnessOn(shortTerm, shortTermFps, time, count, whole)),
 		bands
 	};
 }
@@ -365,7 +386,7 @@ export function arrange(
 ): Arrangement {
 	const count = bars.count;
 
-	const { energy, bands: bandsN } = levelEnvelopes(
+	const { energy, energyGlobal, bands: bandsN } = levelEnvelopes(
 		bandsDb,
 		shortTerm,
 		shortTermFps,
@@ -385,10 +406,14 @@ export function arrange(
 		});
 	}
 	if (segments.length === 0) {
-		return { segments, energy, bands: bandsN, events, phraseAnchorBar: 0 };
+		return { segments, energy, energyGlobal, bands: bandsN, events, phraseAnchorBar: 0 };
 	}
 
 	const segEnergy = segments.map((s) => mean(energy, s.startBar, s.endBar));
+	// Every question of the form "which of these is the biggest" is asked on the whole-file
+	// scale, because two movements levelled against themselves both reach 1.0 and comparing
+	// them on their own scales hands the peak to whichever song has the tighter distribution.
+	const segEnergyWhole = segments.map((s) => mean(energyGlobal, s.startBar, s.endBar));
 	const { states: kit, audible } = readDrums(segments, kicksPerBar, snaresPerBar);
 	const segSub = segments.map((s) => meanBand(bandsN, s.startBar, s.endBar, 0));
 
@@ -403,7 +428,7 @@ export function arrange(
 	let biggestStep = 0;
 	let biggestKickStep = 0;
 	for (let i = 1; i < segments.length; i++) {
-		biggestStep = Math.max(biggestStep, segEnergy[i] - segEnergy[i - 1]);
+		biggestStep = Math.max(biggestStep, segEnergyWhole[i] - segEnergyWhole[i - 1]);
 		biggestKickStep = Math.max(biggestKickStep, kit[i].kick - kit[i - 1].kick);
 	}
 	// Both arms behind `audible`, not just the kick one: a drop is a rhythmic impact, and
@@ -498,10 +523,10 @@ export function arrange(
 		for (const i of undecided) {
 			if (segments[i].kind !== 'groove') continue;
 			if (segments[i].startBar < 2 * PHRASE_BARS) continue;
-			if (peak < 0 || segEnergy[i] > segEnergy[peak]) peak = i;
+			if (peak < 0 || segEnergyWhole[i] > segEnergyWhole[peak]) peak = i;
 		}
-		const loudest = Math.max(...segEnergy);
-		if (peak >= 0 && segEnergy[peak] >= loudest - 1e-9) {
+		const loudest = Math.max(...segEnergyWhole);
+		if (peak >= 0 && segEnergyWhole[peak] >= loudest - 1e-9) {
 			const g = segments[peak].group;
 			const pooled = g >= 0 ? groupMargin.get(g) : undefined;
 			const z = pooled && pooled.weight > 0 ? pooled.acc / pooled.weight : (margin.get(peak) ?? 0);
@@ -537,7 +562,7 @@ export function arrange(
 	// A track with dynamics has a peak whether or not the step test caught it.
 	if (hasDrops && !segments.some((s) => s.kind === 'drop')) {
 		let best = 0;
-		for (let i = 1; i < segments.length; i++) if (segEnergy[i] > segEnergy[best]) best = i;
+		for (let i = 1; i < segments.length; i++) if (segEnergyWhole[i] > segEnergyWhole[best]) best = i;
 		segments[best].kind = 'drop';
 	}
 
@@ -688,7 +713,7 @@ export function arrange(
 
 	placeEvents(segments, bandsN, kicksPerBar, snaresPerBar, count, events);
 
-	return { segments, energy, bands: bandsN, events, phraseAnchorBar: anchor };
+	return { segments, energy, energyGlobal, bands: bandsN, events, phraseAnchorBar: anchor };
 }
 
 /**
