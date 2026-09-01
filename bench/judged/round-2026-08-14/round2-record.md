@@ -1458,3 +1458,218 @@ files added; every app test ran against a scratch cache.
 
 The instrument is `bench/mapland.ts`: it prints, for one track, where every drawn boundary
 lands in the preview and in the adoption and whether the two agree, and it never writes.
+
+## Round 9 (2026-08-27/28): the backbeat, the palette fact, and four calm kick effects
+
+Three fronts, all opened by measurement rather than by argument, and all four of the room's
+answers came back the same session.
+
+### SICKO MODE was lit on the backbeat for 232 seconds
+
+The tracked beat stream switches tempo at beat 123 (59.600 s): beats 110-122 run at ~0.43 s
+(136-143 bpm), beat 123 onward at ~0.78 s (77 bpm). Three independent substrates put the new
+song's downbeat on beat 124 (60.380 s):
+
+- the owner's judge mark, 60.5 s;
+- the kit's own phase profile over the whole second movement - kick owns phases 1 and 3
+  (0.364, 0.424), snare owns 0 and 2 (0.636, 0.644), so the shipped downbeat sat on a SNARE.
+  Scored as kick-minus-snare the shipped phase is -0.565 and the best is +0.412: a gain of
+  +1.024, against a largest whole-track disagreement of 0.175 anywhere in cache114;
+- a Viterbi over Beat This's own downbeats, whose first restart produces a bar line at
+  60.380.
+
+The shipped grid put bar 32 at 61.160 s. Every one of the ~75 bars after it inherited that.
+The owner confirmed by ear ("kicks I think") and, separately, confirmed the walk's SECOND
+restart at 175.8 s as a real third song - a point nothing else in the pipeline sees.
+
+### The phase walk, and why it ships scoped
+
+`packages/analysis/src/downbeatPhase.ts`. State is each beat's position in the bar, stepping
+on is free, restarting costs a fixed price. Measured as PHASE CARRY (share of the model's own
+downbeats landing on a shipped bar line), unrestricted at cost 4:
+
+- 60 Harmonix: **43 of 60 take zero resets**, median carry 99.6% -> 100.0%, and the ones it
+  does touch are repaired (68.7% -> 100.0%, 67.2% -> 98.5%).
+- Every praise sentinel takes zero resets: Le Freak, EARFQUAKE, Pistacie, Vitej, Hannah
+  Montana, Praha/Viden, Kisses - all unchanged.
+- The whole named phase-suspect cohort improves: Cigo 32->66, Thinkin 36->69, SICKO 39->86,
+  bad guy 47->76, KITN 47->87, Safir 52->87, Titi 54->89, Snooze 56->79, Melanz 40->80.
+
+That is the round-4 hypothesis, which was recorded as REFUTED. It was right; the instrument
+was wrong. The old probe found low-confidence tracks have INTERNALLY inconsistent model
+downbeats and concluded the model could not help. The cause is the opposite: the model tracks
+resets a single uniform four-beat walk cannot express, so its downbeats only look inconsistent
+when forced through that walk.
+
+**It still ships scoped to listener-marked movements**, and that is measured, not cautious.
+Re-phasing re-bars a track. `bench/phasegrid.ts` scored the unrestricted run at 2 hit / 4
+closer / 17 same / **5 worse**, including a praised KITN seam moving 0.64 s. Carry is not
+something the room has heard; a praised boundary is. Scoped, `earlybars` returns to its exact
+floor. On a marked track the walk also supplies the OPENING phase (SICKO MODE 70.8% -> 85.8%),
+because a mark asserts the track is several records and the first one is owed its own count of
+one; no bar line moves that a mark did not ask for.
+
+**Two carry numbers for SICKO MODE, and they are both real.** 39.2% -> 85.8% is the walk
+against the model's downbeats with no other grid edits. The SHIPPED blob reads 54.2%, and the
+misses cluster at 0-53 s and 104-175 s while agreeing exactly around the switch: those are the
+stretches where the owner's 14 off-grid map boundaries cut the grid to where they were drawn,
+and the map beats the model there by design. Worth putting to the owner: that map was drawn
+against the OLD wrong-phase grid, so some of its cuts may now be fighting a phase that is
+right. Redrawing SICKO MODE's map is the cheapest way to find out.
+
+**A bar-numbered instrument cannot gate anything that re-phases**, which is why phasegrid
+exists. A reset renumbers every bar after it: one KITN "WORSE" row was the same instant to the
+millisecond (142.18 s both sides), and a Safir row scored WORSE while moving CLOSER to the
+owner's mark (66.56 -> 67.40 against a mark at 67.1). Known limit of phasegrid: it converts the
+target bar through the A-side grid, so A scores 0.00 by construction wherever A's boundary IS
+the target bar. `bench/targets.ts` now holds the frozen ground truth for both instruments, so
+they cannot drift apart.
+
+### Three effect repairs, each measured before and after
+
+- **`chromaBurst` was dark for the first half of its life.** `g.dist` on this fixture spans
+  0.554..0.998 and never reaches 0, because every LED is coplanar and head height is a constant
+  floor under the radius. Swept against the raw figure its shells first lit at u = 0.447-0.488,
+  by which point the `(1-u)^2` gain was down to 0.26-0.31. Measured through the mixer over its
+  own life: **8 frames lit, peak byte 40** - barely over the 24 where a pixel reads as lit.
+  Re-based the way kickTunnel and subSwell already were: **62 frames, peak byte 145**, which
+  sits with tideBloom (159) and shutterCut (162), so the authored gain needed no scaling. This
+  is the effect the picker hands the peak of nearly every track. (Bytes re-taken 2026-08-31 at
+  the owner's new GAMMA 2.45 / MASTER 0.7; at the 2.2 calibration they read 43 -> 211.)
+- **`subSwell` read a signal that cannot move inside a bar.** It asked for a 12 ms attack from
+  `f.bands[Band.Sub]`, which steps once a beat. Moved to `bandBetween(f, 0, 0.12)`; gain 1.4 ->
+  2.1, chosen by measuring the two scales on the gate's own journey (band p90 is 1.46x the
+  spectrum's, and bassRing paid 1.47 for the same move). Level stays on the envelope: how loud
+  a passage is, is what the band is good for.
+- **`base -> glow` is not a brightness ramp.** Measured over 24 hues through the real ramp:
+  deep->base **x12.50** flux, base->glow **x1.03** flux and **x0.86** peak channel, glow->white
+  **x2.66**. CLAUDE.md said all three were "one hue at three lightnesses"; that is right for the
+  first and wrong for the second, which is a SATURATION move at constant light. Five effect
+  comments also claimed white is 3.7x glow. All corrected. The consequence is a mechanism the
+  catalog never used: `glow -> base` on a hit is punch that costs no light, cannot move the
+  auto-exposure and cannot trip the highlight compressor.
+
+### Four restrained kick effects, and the instrument that judged them
+
+The catalog had **eleven** effects declaring `taste.kit: 'kick'` and **none below energy 3**;
+nine of the eleven are impacts, bursts or whole-room level pulses, and six are in the burst
+family of which at most one appears per show. Meanwhile intro, outro and breakdown draw their
+texture from exactly **three** carrying accents, none of which reads the kit at all. The
+owner's complaint was structural, not taste: there was no restrained kick-forward band for the
+picker to reach into.
+
+`react` from the character probe cannot judge these - it measures bytes moved over a journey,
+which a constant-flux design minimises by construction. So the question was asked directly:
+how far does the room move at the instant a kick lands, taking the WEAKEST tenth of the hits
+rather than the strongest, because an effect whose average kick reads and whose quiet ones
+vanish stutters.
+
+| effect | weakest | median | max | approach | |
+|---|---|---|---|---|---|
+| `emberBump` | 26 | 27 | **27** | 26 | new: `glow -> base` on the kick, constant flux |
+| `crossbeam` | 20 | 26 | **31** | 24 | new: conserved trade, perimeter <-> beam |
+| `lean` | 1 | 1 | 1 | **58** | new: leans over the last quarter-beat, stops dead on it |
+| counterweight | 17 | 29 | 53 | 19 | the one restrained incumbent |
+| pump | 36 | 52 | 71 | 48 | wild |
+| impulseSpin | 80 | 118 | 133 | 105 | wildest |
+| moshSlam / ricochet | 0 / 158 | 0 / 164 | 155 / 170 | | fires rarely, enormously |
+
+The two arrival-shaped ones land with counterweight and well under pump, and their weakest and
+median are nearly equal - every kick reads and none dominates, which is the shape "punchy but
+not distracting" actually has. Their MAXIMA are the lowest of any kick effect in the catalog:
+they cannot spike. The wild ones invert it, with a weakest of ZERO and a maximum near the top.
+
+`lean` is a third shape and it nearly got mis-read as dead. It reads 1/1/1 at the arrival and
+58 in the APPROACH, because all of its movement is in the quarter-beat before the hit. Worse,
+it scored a healthy-looking 33/35/72 BEFORE a bug in it was fixed - and those numbers were
+measuring the bug, a snap at the beat the gesture was written not to have. The approach column
+was added to the instrument for exactly this, and the lesson is on the record: a punch reading
+that looks healthy is not evidence the effect is right.
+
+All of these are BYTES and they move with the room's calibration. First taken at GAMMA 2.2 with
+no master dimmer they read about 40% higher; the table above is at the owner's shipped GAMMA
+2.45 / MASTER 0.7. The ordering did not move at all.
+
+`subBreath` (bed, carries) is the fourth and does not punch (3/3/13) on purpose: it answers the
+BASS, holding the room's mean level dead flat and moving only the depth of a two-lobe standing
+pattern, so the eye's adaptation never shifts and the hundredth note lands like the first. It
+is the carrying, room-filling, sub-driven bed the planner could not previously reach - subThrob
+and bassRing are the same signal and both declare `carries: false` because both go dark between
+notes. Journey reactivity 0.249 against breathe's 0.312.
+
+### The editing loop, and the blocker the owner reported
+
+"switch is exactly THERE (I can't drag the section there exactly, only slightly after it)" was
+a real defect with an exact cause: `ShowStrip.svelte` took its minimum-section margin from the
+MEDIAN bar (`beatPeriod * beatsPerBar` = 3.09 s on SICKO MODE) while the local bar there is
+1.72 s, so a plain drag was clamped to >= 61.81 s and could not reach 60.4 at all. The keyboard
+nudge already argued this in its own comment; the pointer drag never got it. Now both read
+`barDurationAt`.
+
+Two normalisation faults, both live only on marked tracks and both shipped BY the movement
+slice:
+
+- `arrange` passed `movements` to `levelEnvelopes` and `analyze.ts` did not, so cue levels were
+  levelled per movement while `envelopes` - what every effect actually modulates with - was
+  levelled across the whole file.
+- `segEnergy` is per-movement normalised and was then compared ACROSS movements in four places
+  plus `energyRank`. Two movements each levelled against themselves both reach 1.0, so the peak
+  - the one look the catalog reserves - went to whichever song had the tighter distribution.
+  `levelEnvelopes` now returns `energyGlobal` beside `energy`, and every "which of these is
+  biggest" question reads it. Identical on a single-span track, so nothing unmarked can tell.
+
+### Round-9 gates
+
+858 tests (836 + 22), typecheck clean, `earlybars` **20 hit / 0 closer / 8 same / 0 worse of
+28** - the floor, unmoved. ANALYSIS_VERSION 24 (the model's downbeats are now stored, ~900
+bytes a track, so the walk is re-runnable and phasegrid is answerable from a blob).
+SHOW_VERSION 20.
+
+### One app, one cache
+
+The owner asked for a single build: "the old AB tests were finished and C won every time".
+cache-C was verified a strict superset of A and B - nothing in either that was not in C,
+judge files included - so it is now simply `cache`, and the other two are renamed to
+`cache-A-archive` / `cache-B-archive` rather than deleted. `/Applications/LightningStrike.app`
+is the only bundle, so `bundle_suffix()` returns None and it reads that one cache.
+
+Note for anyone reading the judge files: the owner's "NEW SONG HERE" marks arrived as NOTES,
+not as movement marks, so `movements` was still empty and the phase fix would not have applied.
+They were converted (SICKO MODE 60.5/176.2, Melanz 169.7/205.8) as a patch leaving every other
+field alone. A note describes; only a movement mark cuts the grid.
+
+### The download path, delegated mid-round
+
+The owner, while judging: "The youtube downloading fails at least twice for almost EVERY song
+now. I don't know what happened, but this has been going on for a long time now." Handed to a
+subagent so the room work could continue, with hard boundaries: the ingest path only, no
+commits, and nothing near the uncommitted round-9 tree.
+
+The standing hypothesis going in was wrong in the way that mattered. It read as yt-dlp's own
+client fallback chain logging harmless attempts as failures - a noise problem. It was a total
+outage. yt-dlp on the machine was 2026.07.04, and YouTube had stopped honouring media URLs
+signed for the `android_vr` player client, which that binary asks for on every track. Six
+cached tracks at three attempts each: 18 of 18 failures. The same six on 2026.08.19: 6 of 6
+first try, picking `visionos` instead.
+
+The owner's "fails twice then succeeds" was the earlier, intermittent stage of the same decay -
+which `decode.ts` already documents from measurement ("of fifty tracks, twelve failed this way
+and a plain re-run recovered seven"). As YouTube completed the client migration it went from
+intermittent to absolute. Because metadata lookups kept working, tracks still resolved and
+displayed and only died at the download, which is very likely why a total failure still felt
+partial. Worth remembering as a diagnostic shape: a report of PARTIAL failure can be a total
+one seen through a path that still half-works.
+
+What made it opaque was two nested retry layers - three in-process, then up to three
+queue-level a minute apart - which against a deterministic 403 is up to nine identical
+downloads and several minutes per track, ending in a bare "HTTP Error 403". The fix is about
+honesty rather than mechanism: a 403 from a binary older than 45 days is not retried and says
+why. 250 s and two retries becomes 2.6 s and none.
+
+Deliberately not done: pinning `--extractor-args youtube:player_client=...`. On the stale
+binary only `web_embedded` worked, so pinning would have masked the symptom while hard-coding a
+workaround that goes stale itself and overrides a current binary's working default chain - the
+argument README:434 already makes about not bundling yt-dlp. Also left: there is still no
+staleness check at STARTUP. `apps/desktop/src-tauri/src/env.rs` names MISSING tools only. The
+naming went on the failure path instead, which covers `npm run dev` as well and speaks only
+when something actually broke, but an age line at launch is still worth having.

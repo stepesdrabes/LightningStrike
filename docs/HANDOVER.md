@@ -1,111 +1,107 @@
 # Handover
 
-State as of 2026-08-18 (round 8 in flight): v23 / SHOW 18 / CONTEXT 3, everything
-committed through the section-editor round (`607ab59`, `1448ff1`, `a1e32e9`), 836 tests
-green. This file is the CAMPAIGN - the analysis,
-the engine and what the room hears. Multi-tempo is researched and three slices have
-shipped; step 4 of it is the owner's to do together, and the room owes two rounds a
-listen. The section-editor defect (it ignored the owner's drawn boundaries, and the
-Preview/Original toggle stuck) is FIXED and unheard - first-hour item 0. The map
-loop that both efforts stand on: A hand-drawn map decides its track outright - grid
-and sections both - and it is heard THE NEXT PLAY, not the next version bump: the
-analysis stamps the map it adopted (`TrackAnalysis.handMap`) and ingest re-analyses
-on any difference, redraw and delete included. Adoption is room-confirmed: Blinding
-Lights 3* -> 5*, Ponyboy 2* -> "way better", Hannah's sectioning praised, and the
-owner hand-arranged Snooze. Package C (lyric-assertive placement) is DEAD - the
-owner's Snooze and Blinding Lights maps disagree about the hook evidence, so it
-would fix one and wreck the other. SHOW 17 answers Ponyboy's one complaint: a
-drop-class passage that measurably pounds draws its looks a band harder.
-Start at "If you are the next session" near the end, then come back to the top.
-`docs/EFFECT_POLISHING.md` carries the method (judge loop, cluster-before-fix, the
-kill criterion, bench-vs-room discipline). The complete campaign evidence lives in
-`bench/judged/round-2026-08-14/`:
+State as of 2026-08-28 (round 9 landed, UNCOMMITTED and UNHEARD): **v24 / SHOW 20 /
+CONTEXT 3**, 858 tests green, typecheck clean, earlybars at its floor. This file is the
+CAMPAIGN - the analysis, the engine and what the room hears. Start at "If you are the
+next session" near the end, then come back to the top. `docs/EFFECT_POLISHING.md`
+carries the method (judge loop, cluster-before-fix, the kill criterion, bench-vs-room
+discipline).
+
+**Round 9 in one paragraph.** SICKO MODE was lit on the BACKBEAT for 232 seconds, and
+three independent substrates agree it was: the owner's mark, the kit's own kick/snare
+phase profile (gain +1.024), and a Viterbi over Beat This's downbeats. A phase walk now
+places a listener-marked movement on the right beat. Three effect repairs landed, the
+biggest being that `chromaBurst` - the effect the picker hands the peak of nearly every
+track - was arriving half a beat late at peak byte 40 and now peaks at 145. `base ->
+glow` turns out to be a SATURATION move at constant flux, not a brightness ramp, which
+CLAUDE.md had wrong and which opens the cheapest punch in the system. And four
+restrained kick effects shipped, judged by a new instrument that asks how far the room
+moves on the WEAKEST tenth of its hits. Full detail in the round record's "Round 9"
+section, which is where to read before touching any of it.
+
+There is now ONE app and ONE cache, at the owner's ask: `/Applications/LightningStrike.app`
+on `~/Library/Application Support/cz.drabek.lightningstrike/cache` (formerly cache-C,
+verified a strict superset of A and B). The other two caches are renamed to
+`cache-A-archive` / `cache-B-archive`, not deleted. The A/B era is over - "the old AB
+tests were finished and C won every time, now we are polishing C further."
+
+The complete campaign evidence lives in `bench/judged/round-2026-08-14/`:
 
 - `snapshot.json` - all 36 original judgements joined against the sections/cues/hits
   they were made against. Survives every version bump. Never regenerate it.
 - `digest.md` - the human walk of the same. `diagnosis.md` - ranked root causes RC1-6.
 - `adversary-review.md` + `round2-record.md` - every design, every adversarial finding
   and its disposition, and the room's verdicts per round. READ round2-record.md FIRST:
-  its tail sections carry rounds 2, 3 and the round-4 target.
+  its tail carries rounds 7, 8 and 9.
 - `ab-verdicts.md`, `listening-list*.md`, `research-endings.md` (verified citations),
   `sweep-record.md` (every corpus sweep number).
 
 The older overhaul history (pre-campaign) is in git at `fd9cbb0` and in the session
-memory; nothing there is needed to start round 4.
+memory.
 
 ## Where the code stands
 
-Everything through the finishing wave is COMMITTED (seven commits 2026-08-15,
-b5c3fbc..49bf891): the v20+v21 analyser slices, the bench instruments, the judge
-trio (section editor, typed hit marks, arrangement preview), the v22 cuts path +
-settle gate + SOPHIE fixture + genre provenance, the engine round (SHOW 16), and
-the records. `packages/preview3d/` is the owner's own work - tracked and clean as of
-2026-08-18, so leave it alone rather than sweeping it into a commit; stage explicit
-paths only. `docs/hardware.html` is COMMITTED now (`049dd22`): the owner's hardware plan for
-the frame, which had lived only in a GitHub Desktop stash. It is theirs, so change it
-only when asked. The sectioning-model memo was moved OUT of the repo by the
-owner on purpose (a second research agent must not read it) - do not recreate it.
+**Round 9 is COMMITTED, in six commits on top of `332b451`, and the room has not heard any
+of it:**
 
-ANALYSIS_VERSION 23, SHOW_VERSION 18, CONTEXT_VERSION 3 (SHOW 18 = the tempo read at
-the bar, round 8; round 7 was the map->cuts carry-forward, corroborated residues, map
-adoption, the map stamp that makes a fresh map audible on the next play,
-kick-corroborated genre families, and SHOW 17's pounding band raise - all now committed
-through `2a46900`;
-the previous state was v22 / SHOW 16 / CONTEXT 2, the finishing wave:
-v20 boundary slice, v21 pounding arm, v22 listener-cut grids + settle gate +
-audioGenres; SHOW 16 = group-final peaks + the leaving pass). 836 tests green,
-`npm run check` clean. earlybars at v23: 20 hit / 0 closer / 8 same / 0 worse of
-28 - THE FLOOR, and inert by design: analyzeTrack reads no judgement, so adoption
-cannot flatter it. structscore v22 identical to v20/21 (sweep-record.md). Judged-36
-analysis-side ZERO drift from v21 on frozen code; composition side moved by
-design: peaks Vitej 81->82, Titi 37->54 (EARFQUAKE stays 8 - its choruses do not
-group as kin, a GROUPING question on the ledger), and five fade-class tracks
-gained decline steps (Thinkin, Self Esteem, Blinding Lights, Someone You Loved,
-Cigo). Room verdicts on file: Vitej GOOD, EARFQUAKE GOOD, WTSA GOOD, SAFIR
-piecewise CONFIRMED including the healed strobe edge, Ponyboy labelled correct
-by hand map. The cuts loop is CLOSED: a hand-drawn map re-grids its track on the
-next analysis automatically.
-Commit discipline: Conventional Commits, no co-author trailer, no em-dashes anywhere,
-stage explicit paths, only commit when the owner says so (the pattern each round:
-implement -> gates -> owner listens -> owner says "commit").
+| | |
+|---|---|
+| `a365268` | the phase walk, the movement placement, the two normalisation faults, ANALYSIS 24 |
+| `74b6777` | chromaBurst, subSwell, the palette fact, Presence in beats |
+| `5470c80` | the five new effects, SHOW 20 |
+| `7d64b91` | the drag clamp that blocked the owner on SICKO MODE |
+| `5f889ca` | `phasegrid.ts`, `punchprobe.ts`, `targets.ts` |
+| `b8e0433` | the stale-yt-dlp diagnosis on the download path |
 
-What shipped, one line each (details in round2-record.md):
+Measured green at 862 tests with the owner's in-flight calibration shelved - see first-hour
+item 0 for why that qualifier is needed and why it is not this round's problem.
 
-- R1 (v17/v13): same-material consolidation behind five guards; club vocabulary needs
-  kit corroboration (CLUB_KICK_FLOOR 0.4); hasDrops behind `audible`; the Discogs
-  "Folk, World, & Country" parent no longer votes; heartbeat kick-gated; `silhouette`
-  peak master added. Room: B beat A 3 wins / 5 ties / 1 loss.
-- R2 (v18/v14): hook-snap physics veto (physics-only arrivals - the voice term was
-  grading itself); peakStyle on masters (pools pinned by test: slam = blinderWall,
-  chromaBurst, shutterCut, silhouette; bloom = chromaBurst, tideBloom); outro bed
-  inheritance; the cold-ending button; linter learned the finish-line anchor and the
-  outro repeated-stack exemption. Room: 4 good, 0 regressions.
-- R3 (v19): the ratio form of the snap veto restored (entrance windows ONLY - a
-  restart cannot lag or lead) and the absorb-left move for 2-bar builds. Room:
-  EARFQUAKE went 2* -> 5* ("sectioning is great"); Vitej 3* -> 4*.
-- R4 (v19/v15 + playhead): the breath dims instead of re-staging; indicators mark
-  the heard instant. Room: playhead CONFIRMED; both seams still early -> reclassified
-  (Vitej bar-class, Safir phase-class). Round 4 closed in the round record.
-- R5, the finishing wave (v20 -> v22 / SHOW 16, COMMITTED): stay-pins + vote split
-  + pin-aware fold + restart noise floor (v20); the pounding drops arm (v21);
-  listener-cut grids with true short bars, the settle gate's measured negative,
-  the SOPHIE kit fixture, audioGenres provenance (v22); group-final peaks and the
-  leaving pass (SHOW 16); the judge trio (section editor, typed hit marks,
-  arrangement preview). Room: Vitej/EARFQUAKE/WTSA GOOD, Safir confirmed via cuts,
-  Ponyboy fixed and hand-mapped. Ladder floor 20 hit / 0 worse of 28.
+Files that are NOT this round's and were deliberately left uncommitted in the working tree:
+`firmware/node/src/fixture/*.rs`, `hardware/`, `docs/demo-wiring.md`, `docs/frame-wiring.md`,
+and the hardware bring-up half of core - `packages/core/src/output.ts` (GAMMA 2.45, MASTER
+0.7), `packages/core/src/geometry.ts` and `geometry.test.ts` (run labels, reel-pairing
+regions), and `packages/core/src/effects/effects.test.ts` (updated for MASTER). All of that is
+the owner's own work. `packages/preview3d/*` is theirs too, and `docs/hardware.html` is theirs
+(committed at `049dd22`). Stage explicit paths, and
+only commit when the owner says so. The sectioning-model memo was moved OUT of the repo by
+the owner on purpose - a second research agent must not read it - so do not recreate it.
+
+ANALYSIS_VERSION **24**, SHOW_VERSION **20**, CONTEXT_VERSION 3.
+
+- v24 = the model's downbeats are stored (~900 bytes a track) and a listener-marked movement
+  is placed on the beat the walk chooses rather than on the beat the press landed near.
+  Everything else about it is inert on an unmarked track, and `earlybars` proves it: the
+  floor is unmoved at 20 hit / 0 worse.
+- SHOW 20 = five new effects in the pools (`subBreath`, `emberBump`, `crossbeam`, `lean`,
+  `tremor`), plus the peak now ranked on a movement-blind energy column.
+- The `chromaBurst` and `subSwell` repairs needed NEITHER bump: a show is a cue list and the
+  rendering is code, so a render change is heard on the next play.
+
+What shipped in earlier rounds, one line each (details in round2-record.md):
+
+- R1 (v17/v13): same-material consolidation behind five guards; club vocabulary needs kit
+  corroboration; hasDrops behind `audible`; heartbeat kick-gated; `silhouette` peak master.
+- R2 (v18/v14): hook-snap physics veto; peakStyle on masters; outro bed inheritance; the
+  cold-ending button; the linter's finish-line anchor.
+- R3 (v19): the ratio form of the snap veto (entrance windows ONLY - a restart cannot lag or
+  lead) and the absorb-left move for 2-bar builds. EARFQUAKE went 2* -> 5*.
+- R4 (v19/v15): the breath dims instead of re-staging; the playhead marks the heard instant.
+- R5 (v20-v22 / SHOW 16): stay-pins, vote split, pin-aware fold, restart noise floor; the
+  pounding drops arm; listener-cut grids, the settle gate's measured negative, the SOPHIE
+  fixture, audioGenres provenance; group-final peaks and the leaving pass; the judge trio.
+- R6/R7 (v23 / SHOW 17): map adoption and the stamp that makes a fresh map audible on the
+  next play; kick-corroborated genre families; the pounding band raise. Package C REFUTED.
+- R8 (SHOW 18): the tempo read AT THE BAR (`bpmAt`/`beatPeriodAt`), which closed a live 9.2 Hz
+  breach of the 8 Hz strobe ceiling on SICKO MODE; `tempoSegments` and the tempo map on
+  screen; the section editor's grid faults fixed.
+- R9 (v24 / SHOW 20): this round. See the round record.
 
 The boundary instrument `bench/earlybars.ts` is the campaign's backbone: 18 frozen
-owner-marked pairs + 10 sentinels (28 rows), scored against whatever analyzer is
-checked out. Current full score 20 hit / 0 closer / 8 same / 0 worse of 28 (the
-v22 floor; WTSA ear-confirmed at 83). Run it after ANY analysis change - with MV_CACHE_DIR pointed at a
-cache that has Kisses/WTSA audio (cache-C today; the primary cache lacks those
-two): `MV_CACHE_DIR=... node bench/earlybars.ts [--variant=NAME] [--no-lyrics]`.
-First run per track pays BeatThis (~15 s each, cached in bench/corpus/.beats).
-`--no-lyrics` attributes an error to the DP/refine vs the hook snap - it found
-EARFQUAKE. The scorer reads non-build section starts (a build is the approach, not
-the seam). Its sibling `bench/stagetrace.ts` (round 5) replays the structure stages
-one call at a time in cache coordinates and self-checks against a real analyzeTrack
-run - the instrument that named every mechanism this round.
+owner-marked pairs + 10 sentinels, scored against whatever analyzer is checked out, and its
+targets now live in `bench/targets.ts` so `bench/phasegrid.ts` reads the same rows. Run
+earlybars after ANY analysis change; run phasegrid instead for anything that re-phases.
+`bench/stagetrace.ts` replays the structure stages one call at a time in cache coordinates
+and self-checks against a real analyzeTrack run.
 
 ## ROUND 4, first slice: SHIPPED same session - read this before the phase brief
 
@@ -149,7 +145,18 @@ model-plurality path is OPEN: the owner was asked for tap-protocol marks
 felt "one"); taps had not landed by session end. Full verdicts + diagnoses in
 round2-record.md.
 
-## The original phase brief (kept for the evidence and the code map; hypothesis REFUTED)
+## The original phase brief (kept for the code map; the REFUTATION was itself wrong)
+
+> **OVERTURNED IN ROUND 9, 2026-08-27.** The hypothesis below was right and the instrument
+> that refuted it was not. `phaseprobe` found that low-confidence tracks have INTERNALLY
+> inconsistent model downbeats and concluded Beat This could not adjudicate phase. The cause
+> is the opposite: the model tracks phase resets that one uniform four-beat walk cannot
+> express, so its downbeats only LOOK inconsistent when forced through that walk. Given a walk
+> that can express them (`downbeatPhase.ts`), the same downbeats go from 52% to 87% consistent
+> on Safir and 39% to 86% on SICKO MODE. Read the round record's "Round 9" section before
+> reading any of the below as settled. What survives unchanged: owner marks still cannot
+> resolve sub-bar phase, which is exactly why the walk supplies the beat and the mark supplies
+> the bar.
 
 **The finding.** After R3 landed Safir's boundaries EXACTLY on the owner's marked bars
 (breakdown 33, chorus 42, verified in cache-C's v19 blob), the owner still heard it
@@ -304,30 +311,26 @@ veto's edge-bar blind spot, single-raw-kick fragility of the veto, settle-scale
 coupling (five absolute thresholds calibrated on the settle-free scale - the
 structure.ts docblock names them).
 
-## The apps and caches (the owner's A/B/C setup)
+## The app and the cache (one of each, since 2026-08-28)
 
-- `/Applications/LightningStrike.app` = A, the ORIGINAL judged build (337d06f), on
-  `~/Library/Application Support/cz.drabek.lightningstrike/cache` (+ judge/ = the 36
-  original judgements, already fully mined into snapshot.json).
-- `LightningStrike (B).app` = round 1 (v17/v13) on `cache-B` (round-1 A/B verdicts
-  in its judge/).
-- `LightningStrike (C).app` = CURRENT, and the app the owner judges in: v23 / SHOW 18
-  WITH the section-editor round in it, rebuilt and reinstalled 2026-08-18 16:18, on
-  `cache-C`. 43 hand maps in its judge/ (untouched, verified byte-identical); its
-  analyses and shows were CLEARED on the same day, so the library re-derives on play.
-  Its judge/ is the next session's first read.
-- Round 5 hands over by replacing C again (after mining its judge/) or adding D -
-  ask the owner which.
-- **THE INSTALL TRAP**: `cp -R new.app "/Applications/X.app"` onto an existing bundle
-  NESTS it (X.app/LightningStrike.app) and the old binary keeps launching - one A/B
-  was listened against the wrong build this way. `rm -rf` the target first, then
-  copy, then verify `ls "X.app/"` shows `Contents` and nothing else.
+- `/Applications/LightningStrike.app` is the ONLY build, on
+  `~/Library/Application Support/cz.drabek.lightningstrike/cache`. The bundle name decides the
+  cache (`server.rs: bundle_suffix()`), so a plain name reads the plain `cache`.
+- `cache-A-archive` and `cache-B-archive` are the retired A and B stores, renamed rather than
+  deleted. cache-C was verified a strict superset of both - no audio and no judge file existed
+  in A or B that was not in C - before it was promoted to `cache`.
+- 68 tracks with audio, 43 judgements including hand maps. The owner judges in this one.
+- **THE INSTALL TRAP**: `cp -R new.app "/Applications/X.app"` onto an existing bundle NESTS it
+  (X.app/LightningStrike.app) and the old binary keeps launching - one A/B was listened against
+  the wrong build this way. `rm -rf` the target first, then copy, then verify `ls "X.app/"`
+  shows `Contents` and nothing else, then `xattr -dr com.apple.quarantine`.
+- If a future round needs a second build to compare against, rename the copy on the way in
+  ("LightningStrike (D).app") and it gets `cache-D` of its own. Ask the owner first: they asked
+  for one app, and the A/B era is explicitly over.
 - Cache clears keep audio/meta/context/judge and delete only `*.analysis.json` +
-  `*.show.json`; stale versions re-derive lazily anyway (~30-60 s per track on first
-  play). `cache114/` (repo, gitignored) is the 114-track gate corpus, regenerated at
-  v19 - do not wipe. The judged-36 scratch copies in the session scratchpad are GONE
-  (session temp); recreate from the desktop cache if needed (copy audio+meta+context,
-  run `MV_CACHE_DIR=<dir> node bench/reanalyse.ts`).
+  `*.show.json`; stale versions re-derive lazily anyway (~30-60 s per track on first play), or
+  `MV_CACHE_DIR=<cache> node bench/reanalyse.ts` regenerates the lot ahead of time.
+  `cache114/` (repo, gitignored) is the 114-track gate corpus, regenerated at v23 - do not wipe.
 
 ## Mining a new judged round (the workflow, refined over three rounds)
 
@@ -353,34 +356,46 @@ rounds taught:
 
 ## Gates and probes (run all before any handover)
 
-1. `npm test` (836) and `npm run check`. If check errors with TS6305 after deleting
+Current floors, all green on 2026-08-28 at v24 / SHOW 20:
+
+1. `npm test` - **858** - and `npm run check`. If check errors with TS6305 after deleting
    dist/, `npx tsc --build --force packages/analysis` (stale tsbuildinfo).
-2. `node bench/earlybars.ts` - 20 hit / 0 worse (of 28 rows) is the floor; any
-   WORSE is a stop. Needs MV_CACHE_DIR on a cache holding Kisses/WTSA audio (cache-C),
-   and it re-derives from audio, so the cleared cache does not affect it.
-3. `node bench/structscore.ts --dataset raveform|harmonix --limit 60 --variant current`
-   after analyser changes (baselines in sweep-record.md; label columns are BLIND to
-   same-kind merges and lyric effects - read F0.5/F3/sections).
-4. Judged-36 recompose readout: `node bench/judged-after.ts <scratch>` AFTER a scratch
-   reanalyse - it diffs sections/phantoms/peaks/hits vs snapshot.json. IT DOES NOT
-   LINT: the R2 ship-blocker (the button lint-deleting shows) was invisible to it.
-   Always ALSO run `node bench/lintsweep.ts` (composes + lints the whole library;
-   47/47 lint-clean is the floor, and the app fails DARK on lint errors). It reads the
-   DESKTOP `cache` (app A, 47 analyses), which the cache-C clear did not touch.
-5. `MV_CACHE_DIR=.../cache114 node bench/reanalyse.ts` then
-   `MV_CACHE_DIR=... node bench/showprobe.ts` - 0 lint / 0 misfires / 100% quiet
-   coverage, dark bars <= 2 (the known pair). Env var must prefix EACH command
-   (an `&&` chain does not inherit it - this bit once).
-6. Versions: ANY analyser change bumps ANALYSIS_VERSION, ANY composition change bumps
-   SHOW_VERSION, in the same change. cache114 must be regenerated before showprobe
-   means anything at the new version.
-7. Build: `npm run bundle -w @mv/desktop` then `npx tauri build --bundles app` from
-   apps/desktop (DMG fails on this machine; --bundles app is the path). ~4 min.
-8. Background-run hygiene: a running structscore/reanalyse loads code per PROCESS at
-   start - editing packages/analysis or core mid-sweep contaminates the variants that
-   have not started yet (one sweep was killed and rerun for this). Land edits between
-   runs. And if two desktop apps are open with the room wired, only one may stream to
-   the board or it flickers between shows.
+2. `node bench/earlybars.ts` - **20 hit / 0 closer / 8 same / 0 worse of 28** is the floor and
+   any WORSE is a stop. Needs `MV_CACHE_DIR` on a cache holding Kisses/WTSA audio, which the
+   single `cache` now does. It re-derives from audio, so a cleared cache does not affect it.
+   First run per track pays BeatThis (~15 s each, cached in `bench/corpus/.beats`).
+   **It cannot judge anything that re-phases a grid** - see 3.
+3. `node bench/phasegrid.ts` - the same frozen targets scored by TIME rather than by bar,
+   with A = one phase per track and B = the phase walk. Run this for any change that touches
+   the grid's phase, because a reset renumbers every bar after it and a bar-numbered target
+   then stops naming the same instant. `--cost=N` sweeps what a restart costs. Known limit:
+   it converts the target bar through A's grid, so A scores 0.00 by construction wherever A's
+   boundary IS the target bar. Both instruments read `bench/targets.ts`.
+4. `node bench/structscore.ts --dataset raveform|harmonix --limit 60 --variant current`
+   after analyser changes (baselines in sweep-record.md; label columns are BLIND to same-kind
+   merges and lyric effects - read F0.5/F3/sections).
+5. `node bench/lintsweep.ts` - composes and lints the whole library; 0 rejected is the floor,
+   and the app fails DARK on lint errors. It reads whatever `MV_CACHE_DIR` points at, so its
+   denominator is however many analyses that cache holds.
+6. `MV_CACHE_DIR=.../cache114 node bench/reanalyse.ts` then
+   `MV_CACHE_DIR=... node bench/showprobe.ts` - 0 lint / 0 misfires / 100% quiet coverage,
+   dark bars <= 2 (the known pair). Env var must prefix EACH command (an `&&` chain does not
+   inherit it - this bit once). cache114 must be regenerated before showprobe means anything
+   at a new version; it is at v23 and this round did not regenerate it.
+7. `bench/quietprobe.ts` produces `taste.quiet`. Re-run after touching any effect in the quiet
+   pool. Worth knowing before spending a session on those numbers: **20 of the 33 stored values
+   can never be read**, because they sit on `carries: false` effects and a bare cue refuses
+   those with no fallback. Only 10 beds and 3 accents have live values.
+8. Versions: ANY analyser change bumps ANALYSIS_VERSION, ANY composition change bumps
+   SHOW_VERSION, in the same change. A change to an effect's RENDER needs neither - the show
+   is a cue list and the rendering is code, so it is heard on the next play.
+9. Build: `npm run bundle -w @mv/desktop` then `npx tauri build --bundles app` from
+   apps/desktop (DMG fails on this machine; --bundles app is the path). ~4 min. Then the
+   install ritual in "The app and the cache".
+10. Background-run hygiene: a running structscore/reanalyse loads code per PROCESS at start,
+   so editing packages/analysis or core mid-sweep contaminates the variants that have not
+   started yet (one sweep was killed and rerun for this). Land edits between runs. And if two
+   builds are ever open with the room wired, only one may stream to the board or it flickers.
 
 ## Method invariants this campaign proved again (beyond EFFECT_POLISHING)
 
@@ -424,176 +439,181 @@ anchored to the finish line, not the outro boundary; the pre-arrival breath DIMS
 rig and never strikes the set (full look kept, intensity only - the owner delegated
 this call and it shipped at v15).
 
+## How round 9 actually went, including the wrong turns
+
+Written out at length because the reversals are the useful part: three separate designs in
+this round looked right and measured wrong, and each was caught by building an instrument
+rather than by thinking harder.
+
+**It began with three parallel research agents** - multi-song state of the art, an audit of
+all 90 effects, and an audit of the sectioning pipeline - and with a direct measurement of
+SICKO MODE while they ran. The measurement got there first and reframed everything: the track's
+whole second half was lit on the backbeat. That was not a subtle finding once the kick and
+snare streams were scored by beat phase (kick owns phases 1 and 3, snare owns 0 and 2, and the
+shipped downbeat sat on a snare), but nothing in the pipeline had ever asked the question.
+
+**Three dead ends on multi-song detection, in order.** Bar-to-bar grid jitter: refuted, because
+the highest-jitter track in the cache is Cigo a kava, a single song, while SICKO MODE sits
+mid-table. A piecewise-constant tempo fit over the tracked beats (Ableton's warp-marker model,
+scale-free in beat units): better, but still fired on 24 of 47. Adding a clean-metrical-ratio
+guard, so a 2:1 flip counts as the tracker changing its mind rather than the record changing
+tempo: still 19 of 53. What finally separated them was **step versus ramp** - fitting a
+constant-acceleration curve across the candidate and asking how much of its residual two
+straight lines remove. A band speeding up is a ramp; a beat switch is a discontinuity. SICKO
+MODE 1.00, Melanz 0.94, against Blinding Lights 0.49, Hannah Montana 0.43, Enter Sandman 0.17,
+Highway to Hell 0.05. With a 15% minimum tempo ratio and both sides at least 20 s, that rule
+fires on 4 of 132 tracks where the shipped detector fires on 33 of 114. **It was never landed
+in `bench/` - the prototype lived in the session scratchpad and is gone.** Rebuilding it is
+maybe an hour and it is the single cheapest improvement left on this gap.
+
+**A correction that invalidated a table.** The first corpus numbers were taken against the
+desktop `cache`, which turned out to be at ANALYSIS_VERSION 16 - nine versions stale. Every
+corpus claim was re-taken on `cache114` at v23. The conclusion did not move (the shipped
+detector's false-positive rate is ~30% either way) but the numbers did. Check `version` in a
+blob before believing a sweep over it.
+
+**The phase walk nearly shipped globally, and should not have.** Unrestricted it lifts carry
+across the entire low-confidence cohort and leaves 43 of 60 Harmonix tracks completely
+untouched - which read as a clean win. `earlybars` then reported 3 worse. Two of those three
+turned out to be artefacts: one KITN row was the SAME INSTANT to the millisecond (142.18 s both
+sides) renumbered by a reset upstream, and a Safir row scored WORSE while actually moving
+CLOSER to the owner's own mark (66.56 -> 67.40 against a mark at 67.1). That is when it became
+clear that **a bar-numbered instrument cannot gate a change that re-phases**, and
+`bench/phasegrid.ts` was written to score the same frozen targets by TIME. Scored honestly the
+global walk is 2 hit / 4 closer / 17 same / **5 worse**, including a praised seam moving 0.64 s.
+So it was scoped to marked movements, where `earlybars` returns to its exact floor. The
+unrestricted form is still there behind `phaseResetCost` and still measurable; it is the
+biggest known win left on the shelf.
+
+**`react` could not judge the new effects, and the instrument that replaced it nearly lied
+too.** The character probe's reactivity column is bytes moved over a journey normalised by the
+effect's own mean, which a constant-flux design minimises by construction - so `emberBump` and
+`crossbeam` scored near zero while landing plainly. `bench/punchprobe.ts` asks instead how far
+the room moves at the instant of a kick, reporting the weakest tenth of hits beside the median.
+That worked - until `lean`. It scored a healthy 33/35/72, and then a bug was found in it: the
+lobe snapped to the full next seat at the beat, which is precisely the discontinuity the
+gesture was written NOT to have. Fixing the bug dropped it to 1/1/1. The effect was not broken;
+the instrument was reading the wrong half of the beat, because `lean` puts all its movement in
+the quarter-beat BEFORE the hit. An `approach` column was added and it reads 58 there. **Both
+halves of that episode are the lesson: the healthy number was measuring the bug, and the dead
+number was measuring the wrong window.**
+
+**A docblock caught out its own code.** `crossbeam` claimed the beam takes back the same LIGHT
+the ring gives up. The arithmetic conserved the authoring LEVEL, and the authoring domain is
+gamma encoded, so the room actually brightened on every kick by the amount the effect existed
+not to spend. Fixed by doing the trade in light, which halved its measured punch and revealed
+the earlier version had been over-driving the beam; the trade share was then re-swept from 0.12
+to 0.26 to land back in the band honestly. Later the same effect had to be fixed again - it had
+written down `GAMMA = 2.2` when the owner's calibration had already moved the room to 2.45, so
+it now imports the constant. One rationale, one place, and this is what the rule is for.
+
+**What the audits got wrong.** The sectioning audit reported that EARFQUAKE's choruses do not
+group as kin and its reserved master is therefore skipped. Measured at v23 they group fine
+(group 1 covers sections 1/3/5) and the peak sits at bar 24, past `SETTLE_BARS`. That note in
+the handover was stale and the audit had repeated it from the docs rather than from a blob.
+The effects audit was accurate on everything checked, but its counts of the carrying pools were
+computed with a predicate that inverted `taste.carries` (absent means it CARRIES), so "three
+carrying accents" was right by luck and "carrying beds: 1" was wrong.
+
+**The last thing to land was not code.** The room's calibration changed underneath the round -
+GAMMA 2.2 -> 2.45 and a new MASTER dimmer at 0.7 - which moved every byte figure in the records
+by about 40%. All of them were re-measured rather than left to rot. The orderings did not move.
+
 ## If you are the next session: the first hour
 
-0. **THE SECTION EDITOR DEFECT IS FIXED AND COMMITTED, AND THE ROOM HAS NOT HEARD IT.**
-   `607ab59` the grid, `1448ff1` the preview and its toggle, `a1e32e9` the scrubber. The
-   brief that carried it is spent and deleted; everything it held is in round2-record.md's
-   tail, "The section editor closed". A drawn boundary lands where it was drawn in both the preview and the
-   adoption - Melanz went from 10 of 16 boundaries moved (up to 2.24 s) to 0, SICKO MODE from
-   11 of 15 to 1 - and the Preview/Original toggle restores repeatedly, including after an
-   edit. Three things to know before touching this area:
-   - A map's fine drag re-starts the bar count at the mark and HANDS IT BACK at the next
-     drawn boundary already on a bar line (`resyncedCuts`). A movement mark deliberately does
-     not hand it back. An unflagged off-bar boundary still implies nothing, which is what
-     protects Safir.
-   - The preview no longer derives its own cuts; `handMapGrid` is the one home for the cut
-     list the way `nearestBar` is for the rounding. Keep it that way, or the two consumers
-     read one map two ways again - which is what every round of this defect has been.
-   - `$state` proxies per variable, so two variables handed one object are not identical.
-     `previewShow = show`, never `previewShow = data.show`.
-   Two interface changes rode along on the owner's ask, both verified in the app: the
-   preview now RECOMPOSES on every committed map edit while it is up (bursts coalesce -
-   the last draft wins, one compose per gesture), and the scrubber's section-name row
-   ("Groove", "Drop" over the player) is GONE, along with the text ruler, fit test and
-   ResizeObserver that served only it. Do not re-add it.
-   Left open, needing the owner's ear rather than a fix: a short bar reports a fast local
-   tempo (4x for the one second a re-sync bar lasts). It is cosmetic, not a strobe-ceiling
-   risk - planner, linter and renderer all read the same local bpm - and the honest fix needs
-   per-bar beat counts in `TempoGrid`, an ANALYSIS_VERSION bump and a library re-analysis.
-1. Read this file to the end, then round2-record.md's TAIL - the **round-7 verdicts**
-   and the round-8 section (multi-tempo). `docs/EFFECT_POLISHING.md` is the method.
-2. The tree is CLEAN: the section-editor round landed in three commits (item 0) and this
-   file and the record in the one after them. When you next commit, stage explicit paths,
-   leave `packages/preview3d/*` alone (the owner's own work; clean today), and only commit
-   when the owner says so. `stash@{0}` from GitHub Desktop still exists; everything in it
-   worth keeping is now committed, and the rest is a 58 MB `cache-eval` snapshot (15 audio
-   files, 62 derived blobs, no judgements) that is regenerable and now gitignored. The
-   owner can drop that stash whenever they like. Note the subject style: the last commits all read
-   `NOISSUE <sentence>`, while CLAUDE.md still specifies Conventional Commits - the
-   history is what was followed here, and the discrepancy is the owner's to settle.
-3. **THE ROOM IS OWED A LISTEN, and that outranks new work.** Unheard in the room:
-   SHOW 17's pounding band raise (which moved two 5-star sentinels, Pistacie and
-   EARFQUAKE - the owner cleared both by ear, so this is confirmed and only the rest of
-   the corpus is unheard), SHOW 18's tempo-at-the-bar, which changes the strobe rate
-   on any track that changes tempo, and the section-editor round, which moves the GRID on
-   the two mapped tracks that carry a fine drag - Melanz (its downbeats between 41.60 and
-   73.60 shift by a beat, because the owner's mark says so) and SICKO MODE (14 fine-drag
-   marks, so it exercises this hardest). Those two are the sharpest listen available and
-   they re-analyse on their own first play. Hand back a SHORT list, never the whole
-   corpus.
-4. **MULTI-TEMPO: RESEARCHED, AND THREE SLICES SHIPPED (round 8).** The tempo is now read
-   AT THE BAR (`bpmAt`/`beatPeriodAt` in core), which closed a live breach of the 8 Hz
-   strobe ceiling - 9.2 Hz on SICKO MODE's fast movement, passed by a linter reading the
-   same median the planner sized from. The tempo map is on screen: the player bar reads
-   the local tempo with a "N tempi" chip, the timeline has a tempo lane, the inspector
-   lists the segments, and the judge panel offers each change point as a movement
-   candidate (SICKO MODE: 0:29 and 1:01), offered and never applied. What remains is in
-   the record's round-8 section: PHASE (47 of 120 model downbeats sit off a bar line, and
-   phase-reset candidates would need the model's downbeats stored, which they are not),
-   three median-driven decisions that change how a show LOOKS and want the owner's ear
-   (palette heat, lapBars, the genre flash budget - the owner asked to do these together),
-   and the retroactive-rescale bug in eight effects plus `Presence`, which already
-   misfires on the idle transition and which no gate has ever tested.
-   The evidence, kept because it will be argued with again: The owner, after mapping SICKO MODE:
-   "the songs contain sections that have completely different BPM and they might start
-   offbeat compared to each other. That is the BIGGEST gap that the whole LightningStrike
-   analysis have. It should be somehow displayed in the UI, and properly know the
-   boundaries." Measured before any design (probes are in the round record):
-   - Beat This ALREADY tracks it. On SICKO MODE the model reports 136.4 bpm to 58.3s and
-     76.9 after, and 101 of its 119 downbeat intervals hold exactly four beats. The
-     pipeline throws that away by fitting ONE tempo: only 47 of 120 model downbeats land
-     on a shipped bar line (median miss 0.44 s).
-   - The naive fix does NOT work: splitting at the switch and fitting a uniform grid per
-     part recovers only 53% (Melanz 49%), because phase resets are scattered through the
-     track, not just at the switch.
-   - And an automatic detector would wreck normal tracks: the model's downbeats imply 18
-     phase resets on SICKO MODE (3 sticky), 48 on Melanz (8 sticky) - and 27 on Je mi
-     fajn, an ORDINARY track, because the model emits 2-beat bars when unsure. The signal
-     points; it must not decide. Same wall the killed plateau detector hit.
-   Shape the design around the owner's movement mark as the trusted anchor, per-movement
-   level and phase read from the model's own beats inside the marked span, the tempo map
-   shown in the UI, and candidate switches SUGGESTED for confirmation rather than applied.
-5. MULTI-SONG slice 1 is BUILT AND UNHEARD: a
-   "New song starts here" mark in the judge panel gives the new song its own downbeat,
-   a section seam nothing can merge away, and its own energy levelling. Ask the owner to
-   mark SICKO MODE (its switch is at 63.5s) and Melanz, then listen. The engine slice -
-   per-movement palette, peak arc and vocabulary, all four of which the owner chose - is
-   designed and deliberately NOT shipped on top of an unheard change; the design notes
-   are in the record's multi-song section, including the trap that a cue with no palette
-   resolves against the SHOW palette rather than the previous cue.
-6. THE ROOM HAS NOT HEARD SHOW 17. It has heard v23 adoption and liked it
-   (Blinding Lights 3* -> 5* "almost perfect", Ponyboy 2* -> "way better", Hannah's
-   sectioning praised). SHOW 17's band raise is unheard, and it moves TWO PRAISE
-   SENTINELS - Pistacie 5* (5 of 12 cues) and EARFQUAKE 5* (2 of 11, a lightning
-   landing on its peak bar). Those two head the listening list, with Ponyboy: the
-   question for Ponyboy is whether "a bit more aggressive" is now right, too much,
-   or still short, and whether its GROOVES (which pound at ~1.0 kicks/beat and were
-   deliberately left alone to keep the drops stepping up) should rise too.
-7. A map is LAW on its track, and it is heard on the NEXT PLAY: `TrackAnalysis.handMap`
-   stamps the map that was adopted and ingest re-analyses on any difference. So the
-   loop to offer the owner is listen -> redraw in the panel -> play. A map error is a
-   show error until it is redrawn, which is the owner's accepted trade. Note the maps
-   are, in the owner's words, "NOT 100% fully the best": Safir's verse was drawn a
-   beat off its own confirmed bar line and Blinding Lights' outro on a mid-bar beat,
-   both rounded onto bar lines by the adoption and neither treated as a grid edit.
-   The owner offers measurements on request - ask.
-8. Adoption blinds `bench/mapscore.ts` on any played cache: it would measure the
-   adoption, not the analyser, and report ~100% forever. Run the eval on a cache
-   regenerated with `bench/reanalyse.ts --no-hand-maps`.
-9. PACKAGE C IS CLOSED, and now with ground truth on both sides: Snooze's map
-   choruses (24/56/79/83) match the lyric hook starts (23/55/79/82) within a bar,
-   while Blinding Lights' (23/39/63/79/113) miss its hook starts (33/72/104/128) by
-   ten bars and more. Hook-placed choruses fix one and wreck the other, and no
-   measurable column separates the two cases - the P6 vocabulary-blind failure again.
-   Do not rebuild it. Snooze is fixed by its own map instead.
-10. Smaller open threads, in value order: Snooze's DP first chorus is bar 17 where the
-   map says 24 - seven bars, the refine-margin class, and the class now holds nine
-   pairs (bad guy 23->24, KITN 21->22, PROVENZA 79->80, Thinkin 2->1, Cigo 50->49,
-   Titi 73->72, plus Blinding Lights' three one-bar-early choruses); Self Aware kit
-   precision (win condition = raising the SOPHIE fixture's 0.4 precision floor);
-   EARFQUAKE's grouping (its choruses do not group as kin, so the group-final peak
-   cannot reach the last one); `gridTrust` now judges the owner's own map density
-   (nothing near the 4.5/min gate today - the densest map is 3.3 - but a busy map
-   could route an adopted track to the lounge; needs the owner's call on whether a
-   map exempts its track); a context correction lands one play before the show hears
-   it (harmless at a version bump, pre-existing for every context change);
-   An Ending's phantom share; Praha's restart edge at 0.63 vs the 0.6 floor;
-   Back In Black double-time (parked, owner ground truth on file).
-11. The model loop: 6 of the 15 maps that freeze the eval now exist (Snooze joined).
-   Protocol note - four of the first five were drawn by EDITING the analyser's own
-   sections (98-100% agreement before adoption), so they are partly derivative and
-   cannot carry an independent eval. Maps on tracks the analyser gets WRONG are worth
-   several agreeing ones: Ponyboy (35%) and Snooze (7 bars out) are the valuable
-   pair so far. The memo lives outside the repo by the owner's hand - ask for it.
-12. Floors and gates, ALL RE-RUN AND GREEN on 2026-08-18 after the section-editor
-   round: suite 836 (827 plus that round); typecheck clean; earlybars
-   20 hit / 0 closer / 8 same / 0 worse of 28 (MV_CACHE_DIR at cache-C for
-   Kisses/WTSA audio) - inert by design, since analyzeTrack reads no judgement;
-   structscore raveform 0.394/0.540, harmonix 0.202/0.532 (unmoved at v23);
-   47/47 lint-clean, 0 rejected (re-run 2026-08-18); showprobe 0 lint / 0 misfires /
-   100% quiet, dark 2,
-   contrast 2.75, hue jumps 2745 (contrast and jumps drifted from 2.76/2585 with the
-   band raise - that drift IS the change, and the new numbers are the baseline);
-   judged 36 at SHOW 16 vs 17 = 9 changed / 27 identical, transient layer only.
-   Land edits BETWEEN background runs - the contamination incident in the record is
-   what skipping that costs.
-13. THE JUDGE PATH WAS AUDITED AND REPAIRED (round-7 tail, full detail in the record).
-   Three reports of "the preview does not work" turned out to be four distinct causes,
-   and the audits found five ways the judge file could LOSE DATA. What changed, all of
-   it shipped: the preview re-sections the per-bar column and stages its own analysis;
-   the preview composes the LIVE editor draft, not the file; every judgement write is a
-   PATCH (each writer owns its fields), serialised per track and landed through a
-   rename, so a star can no longer revert a redrawn map and concurrent writes cannot eat
-   each other; the section editor snaps to BAR lines with shift for the beat grid; the
-   preview and the adoption share ONE rounding rule (`nearestBar` in core - they used to
-   break a mid-bar tie in opposite directions, four seconds apart on Melanz); and a
-   boundary placed off the grid ON PURPOSE (flagged `offGrid` by the fine drag) now CUTS
-   the grid to itself in both the preview and the next analysis, so the drawn moment
-   becomes a real bar line. Older maps carry no flag and still imply nothing, which is
-   what protects Safir's confirmed grid.
-14. What shipped after the judge audit, all committed: the tempo read AT THE BAR
-   (`bpmAt`/`beatPeriodAt`, closing a 9.2 Hz breach of the 8 Hz strobe ceiling on SICKO
-   MODE's fast movement); `tempoSegments` and the tempo map on screen (player bar reads
-   the local tempo with an "N tempi" chip, timeline tempo lane, inspector listing, and
-   the judge offering each change point as a movement candidate); and the editor's
-   keyboard nudge, in-lane movement dividers, undo and keyboard kind picker, which is
-   what the section-editor round then sat on. A scrubber section-name row shipped in the
-   same batch and has since been REMOVED at the owner's ask - see item 0.
-15. App C is rebuilt AND reinstalled at 2026-08-18 16:18, carrying the section-editor
-   round, and its cache was CLEARED at the owner's ask: every `*.analysis.json` and
-   `*.show.json` deleted (66 files), audio, meta, context and judge kept. So every track
-   re-analyses once on its next play (~30-60 s), every context is already at CONTEXT 3,
-   and every show recomposes. Rebuild via `npm run bundle -w @mv/desktop` then
-   `npx tauri build --bundles app` from apps/desktop, `rm -rf` the target before copying
-   (the nesting trap), and `xattr -dr com.apple.quarantine` the installed bundle.
+0. **THE SUITE IS RED, AND IT IS NOT ROUND 9.** Five tests fail in the working tree:
+   `measure.test.ts` x3, `ambient.test.ts` x1, `effects.test.ts` x1. They all say the same
+   thing - the room is too dark - and they come from the owner's OWN in-flight calibration
+   work, not from this round. Proven rather than assumed: shelve `packages/core/src/output.ts`
+   and `packages/core/src/effects/effects.test.ts` and all 319 tests in those three files pass;
+   restore them and 5 fail. Round 9 measured 862 green with that pair shelved.
+
+   The cause is `GAMMA` 2.2 -> **2.45** plus a new `MASTER` dimmer at **0.7** (`output.ts:192`
+   and `:207`). Together they take enough light out that **seven effects no longer pass the
+   "every effect claiming to carry a room can actually fill one" test**, four ambient scenes
+   read as dark, and the measure harness reports dark bars away from a void. That is a real
+   finding about the calibration, not a test that needs relaxing: those thresholds are what
+   stop a cue shipping black. Either the dimmer belongs after the carry check rather than
+   before it, or the affected effects need their floors raised for the new exponent. The
+   owner's `geometry.ts`/`geometry.test.ts` changes (run labels, reel-pairing regions) are
+   part of the same hardware bring-up and are fine.
+
+   **Do not "fix" this by touching those tests.** Ask the owner what the dimmer is for first.
+
+1. **ROUND 9 IS COMMITTED BUT THE ROOM HAS NOT HEARD IT.** Read the round record's "Round 9"
+   section and "How round 9 actually went" above, then this list. The owner installed the
+   build and said they would test after. **The first job is to collect that verdict, not to
+   add work.**
+2. **What to ask the room about, in order.** Hand back a SHORT list, never the whole corpus:
+   - **SICKO MODE** - the whole second half was firing on the snare and now is not. This is
+     the round's headline and it is a one-minute listen from 1:00.
+   - **Any peak at all** - `chromaBurst` went from peak byte 40 to 145 and it lights the peak
+     of nearly every show. The question to ask is whether it is now TOO big, not whether it
+     works; the authored gain was left alone deliberately because 145 sits with tideBloom's
+     159 and shutterCut's 162.
+   - **The four new effects** - `subBreath`, `emberBump`, `crossbeam`, `lean`. They are the
+     answer to "punchy but not distracting", they measure in counterweight's band, and only
+     the room can say whether the constant-flux ones (`emberBump`, `crossbeam`) read as hits
+     at all. That is the real open question about them: they move few BYTES by design.
+   - **Melanz** - marked at 169.7 and 205.8, and its carry only reaches 43.6% where SICKO
+     MODE's reaches 85.8%. If the room still hears it wrong, that is the next thread.
+   - **Whether SICKO MODE's hand map wants redrawing.** Its shipped carry is 54.2%, not the
+     85.8% the walk reaches alone, because 14 off-grid map boundaries cut the grid to where
+     they were drawn - and they were drawn against the OLD wrong-phase grid. The map wins by
+     design; the question is whether it should still say what it says.
+3. **The unrestricted phase walk is the biggest measured win still on the shelf.** It lifts
+   Cigo 32->66, Thinkin 36->69, Safir 52->87, KITN 47->87 - the entire phase-suspect cohort -
+   and it is refused today only because `bench/phasegrid.ts` scores it at 5 worse against
+   praised seams. If the room likes what the scoped walk did to SICKO MODE, the honest next
+   move is to put the unrestricted form in front of it on ONE of those tracks and listen,
+   rather than to keep trusting a bar-numbered instrument that provably cannot judge it.
+4. **Do not gate a re-phasing change with `earlybars` alone.** A reset renumbers every bar
+   after it, so a bar-numbered target stops naming the same instant. Use `bench/phasegrid.ts`,
+   and know its own limit: it converts the target bar through the A-side grid, so A scores
+   0.00 by construction wherever A's boundary IS the target bar. `bench/targets.ts` is the one
+   copy of the frozen ground truth both instruments read.
+5. **A note is not a movement mark.** The owner's "NEW SONG HERE" marks arrived as notes, and
+   `movements` stayed empty, so the phase fix would not have applied. They were converted this
+   round. If a future report says a movement fix "did nothing", check `movements` in the judge
+   file first.
+6. **What is designed and NOT built**, in value order:
+   - the per-movement ENGINE slice (palette, peak slot, vocabulary) - the owner chose all four
+     of these in round 7 and none has shipped. The trap on file: a cue with no palette resolves
+     against the SHOW palette, never the previous cue, so a movement's palette must be written
+     concretely into every cue of that movement.
+   - a better movement-candidate offer. The shipped one fires on **33 of 114** tracks. A
+     piecewise-constant tempo fit plus a step-vs-ramp test (does a smooth acceleration explain
+     the change, or only two straight lines meeting at one beat?) cuts that to 4 of 132 while
+     keeping SICKO MODE at step 1.00 and Melanz at 0.94; Blinding Lights 0.49, Hannah Montana
+     0.43, Enter Sandman 0.17 and Highway to Hell 0.05 fall away. The prototype lives in the
+     session scratchpad only - it was never landed in `bench/`.
+   - Raveform's `structures/segments.json` carries `tempos: [{start, bpm,
+     beat_position_in_bar}]` for 1423 tracks, of which exactly **8** have a genuine >=5% tempo
+     change. That is a real acceptance-test denominator for any movement detector, it is
+     licence-clean, and it is already in the repo. It also settles the contract question:
+     store tempo ANCHORS with a bar position, which is the Rekordbox `<TEMPO>` shape.
+7. **Still owed regardless of any feature**: eight effects plus `Presence` rescale
+   retroactively when the beat period steps, and they already misfire on the idle transition
+   (40 bpm against a track's 130). The gate has never run a tempo step - `scriptFrames` holds
+   one `beatPeriod` for its whole journey. A fifth stage at another bpm would catch all nine
+   and is the cheapest regression test available for the class.
+8. **A map is LAW on its track, and it is heard on the NEXT PLAY**: `TrackAnalysis.handMap`
+   stamps the map that was adopted and ingest re-analyses on any difference. The loop to offer
+   the owner is listen -> redraw in the panel -> play. The maps are, in the owner's words,
+   "NOT 100% fully the best": Safir's verse was drawn a beat off its own confirmed bar line and
+   Blinding Lights' outro on a mid-bar beat, both rounded onto bar lines by the adoption.
+9. **PACKAGE C IS CLOSED** with ground truth on both sides: Snooze's map choruses (24/56/79/83)
+   match its lyric hook starts within a bar, while Blinding Lights' (23/39/63/79/113) miss its
+   hook starts (33/72/104/128) by ten bars and more. Hook-placed choruses fix one and wreck the
+   other, and no measurable column separates the two. Do not rebuild it.
+10. **Smaller open threads**, in value order: the refine-margin class (nine one-bar-early
+   boundaries, all the same mechanism - `refineBoundaries` needs a candidate to beat the
+   incumbent by 45%, and a fill scores identically to the slam a bar later); Snooze's DP first
+   chorus at 17 where the map says 24; Self Aware kit precision (win condition = raising the
+   SOPHIE fixture's 0.4 precision floor); `gridTrust` now judges the owner's own map density
+   (nothing near the 4.5/min gate today - the densest map is 3.3); Back In Black double-time
+   (parked, owner ground truth on file: "verse 2 should be as verse 1 in length").
+11. **Commit discipline**: Conventional Commits per CLAUDE.md, though the recent history all
+   reads `NOISSUE <sentence>` - the discrepancy is the owner's to settle. No co-author trailer,
+   no em-dashes anywhere, stage explicit paths, and only commit when the owner says so. Leave
+   `packages/preview3d/*` and `firmware/*` alone: both are the owner's own work.

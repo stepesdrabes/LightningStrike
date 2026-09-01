@@ -237,6 +237,42 @@ more than a bad one let through), and keep the owner's override in the meta.
   install, sync artifacts, relaunch, then curl its own `/api/library` and read the
   `current` count - the app's opinion, not the repo's.
 
+## A single reactivity number cannot say whether a hit reads
+
+`measureEffect`'s `react` column is bytes moved across a journey, against a deafened run,
+normalised by the effect's own mean. That makes it three things at once, and on a restrained
+effect the three fight: a full-room look answering every kick modestly scores LOWER than a
+beam-only look answering a few hugely, because the divisor is the mean. Worse, a design whose
+whole point is constant output - a saturation walk inside `base..glow`, a conserved trade
+between the ring and the beam - scores near zero by construction while still landing plainly.
+
+`bench/punchprobe.ts` asks the direct question instead: at each kick, how far does the
+furthest pixel move within 120 ms? And it reports the WEAKEST tenth of the hits beside the
+median, which is what separates the two shapes:
+
+- **calm and kick-forward**: sits near its own median on every hit and cannot spike.
+  `emberBump` 26/27/**27**, `crossbeam` 20/26/**31**, `counterweight` 17/29/**53**.
+- **wild**: a weakest of ZERO and a maximum near the top of the range, because it fires rarely
+  and enormously. `moshSlam` 0/0/155, `lightning` 0/1/167, `ricochet` 158/164/170.
+- **anticipation**: nothing at the arrival and everything before it. `lean` reads 1/1/1 with an
+  APPROACH of 58. That column had to be added, because without it the effect measured as dead
+  while doing exactly what it was written to do.
+
+These are BYTES and they move with the room's calibration: taken at GAMMA 2.2 with no master
+dimmer they read about 40% higher than at the shipped GAMMA 2.45 / MASTER 0.7. The ordering did
+not move. Read the table as a ranking, and re-run it rather than comparing absolutes across a
+calibration change.
+
+And the caution the numbers earned: `lean` scored a healthy-looking 33/35/72 before a bug in it
+was fixed, and those numbers were measuring the BUG - a snap at the beat the gesture was written
+not to have. A good punch reading is not evidence the effect is right.
+
+The owner's ask - punchy but not distracting - is the first shape, and the ceiling is the
+column that says so. Nothing in the catalog before round 9 answered the kick with a maximum
+under 81; three effects now do. Note what this does NOT measure: whether a constant-flux move
+is visible to a human at all. That is the room's to answer, and it is the open question about
+`emberBump` and `crossbeam` specifically.
+
 ## Prove it before claiming it
 
 Unit tests per rule first, and **verify a new regression test fails against the bug it
