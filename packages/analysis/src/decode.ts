@@ -111,7 +111,7 @@ export interface ProbeResult {
  * downloads. The permanent list is checked first, because a takedown notice can carry a 403.
  */
 const PERMANENT =
-	/Video unavailable|Private video|removed by the uploader|members-only|Sign in to confirm|not available in your country|account associated with this video has been terminated|violat|copyright|age-restricted|requested format is not available/i;
+	/Video unavailable|Private video|removed by the uploader|members-only|Sign in to confirm|not available in your country|account associated with this video has been terminated|violat|copyright|age-restricted|requested format is not available|out of date/i;
 const TRANSIENT =
 	/HTTP Error 403|HTTP Error 429|HTTP Error 5\d\d|Unable to download (?:webpage|API page|JSON)|timed out|timeout|Connection reset|Remote end closed|temporarily unavailable|EOF occurred|handshake|Network is unreachable|getaddrinfo/i;
 
@@ -127,6 +127,57 @@ const ATTEMPTS = 3;
 /** Short: a 403 clears in seconds or not at all, and the queue is waiting behind this. */
 const BACKOFF_MS = [1500, 4000];
 
+/**
+ * How old a yt-dlp may be before its refusals are read as its own rather than YouTube's.
+ *
+ * Releases are date-stamped, so the age is legible from the binary itself and costs no network
+ * call to learn. Set beyond the usual release cadence so a quiet month upstream is not blamed
+ * on the install.
+ */
+const STALE_AFTER_DAYS = 45;
+
+const VERSION_DATE = /^(\d{4})\.(\d{1,2})\.(\d{1,2})/;
+
+let ytdlpAge: Promise<number | null> | null = null;
+
+/**
+ * Days since the installed yt-dlp was released, or null when that cannot be read.
+ *
+ * Asked once per process and remembered: the answer cannot change while the app runs, and it
+ * is consulted on a failure path with the queue already waiting behind it.
+ */
+function ytdlpAgeDays(): Promise<number | null> {
+	ytdlpAge ??= run('yt-dlp', ['--version'])
+		.then(({ stdout }) => {
+			const m = VERSION_DATE.exec(stdout.toString().trim());
+			if (!m) return null;
+			const released = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+			return Math.floor((Date.now() - released) / 86_400_000);
+		})
+		.catch(() => null);
+	return ytdlpAge;
+}
+
+/**
+ * The one refusal that reads as transient and is not: a 403 from a yt-dlp too old to speak
+ * YouTube's current player protocol.
+ *
+ * YouTube moves the client its media URLs are signed for every few months, and a binary from
+ * before the move is refused for every track rather than for a share of them. Retrying re-runs
+ * an identical command against the same dead client, so the row spends both retry layers - up
+ * to nine downloads and a few minutes - to arrive exactly where it started, and reports a
+ * mysterious 403 at the end of it. Naming the binary costs one attempt and fixes the night.
+ *
+ * Only a 403 is read this way. A 429 or a 5xx is YouTube saying "not now" whatever the version
+ * is, and those keep their retries.
+ */
+function staleBinaryNote(days: number): string {
+	return (
+		`yt-dlp is ${days} days out of date and YouTube is refusing every track it asks for. ` +
+		'Run: brew upgrade yt-dlp'
+	);
+}
+
 async function withRetry<T>(
 	what: () => Promise<T>,
 	onRetry: RetryNote | undefined
@@ -136,6 +187,14 @@ async function withRetry<T>(
 			return await what();
 		} catch (e) {
 			const message = e instanceof Error ? e.message : String(e);
+			if (/HTTP Error 403/i.test(message) && !PERMANENT.test(message)) {
+				const days = await ytdlpAgeDays();
+				// The note goes first: both callers cut the report down to its opening line, and
+				// the cause is more use there than the symptom.
+				if (days !== null && days > STALE_AFTER_DAYS) {
+					throw new Error(`${staleBinaryNote(days)}\n${message}`);
+				}
+			}
 			if (attempt >= ATTEMPTS || !isTransientFetchError(message)) throw e;
 			onRetry?.(attempt, ATTEMPTS, message);
 			await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1] ?? 4000));

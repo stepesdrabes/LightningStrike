@@ -50,4 +50,17 @@ describe('which fetch failures are worth asking again', () => {
 	it('does not retry something it simply does not recognise', () => {
 		expect(isTransientFetchError('ERROR: something nobody has seen before')).toBe(false);
 	});
+
+	// The fetcher answers a 403 from an out-of-date binary with this rather than the bare
+	// refusal, and the queue has to agree that it is over: retrying spends the slow layer too,
+	// a minute at a time, on a client YouTube has stopped signing media for.
+	it('gives up on a 403 the fetcher has blamed on a stale yt-dlp', () => {
+		expect(
+			isTransientFetchError(
+				'yt-dlp is 55 days out of date and YouTube is refusing every track it asks for. ' +
+					'Run: brew upgrade yt-dlp\n' +
+					'yt-dlp exited 1: ERROR: unable to download video data: HTTP Error 403: Forbidden'
+			)
+		).toBe(false);
+	});
 });
