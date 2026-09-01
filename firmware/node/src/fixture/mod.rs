@@ -1,7 +1,8 @@
 //! What this board drives, which is the one thing the three builds differ by.
 //!
-//! All three expose the same surface - `KIND`, `HOSTNAME`, `PIXELS`, `claim`, `selftest`,
-//! `present`, `blank` - so nothing above this module branches on which one was linked in.
+//! All three expose the same surface - `KIND`, `HOSTNAME`, `PIXELS`, `IDLE_PERIOD`, `claim`,
+//! `selftest`, `present`, `idle`, `idle_forever` - so nothing above this module branches on which
+//! one was linked in.
 //! `claim` takes the whole `Peripherals` and hands back what it did not want as a [`Board`],
 //! which is what makes the pin budget a compile error rather than a comment.
 //!

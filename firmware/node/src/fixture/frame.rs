@@ -20,13 +20,6 @@ const LINE_A: usize = 300;
 const LINE_B: usize = 300;
 const LINE_C: usize = 120;
 
-/// How far the comet's tail trails its head, in addresses.
-const TAIL: usize = 20;
-
-/// What the bloom peaks at. Every emitter at once is the fixture's worst case, so this stays near
-/// a third of it.
-const BLOOM_PEAK: u8 = 90;
-
 /// The Frame: 3 x 2 m of SK6812 RGBWW at 60 LED/m, every run facing the floor.
 pub struct Fixture {
 	a: RgbwPioWs2812<'static, PIO1, 0, LINE_A, Rgbw>,
@@ -102,34 +95,10 @@ impl Fixture {
 		(fixture, board)
 	}
 
-	/// A comet down each line, then a bloom that fades out.
-	///
-	/// It is a welcome and a wiring check at once: the three hues say which run is which, and a
-	/// comet that stops partway is where that line breaks. The firmware can answer neither
-	/// question itself, and a wrong answer looks exactly like a wrong show.
-	pub async fn selftest(&mut self) {
-		const SWEEP: usize = 90;
-		for f in 0..=SWEEP {
-			comet(&mut self.buf_a, f * (LINE_A + TAIL) / SWEEP, [255, 30, 0, 0]);
-			comet(&mut self.buf_b, f * (LINE_B + TAIL) / SWEEP, [0, 255, 70, 0]);
-			comet(&mut self.buf_c, f * (LINE_C + TAIL) / SWEEP, [40, 40, 255, 0]);
-			self.write().await;
-			Timer::after_millis(4).await;
-		}
-
-		const BLOOM: usize = 56;
-		for f in 0..=BLOOM {
-			let ramp = if f * 2 <= BLOOM { f * 2 } else { 2 * (BLOOM - f) };
-			let level = (ramp * BLOOM_PEAK as usize / BLOOM) as u8;
-			let px = rgbww::pack([level, level, level, level]);
-			self.buf_a.fill(px);
-			self.buf_b.fill(px);
-			self.buf_c.fill(px);
-			self.write().await;
-			Timer::after_millis(4).await;
-		}
-		self.blank().await;
-	}
+	/// Nothing to play. The room's boot look is the idle twinkle, which starts here and is its own
+	/// wiring check: a line that never lights is a line that is not connected. The step-by-step
+	/// checks live in the `bench` build.
+	pub async fn selftest(&mut self) {}
 
 	/// What the room shows while nothing is streaming at it, one frame per call.
 	///
@@ -163,36 +132,11 @@ impl Fixture {
 		self.write().await;
 	}
 
-	/// Without this the strips hold the last frame of a stopped show for as long as the board has
-	/// power, which looks exactly like one still running.
-	pub async fn blank(&mut self) {
-		self.buf_a.fill(BLACK);
-		self.buf_b.fill(BLACK);
-		self.buf_c.fill(BLACK);
-		self.write().await;
-	}
-
 	/// Together, not in sequence: awaiting one after another costs the sum and throws away the
 	/// whole reason there are three.
 	async fn write(&mut self) {
 		join3(self.a.write(&self.buf_a), self.b.write(&self.buf_b), self.c.write(&self.buf_c))
 			.await;
 		Timer::after_micros(LATCH_TOP_UP_US).await;
-	}
-}
-
-/// One bright head with a tail fading behind it, run past the end so the last address gets its
-/// turn. Squared so the head reads as a spark rather than a smear.
-fn comet(buf: &mut [RGBW<u8>], head: usize, hue: [u8; 4]) {
-	for (i, px) in buf.iter_mut().enumerate() {
-		*px = match head.checked_sub(i).filter(|d| *d < TAIL) {
-			Some(d) => {
-				let k = (TAIL - d) as u32;
-				let k = k * k / TAIL as u32;
-				let fade = |c: u8| (c as u32 * k / TAIL as u32) as u8;
-				rgbww::pack([fade(hue[0]), fade(hue[1]), fade(hue[2]), fade(hue[3])])
-			}
-			None => BLACK,
-		};
 	}
 }

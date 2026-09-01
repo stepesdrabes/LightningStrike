@@ -45,11 +45,12 @@ pub fn unpack(bytes: &[u8], out: &mut [RGBW<u8>]) {
 	}
 }
 
-/// How long the twinkle takes to arrive, in idle frames.
-pub const FADE: u32 = 80;
+/// How long the twinkle takes to arrive, in idle frames. Around seven seconds.
+pub const FADE: u32 = 200;
 
-/// How long one point takes to rise and fall, and how bright it gets.
-const PULSE: u32 = 48;
+/// How long one point takes to rise and fall, and how bright it gets. An idle frame is about
+/// 30 ms, so a point breathes over three seconds and repeats somewhere between 16 and 33.
+const PULSE: u32 = 96;
 const PEAK: u32 = 70;
 
 const HUES: [[u8; 3]; 6] =
@@ -63,7 +64,7 @@ const HUES: [[u8; 3]; 6] =
 pub fn twinkle(buf: &mut [RGBW<u8>], t: u32, gain: u32, seed: u32) {
 	for (i, px) in buf.iter_mut().enumerate() {
 		let h = scatter(i as u32 + seed);
-		let period = PULSE * 4 + (h & 0xff);
+		let period = PULSE * 5 + (h & 0x1ff);
 		let pos = (t + (h >> 8) % period) % period;
 		*px = if pos < PULSE {
 			let ramp = if pos * 2 <= PULSE { pos * 2 } else { 2 * (PULSE - pos) };
