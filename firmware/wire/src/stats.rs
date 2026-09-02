@@ -4,8 +4,8 @@ use heapless::String;
 
 pub const LINE_CAP: usize = 192;
 
-/// Counters for one report interval. Everything is integer arithmetic so the binary carries no
-/// soft-float, and the receive loop never formats.
+/// Counters for one report interval. Integer arithmetic throughout, so the binary carries no
+/// soft-float and the receive loop never formats.
 pub struct Stats {
 	pub packets: u32,
 	pub bytes: u32,
@@ -39,10 +39,8 @@ impl Stats {
 		}
 	}
 
-	/// `gap_us` is PUSH to PUSH, `asm_us` is first packet of the frame to its PUSH, `led_us` is
-	/// how long presenting it took. The last is the only part of the budget the board itself
-	/// spends: a strip is 30 us per LED, so if it approaches the 16.7 ms frame the numbers beside
-	/// it stop being about the radio.
+	/// `gap_us` is PUSH to PUSH, `asm_us` first packet to PUSH, `led_us` how long presenting took.
+	/// The last is the only part of the 16.7 ms budget the board itself spends.
 	pub fn on_frame(&mut self, gap_us: u32, asm_us: u32, led_us: u32) {
 		self.frames += 1;
 		self.gap_min_us = self.gap_min_us.min(gap_us);
@@ -50,8 +48,7 @@ impl Stats {
 		self.asm_max_us = self.asm_max_us.max(asm_us);
 		self.led_max_us = self.led_max_us.max(led_us);
 
-		// A max on its own cannot tell one stumble apart from constant stutter, and 16.7 ms is
-		// the frame budget these are placed around.
+		// A max alone cannot tell one stumble from constant stutter.
 		match gap_us {
 			g if g > 100_000 => self.late[2] += 1,
 			g if g > 50_000 => self.late[1] += 1,

@@ -12,15 +12,14 @@ use crate::irq::Irqs;
 
 pub const KIND: &str = "sk6812";
 
-/// Where the fixture is cut between the data lines, which is where the reels are cut too.
-///
-/// An address is 40 us at four bytes, so 720 on one line is 28.8 ms and the room caps near 34 fps.
-/// Three lines written together cost the longest of them, 12.0 ms.
+/// Where the fixture is cut between the data lines, which is where the reels are cut too: A is
+/// north and east, B is south and west, C is the beam. An address is 40 us, so 720 on one line
+/// would be 28.8 ms; three lines written together cost the longest of them, 12.0 ms.
 const LINE_A: usize = 300;
 const LINE_B: usize = 300;
 const LINE_C: usize = 120;
 
-/// The Frame: 3 x 2 m of SK6812 RGBWW at 60 LED/m, every run facing the floor.
+/// The Frame: 3 x 2 m of SK6812 RGBWW at 60 LED/m, on GP2, GP3 and GP4 through the level shifter.
 pub struct Fixture {
 	a: RgbwPioWs2812<'static, PIO1, 0, LINE_A, Rgbw>,
 	b: RgbwPioWs2812<'static, PIO1, 1, LINE_B, Rgbw>,
@@ -35,19 +34,13 @@ impl Fixture {
 	pub const KIND: &'static str = KIND;
 	pub const HOSTNAME: &'static str = "room-frame";
 	pub const PIXELS: usize = LINE_A + LINE_B + LINE_C;
-	/// Three, not four. White is derived on the board, so what arrives on the wire is unchanged by
-	/// this strip having a fourth emitter.
+	/// RGB24 on the wire; the fourth emitter is the board's business.
 	pub const BYTES: usize = Self::PIXELS * 3;
-	/// How often [`Fixture::idle`] wants to be called. One write is 12 ms, so this is about as
-	/// fast as the twinkle can run.
+	/// One write is 12 ms, so this is about as fast as the twinkle can run.
 	pub const IDLE_PERIOD: Duration = Duration::from_millis(25);
 
-	/// GP2, GP3 and GP4, through a level shifter: the Pico drives 3.3 V and this family wants its
-	/// logic high referenced to 5 V. Without one the strip usually works, which is worse than
-	/// failing - it fails later, intermittently, and looks like a network fault.
-	///
-	/// cyw43 holds PIO0 SM0 and DMA_CH0, so the lines take PIO1 and DMA_CH2 upward. The program is
-	/// loaded once and shared, so a fourth line costs a state machine and a DMA channel only.
+	/// cyw43 holds PIO0 SM0 and DMA_CH0, so the lines take PIO1 and DMA_CH2 upward. The program
+	/// is loaded once and shared, so a fourth line costs a state machine and a DMA channel only.
 	pub fn claim(p: Peripherals) -> (Self, Board) {
 		let mut pio = Pio::new(p.PIO1, Irqs);
 		let program = PioWs2812Program::new(&mut pio.common);
@@ -95,13 +88,10 @@ impl Fixture {
 		(fixture, board)
 	}
 
-	/// Nothing to play. The room's boot look is the idle twinkle, which starts here and is its own
-	/// wiring check: a line that never lights is a line that is not connected. The step-by-step
-	/// checks live in the `bench` build.
+	/// The twinkle is the boot look and the wiring check: a line that never lights is not
+	/// connected. The measured steps live in the `bench` build.
 	pub async fn selftest(&mut self) {}
 
-	/// What the room shows while nothing is streaming at it, one frame per call.
-	///
 	/// Seeded by each line's offset into the fixture, so the three do not twinkle in step.
 	pub async fn idle(&mut self) {
 		self.idle_t = self.idle_t.wrapping_add(1);
@@ -112,8 +102,6 @@ impl Fixture {
 		self.write().await;
 	}
 
-	/// The same, until something cancels it. The radio takes a second or two to join and the room
-	/// should not be dark for it.
 	pub async fn idle_forever(&mut self) -> ! {
 		loop {
 			self.idle().await;
@@ -132,8 +120,7 @@ impl Fixture {
 		self.write().await;
 	}
 
-	/// Together, not in sequence: awaiting one after another costs the sum and throws away the
-	/// whole reason there are three.
+	/// Together, not in sequence: one after another would cost the sum.
 	async fn write(&mut self) {
 		join3(self.a.write(&self.buf_a), self.b.write(&self.buf_b), self.c.write(&self.buf_c))
 			.await;

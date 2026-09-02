@@ -20,12 +20,10 @@ use panic_reset as _;
 #[embassy_executor::main]
 async fn main(spawner: Spawner) -> ! {
 	let (mut fixture, board) = Fixture::claim(embassy_rp::init(Default::default()));
-	// Before the radio, so the wiring check is the first thing the board does and a join that
-	// never lands cannot hide it.
+	// Before the radio, so a join that never lands cannot hide the wiring check.
 	fixture.selftest().await;
 
-	// The join takes a second or two and the room should not be dark for it, so the idle animation
-	// races it and loses.
+	// The join takes a second or two and the room should not be dark for it.
 	let stack =
 		match select(net::join(spawner, board, Fixture::HOSTNAME), fixture.idle_forever()).await {
 			Either::First(stack) => stack,

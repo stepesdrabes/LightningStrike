@@ -1,9 +1,7 @@
 use crate::ddp::Packet;
 
-/// The framebuffer, sized to the whole fixture rather than to this board's share of it.
-///
-/// DDP offsets are device-local and always start at zero, so sizing for the maximum lets one
-/// binary receive any host-side split without a rebuild.
+/// The framebuffer, sized to the whole fixture rather than to this board's share of it. DDP
+/// offsets are device-local and start at zero, so one binary receives any host-side split.
 pub struct Frame<const BYTES: usize> {
 	buf: [u8; BYTES],
 	covered: usize,
@@ -16,8 +14,8 @@ impl<const BYTES: usize> Frame<BYTES> {
 		Self { buf: [0; BYTES], covered: 0, extent: 0, last_extent: 0 }
 	}
 
-	/// False when the packet addresses past the end of the buffer, which means the host is
-	/// driving more pixels than this build holds.
+	/// False when the packet addresses past the end of the buffer: the host is driving more
+	/// pixels than this build holds.
 	pub fn apply(&mut self, p: &Packet<'_>) -> bool {
 		let end = p.offset + p.data.len();
 		if end > BYTES {
@@ -32,16 +30,13 @@ impl<const BYTES: usize> Frame<BYTES> {
 		true
 	}
 
-	/// Gamma-corrected PWM bytes in strip order. The host owns gamma, so these reach the strips
-	/// untouched. Only meaningful before the frame is closed.
+	/// Gamma-corrected bytes in strip order, meaningful only before the frame is closed.
 	pub fn pixels(&self) -> &[u8] {
 		&self.buf[..self.extent]
 	}
 
-	/// Closes the frame on PUSH. False means bytes below the frame's own extent never arrived,
-	/// which is a dropped middle packet. Both counters are per frame rather than high-water
-	/// marks, so changing how the host splits the fixture does not leave every later frame
-	/// looking torn.
+	/// Closes the frame on PUSH. False means a middle packet never arrived. Both counters are per
+	/// frame, not high-water marks, so a host that shrinks its split does not read as torn forever.
 	pub fn close(&mut self) -> bool {
 		let whole = self.covered == self.extent;
 		self.last_extent = self.extent;
@@ -94,8 +89,6 @@ mod tests {
 		assert_eq!(f.pixels(), &[] as &[u8]);
 	}
 
-	/// Per frame rather than a high-water mark: a host that stops sending the tail of the fixture
-	/// must not leave every later frame reading as torn.
 	#[test]
 	fn forgets_the_extent_between_frames() {
 		let mut f = Frame::<9>::new();

@@ -6,12 +6,11 @@ publish = false
 
 [features]
 default = ["frame"]
-# The three fixtures this firmware drives. Exactly one, checked in src/fixture/mod.rs.
+# Exactly one fixture per binary, checked in src/fixture/mod.rs.
 frame = ["strips"]
 bounce = []
 bench = ["strips"]
-# Not a fixture: what the two addressable builds share, so the interrupt table and the
-# dependency name it once rather than listing both every time.
+# Not a fixture: what the two addressable builds share.
 strips = ["dep:smart-leds"]
 
 [dependencies]
@@ -25,8 +24,7 @@ embassy-net = { version = "0.9.1", features = [
 	"dhcpv4-hostname",
 	"medium-ethernet",
 	"proto-ipv4",
-	# Answering ping is how the board is found on the LAN and how round-trip time gets measured
-	# independently of the DDP stream.
+	# Answering ping is how the board is found on the LAN.
 	"auto-icmp-echo-reply",
 	"log"
 ] }
@@ -36,10 +34,8 @@ embassy-usb-logger = "0.6.0"
 cyw43 = { version = "0.7.0", features = ["log"] }
 cyw43-pio = "0.10.0"
 
-# For SetDutyCycle, which writes the compare register and nothing else. Already in the tree
-# under embassy-rp, so this names it rather than adding it.
+# Both already in the tree under embassy-rp; named here for SetDutyCycle and the RGBW type.
 embedded-hal = "1.0"
-# The colour type embassy-rp's WS2812 driver takes. Same crate it depends on itself.
 smart-leds = { version = "0.4.0", optional = true }
 cortex-m-rt = "0.7.0"
 critical-section = "1.1"

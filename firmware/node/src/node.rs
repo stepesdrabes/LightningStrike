@@ -10,8 +10,7 @@ use room_wire::{ddp, hello};
 use crate::config::{DDP_PORT, STATS_PORT};
 use crate::fixture::Fixture;
 
-/// How long after the last frame the room goes back to idling. Two frames at 60 fps is noise; this
-/// is longer than any stall the radio has been measured to produce.
+/// Longer than any stall the radio has been measured to produce.
 const IDLE_AFTER: Duration = Duration::from_millis(750);
 
 const IDENTITY: Identity<'static> = Identity {
@@ -23,16 +22,15 @@ const IDENTITY: Identity<'static> = Identity {
 	leds: Fixture::KIND,
 };
 
-/// The whole program after bringup: one loop selecting between a datagram and the 1 Hz report.
-///
-/// Everything runs in the one thread-mode executor because embassy-net requires all its tasks at
-/// the same priority.
+/// The whole program after bringup: one loop selecting a datagram against the 1 Hz report and the
+/// idle tick. Everything runs in the one thread-mode executor because embassy-net requires all
+/// its tasks at the same priority.
 pub async fn run(stack: Stack<'static>, fixture: &mut Fixture) -> ! {
 	let addr = stack.config_v4().unwrap().address.address();
 	log::info!("{} on {addr}, DDP :{DDP_PORT}, stats -> :{STATS_PORT}", Fixture::HOSTNAME);
 
-	// A frame is several back-to-back datagrams and cyw43 only holds four, so the socket is sized
-	// to absorb a burst the driver could not.
+	// A frame is several back-to-back datagrams and cyw43 only holds four, so the socket absorbs
+	// the burst the driver cannot.
 	let mut rx_meta = [PacketMetadata::EMPTY; 16];
 	let mut rx_buffer = [0; 8192];
 	let mut tx_meta = [PacketMetadata::EMPTY; 4];
@@ -60,8 +58,7 @@ pub async fn run(stack: Stack<'static>, fixture: &mut Fixture) -> ! {
 			Either3::First(Ok((n, meta))) => {
 				let now = Instant::now();
 
-				// Answered before the parse and on the asker's own port, so discovery needs no
-				// listener on the stats port and never counts against `bad`.
+				// Answered on the asker's own port, before the parse, so it never counts as `bad`.
 				if hello::is_query(&pkt[..n]) {
 					let line = hello::line(&IDENTITY, (now - boot).as_secs());
 					let _ = socket.send_to(line.as_bytes(), meta.endpoint).await;
@@ -100,8 +97,8 @@ pub async fn run(stack: Stack<'static>, fixture: &mut Fixture) -> ! {
 						stats.torn += 1;
 					}
 
-					// All three spans are measured from `now`, the moment PUSH arrived, so what
-					// the fixture costs cannot leak into the two numbers about the network.
+					// Both network spans end at `now`, the moment PUSH arrived, so what the
+					// fixture costs cannot leak into them.
 					let gap = last_push.map_or(0, |t| (now - t).as_micros() as u32);
 					let assembled = frame_start.map_or(0, |t| (now - t).as_micros() as u32);
 					stats.on_frame(gap, assembled, led);
@@ -124,9 +121,8 @@ pub async fn run(stack: Stack<'static>, fixture: &mut Fixture) -> ! {
 				reported = now;
 				report_at = now + Duration::from_secs(1);
 			}
-			// Idling is the room's resting state, not an error one: it runs before the first frame
-			// ever arrives and returns whenever a show stops, which is also what stops the strips
-			// holding the last frame of one.
+			// The resting state, not an error one: it runs before the first frame and whenever a
+			// show stops, which is what stops the strips holding the last frame of one.
 			Either3::Third(_) => {
 				let now = Instant::now();
 				if last_push.is_none_or(|t| now - t > IDLE_AFTER) {

@@ -13,7 +13,8 @@ It builds as **three fixtures**, one per binary:
 
 All three run the same receive loop and answer the same two questions about themselves. The only
 thing that differs is what they do with a frame once it has arrived, which is why `claim`,
-`selftest`, `present` and `blank` are the whole surface between `node.rs` and any of them.
+`selftest`, `present`, `idle` and `idle_forever` are the whole surface between `node.rs` and any
+of them.
 
 The lamp is a **one-pixel fixture**: every LED on its strip shows the same thing, so the host
 sends it one pixel and this only has to put that on four channels. Everything that used to shape
@@ -192,8 +193,8 @@ PWM, and a 38 kHz receiver for the remote it came with.
 The board is kept and the brain is not. Its eight legs are snipped, the body lifted off, and the
 Pico drives the four gate stubs directly. That works because `U2` is a `7533-1`, a 3.3 V
 regulator, so the original chip had been driving those gates at 3.3 V for the lamp's whole life
-and a Pico pin is an exact replacement. **No level shifter is needed here**, unlike the WS2815
-line below. Which stub is which channel is found by touching 3.3 V through a 1k resistor to each
+and a Pico pin is an exact replacement. **No level shifter is needed here**, unlike the SK6812
+lines below. Which stub is which channel is found by touching 3.3 V through a 1k resistor to each
 of the eight and watching what lights; the four that do nothing are Vdd, ground, the IR input
 and a spare.
 
@@ -271,11 +272,11 @@ Frame S + Frame W, C is the beam**, 300 / 300 / 120, contiguous in the host's bu
 sends one stream and `present` slices it. A 5 m reel is exactly one long side plus one short one,
 which is why the two halves come out equal.
 
-**Boot plays a comet down each line, then a bloom**, about 2.3 s, before the radio comes up. The
-three hues say which run is which and a comet that stops partway is where that line breaks, so the
-welcome is also the wiring check: the firmware can answer neither question itself, and a wrong
-answer looks exactly like a wrong show. `bench` keeps its four measurement steps instead, because
-reading numbers off a strip is the whole reason that build exists.
+**The boot look is the idle twinkle**, which starts before the radio comes up and fades in over a
+few seconds. It is also the wiring check: a line that never lights is a line that is not
+connected, and the firmware cannot tell that from a show that happens to leave it dark. `bench`
+keeps its four measurement steps instead, because reading numbers off a strip is the whole reason
+that build exists.
 
 **Three lines rather than one is what makes 60 fps possible at all.** An address is 40 us at four
 bytes, so 720 in a row is 28.8 ms and the room would cap near 34 fps. Awaited together with
@@ -289,7 +290,7 @@ once and shared - the four instructions live in PIO1's instruction memory, not i
 so a fourth line would cost a state machine and a DMA channel and nothing else.
 
 **The strip's own facts live in `fixture/rgbww.rs`**, not in either fixture: the byte order, the
-white trim, the latch and the RGB-to-RGBW conversion. `bench` is where they are measured and
+white trim, the latch and what happens to the fourth emitter. `bench` is where they are measured and
 `frame` inherits them, so a reel that turns out to be wired differently is one constant in one
 file rather than two fixtures drifting apart.
 
@@ -331,14 +332,13 @@ low**. They only mean anything once `SLOTS` is right.
 Between the ruler and the trim pair, one pixel travels the whole run, so a break shows where it
 stops.
 
-**White is derived on the board, not sent.** `BYTES` is `PIXELS * 3`, not `* 4`: the host sends the
-same RGB24 stream every fixture gets and `present` takes the achromatic part of each pixel,
-`min(r, g, b)`, and **adds** it on the fourth emitter. Subtracting is the textbook conversion and
-the more efficient one, but it only holds when the white emitter shares a white point with the RGB
-mix, and a warm phosphor against a mix near 6000 K does not - every mid-saturation colour would
-shift toward the strip's own tint. Adding cannot shift a hue, because a saturated frame has no
-achromatic part to add. That is the same decision `fixture/bounce.rs` makes, and it is what keeps
-DDP, `packages/transport` and `SHOW_VERSION` out of this entirely.
+**The white emitter stays dark during a show.** `BYTES` is `PIXELS * 3`, not `* 4`: the host
+sends the same RGB24 stream every fixture gets, and `rgbww::unpack` puts nothing on the fourth
+emitter. Deriving white as the achromatic part of each pixel, the way the Bounce Lamp does, was
+tried on this strip and washes the room out: the mixer already leaves most pixels part-desaturated
+and a fourth emitter on those takes the colour the rest of the way out. The palette was designed
+against three dies, so it gets three, and DDP, `packages/transport` and `SHOW_VERSION` stay out of
+this entirely.
 
 **Point it at one run, not at the room.** The app feeds a frame device whichever `RoomRegion` it is
 set to, and `all` is 720 pixels against this build's 300. A DDP packet addressing past the end of
@@ -372,7 +372,7 @@ So the board also answers a query, on the DDP port, at any time:
 
 ```
 -> ?room-node
-<- room-node host room-frame fw 0.1.0 up 42s px 720 ddp 4048 stats 4049 leds ws2815
+<- room-node host room-frame fw 0.1.0 up 42s px 720 ddp 4048 stats 4049 leds sk6812
 ```
 
 The reply goes back to the asker's own source port, so nothing has to be listening on 4049 for
@@ -382,9 +382,10 @@ first and never counts against `bad`.
 
 `leds` lists one kind per output, `+`-separated, and every field on that line comes from the
 binary rather than from `hello.rs` - the wire crate does not know which board it was linked into.
-`ws2815` is The Frame and `lamp` is the Bounce Lamp; a kind the app has never heard of counts as
-lit, because warning that a lit room is dark is the worse of the two mistakes. The host asks whether **any** kind in that list emits rather
-than looking at the first, so a build that adds a second output cannot go quietly dark.
+`sk6812` is The Frame and the bench run, `lamp` is the Bounce Lamp; a kind the app has never heard
+of counts as lit, because warning that a lit room is dark is the worse of the two mistakes. The
+host asks whether **any** kind in that list emits rather than looking at the first, so a build
+that adds a second output cannot go quietly dark.
 
 ## Reading the stats line
 
@@ -451,7 +452,7 @@ wire/src/frame.rs    the framebuffer, PUSH latch and tear detection, sized by a 
 wire/src/hello.rs    the discovery query and its answer, from an Identity the binary fills in
 wire/src/stats.rs    interval counters and the one line they format into
 
-node/src/main.rs     claim the fixture, selftest it, join, run. Under thirty lines
+node/src/main.rs     claim the fixture, selftest it, join, run
 node/src/board.rs    the pins cyw43 needs, handed back by whichever fixture did not want them
 node/src/irq.rs      the interrupt table, since two modules bind against it
 node/src/net.rs      console, radio, DHCP, heartbeat
@@ -474,8 +475,8 @@ offsets are device-local and always start at zero, so one binary receives any ho
 without a rebuild, which is what makes the four-way comparison above a host config change rather
 than a reflash.
 
-The host owns gamma. `quantize()` in `packages/core/src/output.ts` encodes at 2.2 on the way to
-the wire, so these bytes reach the strips untouched.
+The host owns gamma. `quantize()` in `packages/core/src/output.ts` encodes at `GAMMA` on the way
+to the wire, so these bytes reach the strips untouched.
 
 Resource split, fixed by cyw43 taking the first of everything: it holds **PIO0 SM0, DMA_CH0** and
 GPIO 23, 24, 25 and 29, and wants no PWM at all. That leaves PIO1 and DMA_CH2/CH3/CH4 for the strips
@@ -502,11 +503,6 @@ its three colour dies together, so `TRIM[3]` at a quarter is conservative rather
 What is untested is three lines at once: the timing above is arithmetic, and `led` on the stats
 line is the number that confirms it.
 
-**Level shift the data lines.** The Pico drives 3.3 V and WS2815 wants its logic high referenced
-to 5 V, so a 74AHCT125 or SN74HCT245 sits between them. Without it the strip usually works, which
-is worse than failing: it fails later, intermittently, and looks like a network fault. This is
-the one item on this list that is not optional.
-
 **Reconnect handling.** There is none: the join is retried at boot and that is all. Note before
 building it that `is_link_up()` always returns true after the first connect (embassy #4612), so
 it cannot be the trigger.
@@ -515,11 +511,6 @@ it cannot be the trigger.
 
 **A watchdog**, so a wedged cyw43 recovers without someone walking to the board.
 
-**Power.** Out of scope for the firmware but blocking for a lit room. The strips are WS2815,
-12 V, 60 LED/m, one IC per LED: constant-current, so brightness does not fall off along a run,
-and it carries a backup data line, so one dead LED does not take the rest of the strip with it.
-720 pixels at full white is roughly **18 A at 12 V**, against about 43 A the same fixture would
-have wanted at 5 V. The mixer's headroom and `compressHighlights` mean real shows never approach
-either figure, but the supply and injection points have to be sized before any of this is
-switched on. Line A is 300 pixels and about 7.5 A, which a 12 V 10 A supply covers outright, so
-that is the run to build first.
+**Power.** Out of scope for the firmware but blocking for a lit room. The supply, the fusing and
+the injection points are `docs/frame-wiring.md`; the level shifter and the board's own 5 V feed
+are `hardware/frame-brain/README.md`.
