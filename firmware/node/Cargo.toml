@@ -6,9 +6,9 @@ publish = false
 
 [features]
 default = ["frame"]
-# Exactly one fixture per binary, checked in src/fixture/mod.rs.
+# Exactly one fixture per binary, checked in src/fixture/mod.rs. The Bounce Lamp lives in
+# ../lamp on its own silicon since 0.2.
 frame = ["strips"]
-bounce = []
 bench = ["strips"]
 # Not a fixture: what the two addressable builds share.
 strips = ["dep:smart-leds"]
@@ -39,8 +39,7 @@ embassy-usb-logger = "0.6.0"
 cyw43 = { version = "0.7.0", features = ["log"] }
 cyw43-pio = "0.10.0"
 
-# Both already in the tree under embassy-rp; named here for SetDutyCycle and the RGBW type.
-embedded-hal = "1.0"
+# Already in the tree under embassy-rp; named for the RGBW type.
 smart-leds = { version = "0.4.0", optional = true }
 cortex-m-rt = "0.7.0"
 critical-section = "1.1"
