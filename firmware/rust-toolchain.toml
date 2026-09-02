@@ -1,4 +1,5 @@
 [toolchain]
 channel = "1.96"
 components = ["rust-src", "rustfmt", "clippy"]
-targets = ["thumbv6m-none-eabi"]
+# One file serves both workspaces: rustup walks up from lamp/ too.
+targets = ["thumbv6m-none-eabi", "riscv32imc-unknown-none-elf"]

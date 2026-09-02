@@ -1,5 +1,8 @@
 [workspace]
 members = ["api", "light", "node", "wire"]
+# The lamp is its own workspace: a different target, and cargo would otherwise unify features
+# across architectures.
+exclude = ["lamp"]
 resolver = "3"
 
 # A debug-profile cyw43 is too slow to keep the SPI bus fed and the join times out.
