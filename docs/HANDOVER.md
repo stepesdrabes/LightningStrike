@@ -1,7 +1,17 @@
 # Handover
 
-**Round 11 (2026-09-01, evening) sits on top of everything below: v26 / SHOW 21 / CONTEXT 3,
-UNCOMMITTED.** The owner heard Round 10 and judged "the switches are NOT good"; two frozen maps
+**Round 12 (2026-09-02) is the top layer: v27 / SHOW 22 / CONTEXT 3, UNCOMMITTED past
+1b68b77.** Two more owner maps (HIGHEST IN THE ROOM, Vitej mezi nama) and a praised sentinel
+(Sunset), all frozen in `bench/judged/round-2026-09-01/`. HIGHEST was a grid fault - the tracker's
+double-time blips in quiet passages, now repaired inside the grid repair - and Vitej the
+transitional-bar pattern, now pulled onto the kit's return for kit-carried sections only. The
+probe runs the drum model like the app does; before it did not, and its labels were not the
+app's. Read the round record's "Round 12" first.
+
+**Round 11 (2026-09-01, evening) sits under it: v26 / SHOW 22 / CONTEXT 3.**
+The analysis and the app half are committed (four commits, 960b448..1b68b77); the second pass -
+no look held past 30 s, `MAX_CUE_S` in plan.ts, SHOW 22 - is in the tree uncommitted, measured
+at 24 cues added across 137 shows and none over 40 s. The owner heard Round 10 and judged "the switches are NOT good"; two frozen maps
 in `bench/judged/round-2026-09-01/` say where the bars are, the 43 old judge files are archived
 (`cache/judge-archive-2026-09-01/`, at the owner's word), and the analyser now lands both
 Melanz seams and both SICKO MODE seams on the owner's bar lines to the frame, with no outro

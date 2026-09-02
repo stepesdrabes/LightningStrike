@@ -1862,3 +1862,89 @@ judgement, it is WAY TOO old"), and one rule: "Not every song part has to have i
   song's period, on two beats in three.
 - **The last regular bar line as the seam whatever the gap**: it moved SICKO's switch to
   58.72, a bar and a half before the new downbeat.
+
+### Round 11, second pass: a look held too long
+
+The owner, after hearing the switches land: "the first Chorus effects are way too long (1 effect
+for too long in the first chorus) - this happens in a lot of songs. But be gentle."
+
+Measured first (`composeShow` over the 137 cached analyses): 2146 cues, 39 over 30 s, 5 over
+40 s, the longest Melanz's first chorus at 48 s. Every one of the five is on a track between 58
+and 71 bpm. The cause is the stub tolerance in `buildSlots`: a section may run to twelve bars as
+one cue rather than leave a stub shorter than a phrase, which is 22 s at 128 bpm and 48 s at 60.
+A second, smaller cause is the re-landing after the peak's two-bar burst, where two and a half
+phrases round UP to a ten-bar cue - 41 s on Tisic slov.
+
+The first cut brought the eight-bar ceiling itself down at slow tempos and was wrong: Melanz's
+third song went from five 27 s looks to nine, and 61 shows changed with 129 cues added. The
+shipped rule leaves the ceiling alone and only splits a remainder past eight bars when it would
+hold past 30 s and the stub lasts at least 6 s (`MAX_CUE_S`, `MIN_STUB_S` in plan.ts); the burst
+re-landing rounds down instead of up past the same ceiling; outros and voids are exempt (the
+leaving pass steps an outro down, and was stepping from the wrong cue once it was split).
+
+Result: 24 shows change, 24 cues added of 2170; no cue over 40 s; the 14 over 30 s are eight-bar
+cues at 65 bpm and under, the ceiling itself. Melanz's first chorus is 32 s then 16 s - the
+statement, then the lift. Fast tracks are byte-identical. SHOW_VERSION 22; the engine suite pins
+the ceiling at 58, 70, 96, 128 and 175 bpm on a fixture with twelve-bar sections.
+
+## Round 12 (2026-09-02): HIGHEST IN THE ROOM and Vitej mezi nama, two new maps
+
+The owner judged two more tracks ("sectioning SLIGHTLY wrong" on HIGHEST IN THE ROOM, "just
+slight" on Vitej mezi nama) and named Separ's Sunset as great and not to be broken. Both maps
+are frozen in `bench/judged/round-2026-09-01/`; Sunset's file there is the analysis as it stood
+when it was praised, not an owner drawing, and a change that moves it is a regression.
+
+### HIGHEST IN THE ROOM: a grid fault, not a section fault
+
+Four of the owner's boundaries sat exactly on the model's downbeats and one beat off the
+shipped bar lines: one beat LATE from 72 s to 114 s, one beat EARLY from 147 s. The tracker
+runs at double time for a few beats in three quiet passages (nine, two and two extra beats at
+0.36-0.42 s intervals) and the bar count carried each error until the next one cancelled it.
+No level repair had fired on the track, so the stream went through untouched - the leftover
+cleanup only ran after a repair.
+
+Shipped: `repairBlips` in the grid repair. Inside a steady song, a run of intervals more than
+a quarter off the period, bounded by steady beats on both sides and under four bars long, is
+rewritten at the song's period between those beats. Below the regimes' sixteen-beat
+resolution, which is why they slipped through; never across a song's edge. Every bar line on
+the track now sits on a model downbeat; the owner's 1:15.29 and 2:30.59 land to the frame.
+
+The labels then FLIPPED in the probe (chorus read as verse) because the probe was running the
+DSP drum detector, which hears 808 notes as kicks, where the app runs the drum model; the
+chorus label hangs on the kit arriving. The probe now runs the model exactly as ingest does
+(`--no-drums` to skip), and with it every label on the track matches the owner's.
+
+### Vitej mezi nama: the transitional bar, fourth instance
+
+The owner's fourth groove begins where the kick returns (2:23.22); the analysis had it one bar
+earlier, on the bar the kick drops OUT. The DP put the boundary two bars early, the refine's
+one-bar reach could not get to the decisive arrival (4.48 against a floor of 2), and the
+phrase snap then moved it onto the tension bar. Shipped: `pullOntoReturn`, after the hook snap
+and before consolidation - a boundary on a bar with no kicks whose next bar is a decisive
+arrival with the kit back moves onto it, only into a section the kit carries. HIGHEST's second
+breakdown is the mirror image and the reason for that gate: a breakdown begins on the bar the
+kit LEAVES, and the ungated pull moved it onto the crash a bar later.
+
+### Also
+
+- A same-tempo seam needs the walk to restart or the beat to stop; one odd bar's downbeat gap
+  no longer counts as the count breaking. Earthquake (Harmonix) modulates C minor to A major
+  on an odd bar and read as a new song once the blip repair moved its witness windows.
+- The blip repair takes the double-time wobbles out of Jesus of Suburbia's third part, whose
+  honest tempo is then 1.0994 times the second's against a step floor of 1.10; its 6:31 seam
+  is now a miss, on the line and recorded rather than ridden.
+- ANALYSIS_VERSION 27.
+
+### Measured
+
+- Maps: HIGHEST IN THE ROOM 7 of 7 (every label the owner's); Vitej 9 of 9; Sunset 7 of 7;
+  SICKO MODE 12 of 15 and Melanz 9 of 12, unchanged.
+- Detector sets: multi-song 10 hit / 12 missed of 22 (Suburbia 6:31 the new honest miss), one
+  false (the Stairway cover); library 4 of 4 with no false seam, five tracks with a movement;
+  Harmonix Five Magics only, four splits (Earthquake no longer); Raveform 0 of 60.
+- Structure score (Harmonix / Raveform, 60 each), the two boundary rules on against off, taken
+  the same hour: identical to the third decimal - F0.5 0.202 / 0.434, F3 0.533 / 0.545, label
+  10.2% / 35.5%. Neither rule fires on a scored boundary of either corpus; what they move is
+  the owner's four bars.
+- phasegrid 0 hit / 0 closer / 28 same / 0 worse. Suite 904 green with the one known
+  calibration failure. Check clean.
