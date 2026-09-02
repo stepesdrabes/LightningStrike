@@ -360,7 +360,7 @@ Everything else is greyscale, because the LEDs have to be the only saturated thi
 - **The board**, top right, is a live readout rather than a button: a dot and the frame rate
   the hardware itself reports. Opening it gives the address field, what the board says it is,
   how the stream is actually arriving, the frame rate, which wire it is addressed on, and the
-  lead trim. See `FIRMWARE.md`.
+  lead trim. See `docs/FIRMWARE.md`.
 
 Space plays and pauses. Arrows seek 5 s, shift-arrows 30 s. Cmd-K opens the palette,
 `[` and `]` collapse the two rails, `L` switches to lounge.

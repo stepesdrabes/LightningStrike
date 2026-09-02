@@ -13,12 +13,15 @@ import {
 } from './hardware.ts';
 
 // The exact line firmware/wire/src/hello.rs formats, asserted against this same text there.
-const HELLO = 'room-node host room-frame fw 0.1.0 up 42s px 720 ddp 4048 stats 4049 leds ws2815';
+// The trailing http token arrived in 0.2; the parser reads tokens independently, so the 0.1
+// line without it must keep parsing too.
+const HELLO =
+	'room-node host room-frame fw 0.2.0 up 42s px 720 ddp 4048 stats 4049 leds sk6812 http 80';
 
-const withLeds = (leds: string) => HELLO.replace('leds ws2815', `leds ${leds}`);
+const withLeds = (leds: string) => HELLO.replace('leds sk6812', `leds ${leds}`);
 
 // The exact line firmware/wire/src/stats.rs formats, asserted against this same text there,
-// plus the shorter one FIRMWARE.md documents.
+// plus the shorter one docs/FIRMWARE.md documents.
 const STATS =
 	'up 42s  720 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  late 0/0/0  ' +
 	'asm 2.1 ms  led 210 us  seqgap 0  bad 0  oob 0  torn 0';
@@ -53,13 +56,21 @@ describe('parseIdentity', () => {
 		expect(id).toEqual({
 			host: '192.168.0.106',
 			name: 'room-frame',
-			firmware: '0.1.0',
+			firmware: '0.2.0',
 			uptimeS: 42,
 			pixels: 720,
 			ddpPort: 4048,
 			statsPort: 4049,
-			leds: 'ws2815'
+			leds: 'sk6812'
 		});
+	});
+
+	it('reads a 0.1 line without the http token the same way', () => {
+		const old =
+			'room-node host room-frame fw 0.1.0 up 42s px 720 ddp 4048 stats 4049 leds ws2815';
+		const id = parseIdentity(old, 'h');
+		expect(id?.firmware).toBe('0.1.0');
+		expect(id?.leds).toBe('ws2815');
 	});
 
 	it('reads the output kinds verbatim, including ones it has never heard of', () => {

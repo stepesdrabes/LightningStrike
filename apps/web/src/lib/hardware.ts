@@ -2,7 +2,7 @@
  * The two lines the board speaks, and what they mean.
  *
  * Both are ASCII, both are parsed here rather than on the server so the shapes can be tested
- * against the samples in FIRMWARE.md without opening a socket. A field the firmware stops
+ * against the samples in docs/FIRMWARE.md without opening a socket. A field the firmware stops
  * sending reads as undefined rather than throwing: this parser is older than the next
  * firmware by construction.
  */
@@ -131,7 +131,7 @@ export function parseIdentity(line: string, host: string): DeviceIdentity | null
  * `up 42s  1320 px  180 pkt/s  231.7 KB/s  60.0 fps  gap 15.9/17.8 ms  late 0/0/0
  *  asm 2.1 ms  seqgap 0  bad 0  oob 0  torn 0`
  *
- * `late` is absent from the sample in FIRMWARE.md but present in what the firmware writes, so
+ * `late` is absent from the sample in docs/FIRMWARE.md but present in what the firmware writes, so
  * it is optional here rather than required.
  */
 export function parseTelemetry(line: string, at: number): DeviceTelemetry | null {
