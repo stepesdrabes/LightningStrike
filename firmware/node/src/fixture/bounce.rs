@@ -2,6 +2,7 @@ use embassy_rp::Peripherals;
 use embassy_rp::pwm::{Config as PwmConfig, Pwm};
 use embassy_time::{Duration, Timer};
 use embedded_hal::pwm::SetDutyCycle;
+use room_light::state::{Colour, EffectKind, LightState, PowerOnPolicy};
 
 use crate::board::Board;
 
@@ -31,7 +32,16 @@ impl Fixture {
 	pub const HOSTNAME: &'static str = "room-bounce";
 	pub const PIXELS: usize = 1;
 	pub const BYTES: usize = Self::PIXELS * 3;
-	pub const IDLE_PERIOD: Duration = Duration::from_millis(500);
+	/// PWM writes are cheap and 30 Hz is plenty for a fade.
+	pub const ENGINE_PERIOD: Duration = Duration::from_millis(33);
+	/// AlwaysOn, because this lamp lives on a wall switch and flipping it must make light.
+	pub const DEFAULTS: LightState = LightState {
+		on: true,
+		colour: Colour::new(255, 214, 170),
+		brightness: 200,
+		effect: EffectKind::Wash,
+		policy: PowerOnPolicy::AlwaysOn,
+	};
 
 	/// PWM slices 3 and 4; cyw43 wants no PWM at all.
 	pub fn claim(p: Peripherals) -> (Self, Board) {
@@ -88,18 +98,18 @@ impl Fixture {
 		);
 	}
 
-	/// Dark, not a twinkle: a lamp in peripheral vision scintillating is a distraction.
-	pub async fn idle(&mut self) {
-		self.blank().await;
-	}
-
-	pub async fn idle_forever(&mut self) -> ! {
-		self.blank().await;
-		core::future::pending().await
-	}
-
-	pub async fn blank(&mut self) {
-		self.write(0, 0, 0, 0);
+	/// The engine's one pixel, linear RGBW with the white already derived; only the trim is
+	/// applied here.
+	pub async fn show(&mut self, out: &[[u16; 4]]) {
+		let Some(px) = out.first() else {
+			return;
+		};
+		self.write(
+			trim16(px[0], TRIM[0]),
+			trim16(px[1], TRIM[1]),
+			trim16(px[2], TRIM[2]),
+			trim16(px[3], TRIM[3]),
+		);
 	}
 
 	/// Compare registers only, so the output stays clean across a mid-period change.
@@ -131,4 +141,8 @@ impl Fixture {
 fn scale(value: u8, trim: u32) -> u16 {
 	let duty = value as u32 * MAX_DUTY / 255;
 	((duty as u64 * trim as u64) >> 8).min(u16::MAX as u64) as u16
+}
+
+fn trim16(value: u16, trim: u32) -> u16 {
+	((value as u32 * trim) >> 8).min(u16::MAX as u32) as u16
 }

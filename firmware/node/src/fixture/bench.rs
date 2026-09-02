@@ -3,7 +3,7 @@ use embassy_rp::peripherals::PIO1;
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812Program, Rgbw, RgbwPioWs2812};
 use embassy_time::{Duration, Timer};
-use room_light::effects::twinkle;
+use room_light::state::{Colour, EffectKind, LightState, PowerOnPolicy};
 use smart_leds::RGBW;
 
 use crate::board::Board;
@@ -31,7 +31,6 @@ const TRIM_PROBE: u8 = 160;
 pub struct Fixture {
 	line: RgbwPioWs2812<'static, PIO1, 0, ADDRESSES, Rgbw>,
 	buf: [RGBW<u8>; ADDRESSES],
-	idle_t: u32,
 }
 
 impl Fixture {
@@ -40,7 +39,15 @@ impl Fixture {
 	pub const PIXELS: usize = ADDRESSES;
 	/// RGB24 on the wire; the fourth emitter is the board's business.
 	pub const BYTES: usize = Self::PIXELS * 3;
-	pub const IDLE_PERIOD: Duration = Duration::from_millis(25);
+	pub const ENGINE_PERIOD: Duration = Duration::from_millis(25);
+	/// The frame's defaults, so what is judged on the table is what will hang on the wall.
+	pub const DEFAULTS: LightState = LightState {
+		on: true,
+		colour: Colour::new(255, 180, 110),
+		brightness: 160,
+		effect: EffectKind::Twinkle,
+		policy: PowerOnPolicy::Restore,
+	};
 
 	/// GP2, through the level shifter.
 	pub fn claim(p: Peripherals) -> (Self, Board) {
@@ -57,7 +64,7 @@ impl Fixture {
 			p.PIN_2,
 			&program,
 		);
-		let fixture = Self { line, buf: [BLACK; ADDRESSES], idle_t: 0 };
+		let fixture = Self { line, buf: [BLACK; ADDRESSES] };
 
 		let board = Board {
 			usb: p.USB,
@@ -112,25 +119,16 @@ impl Fixture {
 		self.blank().await;
 	}
 
-	pub async fn idle(&mut self) {
-		self.idle_t = self.idle_t.wrapping_add(1);
-		let gain = (self.idle_t.min(twinkle::FADE) * 256 / twinkle::FADE).min(256);
+	/// The engine's frame, linear RGBW; the measured trims are applied here and nowhere above.
+	pub async fn show(&mut self, out: &[[u16; 4]]) {
 		for (i, px) in self.buf.iter_mut().enumerate() {
-			*px = rgbww::pack16(twinkle::twinkle(i as u32, self.idle_t, gain));
+			*px = rgbww::pack16(out[i]);
 		}
 		self.write().await;
 	}
 
-	pub async fn idle_forever(&mut self) -> ! {
-		loop {
-			self.idle().await;
-			Timer::after(Self::IDLE_PERIOD).await;
-		}
-	}
-
 	/// The host owns gamma, so nothing here rescales.
 	pub async fn present(&mut self, pixels: &[u8]) {
-		self.idle_t = 0;
 		rgbww::unpack(pixels, &mut self.buf);
 		self.write().await;
 	}

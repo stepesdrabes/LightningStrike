@@ -2,6 +2,7 @@ use embassy_futures::select::{Either3, select3};
 use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_net::{IpEndpoint, Stack};
 use embassy_time::{Duration, Instant, Timer};
+use room_light::engine::Engine;
 use room_wire::frame::Frame;
 use room_wire::hello::Identity;
 use room_wire::stats::Stats;
@@ -9,9 +10,6 @@ use room_wire::{ddp, hello};
 
 use crate::config::{DDP_PORT, STATS_PORT};
 use crate::fixture::Fixture;
-
-/// Longer than any stall the radio has been measured to produce.
-const IDLE_AFTER: Duration = Duration::from_millis(750);
 
 const IDENTITY: Identity<'static> = Identity {
 	hostname: Fixture::HOSTNAME,
@@ -22,10 +20,25 @@ const IDENTITY: Identity<'static> = Identity {
 	leds: Fixture::KIND,
 };
 
-/// The whole program after bringup: one loop selecting a datagram against the 1 Hz report and the
-/// idle tick. Everything runs in the one thread-mode executor because embassy-net requires all
-/// its tasks at the same priority.
-pub async fn run(stack: Stack<'static>, fixture: &mut Fixture) -> ! {
+/// The boot light, racing the join: the engine fades into the remembered state while the radio
+/// is still finding its feet.
+pub async fn run_engine(fixture: &mut Fixture, engine: &mut Engine<{ Fixture::PIXELS }>) -> ! {
+	loop {
+		if let Some(out) = engine.tick(Instant::now().as_millis()) {
+			fixture.show(out).await;
+		}
+		Timer::after(Fixture::ENGINE_PERIOD).await;
+	}
+}
+
+/// The whole program after bringup: one loop selecting a datagram against the 1 Hz report and
+/// the engine tick. Everything runs in the one thread-mode executor because embassy-net requires
+/// all its tasks at the same priority.
+pub async fn run(
+	stack: Stack<'static>,
+	fixture: &mut Fixture,
+	engine: &mut Engine<{ Fixture::PIXELS }>,
+) -> ! {
 	let addr = stack.config_v4().unwrap().address.address();
 	log::info!("{} on {addr}, DDP :{DDP_PORT}, stats -> :{STATS_PORT}", Fixture::HOSTNAME);
 
@@ -51,10 +64,10 @@ pub async fn run(stack: Stack<'static>, fixture: &mut Fixture) -> ! {
 	let mut last_push: Option<Instant> = None;
 	let mut frame_start: Option<Instant> = None;
 	let mut peer: Option<IpEndpoint> = None;
-	let mut idle_at = boot;
+	let mut tick_at = boot;
 
 	loop {
-		match select3(socket.recv_from(&mut pkt), Timer::at(report_at), Timer::at(idle_at)).await {
+		match select3(socket.recv_from(&mut pkt), Timer::at(report_at), Timer::at(tick_at)).await {
 			Either3::First(Ok((n, meta))) => {
 				let now = Instant::now();
 
@@ -89,9 +102,14 @@ pub async fn run(stack: Stack<'static>, fixture: &mut Fixture) -> ! {
 					stats.out_of_range += 1;
 				}
 
+				let show = engine.on_ddp(now.as_millis());
 				if p.push {
 					let presented = Instant::now();
-					fixture.present(frame.pixels()).await;
+					if show {
+						fixture.present(frame.pixels()).await;
+						// So a party can end by fading the frame the room actually showed.
+						engine.hold(frame.pixels());
+					}
 					let led = (Instant::now() - presented).as_micros() as u32;
 					if !frame.close() {
 						stats.torn += 1;
@@ -121,14 +139,14 @@ pub async fn run(stack: Stack<'static>, fixture: &mut Fixture) -> ! {
 				reported = now;
 				report_at = now + Duration::from_secs(1);
 			}
-			// The resting state, not an error one: it runs before the first frame and whenever a
-			// show stops, which is what stops the strips holding the last frame of one.
+			// The smart light: everything that is not the stream, including the return to it
+			// ending. While the stream owns the fixture the tick renders nothing.
 			Either3::Third(_) => {
 				let now = Instant::now();
-				if last_push.is_none_or(|t| now - t > IDLE_AFTER) {
-					fixture.idle().await;
+				if let Some(out) = engine.tick(now.as_millis()) {
+					fixture.show(out).await;
 				}
-				idle_at = now + Fixture::IDLE_PERIOD;
+				tick_at = now + Fixture::ENGINE_PERIOD;
 			}
 		}
 	}

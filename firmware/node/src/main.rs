@@ -10,6 +10,8 @@ mod node;
 
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
+use embassy_time::Instant;
+use room_light::engine::Engine;
 
 use crate::fixture::Fixture;
 
@@ -23,11 +25,18 @@ async fn main(spawner: Spawner) -> ! {
 	// Before the radio, so a join that never lands cannot hide the wiring check.
 	fixture.selftest().await;
 
-	// The join takes a second or two and the room should not be dark for it.
-	let stack =
-		match select(net::join(spawner, board, Fixture::HOSTNAME), fixture.idle_forever()).await {
-			Either::First(stack) => stack,
-			Either::Second(never) => never,
-		};
-	node::run(stack, &mut fixture).await
+	let mut engine =
+		Engine::<{ Fixture::PIXELS }>::new(Instant::now().as_millis(), Fixture::DEFAULTS);
+
+	// The join takes a second or two and the light should not be dark for it.
+	let stack = match select(
+		net::join(spawner, board, Fixture::HOSTNAME),
+		node::run_engine(&mut fixture, &mut engine),
+	)
+	.await
+	{
+		Either::First(stack) => stack,
+		Either::Second(never) => never,
+	};
+	node::run(stack, &mut fixture, &mut engine).await
 }

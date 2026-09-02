@@ -4,7 +4,7 @@ use embassy_rp::peripherals::PIO1;
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812Program, Rgbw, RgbwPioWs2812};
 use embassy_time::{Duration, Timer};
-use room_light::effects::twinkle;
+use room_light::state::{Colour, EffectKind, LightState, PowerOnPolicy};
 use smart_leds::RGBW;
 
 use crate::board::Board;
@@ -28,7 +28,6 @@ pub struct Fixture {
 	buf_a: [RGBW<u8>; LINE_A],
 	buf_b: [RGBW<u8>; LINE_B],
 	buf_c: [RGBW<u8>; LINE_C],
-	idle_t: u32,
 }
 
 impl Fixture {
@@ -37,8 +36,17 @@ impl Fixture {
 	pub const PIXELS: usize = LINE_A + LINE_B + LINE_C;
 	/// RGB24 on the wire; the fourth emitter is the board's business.
 	pub const BYTES: usize = Self::PIXELS * 3;
-	/// One write is 12 ms, so this is about as fast as the twinkle can run.
-	pub const IDLE_PERIOD: Duration = Duration::from_millis(25);
+	/// One write is 12 ms, so this is about as fast as the engine can run.
+	pub const ENGINE_PERIOD: Duration = Duration::from_millis(25);
+	/// Restore, because this fixture hangs there all year and a midnight power blip must not
+	/// relight it. Twinkle keeps the 0.1 out-of-box look.
+	pub const DEFAULTS: LightState = LightState {
+		on: true,
+		colour: Colour::new(255, 180, 110),
+		brightness: 160,
+		effect: EffectKind::Twinkle,
+		policy: PowerOnPolicy::Restore,
+	};
 
 	/// cyw43 holds PIO0 SM0 and DMA_CH0, so the lines take PIO1 and DMA_CH2 upward. The program
 	/// is loaded once and shared, so a fourth line costs a state machine and a DMA channel only.
@@ -74,7 +82,6 @@ impl Fixture {
 			buf_a: [BLACK; LINE_A],
 			buf_b: [BLACK; LINE_B],
 			buf_c: [BLACK; LINE_C],
-			idle_t: 0,
 		};
 
 		let board = Board {
@@ -89,37 +96,26 @@ impl Fixture {
 		(fixture, board)
 	}
 
-	/// The twinkle is the boot look and the wiring check: a line that never lights is not
-	/// connected. The measured steps live in the `bench` build.
+	/// The boot look is the engine's fade-in, and it is the wiring check: a line that never
+	/// lights is not connected. The measured steps live in the `bench` build.
 	pub async fn selftest(&mut self) {}
 
-	/// Indexed fixture-globally, so the three lines do not twinkle in step.
-	pub async fn idle(&mut self) {
-		self.idle_t = self.idle_t.wrapping_add(1);
-		let gain = (self.idle_t.min(twinkle::FADE) * 256 / twinkle::FADE).min(256);
-		let t = self.idle_t;
+	/// The engine's frame, linear RGBW; the measured trims are applied here and nowhere above.
+	pub async fn show(&mut self, out: &[[u16; 4]]) {
 		for (i, px) in self.buf_a.iter_mut().enumerate() {
-			*px = rgbww::pack16(twinkle::twinkle(i as u32, t, gain));
+			*px = rgbww::pack16(out[i]);
 		}
 		for (i, px) in self.buf_b.iter_mut().enumerate() {
-			*px = rgbww::pack16(twinkle::twinkle((LINE_A + i) as u32, t, gain));
+			*px = rgbww::pack16(out[LINE_A + i]);
 		}
 		for (i, px) in self.buf_c.iter_mut().enumerate() {
-			*px = rgbww::pack16(twinkle::twinkle((LINE_A + LINE_B + i) as u32, t, gain));
+			*px = rgbww::pack16(out[LINE_A + LINE_B + i]);
 		}
 		self.write().await;
 	}
 
-	pub async fn idle_forever(&mut self) -> ! {
-		loop {
-			self.idle().await;
-			Timer::after(Self::IDLE_PERIOD).await;
-		}
-	}
-
-	/// The host owns gamma, so nothing here rescales. The fade restarts when a show stops.
+	/// The host owns gamma, so nothing here rescales.
 	pub async fn present(&mut self, pixels: &[u8]) {
-		self.idle_t = 0;
 		let (head, rest) = pixels.split_at(pixels.len().min(LINE_A * 3));
 		let (mid, tail) = rest.split_at(rest.len().min(LINE_B * 3));
 		rgbww::unpack(head, &mut self.buf_a);
