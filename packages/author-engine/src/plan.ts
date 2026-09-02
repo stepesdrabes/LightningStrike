@@ -50,6 +50,16 @@ export interface EngineOptions {
  * for none of it: the variety was there and the room never got to it.
  */
 const MAX_CUE_BARS = 8;
+/**
+ * The stub tolerance below lets a section run to twelve bars as one cue, which is 22 s at
+ * 128 bpm and 48 s at 60, where the owner heard Melanz's first chorus as one look held too
+ * long. Past this many seconds the twelve split into the eight and the stub - the statement,
+ * then the lift. The eight-bar ceiling itself does not move: bringing it down at slow tempos
+ * turned five looks into nine on the same track, which is the over-effecting he warned of.
+ */
+const MAX_CUE_S = 30;
+/** A stub is a cue of its own only when it lasts long enough to read as one: a two-bar tag. */
+const MIN_STUB_S = 6;
 /** Matches the linter: punctuation inside this many bars spends the biggest card too early. */
 const SETTLE_BARS = 16;
 /**
@@ -499,6 +509,9 @@ function buildSlots(
 		const first = slots.length;
 		let bar = span.startBar;
 		let index = 0;
+		// An outro is the leaving pass's to step down, and a void is dark: neither is a look
+		// held too long, so the ceiling in seconds does not apply.
+		const barSeconds = span.kind === 'outro' || span.kind === 'void' ? 0 : barSecondsOf(analysis, span);
 
 		while (bar < span.endBar) {
 			const remaining = span.endBar - bar;
@@ -508,17 +521,16 @@ function buildSlots(
 			// that is the grid the audience counts on, and on a track whose phase shifts
 			// mid-song it is the only phrase grid that exists at all.
 			const burst = isPeak && index === 0 && peakMasterBars > 0;
-			let take = burst
-				? Math.min(peakMasterBars, remaining)
-				: // Leaving a stub shorter than a phrase behind is worse than one long cue.
-					remaining > MAX_CUE_BARS + PHRASE_BARS
-					? MAX_CUE_BARS
-					: remaining;
+			let take = burst ? Math.min(peakMasterBars, remaining) : cueBars(remaining, barSeconds);
 			// The burst cue is deliberately shorter than a phrase and must not be re-rounded;
 			// everything after it re-lands on the section's own grid.
 			if (take < remaining && !burst) {
 				const into = bar + take - span.startBar;
-				const landed = span.startBar + Math.round(into / PHRASE_BARS) * PHRASE_BARS;
+				let landed = span.startBar + Math.round(into / PHRASE_BARS) * PHRASE_BARS;
+				// Rounding up past the ceiling in seconds - two and a half phrases after a
+				// two-bar burst, at 58 bpm - lands the phrase before instead.
+				const down = span.startBar + Math.floor(into / PHRASE_BARS) * PHRASE_BARS;
+				if (landed > down && (landed - bar) * barSeconds > MAX_CUE_S && down > bar) landed = down;
 				if (landed > bar && landed < span.endBar) take = landed - bar;
 			}
 
@@ -546,6 +558,27 @@ function buildSlots(
 	}
 
 	return slots;
+}
+
+/** Seconds a bar of this section lasts, from its own bar lines. */
+function barSecondsOf(analysis: TrackAnalysis, span: SectionSpan): number {
+	const times = analysis.tempo.barTimes;
+	const at = (b: number) => times[Math.max(0, Math.min(b, times.length - 1))];
+	const seconds = (at(span.endBar) - at(span.startBar)) / Math.max(1, span.endBar - span.startBar);
+	return seconds > 0 ? seconds : 0;
+}
+
+/**
+ * How many of a section's `remaining` bars the next cue takes: the ceiling while more than
+ * that and a phrase are left, else all of it. Leaving a stub shorter than a phrase behind is
+ * worse than one long cue, so the last cue may run a phrase over the ceiling - unless at
+ * this tempo it would hold past `MAX_CUE_S` and the stub is long enough to be a cue of its own.
+ */
+function cueBars(remaining: number, barSeconds: number): number {
+	if (remaining > MAX_CUE_BARS + PHRASE_BARS) return MAX_CUE_BARS;
+	const stub = remaining - MAX_CUE_BARS;
+	if (stub > 0 && remaining * barSeconds > MAX_CUE_S && stub * barSeconds >= MIN_STUB_S) return MAX_CUE_BARS;
+	return remaining;
 }
 
 function clamp01(v: number): number {

@@ -169,6 +169,45 @@ describe('the arrangement', () => {
 	});
 });
 
+describe('how long a look is held', () => {
+	/** The fixture with its second and third sections cut as twelve bars each. */
+	function withTwelve(bpm: number): TrackAnalysis {
+		const a = fixture(bpm);
+		const times = a.tempo.barTimes;
+		const sections = a.sections.map((s) => {
+			const startBar = s.startBar === 24 ? 20 : s.startBar;
+			const endBar = s.endBar === 24 ? 20 : s.endBar;
+			return { ...s, startBar, endBar, startTime: times[startBar], endTime: times[endBar] };
+		});
+		return { ...a, sections };
+	}
+
+	it('keeps a twelve-bar section as one look where it lasts under half a minute', () => {
+		const show = composeShow(withTwelve(128));
+		expect(show.cues.filter((c) => c.bar >= 8 && c.bar < 20).map((c) => c.bar)).toEqual([8]);
+	});
+
+	it('cuts a slow twelve-bar section into the statement and the lift, not three looks', () => {
+		const show = composeShow(withTwelve(60));
+		expect(show.cues.filter((c) => c.bar >= 8 && c.bar < 20).map((c) => c.bar)).toEqual([8, 16]);
+	});
+
+	for (const bpm of [58, 70, 96, 128, 175]) {
+		it(`holds no look past the ceiling at ${bpm} bpm`, () => {
+			const track = withTwelve(bpm);
+			const show = composeShow(track);
+			const times = track.tempo.barTimes;
+			for (let i = 0; i + 1 < show.cues.length; i++) {
+				const bars = show.cues[i + 1].bar - show.cues[i].bar;
+				const seconds = times[show.cues[i + 1].bar] - times[show.cues[i].bar];
+				expect(bars).toBeLessThanOrEqual(8 + PHRASE_BARS);
+				// Over eight bars only where those bars fit in thirty seconds.
+				if (bars > 8) expect(seconds).toBeLessThanOrEqual(30);
+			}
+		});
+	}
+});
+
 describe('colour', () => {
 	it('keeps one identity: a handful of hues, base and accent genuinely apart', () => {
 		const hues = new Set<number>([show.palette.base, show.palette.accent]);
