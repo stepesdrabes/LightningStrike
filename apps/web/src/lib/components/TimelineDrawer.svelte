@@ -18,7 +18,9 @@
 		sections = null,
 		onsections = () => {},
 		movements = [],
+		detected = [],
 		onmovements = () => {},
+		onveto = () => {},
 		onundo = () => {}
 	}: {
 		viz: Viz | null;
@@ -32,7 +34,10 @@
 		sections?: JudgedSection[] | null;
 		onsections?: (s: JudgedSection[]) => void;
 		movements?: number[];
+		/** Where the analysis says the songs change, seconds, with how it knows. */
+		detected?: { t: number; source: 'auto' | 'mark'; note: string }[];
 		onmovements?: (m: number[]) => void;
+		onveto?: (t: number) => void;
 		onundo?: () => void;
 	} = $props();
 </script>
@@ -52,7 +57,9 @@
 		{sections}
 		{onsections}
 		{movements}
+		{detected}
 		{onmovements}
+		{onveto}
 		{onundo} />
 </div>
 

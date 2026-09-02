@@ -197,6 +197,8 @@ export interface Judgement {
 	sections?: JudgedSection[] | null;
 	/** Seconds where a new song starts inside this one. */
 	movements?: number[] | null;
+	/** Seconds near which a detected movement was refused. */
+	movementVetoes?: number[] | null;
 	analysisHash: string | null;
 	showSeed: number | null;
 	authoredBy: string | null;

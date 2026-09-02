@@ -76,7 +76,8 @@
 		const a = analysis;
 		if (!a || duration <= 0) return [];
 		return (a.movements ?? [])
-			.map((bar) => barTimeAt(a.tempo, bar))
+			.slice(1)
+			.map((m) => barTimeAt(a.tempo, m.startBar))
 			.filter((t) => t > 0 && t < duration)
 			.map((t) => ({ t, left: `${((t / duration) * 100).toFixed(3)}%` }));
 	});

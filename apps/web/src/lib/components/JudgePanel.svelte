@@ -16,12 +16,16 @@
 		judged = 0,
 		total = 0,
 		movements = [],
+		detected = [],
+		vetoes = [],
 		editingSections = false,
 		previewingArrangement = false,
 		onsave,
 		onnext,
 		onseek,
 		onmovements = () => {},
+		onveto = () => {},
+		onunveto = () => {},
 		oneditsections = () => {},
 		ondiscardsections = () => {},
 		onpreviewarrangement = () => {},
@@ -47,6 +51,10 @@
 		 * list is how a chip removed in one place comes back from a debounce in the other.
 		 */
 		movements?: number[];
+		/** Where the analysis says the songs change, seconds, with how it knows. */
+		detected?: { t: number; source: 'auto' | 'mark'; note: string }[];
+		/** Seconds near which a detected movement was refused. */
+		vetoes?: number[];
 		/** Whether the drawer's section lane is in hand-adjust mode right now. */
 		editingSections?: boolean;
 		/** Whether the room is playing the show composed from the hand-drawn map. */
@@ -55,6 +63,8 @@
 		onnext: () => void;
 		onseek: (t: number) => void;
 		onmovements?: (m: number[]) => void;
+		onveto?: (t: number) => void;
+		onunveto?: (t: number) => void;
 		oneditsections?: (on: boolean) => void;
 		ondiscardsections?: () => void;
 		onpreviewarrangement?: (on: boolean) => void;
@@ -212,13 +222,31 @@
 	}
 
 	/**
+	 * Every seam the room plays: the analysis's own findings, the marks it has adopted, and any
+	 * mark it has not heard yet (a re-analysis is a play away). A finding is refused rather
+	 * than deleted, since the analysis would only find it again.
+	 */
+	const seams = $derived.by(() => {
+		const out: { t: number; source: 'auto' | 'mark'; note: string; pending: boolean; index: number }[] = detected.map(
+			(d) => ({ ...d, pending: false, index: -1 })
+		);
+		movements.forEach((t, index) => {
+			if (out.some((d) => Math.abs(d.t - t) < 8)) return;
+			out.push({ t, source: 'mark', note: '', pending: true, index });
+		});
+		return out.sort((a, b) => a.t - b.t);
+	});
+
+	/**
 	 * Where the grid's own bar lengths say the tempo changed - offered as candidates, never
 	 * applied. The measurement is trustworthy (the bar table is built from tracked beats);
 	 * what it cannot know is whether a tempo change is a NEW SONG or the same one breathing,
 	 * and that is the listener's call. An ordinary track produces none of these.
 	 */
 	const candidates = $derived(
-		tempoChanges.filter((t) => !movements.some((m) => Math.abs(m - t) < 2))
+		tempoChanges.filter(
+			(t) => !movements.some((m) => Math.abs(m - t) < 2) && !detected.some((d) => Math.abs(d.t - t) < 8)
+		)
 	);
 
 	function acceptCandidate(t: number) {
@@ -350,12 +378,35 @@
 						{/each}
 					</div>
 				{/if}
-				{#if movements.length > 0}
+				{#if seams.length > 0}
 					<div class="hitrow">
-						{#each movements as t, i (i)}
-							<span class="movement">
-								<button class="at mono" onclick={() => onseek(t)}>‖ {clock(t)}</button>
-								<button class="ghost" onclick={() => removeMovement(i)} aria-label="Remove this mark">
+						{#each seams as d (d.t)}
+							<span class="movement" title={d.note || (d.pending ? 'Marked; the next play hears it' : 'Marked')}>
+								<button class="at mono" onclick={() => onseek(d.t)}>‖ {clock(d.t)}</button>
+								{#if d.source === 'auto'}
+									<span class="how">{d.note || 'found'}</span>
+									<button class="ghost" onclick={() => onveto(d.t)} aria-label="Refuse this movement">
+										<Icon name="x" size={12} />
+									</button>
+								{:else if d.pending}
+									<button class="ghost" onclick={() => removeMovement(d.index)} aria-label="Remove this mark">
+										<Icon name="x" size={12} />
+									</button>
+								{:else}
+									<button class="ghost" onclick={() => onmovements(movements.filter((t) => Math.abs(t - d.t) >= 8))} aria-label="Remove this mark">
+										<Icon name="x" size={12} />
+									</button>
+								{/if}
+							</span>
+						{/each}
+					</div>
+				{/if}
+				{#if vetoes.length > 0}
+					<div class="hitrow">
+						{#each vetoes as t (t)}
+							<span class="movement refused">
+								<button class="at mono" onclick={() => onseek(t)}>refused at {clock(t)}</button>
+								<button class="ghost" onclick={() => onunveto(t)} aria-label="Allow a movement here again">
 									<Icon name="x" size={12} />
 								</button>
 							</span>
@@ -518,6 +569,23 @@
 		gap: 2px;
 		border-radius: var(--radius-sm);
 		background: var(--muted);
+	}
+	.movement .how {
+		max-width: 22ch;
+		padding-right: 4px;
+		font-size: 11px;
+		color: var(--muted-foreground);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.movement.refused {
+		background: transparent;
+		border: 1px dashed var(--border);
+	}
+	.movement.refused .at {
+		background: transparent;
+		color: var(--muted-foreground);
 	}
 	.hitmark {
 		display: inline-flex;

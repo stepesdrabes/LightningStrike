@@ -37,7 +37,9 @@
 		sections = null,
 		onsections = () => {},
 		movements = [],
+		detected = [],
 		onmovements = () => {},
+		onveto = () => {},
 		onundo = () => {}
 	}: {
 		analysis: TrackAnalysis | null;
@@ -52,12 +54,29 @@
 		/** The hand-drawn draft being edited; owned by the page, committed via onsections. */
 		sections?: JudgedSection[] | null;
 		onsections?: (s: JudgedSection[]) => void;
-		/** Seconds where a new song starts inside this one; drawn as dividers while editing. */
+		/** Seconds the owner marked a new song at, whether or not the analysis has heard them yet. */
 		movements?: number[];
+		/** Where the analysis says the songs change: its own findings and the marks it has heard. */
+		detected?: { t: number; source: 'auto' | 'mark'; note: string }[];
 		onmovements?: (m: number[]) => void;
+		/** Refuse a movement the analysis found on its own. */
+		onveto?: (t: number) => void;
 		/** One step back through the page's edit stack. */
 		onundo?: () => void;
 	} = $props();
+
+	/**
+	 * The dividers: every seam the analysis knows, plus any mark it has not heard yet. A mark
+	 * the analysis has adopted is drawn once, as the analysis's.
+	 */
+	const dividers = $derived.by(() => {
+		const out: { t: number; source: 'auto' | 'mark'; note: string; pending: boolean }[] = detected.map((d) => ({ ...d, pending: false }));
+		for (const t of movements) {
+			if (out.some((d) => Math.abs(d.t - t) < 8)) continue;
+			out.push({ t, source: 'mark', note: '', pending: true });
+		}
+		return out.sort((a, b) => a.t - b.t);
+	});
 
 	let host: HTMLDivElement | undefined = $state();
 	let width = $state(0);
@@ -406,9 +425,13 @@
 		if (picker) pickerEl?.focus({ preventScroll: true });
 	});
 
-	/** A movement mark is the panel's to add and either surface's to take back. */
-	function removeMovement(index: number) {
-		onmovements(movements.filter((_, i) => i !== index));
+	/**
+	 * Taking a divider back: a mark is removed from the marks, a detection is refused - the
+	 * analysis would find it again otherwise.
+	 */
+	function removeDivider(d: { t: number; source: 'auto' | 'mark' }) {
+		if (d.source === 'auto') onveto(d.t);
+		else onmovements(movements.filter((t) => Math.abs(t - d.t) >= 8));
 	}
 
 	function onWindowKey(e: KeyboardEvent) {
@@ -544,18 +567,18 @@
 				<!-- Where a new song starts: the same mark the panel lists, drawn where it falls.
 				     Under the handles, because a movement often lands on a seam and the seam has
 				     to stay draggable; its glyph sits clear of the line for the same reason. -->
-				{#each movements as t, i (i)}
-					<div class="movement" style:left={`${pct(t)}%`}>
+				{#each dividers as d (d.t)}
+					<div class="movement" class:pending={d.pending} style:left={`${pct(d.t)}%`}>
 						<button
 							class="mark"
 							type="button"
-							title="A new song starts here. Click to hear it, alt-click to take the mark back."
-							aria-label={`New song at ${clock(t)}`}
+							title={`A new song starts here${d.note ? ` (${d.note})` : ''}. Click to hear it, alt-click to ${d.source === 'auto' ? 'refuse it' : 'take the mark back'}.`}
+							aria-label={`New song at ${clock(d.t)}`}
 							onpointerdown={(e) => e.stopPropagation()}
 							onclick={(e) => {
 								e.stopPropagation();
-								if (e.altKey) removeMovement(i);
-								else onseek(t);
+								if (e.altKey) removeDivider(d);
+								else onseek(d.t);
 							}}>‖</button>
 					</div>
 				{/each}
@@ -929,6 +952,10 @@
 	}
 	.movement .mark:hover {
 		color: var(--live);
+	}
+	/* A mark the analysis has not heard yet: the next play will. Drawn lighter until then. */
+	.movement.pending {
+		background: var(--muted-foreground);
 	}
 
 	.picker {

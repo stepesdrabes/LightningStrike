@@ -75,6 +75,12 @@ export interface Judgement {
 	 * MODE's own switch is smaller than that track's average moment.
 	 */
 	movements?: number[] | null;
+	/**
+	 * Seconds near which the owner refused a movement the analyser found on its own. Kept
+	 * apart from the marks because a veto and a mark answer different questions, and the
+	 * analysis reads both.
+	 */
+	movementVetoes?: number[] | null;
 	analysisHash: string | null;
 	showSeed: number | null;
 	authoredBy: string | null;
@@ -147,6 +153,7 @@ export function mergeJudgement(patch: JudgementPatch, held: Partial<Judgement> |
 		comment: merged.comment ?? '',
 		sections: merged.sections ?? null,
 		movements: merged.movements ?? null,
+		movementVetoes: merged.movementVetoes ?? null,
 		analysisHash: merged.analysisHash ?? null,
 		showSeed: merged.showSeed ?? null,
 		authoredBy: merged.authoredBy ?? null,

@@ -56,6 +56,18 @@ const fromEditor = (sections: JudgedSection[] | null) => ({
 });
 
 describe('mergeJudgement', () => {
+	it('keeps a refused movement through every other writer', () => {
+		const withVeto = mergeJudgement({ trackId: 't', title: 'Track', movementVetoes: [148.5] }, held());
+		expect(withVeto.movementVetoes).toEqual([148.5]);
+		expect(withVeto.movements).toEqual([63.5]);
+		expect(withVeto.sections).toEqual(MAP);
+		// The panel's own patch does not carry vetoes, so it must not erase them.
+		expect(mergeJudgement(fromPanel(), withVeto).movementVetoes).toEqual([148.5]);
+		expect(mergeJudgement(fromEditor(REDRAWN), withVeto).movementVetoes).toEqual([148.5]);
+		// Lifting one sends the list without it.
+		expect(mergeJudgement({ trackId: 't', title: 'Track', movementVetoes: [] }, withVeto).movementVetoes).toEqual([]);
+	});
+
 	it('keeps the map when the panel writes', () => {
 		expect(mergeJudgement(fromPanel(), held()).sections).toEqual(MAP);
 	});

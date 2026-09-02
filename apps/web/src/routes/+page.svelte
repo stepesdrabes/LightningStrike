@@ -126,6 +126,15 @@
 	 * mark removed in the lane comes back from the panel's next save.
 	 */
 	const movements = $derived(trackId ? (judgements[trackId]?.movements ?? []) : []);
+	/** Seconds near which the owner refused a movement the analyser found; remembered like a mark. */
+	const movementVetoes = $derived(trackId ? (judgements[trackId]?.movementVetoes ?? []) : []);
+	/**
+	 * Where the analysis says the songs change - its own findings and the marks it has heard -
+	 * as the panel and the lane show them. The first span starts the track and is not a seam.
+	 */
+	const detectedMovements = $derived(
+		(analysis?.movements ?? []).slice(1).map((m) => ({ t: m.startTime, source: m.source, note: m.note }))
+	);
 
 	/** Hand-drawn section editing: the drawer's section lane grows handles while armed. */
 	let sectionEditing = $state(false);
@@ -425,6 +434,31 @@
 	function saveMovements(list: number[]) {
 		undoStack = [...undoStack.slice(-49), { movements: [...movements] }];
 		applyMovements(list);
+	}
+
+	/**
+	 * A detected movement the owner refuses. Written beside the marks rather than as a
+	 * deletion, because there is nothing to delete: the analysis will find the same seam
+	 * again on its next run unless told not to, and the stamp on the cached blob carries the
+	 * refusal so the next play hears it.
+	 */
+	function vetoMovement(t: number) {
+		if (!trackId) return;
+		if (movementVetoes.some((x) => Math.abs(x - t) < 0.5)) return;
+		void saveJudgement({
+			trackId,
+			title: meta?.title ?? judgements[trackId]?.title ?? '',
+			movementVetoes: [...movementVetoes, Math.round(t * 10) / 10].sort((a, b) => a - b)
+		});
+	}
+
+	function liftVeto(t: number) {
+		if (!trackId) return;
+		void saveJudgement({
+			trackId,
+			title: meta?.title ?? judgements[trackId]?.title ?? '',
+			movementVetoes: movementVetoes.filter((x) => Math.abs(x - t) >= 0.5)
+		});
 	}
 
 	function undoMapEdit() {
@@ -1277,12 +1311,16 @@
 				judged={Object.keys(judgements).length}
 				total={library.filter((e) => e.analysed).length}
 				{movements}
+				detected={detectedMovements}
+				vetoes={movementVetoes}
 				editingSections={sectionEditing}
 				previewingArrangement={previewShow !== null}
 				onsave={(j) => void saveJudgement(j)}
 				onnext={nextUnjudged}
 				onseek={(t) => viz?.seek(t)}
 				onmovements={saveMovements}
+				onveto={vetoMovement}
+				onunveto={liftVeto}
 				oneditsections={(on) => void armSectionEdit(on)}
 				ondiscardsections={discardSections}
 				onpreviewarrangement={(on) => void togglePreview(on)}
@@ -1341,8 +1379,10 @@
 			editing={sectionEditing}
 			sections={sectionDraft}
 			{movements}
+			detected={detectedMovements}
 			onsections={saveSections}
 			onmovements={saveMovements}
+			onveto={vetoMovement}
 			onundo={undoMapEdit} />
 	{/if}
 </div>
