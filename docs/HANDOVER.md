@@ -1,5 +1,59 @@
 # Handover
 
+**Round 11 (2026-09-01, evening) sits on top of everything below: v26 / SHOW 21 / CONTEXT 3,
+UNCOMMITTED.** The owner heard Round 10 and judged "the switches are NOT good"; two frozen maps
+in `bench/judged/round-2026-09-01/` say where the bars are, the 43 old judge files are archived
+(`cache/judge-archive-2026-09-01/`, at the owner's word), and the analyser now lands both
+Melanz seams and both SICKO MODE seams on the owner's bar lines to the frame, with no outro
+before a switch. Read the round record's "Round 11" section first. What remains open, in order:
+
+1. **Listen.** Melanz 2:49.64 (the beat stops on the bar line, the pickup is the new song's),
+   3:25.66; SICKO MODE 1:00.38, 2:56.56, and that the second song ends on its breakdown. The
+   cache re-analyses at v26 on first play, ~40-60 s a track.
+2. **The boundaries still off** are one bar early on a transitional bar three times out of
+   four (SICKO 0:53.54 for 0:55.28, 1:37.54 for 1:40.64; Melanz 2:58.64 for 3:01.65): the DP
+   cuts where the change begins, the owner hears where it lands. A fill-bar witness in
+   `refineBoundaries` is the candidate; sweep it on Harmonix and Raveform, never on two tracks.
+3. **Melanz 4:46.76**, a chorus restated after a two-bar bass dip, is merged by consolidation
+   (same kind, same group, no arrival). Whether a departure should count as an arrival there is
+   a room question.
+4. **Run `node bench/mapdiff.ts <map> <analysis>`** after any analyser change, on the probe's
+   output (`bench/movementprobe.ts <id> --no-hand-maps --no-marks --out=...`); the probe now
+   starts from the model's own count, never from a blob's repaired beats.
+
+**Round 10 (2026-09-01) is the layer under it: v25 / SHOW 21 / CONTEXT 3, UNCOMMITTED.** Multi-song tracks now split themselves - the owner's ask was "everything should be
+AUTOMATIC, the hand markings are mostly for judging". Read the round record's "Round 10" section
+(`bench/judged/round-2026-08-14/round2-record.md`) and the memory note `multi-song-detector` first;
+then this list:
+
+1. **What the room has not heard.** SICKO MODE and Melanz split at 59.6/176.6 s and 171.6/207.8 s
+   with NO marks and NO maps (the maps in `cache/judge` are still law on those two tracks; delete
+   or redraw them to hear the automatic reading). Three single-song tracks in the library also get
+   a movement - Hallowed Be Thy Name 1:00, bad guy 2:28, Fear of the Dark 1:43 - real tempo
+   sections, defensible, and one alt-click on the lane refuses any of them. Every other library
+   track is untouched by the detector; 23 tracks have their grid REPAIRED (tracker level flips
+   undone, beatless intros written at the song's tempo), which the time-based gate scores as
+   unchanged and the bar-numbered one cannot judge.
+2. **The gates.** `bench/phasegrid.ts` 0 hit / 1 closer / 27 same / 0 worse - run THIS one for
+   anything touching `movements.ts`, because the repair renumbers bars. `bench/earlybars.ts`
+   prints 5 worse for that reason alone (its five rows sit on renumbered tracks and phasegrid
+   shows each at 0.00 s). `bench/lintsweep.ts` 130/0. Suite 887 green with the one calibration
+   failure (`wash`/`spectrumBed`, item 0 below). `bench/movements.ts --set=multisong|app|harmonix|
+   raveform` is the detector's own instrument; the 18-track multi-song corpus is fetched by
+   `bench/fetch-multisong.ts` (gitignored under `bench/corpus/multisong`).
+3. **What to ask the room, in order.** SICKO MODE from 0:55 (the switch arrives as the peak, the
+   palette turns), 2:50 (the third song, its own colour); Melanz at 2:50 (the beat stops, the
+   room should re-stage on the pause) and 3:27; then whether Hallowed / bad guy / Fear of the
+   Dark's re-staging reads as right or as a fault, which decides whether the tempo-only rule stays.
+4. **Known misses, on purpose.** A-B-A rock (Bohemian Rhapsody's opera and rock, A Day in the
+   Life) has a middle section the tempo alone cannot tell from an EDM half-time break, and the EDM
+   corpus (60 tracks, 0 false) was chosen over them. Know Yourself is a near miss (chroma 0.73).
+   Expectations marked "detector-placed, unverified by ear" in the corpus want the owner's ear.
+5. **Install** is the same ritual as before (below, "The app and the cache"); the built app from
+   this round is in `apps/desktop/src-tauri/target` if the build finished. The app cache
+   re-analyses every track lazily at v25 on first play (~40-60 s each), or
+   `MV_CACHE_DIR=<cache> node bench/reanalyse.ts` does the lot ahead of time.
+
 State as of 2026-08-28 (round 9 landed, UNCOMMITTED and UNHEARD): **v24 / SHOW 20 /
 CONTEXT 3**, 858 tests green, typecheck clean, earlybars at its floor. This file is the
 CAMPAIGN - the analysis, the engine and what the room hears. Start at "If you are the

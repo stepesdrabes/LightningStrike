@@ -1673,3 +1673,192 @@ argument README:434 already makes about not bundling yt-dlp. Also left: there is
 staleness check at STARTUP. `apps/desktop/src-tauri/src/env.rs` names MISSING tools only. The
 naming went on the failure path instead, which covers `npm run dev` as well and speaks only
 when something actually broke, but an age line at launch is still worth having.
+
+## Round 10 (2026-09-01): multi-song tracks split themselves
+
+The owner, asked directly what was still wrong with SICKO MODE and Melanz: "Everything you said
+basically - the thing is that everything should be AUTOMATIC. (the hand markings are mostly for
+judging)". Movement definition and thresholds delegated ("decide for the best option, please, so
+everything looks nice"); detections apply immediately with a one-click refusal; "anything you need
+for testing, do not feel constrained". ANALYSIS_VERSION **25**, SHOW_VERSION **21**.
+
+### What was measured before anything was designed
+
+Two research passes (multi-song boundary detection; structure analysis 2023-2026) found no
+published model that handles a stitched second song or a tempo break - the DJ-mix literature
+treats the song change as a detection stage ahead of structure, which is the shape built here.
+Then an instrument, `bench/movements.ts`, over 245 single-song tracks (129 app cache, 60 Harmonix,
+60 Raveform) and 330 candidate seams: the four real switches sat at centred-chroma recurrence
+0.57-0.67 against a control median of 0.98, and key distance 3.5-6.5 fifths against a median of
+0. Thresholds fitted on that alone then scored **0 of 23** on a fetched 18-track multi-song
+corpus (`bench/fetch-multisong.ts`: Nights, DNA., m.A.A.d city, STARGAZING, family ties, Bohemian
+Rhapsody, Paranoid Android, Jesus of Suburbia, 911/Mr. Lonely, A Day in the Life, Happiness Is a
+Warm Gun, Know Yourself, Sing About Me, and the negatives Stairway, Free Bird, This Is America,
+Runaway, Knights of Cydonia). The key witness is a guess on rap (confidence 0.2-0.5) and stays in
+related keys across multi-movement rock. The rule was redrawn from that corpus, not the two tracks.
+
+### What shipped (`packages/analysis/src/movements.ts`)
+
+- **Grid repair, every track.** Tempo regimes from a 16-beat median change-point on log beat
+  period; songs are runs related by a tracker flip (2:1, 3:1; 3:2 and 4:3 only when the new beats
+  sit on the old grid within 40 ms, anchored on the previous song's beats); the song's level is
+  the tempo with the most seconds; flipped stretches are resampled by walking the song's period;
+  a short half/double passage with the same song either side folds in (an EDM break read at
+  another level); chaotic stretches (steady < 0.4) are written at the neighbour's period at the
+  edges up to 45 s and in interior gaps up to 20 s. Melanz's third song was read at 143 bpm for
+  a third of its length; its spoken intro at 250. Free Bird's first half was being rewritten for
+  500 s before the edge cap; Knights of Cydonia for 300 before the interior cap.
+- **Seams.** A tempo step between two steady songs (ratio >= 1.10, both >= 20 s) with the step
+  a step (two constants against one quadratic, transition guards 3/8/16 beats) OR a pause >= 2
+  periods stands alone. A same-tempo seam (downbeat break + walk restart, or a beatless gap)
+  needs >= 45 s before and >= 40 s after, timbre AND centred-chroma recurrence that stops across
+  it, and a pause >= 2 s or a key change >= 2.5 fifths at confidence >= 0.45. A beatless
+  interlude >= 20 s between two songs is a movement at both edges unless the song after recurs
+  with the song before. Nothing before 45 s. A pause <= 12 s belongs to the incoming song and the
+  seam is where the outgoing beat stopped; longer belongs to the outgoing song.
+- **Analysis per song.** Segmented, refined (movement bars are walls), grouped (never across a
+  song), labelled and vocabulary-chosen song by song via `arrangeMovements`; energy levelled per
+  song, ranked across the file. `SectionSpan.movement`, `TrackAnalysis.movements: MovementSpan[]`
+  (bpm, key, source, note). Marks within 8 s outrank a detection; `movementVetoes` on the judgement
+  refuse one within 5 s, and both are in the cache stamp.
+- **Show per song.** A palette per song from its own tempo and key, kept a quarter turn from the
+  one before and written concretely into every cue; the switch arrives on its downbeat with a slam
+  (a bump where it does not kick); each song's loudest passage gets 0.96, under the one peak the
+  show reserves; the drop count restarts per song; the hue cap is six per song.
+- **The panel.** Detected seams listed with their reason and an x that refuses them; refusals
+  listed and liftable; the lane's dividers come from the analysis, alt-click refuses; the tempo
+  candidates no longer offer what was already found.
+
+### Measured
+
+- App cache, no marks, no maps: SICKO MODE 59.6 / 176.6 s, Melanz 171.6 / 207.8 s - all within 2 s
+  of the owner's marks (60.5 / 176.2, 169.7 / 205.8). Three other tracks get a movement: Hallowed
+  Be Thy Name 59.7 (the song proper after its slow intro), bad guy 148.5 (the slowed coda), Fear
+  of the Dark 103 (the band entering). Defensible re-staging points; the owner can refuse them.
+- Raveform 60 EDM tracks: 0. Harmonix 60: Five Magics only (its thrash tempo sections).
+- Multi-song corpus: 911/Mr. Lonely, DNA., family ties, m.A.A.d city, Nights, STARGAZING, Paranoid
+  Android (the third part), Jesus of Suburbia (two of four), Happiness Is a Warm Gun (both) found;
+  This Is America, Free Bird, Runaway, Knights of Cydonia clean; the Stairway cover splits at its
+  real tempo change. Known misses: Bohemian Rhapsody and A Day in the Life (A-B-A with a middle
+  section the tempo alone cannot tell from an EDM half-time break), Know Yourself (chroma 0.73, a
+  near miss), Sing About Me.
+- Gates: `phasegrid` **0 hit / 1 closer / 27 same / 0 worse of 28** - the time-based instrument,
+  and the one that can judge this change. `earlybars` reads 17/0/6/5 because the grid repair
+  renumbers bars ahead of five seams (Killing In the Name x3, Safir, Praha) whose instants did
+  not move; phasegrid shows every one of them at 0.00 s. `lintsweep` 130 clean / 0 rejected.
+  `npm test` 887 with the one pre-existing calibration failure (`wash`/`spectrumBed` under GAMMA
+  2.45). `npm run check` clean.
+
+### Wrong turns, kept
+
+A key-change requirement; a chroma threshold fitted on two tracks; a phase test anchored on the
+regime's own first beat (passes itself); 70 ms tolerance on a 0.33 s lattice (a coin flip); the
+seam-zone walk with no length cap (a live band drifting for 98 s became a "pause"); one steady
+interval as proof of a song's edge (two stray beats a period apart, by chance, on Melanz); merging
+seams within 8 s regardless of class (family ties needs two, Runaway's coda must not get three).
+
+## Round 11 (2026-09-01, later the same day): the switches, to the bar
+
+The owner installed Round 10, listened, and judged: "the switches are NOT good". Two new maps
+(`bench/judged/round-2026-09-01/{NQbkGDoD7B0,jojRxf2qvqs}.map.json`, frozen; the 43 old judge
+files are archived under `cache/judge-archive-2026-09-01/`, the owner's word: "remove every
+judgement, it is WAY TOO old"), and one rule: "Not every song part has to have intro/outro."
+
+### What the maps said the round had wrong
+
+- **Melanz's first song was half a bar off for 120 s.** The model's downbeats sit at 1.6 s mod
+  4 in 33 of 36 bars; the shipped bar lines sat at 3.6. The opening phase was read from the
+  walk's FIRST segment, and on this track that segment is fitted to hallucinated downbeats in
+  the spoken intro before the walk restarts at the song. A leftover of the 2:1 relevel near
+  88 s (three extra beats: the regime cut sits a beat or two before the flip really ends, and
+  the unflipped regime pushed the tail of the doubled stretch as heard) is what re-synced it by
+  accident at 125 s.
+- **Both Melanz seams were a bar late**, for two different reasons. The pause seam sat on the
+  last beat the tracker heard before the 7 s pause (171.62, a stray downbeat two beats after
+  the real bar line) instead of the outgoing song's last regular bar line (169.64). The tempo
+  seam sat where Beat This finally changed period (209.02), one bar after the new song's first
+  downbeat (205.66), which the tracker rode through at the old rate.
+- **SICKO MODE's first switch was a beat early** (59.60 against the owner's 60.38): the regime
+  cut takes the last old-song beat that happens to fit the new period, and the seam took it.
+  Every bar line of the second song was a beat off after that.
+- **SICKO MODE's intro was not hallucinated**, which the previous round assumed: the model's
+  downbeats run at a clean 1.72 s from 0.04 to 27.66, and only the beats between them are
+  missing, three per bar. Counting four beats to a bar over that stream shifted every bar line
+  in the first song.
+- **Outros before a switch.** The position rule made each song's last low section an outro
+  and carved a ring-out; the owner's maps end SICKO's second song on a breakdown and Melanz's
+  first on a chorus.
+
+### What shipped
+
+- **Opening phase from the first steady song**, not the first walk segment.
+- **Pause seams on the outgoing song's last complete bar**: at that bar's end, or at the start
+  of an incomplete one, with everything to the new song's first steady beat written at the
+  incoming period as its pickup. Only after a real gap (more than a beat and a half of the
+  incoming period past the last steady beat): SICKO's old song ends on a three-beat bar with
+  no pause, and that bar is the old song's.
+- **Handshake**: a tempo seam with no pause, where one incoming bar back from the new song's
+  first steady beat lands on an outgoing bar line within 40 ms, is cut there and the bar
+  rewritten at the incoming period.
+- **A no-pause tempo seam lands on the incoming song's first model downbeat** within a bar.
+- **The lead-in is written at the first song's period** when fewer than nine in ten of its
+  intervals hold that period (SICKO's holds it on two beats in three), up to 45 s.
+- **Leftover-level cleanup**: a beat under six tenths of its song's period from the one before
+  is the other level's and goes.
+- **Exact seams bypass the phase-walk snap** (`Movement.exact`): the walk counts beats across a
+  rewritten stretch and its lines there name nothing the record plays.
+- **Outro and ring-out only where the record ends** (`arrange(..., endsTheRecord)`); intro
+  anywhere.
+- **The fold test counts a filled pickup or a handshake as a break** up to the regime's first
+  eight beats. Without it the 80 bpm song, whose pickup is now in phase with the 60 bpm bar
+  line by construction, folded into the first song as a 4:3 flip.
+- **Witnesses skip a written zone**: bars of silence resemble nothing, and counted as the
+  incoming song they made every pause look like new material.
+- **`SAME_TEMPO_KEY` 3, `MATERIAL_CHROMA` 0.70**: Know Yourself (d2.5, 8 s late) and
+  Runaway's coda (0.72 exactly) were riding the old thresholds.
+- **A long pause needs the timbre under the breakdown standard too** (< 0.95): "i'm
+  waiting." rests for 16 s and comes back into the same sound (timbre 1.39, same key at
+  0.81) and was splitting once the honest windows read its chroma at 0.64.
+- **`TrackAnalysis.heard`**: the model's own beats and downbeats, before the repair. The probe
+  and the app-set bench were reading the blob's `beats`, which are repaired, and repairing them
+  again - a seam the app never has to find. The probe now tracks the audio itself when a blob
+  lacks it and caches the count in `bench/corpus/.beats/app-<id>.json` for the bench.
+- **ANALYSIS_VERSION 26.**
+
+### Measured, against the frozen maps (`node bench/mapdiff.ts`)
+
+- **Melanz**: seams 2:49.64 and 3:25.66 against the owner's 2:49.64 and 3:25.65; 9 of 12
+  boundaries to the frame. Off: the owner's chorus at 3:01.65 (the analysis cuts at 2:58.64,
+  the first heard beat after the pickup, one bar early); a one-bar outro at 3:22.63 (below
+  any section minimum); the chorus restatement at 4:46.76, a two-bar bass dip inside a
+  forty-bar chorus that the consolidation merges (same kind, same group, no arrival). Labels:
+  1:29.73 is the owner's breakdown and the analysis's chorus; 2:49.64 the owner's build and
+  the analysis's intro.
+- **SICKO MODE**: seams 1:00.38 and 2:56.56, both exact; 12 of 15 boundaries. The second song
+  ends on the breakdown at 2:36.38 with no outro; the third song matches every boundary. Off:
+  0:48.36 build / 0:55.28 chorus (the analysis cuts 0:41.48 and 0:53.54, the fill bar before
+  the drop) and 1:40.64 build (analysis 1:37.54, the transition bar). Three of the off
+  boundaries are one bar EARLY on the transitional bar - a pattern worth a sweep with a
+  fill-bar witness, not a two-track tune.
+- **Multi-song corpus** 11 hit / 11 missed of 22 (family ties re-judged to one seam: a 15 s
+  pause is the old song's ending, so the seam is the new beat); the known misses unchanged
+  (Bohemian Rhapsody, A Day in the Life, Know Yourself, Sing About Me, Paranoid Android's
+  first and third, Suburbia's first and third); one false, the Stairway cover's real tempo
+  change, as before. Harmonix: Five Magics only, now four splits (its thrash sections, one
+  more at 4:41 through the honest windows). Raveform: 0 of 60. App library: 4 hit / 0 missed of 4, both
+  tracks to the frame, 0 false; five of 135 tracks get a movement - the two, Hallowed Be Thy
+  Name 1:00, bad guy 2:28, Fear of the Dark 1:43 and now also its 6:37 coda.
+- **Gates**: `phasegrid` 0 hit / 0 closer / 28 same / 0 worse; `lintsweep` 136 clean / 0
+  rejected; suite 889 green with the one known calibration failure; check clean.
+
+### Wrong turns, kept
+
+- **A pause is quiet.** A zone no quieter than its sides (median bar level, 6 dB) was read as
+  the tracker losing the beat while the band played, and denied the pause credit. It removed
+  Stairway and two Five Magics splits and also removed Jesus of Suburbia's 3:38, and family
+  ties' 15 s pause measured 1 dB below its sides: a real switch in hip-hop carries the hook a
+  cappella through the pause, Suburbia a drum fill. Level says nothing about the beat.
+- **The lead-in's median interval** as the test for rewriting it: SICKO's intro median IS the
+  song's period, on two beats in three.
+- **The last regular bar line as the seam whatever the gap**: it moved SICKO's switch to
+  58.72, a bar and a half before the new downbeat.
