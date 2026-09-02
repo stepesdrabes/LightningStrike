@@ -1,15 +1,17 @@
-use embassy_futures::select::{Either3, select3};
+use embassy_futures::select::{Either4, select4};
 use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_net::{IpEndpoint, Stack};
 use embassy_time::{Duration, Instant, Timer};
-use room_light::engine::Engine;
+use room_light::engine::{Engine, Save};
 use room_wire::frame::Frame;
 use room_wire::hello::Identity;
 use room_wire::stats::Stats;
 use room_wire::{ddp, hello};
 
-use crate::config::{DDP_PORT, STATS_PORT};
+use crate::config::{DDP_PORT, HTTP_PORT, STATS_PORT};
 use crate::fixture::Fixture;
+use crate::httpd::{REPLIES, REQUESTS, Request};
+use crate::persist::Persist;
 
 const IDENTITY: Identity<'static> = Identity {
 	hostname: Fixture::HOSTNAME,
@@ -18,7 +20,12 @@ const IDENTITY: Identity<'static> = Identity {
 	ddp_port: DDP_PORT,
 	stats_port: STATS_PORT,
 	leds: Fixture::KIND,
+	http_port: HTTP_PORT,
 };
+
+/// Long enough to fold a slider drag into one write, short enough that a wall switch flipped
+/// right after a change still finds it saved.
+const SAVE_DEBOUNCE: Duration = Duration::from_secs(2);
 
 /// The boot light, racing the join: the engine fades into the remembered state while the radio
 /// is still finding its feet.
@@ -38,9 +45,13 @@ pub async fn run(
 	stack: Stack<'static>,
 	fixture: &mut Fixture,
 	engine: &mut Engine<{ Fixture::PIXELS }>,
+	persist: &mut Persist,
 ) -> ! {
 	let addr = stack.config_v4().unwrap().address.address();
-	log::info!("{} on {addr}, DDP :{DDP_PORT}, stats -> :{STATS_PORT}", Fixture::HOSTNAME);
+	log::info!(
+		"{} on {addr}, DDP :{DDP_PORT}, stats -> :{STATS_PORT}, http :{HTTP_PORT}",
+		Fixture::HOSTNAME
+	);
 
 	// A frame is several back-to-back datagrams and cyw43 only holds four, so the socket absorbs
 	// the burst the driver cannot.
@@ -65,10 +76,18 @@ pub async fn run(
 	let mut frame_start: Option<Instant> = None;
 	let mut peer: Option<IpEndpoint> = None;
 	let mut tick_at = boot;
+	let mut save_at: Option<Instant> = None;
 
 	loop {
-		match select3(socket.recv_from(&mut pkt), Timer::at(report_at), Timer::at(tick_at)).await {
-			Either3::First(Ok((n, meta))) => {
+		match select4(
+			socket.recv_from(&mut pkt),
+			REQUESTS.receive(),
+			Timer::at(report_at),
+			Timer::at(tick_at),
+		)
+		.await
+		{
+			Either4::First(Ok((n, meta))) => {
 				let now = Instant::now();
 
 				// Answered on the asker's own port, before the parse, so it never counts as `bad`.
@@ -124,8 +143,22 @@ pub async fn run(
 					frame_start = None;
 				}
 			}
-			Either3::First(Err(_)) => stats.bad += 1,
-			Either3::Second(_) => {
+			Either4::First(Err(_)) => stats.bad += 1,
+			Either4::Second(req) => {
+				if let Request::Cmd(cmd) = req {
+					match engine.on_command(Instant::now().as_millis(), cmd) {
+						// Off is the state a power cut must find, so it skips the debounce.
+						Save::Immediate => {
+							persist.save(&engine.settings()).await;
+							save_at = None;
+						}
+						Save::Debounced => save_at = Some(Instant::now() + SAVE_DEBOUNCE),
+						Save::No => {}
+					}
+				}
+				let _ = REPLIES.try_send(engine.status());
+			}
+			Either4::Third(_) => {
 				let now = Instant::now();
 				let line = stats.drain(
 					(now - boot).as_secs(),
@@ -141,10 +174,14 @@ pub async fn run(
 			}
 			// The smart light: everything that is not the stream, including the return to it
 			// ending. While the stream owns the fixture the tick renders nothing.
-			Either3::Third(_) => {
+			Either4::Fourth(_) => {
 				let now = Instant::now();
 				if let Some(out) = engine.tick(now.as_millis()) {
 					fixture.show(out).await;
+				}
+				if save_at.is_some_and(|at| now >= at) {
+					persist.save(&engine.settings()).await;
+					save_at = None;
 				}
 				tick_at = now + Fixture::ENGINE_PERIOD;
 			}

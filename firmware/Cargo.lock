@@ -909,6 +909,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "httparse"
+version = "1.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6dbf3de79e51f3d586ab4cb9d5c3e2c14aa28ed23d180cf89b4df0454a69cc87"
+
+[[package]]
 name = "ident_case"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1336,8 +1342,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
 
 [[package]]
+name = "room-api"
+version = "0.2.0"
+dependencies = [
+ "embedded-io-async 0.7.0",
+ "heapless 0.9.3",
+ "httparse",
+ "room-light",
+ "serde",
+ "serde-json-core",
+]
+
+[[package]]
 name = "room-light"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde-json-core",
@@ -1345,7 +1363,7 @@ dependencies = [
 
 [[package]]
 name = "room-node"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cortex-m-rt",
  "critical-section",
@@ -1355,6 +1373,7 @@ dependencies = [
  "embassy-futures",
  "embassy-net",
  "embassy-rp",
+ "embassy-sync",
  "embassy-time",
  "embassy-usb-logger",
  "embedded-hal 1.0.0",
@@ -1362,15 +1381,17 @@ dependencies = [
  "log",
  "panic-reset",
  "portable-atomic",
+ "room-api",
  "room-light",
  "room-wire",
+ "sequential-storage",
  "smart-leds",
  "static_cell",
 ]
 
 [[package]]
 name = "room-wire"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "heapless 0.9.3",
 ]
@@ -1465,6 +1486,15 @@ name = "semver-parser"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
+
+[[package]]
+name = "sequential-storage"
+version = "8.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e750f14f4f6e5a81277c66311713a56106c8df0196df62a634d1fc806556832b"
+dependencies = [
+ "embedded-storage-async",
+]
 
 [[package]]
 name = "serde"

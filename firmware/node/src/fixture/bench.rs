@@ -6,7 +6,7 @@ use embassy_time::{Duration, Timer};
 use room_light::state::{Colour, EffectKind, LightState, PowerOnPolicy};
 use smart_leds::RGBW;
 
-use crate::board::Board;
+use crate::board::{Board, Store};
 use crate::fixture::rgbww::{self, BLACK, LATCH_TOP_UP_US, SLOTS, wire};
 use crate::irq::Irqs;
 
@@ -48,9 +48,10 @@ impl Fixture {
 		effect: EffectKind::Twinkle,
 		policy: PowerOnPolicy::Restore,
 	};
+	pub const EFFECTS: &'static [EffectKind] = &EffectKind::ALL;
 
 	/// GP2, through the level shifter.
-	pub fn claim(p: Peripherals) -> (Self, Board) {
+	pub fn claim(p: Peripherals) -> (Self, Board, Store) {
 		let mut pio = Pio::new(p.PIO1, Irqs);
 		let program = PioWs2812Program::new(&mut pio.common);
 
@@ -75,7 +76,7 @@ impl Fixture {
 			dio: p.PIN_24,
 			clk: p.PIN_29,
 		};
-		(fixture, board)
+		(fixture, board, Store { flash: p.FLASH, dma: p.DMA_CH1 })
 	}
 
 	/// Byte order: bytes 0, 1, 2, 3 alone, 1.5 s each, and the colours in that order are `SLOTS`.

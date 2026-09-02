@@ -103,7 +103,7 @@ pub struct InfoDto<'a> {
 	#[serde(rename = "statsPort")]
 	pub stats_port: u16,
 	pub leds: &'a str,
-	pub effects: &'a [&'a str],
+	pub effects: &'a [EffectKind],
 }
 
 #[cfg(test)]

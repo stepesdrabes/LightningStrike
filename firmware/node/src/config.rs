@@ -7,3 +7,6 @@ pub const DDP_PORT: u16 = 4048;
 /// Where the once-a-second stats line is mirrored, for watching a board that is already on a
 /// wall: `nc -lu 4049`.
 pub const STATS_PORT: u16 = 4049;
+
+/// The light's own control plane, so a phone needs nothing but the address.
+pub const HTTP_PORT: u16 = 80;

@@ -25,7 +25,9 @@ impl PowerOnPolicy {
 	}
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// Serializes as its lowercase name, which keeps `name()` and the JSON in one place.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum EffectKind {
 	Wash,
 	Twinkle,

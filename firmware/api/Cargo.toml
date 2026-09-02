@@ -1,0 +1,16 @@
+[package]
+name = "room-api"
+version = "0.2.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+room-light = { path = "../light" }
+
+# The version embassy-net 0.9.1 implements; room-api sees only these traits, which is what
+# keeps it one implementation for two boards whose embassy-net locks may drift apart.
+embedded-io-async = "0.7"
+httparse = { version = "1.10", default-features = false }
+serde = { version = "1", default-features = false }
+serde-json-core = "0.6"
+heapless = "0.9"

@@ -4,7 +4,7 @@ use embassy_time::{Duration, Timer};
 use embedded_hal::pwm::SetDutyCycle;
 use room_light::state::{Colour, EffectKind, LightState, PowerOnPolicy};
 
-use crate::board::Board;
+use crate::board::{Board, Store};
 
 pub const KIND: &str = "lamp";
 
@@ -42,9 +42,11 @@ impl Fixture {
 		effect: EffectKind::Wash,
 		policy: PowerOnPolicy::AlwaysOn,
 	};
+	/// One pixel is a wash by definition; scattering effects need somewhere to scatter.
+	pub const EFFECTS: &'static [EffectKind] = &[EffectKind::Wash];
 
 	/// PWM slices 3 and 4; cyw43 wants no PWM at all.
-	pub fn claim(p: Peripherals) -> (Self, Board) {
+	pub fn claim(p: Peripherals) -> (Self, Board, Store) {
 		// The default top and divider give about 1.9 kHz: above flicker and far from 60 Hz, so it
 		// cannot beat with the frame rate. If low duties read non-linear, lower this rather than
 		// TRIM; the RC slew limiter on each gate is the suspect.
@@ -65,7 +67,7 @@ impl Fixture {
 			dio: p.PIN_24,
 			clk: p.PIN_29,
 		};
-		(fixture, board)
+		(fixture, board, Store { flash: p.FLASH, dma: p.DMA_CH1 })
 	}
 
 	/// R, G, B, then R+G+B and W alone, half a second each. The first three say which gate is

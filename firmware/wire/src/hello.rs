@@ -18,6 +18,9 @@ pub struct Identity<'a> {
 	pub stats_port: u16,
 	/// One kind per output, `+`-separated; the host asks whether any of them emits.
 	pub leds: &'a str,
+	/// Where the light's own control plane listens; appended last because `parseIdentity` reads
+	/// tokens independently and ignores what it does not know.
+	pub http_port: u16,
 }
 
 pub fn is_query(buf: &[u8]) -> bool {
@@ -31,8 +34,15 @@ pub fn line(id: &Identity<'_>, uptime_s: u64) -> String<LINE_CAP> {
 	let mut s = String::new();
 	let _ = write!(
 		s,
-		"room-node host {} fw {} up {}s px {} ddp {} stats {} leds {}",
-		id.hostname, id.firmware, uptime_s, id.pixels, id.ddp_port, id.stats_port, id.leds
+		"room-node host {} fw {} up {}s px {} ddp {} stats {} leds {} http {}",
+		id.hostname,
+		id.firmware,
+		uptime_s,
+		id.pixels,
+		id.ddp_port,
+		id.stats_port,
+		id.leds,
+		id.http_port
 	);
 	s
 }
@@ -43,11 +53,12 @@ mod tests {
 
 	const FRAME: Identity<'static> = Identity {
 		hostname: "room-frame",
-		firmware: "0.1.0",
+		firmware: "0.2.0",
 		pixels: 720,
 		ddp_port: 4048,
 		stats_port: 4049,
 		leds: "sk6812",
+		http_port: 80,
 	};
 
 	/// Pinned to the exact string `parseIdentity` in apps/web reads, which is tested there against
@@ -56,14 +67,14 @@ mod tests {
 	fn formats_the_line_the_app_parses() {
 		assert_eq!(
 			line(&FRAME, 42).as_str(),
-			"room-node host room-frame fw 0.1.0 up 42s px 720 ddp 4048 stats 4049 leds sk6812"
+			"room-node host room-frame fw 0.2.0 up 42s px 720 ddp 4048 stats 4049 leds sk6812 http 80"
 		);
 	}
 
 	#[test]
 	fn joins_several_outputs_rather_than_naming_one() {
 		let both = Identity { leds: "monitor+lamp", ..FRAME };
-		assert!(line(&both, 0).as_str().ends_with("leds monitor+lamp"));
+		assert!(line(&both, 0).as_str().contains("leds monitor+lamp "));
 	}
 
 	#[test]

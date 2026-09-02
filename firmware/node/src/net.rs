@@ -71,7 +71,8 @@ pub async fn join(spawner: Spawner, board: Board, hostname: &str) -> embassy_net
 	let mut dhcp = DhcpConfig::default();
 	dhcp.hostname = Some(String::try_from(hostname).unwrap());
 
-	static RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
+	// One slot each for DHCP, the DDP socket and the HTTP listener, plus headroom.
+	static RESOURCES: StaticCell<StackResources<6>> = StaticCell::new();
 	let mut rng = RoscRng;
 	let (stack, net_runner) = embassy_net::new(
 		net_device,
