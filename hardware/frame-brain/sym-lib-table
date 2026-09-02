@@ -1,4 +1,0 @@
-(sym_lib_table
-	(version 7)
-	(lib (name "frame-brain")(type "KiCad")(uri "${KIPRJMOD}/frame-brain.kicad_sym")(options "")(descr "project symbols for the frame brain board"))
-)

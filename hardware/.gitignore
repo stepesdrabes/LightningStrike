@@ -1,8 +1,0 @@
-# KiCad writes these while a file is open and deletes them on close, so a commit taken with the
-# editor running would carry someone's session.
-~*.lck
-*-backups/
-*.kicad_pcb-bak
-*.kicad_sch-bak
-
-__pycache__/
