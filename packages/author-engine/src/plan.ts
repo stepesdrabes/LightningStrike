@@ -5,6 +5,7 @@ import type {
 	Hit,
 	LayerRole,
 	LayerSpec,
+	MovementSpan,
 	SectionKind,
 	SectionSpan,
 	Show,
@@ -23,6 +24,7 @@ import {
 	lerpHue,
 	sectionBase,
 	strobePerBeat,
+	swapped,
 	bpmAt
 } from '@mv/core';
 import { allowedFlashes, profileFor, type GenreProfile } from './genre.ts';
@@ -77,6 +79,16 @@ interface Slot {
 	dropIndex: number;
 	/** True when this section is the LAST appearance of its material: the final chorus. */
 	finalOfGroup: boolean;
+	/** Which song of a stitched track this slot lights; 0 on a track that is one song. */
+	movement: number;
+	/** True for the slot that opens a second or later song: the beat switch itself. */
+	arrival: boolean;
+	/**
+	 * True for the one slot that opens the loudest passage of a song that does not hold the
+	 * track's peak: each song of a medley gets a biggest moment of its own, short of the one
+	 * the whole show reserves.
+	 */
+	movementPeak: boolean;
 }
 
 /**
@@ -114,6 +126,19 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		{ vetoCharacter: flashes === 0 }
 	);
 	const palette = choosePalette(analysis, rng, opts.artHue, profile);
+	// A track that is several songs gets a palette per song, each drawn from that song's own
+	// tempo and key and kept a clear step from the one before: the switch is the biggest
+	// thing on such a record, and a room that keeps its colour through it has not noticed.
+	// Blobs written before spans existed carry bar numbers here; they are read as no movements
+	// at all, since the version bump re-analyses them before the app composes anything.
+	const movements: readonly MovementSpan[] = (analysis.movements ?? []).filter(
+		(m): m is MovementSpan => typeof m === 'object' && m !== null && typeof m.startBar === 'number'
+	);
+	const palettes: ShowPalette[] = [palette];
+	for (let k = 1; k < movements.length; k++) {
+		const m = movements[k];
+		palettes.push(choosePalette(analysis, rng, null, profile, { bpm: m.bpm, key: m.key, awayFrom: palettes[k - 1].base }));
+	}
 	// A signature is the family's vocabulary, not every sentence. Listed plainly, the
 	// preference put impulseSpin in 30 of 34 house shows and the owner's word for it was
 	// OVERUSED - and merit alone kept it at 80% with the preference gone, because a
@@ -168,7 +193,8 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 	const slots = buildSlots(
 		analysis,
 		profile.peak === 'swell' ? 0 : (peakMaster?.taste.maxBars ?? 0),
-		peakSpan?.index ?? -1
+		peakSpan?.index ?? -1,
+		movements
 	);
 
 	// A squashed master has almost no per-bar level left to read, so the arrangement has to
@@ -324,15 +350,23 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		// moved together, so it reads as the song going up rather than the show changing.
 		const lifted =
 			analysis.bars[slot.span.startBar]?.events.includes('key_change') ?? false;
+		// Past the first song every cue names its palette outright: a cue with none resolves
+		// against the SHOW palette, never the cue before, so a 'swap' or an absent palette in
+		// the second song would reach back to the first song's colour.
+		const own = palettes[slot.movement] ?? palette;
+		const cuePalette = paletteFor(slot, own, intensity, lifted);
+		const concrete: CuePalette | undefined =
+			slot.movement === 0 ? cuePalette : cuePalette === 'swap' ? swapped(own) : (cuePalette ?? own);
 		cues.push({
 			bar: slot.bar,
 			section: slot.section,
 			layers,
-			palette: paletteFor(slot, palette, intensity, lifted),
+			palette: concrete,
 			intensity,
 			motion: motionFor(slot, profile),
-			fadeBeats: fadeFor(slot, profile),
-			note: noteFor(slot)
+			// A new song arrives on its downbeat, whatever its first section is.
+			fadeBeats: slot.arrival ? 0 : fadeFor(slot, profile),
+			note: slot.arrival ? `a new song: ${noteFor(slot)}` : noteFor(slot)
 		});
 	}
 
@@ -348,7 +382,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		trackId: analysis.trackId,
 		title: analysis.title,
 		analysisHash: analysis.hash,
-		brief: writeBrief(analysis, palette.name ?? 'unnamed', opts.context),
+		brief: writeBrief(analysis, palette.name ?? 'unnamed', opts.context, movements),
 		authoredBy: 'engine',
 		seed,
 		palette,
@@ -423,20 +457,44 @@ export function peakSection(sections: readonly SectionSpan[]): SectionSpan | nul
 	return last;
 }
 
-function buildSlots(analysis: TrackAnalysis, peakMasterBars: number, peakIndex: number): Slot[] {
+function buildSlots(
+	analysis: TrackAnalysis,
+	peakMasterBars: number,
+	peakIndex: number,
+	movements: readonly MovementSpan[] = []
+): Slot[] {
 	const slots: Slot[] = [];
 
 	let dropCount = 0;
+	let lastMovement = 0;
 
 	// The final appearance of each material, so the last chorus can outrank its siblings.
 	const lastOfGroup = new Map<number, number>();
 	for (const s of analysis.sections) {
 		if (s.group >= 0) lastOfGroup.set(s.group, s.index);
 	}
+	// Each song's own biggest passage: the last statement of its loudest drop-class group,
+	// the rule the track's peak already follows, asked per song. The song holding the
+	// track's peak needs none of its own.
+	const movementPeaks = new Set<number>();
+	for (let k = 0; k < movements.length; k++) {
+		const own = analysis.sections.filter((s) => s.movement === k && sectionBase(s.kind) === 'drop');
+		if (own.length === 0 || own.some((s) => s.index === peakIndex)) continue;
+		const top = own.reduce((a, b) => (b.meanEnergy > a.meanEnergy ? b : a));
+		const last = own.filter((s) => s.group === top.group && s.kind === top.kind).pop() ?? top;
+		movementPeaks.add(last.index);
+	}
 
 	for (const span of analysis.sections) {
 		const energy = span.meanEnergy / 100;
 		const isPeak = span.index === peakIndex;
+		const movement = span.movement ?? 0;
+		// The drop count restarts with each song, so the second song's first drop inverts the
+		// palette the way any first drop does.
+		if (movement !== lastMovement) {
+			dropCount = 0;
+			lastMovement = movement;
+		}
 		const dropIndex = sectionBase(span.kind) === 'drop' ? dropCount++ : -1;
 		const first = slots.length;
 		let bar = span.startBar;
@@ -475,7 +533,10 @@ function buildSlots(analysis: TrackAnalysis, peakMasterBars: number, peakIndex: 
 				peak: isPeak && index === 0,
 				from: slots[slots.length - 1]?.section ?? null,
 				dropIndex,
-				finalOfGroup: span.group >= 0 && lastOfGroup.get(span.group) === span.index
+				finalOfGroup: span.group >= 0 && lastOfGroup.get(span.group) === span.index,
+				movement,
+				arrival: movement > 0 && index === 0 && bar === movements[movement]?.startBar,
+				movementPeak: movementPeaks.has(span.index) && index === 0
 			});
 			bar += take;
 			index++;
@@ -535,6 +596,9 @@ function intensityFor(slot: Slot, spread = 0, profile?: GenreProfile): number {
 	const climb = slot.section === 'build' && slot.of > 1 ? (slot.index / (slot.of - 1)) * 0.16 : 0;
 	// The final chorus outranks its siblings: everything the room has, short of the peak's 1.0.
 	const finale = slot.section === 'chorus' && slot.finalOfGroup ? 0.05 : 0;
+	// A song's own biggest moment on a stitched track: above anything else in that song,
+	// still under the one peak the whole show reserves, which the linter holds brightest.
+	if (slot.movementPeak) return 0.96;
 	return Math.min(0.92, floor + slot.energy * 0.08 + climb + finale);
 }
 
@@ -1014,6 +1078,19 @@ function planHits(
 		return true;
 	};
 
+	// A beat switch is the biggest thing on a record that has one, and it is marked whatever
+	// section it opens: a slam where the new song kicks, a colour flood where it does not.
+	for (const slot of slots) {
+		if (!slot.arrival || slot.bar < SETTLE_BARS) continue;
+		const lands = (analysis.bars[slot.bar]?.kicks ?? 0) > 0;
+		hits.push({
+			bar: slot.bar,
+			kind: lands && treatFor(slot) !== 'swell' ? 'slam' : 'bump',
+			beats: bars(1),
+			note: 'a new song begins'
+		});
+	}
+
 	// Every drop-class arrival gets its downbeat marked - with what depends on the genre.
 	// A slam is an impact; a bump is the bloom genres mark a chorus with; a swell genre
 	// lets the cue's own rise carry it and plans nothing at all.
@@ -1022,6 +1099,8 @@ function planHits(
 		const treat = treatFor(slot);
 		const anthem = slot.section === 'chorus' && treat !== 'slam';
 		if (treat === 'swell') continue;
+		// The switch already marked this bar.
+		if (hits.some((h) => h.bar === slot.bar)) continue;
 		// A slam is a kick gesture, spent only where the arrival actually kicks. The sung hook
 		// that lands with the drums out is still an arrival - it gets the colour flood, and
 		// the slam stays saved for a downbeat that hits back.
@@ -1263,12 +1342,19 @@ function kickDensity(analysis: TrackAnalysis, slot: Slot): number {
 function writeBrief(
 	analysis: TrackAnalysis,
 	paletteName: string,
-	context?: TrackContext | null
+	context?: TrackContext | null,
+	movements: readonly MovementSpan[] = []
 ): string {
 	const t = analysis.tempo;
 	const quiet = analysis.sections.some((s) => s.kind === 'verse') ? 'verses' : 'grooves';
 	const peak = analysis.sections.find((s) => s.energyRank === 1);
 	const shape = analysis.sections.map((s) => s.kind).join(' > ');
+	const songs =
+		movements.length > 1
+			? ` ${movements.length} songs in one: ${movements
+					.map((m) => `${Math.round(m.bpm)} bpm in ${m.key.name} from bar ${m.startBar}`)
+					.join(', ')}; each gets its own palette and its own biggest moment.`
+			: '';
 	const who =
 		context?.artist && context.title ? `${context.artist} - ${context.title}. ` : '';
 	const family = context?.genreFamily ? ` Lit as ${context.genreFamily}.` : '';
@@ -1281,7 +1367,7 @@ function writeBrief(
 		: `The analyser was not sure of this track (${trust.reasons.join('; ')}), so the room runs the calm lounge scenes over it and this show is only the fallback behind the override. `;
 
 	return [
-		`${doubt}${who}${t.bpm} bpm in ${t.beatsPerBar}/4, ${analysis.key.name}, ${analysis.bars.length} bars.${family}`,
+		`${doubt}${who}${t.bpm} bpm in ${t.beatsPerBar}/4, ${analysis.key.name}, ${analysis.bars.length} bars.${family}${songs}`,
 		`Arrangement: ${shape}.`,
 		`Palette "${paletteName}": one base hue with a complementary answer, no third colour to mud`,
 		`the walls. Intensity follows the arrangement rather than the waveform, so the room sits`,

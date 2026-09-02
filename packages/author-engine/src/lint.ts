@@ -587,11 +587,14 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 	}
 	// What muds a room is three hues lit at once, not six visited over four minutes. A cue can
 	// only ever declare base, accent and third, so simultaneity is bounded by the type; this
-	// bounds how far the identity is allowed to wander before it stops being one.
-	if (hues.size > MAX_HUES) {
+	// bounds how far the identity is allowed to wander before it stops being one. A track
+	// that is several songs has an identity per song, and each is allowed its own six.
+	const songs = Math.max(1, (analysis.movements ?? []).filter((m) => typeof m === 'object' && m !== null).length);
+	const hueCap = MAX_HUES * songs;
+	if (hues.size > hueCap) {
 		warn(
 			'too-many-hues',
-			`the show visits ${hues.size} hues (${[...hues].join(', ')}); past ${MAX_HUES} the room stops having a colour of its own`
+			`the show visits ${hues.size} hues (${[...hues].join(', ')}); past ${hueCap} the room stops having a colour of its own`
 		);
 	}
 

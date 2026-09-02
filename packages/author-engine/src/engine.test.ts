@@ -600,3 +600,57 @@ describe('the brief owns the doubt', () => {
 		expect(composeShow(analysis).brief).not.toContain('lounge scenes');
 	});
 });
+
+describe('a track that is two songs', () => {
+	/** The fixture with a second song starting at bar 72: the groove, build, drop and outro. */
+	function twoSongs(): TrackAnalysis {
+		const a = fixture();
+		const seam = 72;
+		return {
+			...a,
+			sections: a.sections.map((s) => ({ ...s, movement: s.startBar < seam ? 0 : 1 })),
+			movements: [
+				{ startBar: 0, endBar: seam, startTime: a.tempo.barTimes[0], endTime: a.tempo.barTimes[seam], bpm: 128, key: a.key, source: 'auto', note: '' },
+				{ startBar: seam, endBar: 128, startTime: a.tempo.barTimes[seam], endTime: a.tempo.barTimes[128], bpm: 128, key: { tonic: 2, name: 'D major', mode: 'major', confidence: 0.8 }, source: 'auto', note: 'tempo 128 to 128, A minor to D major' }
+			]
+		};
+	}
+	const two = twoSongs();
+	const stitched = composeShow(two);
+	const verdictTwo = lintShow(stitched, { analysis: two, effects });
+	const hueApart = (a: number, b: number) => Math.abs((((a - b) % 360) + 540) % 360 - 180);
+
+	it('still lints clean', () => {
+		expect(verdictTwo.errors.map((e) => `${e.rule}: ${e.message}`)).toEqual([]);
+	});
+
+	it('gives the second song a palette of its own, written into every one of its cues', () => {
+		const second = stitched.cues.filter((c) => c.bar >= 72);
+		expect(second.length).toBeGreaterThan(0);
+		for (const cue of second) {
+			expect(typeof cue.palette).toBe('object');
+			const p = cue.palette as Exclude<typeof cue.palette, string | undefined>;
+			// Its own base or its own accent: a swapped cue carries the song's accent as base.
+			const base = Math.min(hueApart(p.base, stitched.palette.base), hueApart(p.accent, stitched.palette.base));
+			expect(base).toBeGreaterThanOrEqual(60);
+		}
+	});
+
+	it('arrives on the downbeat of the new song and marks it', () => {
+		const arrival = stitched.cues.find((c) => c.bar === 72)!;
+		expect(arrival).toBeDefined();
+		expect(arrival.fadeBeats).toBe(0);
+		expect(stitched.hits.some((h) => h.bar === 72 && (h.kind === 'slam' || h.kind === 'bump'))).toBe(true);
+	});
+
+	it('gives the first song a biggest moment of its own, under the peak the show reserves', () => {
+		const firstDrop = stitched.cues.find((c) => c.bar === 40)!;
+		expect(firstDrop.intensity).toBe(0.96);
+		const peak = stitched.cues.find((c) => c.bar === 96)!;
+		expect(peak.intensity).toBe(1);
+	});
+
+	it('is deterministic', () => {
+		expect(JSON.stringify(composeShow(two))).toBe(JSON.stringify(stitched));
+	});
+});

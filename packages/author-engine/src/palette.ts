@@ -61,9 +61,17 @@ export function choosePalette(
 	analysis: TrackAnalysis,
 	rng: Rng,
 	artHue?: number | null,
-	profile?: GenreProfile
+	profile?: GenreProfile,
+	/**
+	 * One song of a track that is several: its own tempo and key decide the heat, the cover
+	 * does not anchor it (the sleeve belongs to the record, and the first song wears it), and
+	 * the base is kept a clear step away from the song before, so the switch reads as a
+	 * change of room.
+	 */
+	own?: { bpm: number; key: TrackAnalysis['key']; awayFrom: number }
 ): ShowPalette {
-	const bpm = analysis.tempo.bpm;
+	const bpm = own?.bpm ?? analysis.tempo.bpm;
+	const key = own?.key ?? analysis.key;
 
 	// Tempo carries most of it. 90 is a room at rest and 175 is one that is not, and unlike
 	// every energy figure in the analysis it means the same thing from one track to the next.
@@ -72,7 +80,7 @@ export function choosePalette(
 	// Mode is the one colour convention an audience reads without being taught - and it works
 	// through saturation and lightness far more than through hue, so the mode nudge is small
 	// next to the genre's own bias.
-	if (analysis.key.confidence > 0.55) heat += analysis.key.mode === 'major' ? 0.14 : -0.1;
+	if (key.confidence > 0.55) heat += key.mode === 'major' ? 0.14 : -0.1;
 	// A squashed master has no dynamics for the lighting to follow, so colour does more work.
 	if (analysis.peakToLoudness < 9) heat += 0.08;
 	// A wide loudness range means the arrangement is already doing the shouting.
@@ -100,7 +108,7 @@ export function choosePalette(
 		}
 	}
 	const choice = PALETTES[index];
-	const fromArt = artHue !== undefined && artHue !== null;
+	const fromArt = own === undefined && artHue !== undefined && artHue !== null;
 
 	// The cover wins when there is one. The whole palette rotates rather than the base being
 	// overwritten, so the 140-180 degrees between base and accent survive exactly: a yellow
@@ -111,11 +119,17 @@ export function choosePalette(
 	// two are different curves rather than a rotation of each other. Converting is not a nicety:
 	// declared 90 is delivered as 60, so a chartreuse sleeve lit the room yellow and the palette
 	// looked like it had ignored the artwork.
-	const shift = fromArt
+	let shift = fromArt
 		? ((rampHueFor(artHue as number) * 360 - choice.base) % 360 + 360) % 360
-		: analysis.key.confidence > 0.5
-			? (analysis.key.tonic / 12) * 30 - 15
+		: key.confidence > 0.5
+			? (key.tonic / 12) * 30 - 15
 			: 0;
+	// A second song that lands within a sixth of the wheel of the one before it would read
+	// as the same room; a quarter turn keeps the base and accent geometry and moves both.
+	if (own) {
+		const apart = Math.abs((((wrapHue(choice.base + shift) - own.awayFrom) % 360) + 540) % 360 - 180);
+		if (apart < 60) shift += 90;
+	}
 
 	// The genre's saturation discipline: pop may pastel, techno may not, and a monochrome
 	// family folds the third hue back onto the base so nothing mid-show can introduce a
