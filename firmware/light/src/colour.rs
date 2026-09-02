@@ -27,6 +27,27 @@ pub fn decode(v: u8) -> u16 {
 	GAMMA_DECODE[v as usize]
 }
 
+/// A perceptual colour and brightness into linear emitters. White is the achromatic part added,
+/// not moved out of the colour: subtracting only holds when the white emitter shares a white
+/// point with the RGB mix, and neither of this room's does.
+pub fn lin_rgbw(colour: [u8; 3], brightness: u8) -> [u16; 4] {
+	let b = decode(brightness) as u32;
+	let r = (decode(colour[0]) as u32 * b / 65535) as u16;
+	let g = (decode(colour[1]) as u32 * b / 65535) as u16;
+	let bl = (decode(colour[2]) as u32 * b / 65535) as u16;
+	[r, g, bl, r.min(g).min(bl)]
+}
+
+/// `q` is 0..65536, so unity passes a value through exactly.
+pub fn scale4(v: [u16; 4], q: u32) -> [u16; 4] {
+	v.map(|c| ((c as u32 * q) >> 16) as u16)
+}
+
+/// A wire byte is linear duty; replicating it widens 255 to exactly 65535.
+pub fn widen(b: u8) -> u16 {
+	(b as u16) << 8 | b as u16
+}
+
 #[cfg(test)]
 mod tests {
 	extern crate std;

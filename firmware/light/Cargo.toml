@@ -5,3 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+serde = { version = "1", default-features = false, features = ["derive"] }
+
+[dev-dependencies]
+serde-json-core = "0.6"
