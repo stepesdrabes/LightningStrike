@@ -634,9 +634,10 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 	}
 	// The stream's last beat, which no regime holds (a regime is a period between beats).
 	out.push({ t: beats[beats.length - 1], heard: true });
-	if (filledSeconds + relevelled === 0) return { ...untouched(), zones, handshakes };
-
 	out.sort((a, b) => a.t - b.t);
+	const blipSeconds = repairBlips(out, runs, beats);
+	if (filledSeconds + relevelled + blipSeconds === 0) return { ...untouched(), zones, handshakes };
+
 	// A written beat that lands on a heard one is the same beat, and a beat under six tenths
 	// of its song's period from the one before is a leftover of the other level - the regime
 	// cut sits a beat or two off the true end of a flip - and goes.
@@ -665,10 +666,64 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 		zones,
 		handshakes,
 		beatsPerBar: bpb,
-		relevelledSeconds: relevelled,
+		relevelledSeconds: relevelled + blipSeconds,
 		filledSeconds,
-		repairedSeconds: filledSeconds + relevelled
+		repairedSeconds: filledSeconds + relevelled + blipSeconds
 	};
+}
+
+/** A beat interval this far off the period is not the count. */
+const BLIP_TOLERANCE = 0.25;
+/** The most a blip may span, in bars: longer is a passage, and the regimes own those. */
+const MAX_BLIP_BARS = 4;
+
+/**
+ * Short stretches inside a steady song where the tracker lost the count - a few beats at
+ * double time in a quiet breakdown, a beat dropped or doubled - rewritten at the song's
+ * period between the steady beats either side. HIGHEST IN THE ROOM has three, of nine, two
+ * and two beats, and each one moved every bar line after it by a beat until the next undid
+ * it. Below the regimes' sixteen-beat resolution, which is why they slipped through; and
+ * never across a song's edge, where a written zone or the lead-in already holds.
+ * Returns the seconds rewritten; the stream is edited in place.
+ */
+function repairBlips(out: { t: number; heard: boolean }[], runs: readonly SongRun[], beats: readonly number[]): number {
+	let rewritten = 0;
+	for (const s of runs) {
+		if (s.steady < MIN_STEADY || s.seconds < MIN_SONG_S) continue;
+		const from = beats[s.fromBeat];
+		const to = beats[Math.min(beats.length - 1, s.toBeat)];
+		const P = 60 / s.bpm;
+		const good = (d: number) => Math.abs(d / P - 1) <= BLIP_TOLERANCE;
+		let i = 0;
+		while (i + 1 < out.length) {
+			if (out[i].t < from || out[i].t >= to) {
+				i++;
+				continue;
+			}
+			// A is a steady beat: the interval into it and out of it is the count... the one
+			// out of it is not, which is where the blip starts.
+			const intoA = i > 0 ? out[i].t - out[i - 1].t : P;
+			if (!good(intoA) || good(out[i + 1].t - out[i].t)) {
+				i++;
+				continue;
+			}
+			// B is the first beat after the blip that the count holds through for two beats.
+			let j = i + 1;
+			while (j + 2 < out.length && out[j].t < to && !(good(out[j + 1].t - out[j].t) && good(out[j + 2].t - out[j + 1].t))) j++;
+			const span = out[j].t - out[i].t;
+			if (out[j].t >= to || j + 2 >= out.length || span > MAX_BLIP_BARS * 4 * P) {
+				i = j;
+				continue;
+			}
+			const n = Math.max(1, Math.round(span / P));
+			const written: { t: number; heard: boolean }[] = [];
+			for (let k = 1; k < n; k++) written.push({ t: out[i].t + (span * k) / n, heard: false });
+			out.splice(i + 1, j - i - 1, ...written);
+			rewritten += span;
+			i = i + written.length + 1;
+		}
+	}
+	return rewritten;
 }
 
 // --- seams --------------------------------------------------------------------------------
@@ -1187,7 +1242,11 @@ export function judgeSeams(
 					? c.chromaRatio <= LONG_PAUSE_CHROMA && c.timbreRatio < BREAKDOWN_TIMBRE
 					: c.chromaRatio <= MATERIAL_CHROMA && c.timbreRatio <= MATERIAL_TIMBRE;
 			const keyed = c.keyDist >= SAME_TEMPO_KEY && c.keyConf >= SAME_TEMPO_KEY_CONF;
-			const broke = c.downbeatGap !== undefined || c.reset || paused;
+			// The count broke: the walk restarted (its judgement over bars, at a cost of four)
+			// or the beat stopped. One odd bar's downbeat gap is not that - a single song
+			// modulating on an odd bar (Earthquake, C minor to A major) read as a new song on
+			// a gap of two alone.
+			const broke = c.reset || paused;
 			if (longEnough && newMaterial && broke && (paused || keyed)) {
 				note = paused ? `a new beat after ${pauseSeconds.toFixed(0)} s of none, ${keys}` : `the count restarts, ${keys}`;
 				strength = 1 + (MATERIAL_CHROMA - c.chromaRatio) + (paused ? 0.5 : 0) + c.keyDist / 12;

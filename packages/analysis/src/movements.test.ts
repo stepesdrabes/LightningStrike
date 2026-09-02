@@ -146,6 +146,38 @@ describe('repairGrid', () => {
 	});
 });
 
+describe('repairGrid: blips inside a steady song', () => {
+	it('rewrites a burst of double-time beats in a breakdown and keeps the count', () => {
+		// 120 beats at 76 bpm; between beats 40 and 47 the tracker runs at double time with
+		// jitter, the way it does in a quiet passage.
+		const a = grid(0, 76, 120, 0);
+		const P = 60 / 76;
+		const blip = [a[40] + 0.36, a[40] + 0.78, a[40] + 1.96, a[40] + 2.72, a[40] + 3.14, a[40] + 3.52, a[40] + 3.9, a[40] + 4.3, a[40] + 4.7];
+		const beats = [...a.slice(0, 41), ...blip, ...a.slice(47)];
+		const repaired = repairGrid(beats, downbeatsOf(a).filter((d) => d < a[40] || d >= a[47]));
+		const got = Array.from(repaired.beats);
+		expect(got.length).toBe(a.length);
+		for (let i = 0; i < got.length; i++) expect(Math.abs(got[i] - a[i])).toBeLessThan(P * 0.1);
+		expect(repaired.repairedSeconds).toBeGreaterThan(0);
+	});
+
+	it('puts back a beat the tracker dropped and drops one it doubled', () => {
+		const a = grid(0, 100, 100, 0);
+		const beats = [...a.slice(0, 30), ...a.slice(31, 60), a[60], a[60] + 0.3, ...a.slice(61)];
+		const repaired = repairGrid(beats, downbeatsOf(a));
+		const got = Array.from(repaired.beats);
+		expect(got.length).toBe(a.length);
+		for (let i = 0; i < got.length; i++) expect(Math.abs(got[i] - a[i])).toBeLessThan(0.05);
+	});
+
+	it('leaves a clean track alone', () => {
+		const a = grid(0, 128, 200, 0);
+		const repaired = repairGrid(a, downbeatsOf(a));
+		expect(repaired.repairedSeconds).toBe(0);
+		expect(Array.from(repaired.beats)).toEqual(a);
+	});
+});
+
 describe('proposeSeams', () => {
 	it('ends a song at the start of an incomplete last bar when a pause follows', () => {
 		// 98 beats at 60: the last bar line is beat 96 and only two beats follow it before the gap.

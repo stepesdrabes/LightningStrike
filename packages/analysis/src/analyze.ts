@@ -38,6 +38,8 @@ import { consolidateSections } from './consolidate.ts';
 import {
 	DEFAULT_TUNING,
 	arrivalStrengths,
+	pullOntoReturn,
+	pushOntoDeparture,
 	barSynchronous,
 	barSynchronousAt,
 	groupSegments,
@@ -588,15 +590,12 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	const rawSectionCount = plan.segments.length;
 	const preConsolidation = plan.segments.map((s) => ({ ...s }));
 	if (!hand) {
-		consolidateSections(
-			plan.segments,
-			arrivals,
-			sim,
-			bars.count,
-			tuning.consolidateFloor,
-			plan.energy,
-			new Set([...pinned, ...movementBars, ...snapMoves.map((m) => m.to)])
-		);
+		const drawn = new Set([...movementBars, ...snapMoves.map((m) => m.to), ...fixed]);
+		const keep = new Set([...pinned, ...drawn]);
+		for (const b of pullOntoReturn(plan.segments, arrivals, kicks, tuning.refineFloor, keep)) keep.add(b);
+		const lowBand = Float32Array.from({ length: bars.count }, (_, b) => plan.bands[b * NUM_BANDS + 1]);
+		for (const b of pushOntoDeparture(plan.segments, kicks, lowBand, drawn)) keep.add(b);
+		consolidateSections(plan.segments, arrivals, sim, bars.count, tuning.consolidateFloor, plan.energy, keep);
 	}
 	placeEvents(plan.segments, plan.bands, kicks, snares, bars.count, plan.events);
 

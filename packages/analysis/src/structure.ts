@@ -549,6 +549,81 @@ export const DEFAULT_TUNING: StructureTuning = {
 };
 
 /**
+ * A boundary sitting on the bar the kit drops out of, one bar before it comes back on a
+ * decisive arrival, moves onto the return. That bar is the tension bar that ends the
+ * section before - Vitej mezi nama's fourth groove begins where the kick returns, and the
+ * phrase grid had put it a bar early on the bar of nothing. Only into a section the kit
+ * carries: a breakdown begins on the bar the kit LEAVES, and HIGHEST IN THE ROOM's second
+ * one sits there, a bar before the crash the same pull would have moved it onto. Bars in
+ * `keep` (pins, movement starts, hook-placed bars) and void edges are not up for review,
+ * and the section keeps at least two bars. Returns the bars moved onto, so consolidation
+ * leaves them alone too.
+ */
+const KIT_CARRIED = new Set(['drop', 'groove', 'chorus', 'verse']);
+export function pullOntoReturn(
+	segments: { startBar: number; endBar: number; kind: string }[],
+	arrivals: Float32Array,
+	kicks: Int32Array,
+	floor: number,
+	keep: ReadonlySet<number>
+): number[] {
+	const moved: number[] = [];
+	for (let i = 1; i < segments.length; i++) {
+		const here = segments[i];
+		const prev = segments[i - 1];
+		const b = here.startBar;
+		if (keep.has(b) || !KIT_CARRIED.has(here.kind) || prev.kind === 'void') continue;
+		if (b + 1 >= arrivals.length || here.endBar - (b + 1) < 2) continue;
+		if (kicks[b] !== 0 || kicks[b + 1] === 0) continue;
+		if (arrivals[b + 1] < floor || arrivals[b] >= floor) continue;
+		here.startBar = b + 1;
+		prev.endBar = b + 1;
+		moved.push(b + 1);
+	}
+	return moved;
+}
+
+/** Kinds that begin when the kit leaves; a void's edges are measurements and stay. */
+const KIT_LEFT = new Set(['breakdown', 'build', 'outro']);
+/** The bar the kit leaves must carry at most this share of the low band the bar before had. */
+const DEPARTURE_LOW = 0.5;
+
+/**
+ * The mirror of `pullOntoReturn`: a section the kit leaves begins on the bar it leaves. Where
+ * a boundary into one sits a bar after a bar of no kicks that followed a bar of kicks, and
+ * the kit has not come back on the boundary bar either, the boundary moves back onto the
+ * departure. HIGHEST IN THE ROOM's second breakdown: the kit stops at 1:52.95 and the refine
+ * had put the boundary on the crash a bar later, because arrivals are all it weighs. The
+ * floor has to go with the kit: SICKO MODE's kick pauses a bar before its breakdown while
+ * the 808 holds the low band at six tenths, and that bar is still the chorus; HIGHEST's low
+ * band falls to a quarter on the bar the kit leaves. A pin from the refine does not hold
+ * here - it pinned that crash - but a movement start, a hook bar or a drawn boundary does,
+ * and the section before keeps at least two bars.
+ */
+export function pushOntoDeparture(
+	segments: { startBar: number; endBar: number; kind: string }[],
+	kicks: Int32Array,
+	/** The low band per bar, 0..1. */
+	low: ArrayLike<number>,
+	keep: ReadonlySet<number>
+): number[] {
+	const moved: number[] = [];
+	for (let i = 1; i < segments.length; i++) {
+		const here = segments[i];
+		const prev = segments[i - 1];
+		const b = here.startBar;
+		if (keep.has(b) || !KIT_LEFT.has(here.kind) || prev.kind === 'void') continue;
+		if (b < 2 || b - 1 - prev.startBar < 2) continue;
+		if (kicks[b] !== 0 || kicks[b - 1] !== 0 || kicks[b - 2] === 0) continue;
+		if (!(low[b - 1] <= DEPARTURE_LOW * low[b - 2])) continue;
+		here.startBar = b - 1;
+		prev.endBar = b - 1;
+		moved.push(b - 1);
+	}
+	return moved;
+}
+
+/**
  * Per-bar arrival strengths: the same evidence `refineBoundaries` weighs, as an array,
  * for the consolidation pass and the bench.
  */

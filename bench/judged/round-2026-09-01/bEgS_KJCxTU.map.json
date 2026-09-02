@@ -1,0 +1,56 @@
+{
+	"trackId": "bEgS_KJCxTU",
+	"title": "Sunset",
+	"note": "not an owner drawing: the analysis as it stood when the owner called it great (2026-09-02, v26); a change that moves these is a regression",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.02,
+			"endTime": 15.38,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "drop",
+			"startTime": 15.38,
+			"endTime": 76.8,
+			"startBar": 8,
+			"endBar": 40
+		},
+		{
+			"kind": "build",
+			"startTime": 76.8,
+			"endTime": 92.16,
+			"startBar": 40,
+			"endBar": 48
+		},
+		{
+			"kind": "drop",
+			"startTime": 92.16,
+			"endTime": 122.88,
+			"startBar": 48,
+			"endBar": 64
+		},
+		{
+			"kind": "drop",
+			"startTime": 122.88,
+			"endTime": 138.26,
+			"startBar": 64,
+			"endBar": 72
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 138.26,
+			"endTime": 145.92,
+			"startBar": 72,
+			"endBar": 76
+		},
+		{
+			"kind": "outro",
+			"startTime": 145.92,
+			"endTime": 152.16,
+			"startBar": 76,
+			"endBar": 79
+		}
+	]
+}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { pullOntoReturn, pushOntoDeparture } from './structure.ts';
 import { SECTION_KINDS, SPECTRUM_BANDS, barTimeAt, decodeBase64, encodeBase64 } from '@mv/core';
 import { analyzeTrack } from './analyze.ts';
 import { dominantHue } from './artwork.ts';
@@ -752,5 +753,71 @@ describe('marked movements', () => {
 	it('ignores a mark outside the track', () => {
 		expect(withMovement(fixture.duration + 30).movements).toBeUndefined();
 		expect(withMovement(0).movements).toBeUndefined();
+	});
+});
+
+describe('pullOntoReturn', () => {
+	const arrivals = (at: Record<number, number>, n = 16) => {
+		const a = new Float32Array(n);
+		for (const [b, v] of Object.entries(at)) a[Number(b)] = v;
+		return a;
+	};
+	const kicks = (zeros: number[], n = 16) => Int32Array.from({ length: n }, (_, b) => (zeros.includes(b) ? 0 : 6));
+
+	it('moves a boundary off the bar the kit drops out of, onto the decisive return', () => {
+		const segments = [
+			{ startBar: 0, endBar: 8, kind: 'groove' },
+			{ startBar: 8, endBar: 16, kind: 'groove' }
+		];
+		const moved = pullOntoReturn(segments, arrivals({ 8: 0.8, 9: 4.5 }), kicks([8]), 2, new Set());
+		expect(moved).toEqual([9]);
+		expect(segments[0].endBar).toBe(9);
+		expect(segments[1].startBar).toBe(9);
+	});
+
+	it('leaves a boundary the kit plays through, a pinned one, and a weak return alone', () => {
+		const plays = [{ startBar: 0, endBar: 8, kind: 'groove' }, { startBar: 8, endBar: 16, kind: 'drop' }];
+		expect(pullOntoReturn(plays, arrivals({ 9: 4.5 }), kicks([]), 2, new Set())).toEqual([]);
+		const pinned = [{ startBar: 0, endBar: 8, kind: 'groove' }, { startBar: 8, endBar: 16, kind: 'drop' }];
+		expect(pullOntoReturn(pinned, arrivals({ 9: 4.5 }), kicks([8]), 2, new Set([8]))).toEqual([]);
+		const weak = [{ startBar: 0, endBar: 8, kind: 'groove' }, { startBar: 8, endBar: 16, kind: 'drop' }];
+		expect(pullOntoReturn(weak, arrivals({ 9: 1.2 }), kicks([8]), 2, new Set())).toEqual([]);
+		expect(weak[1].startBar).toBe(8);
+	});
+
+	it('never pulls a breakdown off the bar the kit leaves', () => {
+		const segments = [{ startBar: 0, endBar: 8, kind: 'chorus' }, { startBar: 8, endBar: 16, kind: 'breakdown' }];
+		expect(pullOntoReturn(segments, arrivals({ 9: 4.5 }), kicks([8]), 2, new Set())).toEqual([]);
+		expect(segments[1].startBar).toBe(8);
+	});
+});
+
+describe('pushOntoDeparture', () => {
+	const kicks = (zeros: number[], n = 16) => Int32Array.from({ length: n }, (_, b) => (zeros.includes(b) ? 0 : 6));
+
+	/** Low band per bar: full until `from`, then the floor. */
+	const level = (from: number, n = 16, floor = 0.2) => Float32Array.from({ length: n }, (_, b) => (b < from ? 0.85 : floor));
+
+	it('moves a breakdown back onto the bar the kit left and the floor fell', () => {
+		const segments = [
+			{ startBar: 0, endBar: 9, kind: 'chorus' },
+			{ startBar: 9, endBar: 16, kind: 'breakdown' }
+		];
+		expect(pushOntoDeparture(segments, kicks([8, 9, 10, 11]), level(8), new Set())).toEqual([8]);
+		expect(segments[0].endBar).toBe(8);
+		expect(segments[1].startBar).toBe(8);
+	});
+
+	it('holds where the level stays up, where the kit comes back, into a kit-carried kind, or on a drawn bar', () => {
+		// SICKO MODE: the kick pauses a bar early while the 808 holds the floor at six tenths.
+		const held = [{ startBar: 0, endBar: 9, kind: 'chorus' }, { startBar: 9, endBar: 16, kind: 'breakdown' }];
+		const holds = Float32Array.from({ length: 16 }, (_, b) => (b < 8 ? 0.85 : b === 8 ? 0.5 : 0.2));
+		expect(pushOntoDeparture(held, kicks([8, 9, 10, 11]), holds, new Set())).toEqual([]);
+		const back = [{ startBar: 0, endBar: 9, kind: 'chorus' }, { startBar: 9, endBar: 16, kind: 'breakdown' }];
+		expect(pushOntoDeparture(back, kicks([8]), level(8), new Set())).toEqual([]);
+		const groove = [{ startBar: 0, endBar: 9, kind: 'chorus' }, { startBar: 9, endBar: 16, kind: 'groove' }];
+		expect(pushOntoDeparture(groove, kicks([8, 9, 10]), level(8), new Set())).toEqual([]);
+		const drawn = [{ startBar: 0, endBar: 9, kind: 'chorus' }, { startBar: 9, endBar: 16, kind: 'breakdown' }];
+		expect(pushOntoDeparture(drawn, kicks([8, 9, 10]), level(8), new Set([9]))).toEqual([]);
 	});
 });

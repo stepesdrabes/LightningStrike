@@ -1,18 +1,19 @@
 // What the analysis makes of one cached track, movements and all, from its stored beats.
 //
-//   MV_CACHE_DIR=... node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks] [--out=file]
+//   MV_CACHE_DIR=... node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks] [--no-drums] [--out=file]
 //
 // Starts from the model's own count - the `heard` streams a blob written at ANALYSIS 26 or
 // later carries, else a fresh tracking run cached in bench/corpus/.beats/app-<id>.json for
 // the bench to share - never from the blob's `beats`, which the repair has already written
-// over. The DSP drum detector stands in for the drum model, so the section table it prints
-// is close to, not identical with, what ingest writes. It exists to read movements, tempo
-// per song and the per-song section table at a glance after an analyser change.
+// over. The drum model runs too, so the section table is the one ingest writes. It exists
+// to read movements, tempo per song and the per-song section table at a glance after an
+// analyser change.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CACHE_DIR, decodeAudio, handMapInput, readContext } from '@mv/analysis';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { BeatThis } from '../packages/analysis/src/beatthis.ts';
+import { Adtof } from '../packages/analysis/src/adtof.ts';
 
 const id = process.argv[2];
 if (!id) throw new Error('usage: node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks]');
@@ -46,6 +47,21 @@ if (noMarks) {
 	delete hand.movements;
 	delete hand.movementVetoes;
 }
+// The kit the app hears: the drum model, listening at its own rate, exactly as ingest runs
+// it. Without it the DSP detector counts 808 notes as kicks and the kit-driven labels -
+// chorus against verse on HIGHEST IN THE ROOM - are not the app's. --no-drums skips it.
+let drums: Awaited<ReturnType<Adtof['run']>> | undefined;
+if (!process.argv.includes('--no-drums')) {
+	const model = await Adtof.create();
+	if (model) {
+		try {
+			const wide = await decodeAudio(join(CACHE_DIR, audio), 44100);
+			drums = await model.run(wide.mono);
+		} finally {
+			await model.close();
+		}
+	}
+}
 const analysis = analyzeTrack({
 	mono: decoded.mono,
 	sampleRate: decoded.sampleRate,
@@ -55,6 +71,7 @@ const analysis = analyzeTrack({
 	title: cached.title,
 	beats: heard.beats,
 	downbeats: heard.downbeats,
+	drums,
 	context: (await readContext(id)) ?? undefined,
 	...hand
 });
