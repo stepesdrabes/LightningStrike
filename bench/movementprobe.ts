@@ -1,0 +1,75 @@
+// What the analysis makes of one cached track, movements and all, from its stored beats.
+//
+//   MV_CACHE_DIR=... node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks] [--out=file]
+//
+// Starts from the model's own count - the `heard` streams a blob written at ANALYSIS 26 or
+// later carries, else a fresh tracking run cached in bench/corpus/.beats/app-<id>.json for
+// the bench to share - never from the blob's `beats`, which the repair has already written
+// over. The DSP drum detector stands in for the drum model, so the section table it prints
+// is close to, not identical with, what ingest writes. It exists to read movements, tempo
+// per song and the per-song section table at a glance after an analyser change.
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { CACHE_DIR, decodeAudio, handMapInput, readContext } from '@mv/analysis';
+import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
+import { BeatThis } from '../packages/analysis/src/beatthis.ts';
+
+const id = process.argv[2];
+if (!id) throw new Error('usage: node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks]');
+const noMaps = process.argv.includes('--no-hand-maps');
+const noMarks = process.argv.includes('--no-marks');
+
+const files = readdirSync(CACHE_DIR);
+const audio = files.find((x) => x.startsWith(`${id}.`) && /\.(m4a|webm|opus|mp3|ogg|oga|aac|wav|flac|mp4|mka)$/i.test(x));
+if (!audio) throw new Error(`no audio for ${id} in ${CACHE_DIR}`);
+const cached = JSON.parse(readFileSync(join(CACHE_DIR, `${id}.analysis.json`), 'utf8')) as {
+	title: string;
+	beats: number[];
+	downbeats?: number[];
+	heard?: { beats: number[]; downbeats: number[] };
+};
+const decoded = await decodeAudio(join(CACHE_DIR, audio));
+const BEATS = join(import.meta.dirname, 'corpus', '.beats');
+const probed = join(BEATS, `app-${id}.json`);
+let heard = cached.heard;
+if (!heard && existsSync(probed)) heard = JSON.parse(readFileSync(probed, 'utf8')) as { beats: number[]; downbeats: number[] };
+if (!heard) {
+	const model = await BeatThis.create();
+	heard = await model.run(decoded.mono);
+	await model.close();
+	mkdirSync(BEATS, { recursive: true });
+	writeFileSync(probed, JSON.stringify(heard));
+	console.log(`tracked ${heard.beats.length} beats and ${heard.downbeats.length} downbeats fresh; cached at ${probed}`);
+}
+const hand = noMaps ? {} : await handMapInput(id);
+if (noMarks) {
+	delete hand.movements;
+	delete hand.movementVetoes;
+}
+const analysis = analyzeTrack({
+	mono: decoded.mono,
+	sampleRate: decoded.sampleRate,
+	duration: decoded.duration,
+	hash: decoded.hash,
+	trackId: id,
+	title: cached.title,
+	beats: heard.beats,
+	downbeats: heard.downbeats,
+	context: (await readContext(id)) ?? undefined,
+	...hand
+});
+
+const outPath = process.argv.find((a) => a.startsWith('--out='))?.slice(6);
+if (outPath) writeFileSync(outPath, JSON.stringify(analysis));
+const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+console.log(`${cached.title}  ${analysis.tempo.bpm} bpm median, ${analysis.bars.length} bars, ${analysis.sections.length} sections`);
+for (const m of analysis.movements ?? []) {
+	console.log(`  movement ${clock(m.startTime)}-${clock(m.endTime)}  bars ${m.startBar}-${m.endBar}  ${m.bpm.toFixed(1)} bpm  ${m.key.name} (${m.key.confidence})  ${m.source}${m.note ? `: ${m.note}` : ''}`);
+}
+for (const s of analysis.sections) {
+	console.log(
+		`  ${String(s.movement ?? '').padStart(2)}  ${s.kind.padEnd(9)} ${clock(s.startTime).padStart(5)}-${clock(s.endTime).padEnd(5)} bars ${String(s.startBar).padStart(3)}-${String(s.endBar).padEnd(3)} e${String(s.meanEnergy).padStart(3)} rank ${String(s.energyRank).padStart(2)} grp ${s.group}${s.repeatOf !== null ? ` rep ${s.repeatOf}` : ''}`
+	);
+}
+const durations = analysis.tempo.barTimes.slice(1).map((t, i) => t - analysis.tempo.barTimes[i]);
+console.log('  bar seconds: ' + durations.map((d) => d.toFixed(2)).join(' '));

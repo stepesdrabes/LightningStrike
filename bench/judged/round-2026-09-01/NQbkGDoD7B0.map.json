@@ -1,0 +1,84 @@
+{
+	"trackId": "NQbkGDoD7B0",
+	"title": "SICKO MODE",
+	"judgedAt": 1788296900034,
+	"analysisHash": "a83f081c4f2f9e51",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.48,
+			"endTime": 27.92
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 27.92,
+			"endTime": 48.36,
+			"offGrid": true
+		},
+		{
+			"kind": "build",
+			"startTime": 48.36,
+			"endTime": 55.28
+		},
+		{
+			"kind": "chorus",
+			"startTime": 55.28,
+			"endTime": 60.38
+		},
+		{
+			"kind": "verse",
+			"startTime": 60.38,
+			"endTime": 100.64
+		},
+		{
+			"kind": "build",
+			"startTime": 100.64,
+			"endTime": 109.92
+		},
+		{
+			"kind": "chorus",
+			"startTime": 109.92,
+			"endTime": 156.38
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 156.38,
+			"endTime": 176.56
+		},
+		{
+			"kind": "intro",
+			"startTime": 176.56,
+			"endTime": 188.94
+		},
+		{
+			"kind": "build",
+			"startTime": 188.94,
+			"endTime": 201.32
+		},
+		{
+			"kind": "chorus",
+			"startTime": 201.32,
+			"endTime": 226.1
+		},
+		{
+			"kind": "chorus",
+			"startTime": 226.1,
+			"endTime": 238.48
+		},
+		{
+			"kind": "chorus",
+			"startTime": 238.48,
+			"endTime": 288.04
+		},
+		{
+			"kind": "chorus",
+			"startTime": 288.04,
+			"endTime": 300.44
+		},
+		{
+			"kind": "outro",
+			"startTime": 300.44,
+			"endTime": 312.82
+		}
+	]
+}

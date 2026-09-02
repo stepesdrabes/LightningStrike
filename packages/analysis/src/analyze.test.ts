@@ -709,7 +709,7 @@ describe('marked movements', () => {
 		};
 		const guided = analyzeTrack({ ...base, beats, downbeats });
 		const blind = analyzeTrack({ ...base, beats });
-		const barOf = (a: ReturnType<typeof analyzeTrack>) => barTimeAt(a.tempo, a.movements![0]);
+		const barOf = (a: ReturnType<typeof analyzeTrack>) => barTimeAt(a.tempo, a.movements![1].startBar);
 		expect(barOf(guided)).toBeCloseTo(beats[trueDownbeat], 2);
 		// And the same call without the downbeat stream lands on the pressed beat instead,
 		// which is the behaviour this exists to replace.
@@ -718,9 +718,13 @@ describe('marked movements', () => {
 
 	it('starts a section on the marked bar and reports it', () => {
 		const marked = withMovement(stageTime(3));
-		expect(marked.movements).toHaveLength(1);
-		const bar = marked.movements![0];
+		expect(marked.movements).toHaveLength(2);
+		const bar = marked.movements![1].startBar;
+		expect(marked.movements![1].source).toBe('mark');
+		expect(marked.movements![0].endBar).toBe(bar);
 		expect(marked.sections.some((s) => s.startBar === bar)).toBe(true);
+		// Every section knows which song it belongs to.
+		expect(marked.sections.every((s) => s.movement === (s.startBar >= bar ? 1 : 0))).toBe(true);
 		// The mark is a grid cut, so the movement begins its own bar rather than landing
 		// wherever the previous song's count of one happened to fall.
 		expect(Math.abs(barTimeAt(marked.tempo, bar) - stageTime(3))).toBeLessThan(0.2);
@@ -732,7 +736,7 @@ describe('marked movements', () => {
 		// and the case that made the whole movement machinery inert until it was guarded.
 		const mid = barTimeAt(analysis.tempo, fixture.stageBars[5] + 8);
 		const marked = withMovement(mid);
-		const bar = marked.movements![0];
+		const bar = marked.movements![1].startBar;
 		expect(marked.sections.find((s) => s.endBar === bar)).toBeDefined();
 		expect(marked.sections.find((s) => s.startBar === bar)).toBeDefined();
 	});

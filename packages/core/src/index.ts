@@ -37,6 +37,7 @@ export type {
 	EventTag,
 	KeyEstimate,
 	Moment,
+	MovementSpan,
 	OnsetStream,
 	SectionSpan,
 	SpectrumTrack,

@@ -356,7 +356,9 @@ export function snapToHooks(
 	barCount: number,
 	minSegmentBars = 2,
 	/** PHYSICS-ONLY arrival strengths - no voice term, which is the evidence on trial. */
-	arrivals: Float32Array | null = null
+	arrivals: Float32Array | null = null,
+	/** Boundaries that are walls - movement starts - which no hook may move or absorb across. */
+	fixed: ReadonlySet<number> = new Set()
 ): HookSnapMove[] {
 	const moves: HookSnapMove[] = [];
 	if (starts.length === 0 || barCount < 2) return moves;
@@ -379,6 +381,7 @@ export function snapToHooks(
 		const prev = segments[i - 1];
 		if (prev.kind === 'void') continue;
 		const from = s.startBar;
+		if (fixed.has(from) || fixed.has(prev.startBar)) continue;
 		if (inWindow(from)) continue;
 
 		let to = -1;

@@ -116,6 +116,7 @@ async function readHandMap(
 ): Promise<{
 	sections: HandSection[];
 	movements: number[];
+	movementVetoes: number[];
 	pinnedHash: string | null;
 } | null> {
 	try {
@@ -123,20 +124,25 @@ async function readHandMap(
 		const j = JSON.parse(raw) as {
 			sections?: { kind?: string; startTime: number; offGrid?: boolean }[] | null;
 			movements?: number[] | null;
+			movementVetoes?: number[] | null;
 			analysisHash?: string | null;
 		};
 		const sections = j.sections ?? [];
-		const movements = (j.movements ?? []).filter((t) => Number.isFinite(t) && t > 0);
-		// Either mark is worth a read on its own: a track can be one song drawn in detail or
-		// three songs with nothing drawn yet.
-		if (sections.length < 2 && movements.length === 0) return null;
+		const seconds = (xs: number[] | null | undefined) =>
+			(xs ?? []).filter((t) => Number.isFinite(t) && t > 0).sort((a, b) => a - b);
+		const movements = seconds(j.movements);
+		const movementVetoes = seconds(j.movementVetoes);
+		// Any mark is worth a read on its own: a track can be one song drawn in detail, three
+		// songs with nothing drawn yet, or one song the analyser wrongly split.
+		if (sections.length < 2 && movements.length === 0 && movementVetoes.length === 0) return null;
 		return {
 			sections: sections.map((s) => ({
 				kind: s.kind ?? 'groove',
 				startTime: s.startTime,
 				offGrid: s.offGrid === true
 			})),
-			movements: [...movements].sort((a, b) => a - b),
+			movements,
+			movementVetoes,
 			pinnedHash: j.analysisHash ?? null
 		};
 	} catch {
@@ -151,8 +157,10 @@ async function readHandMap(
 async function handMapStamp(id: string): Promise<string | undefined> {
 	const map = await readHandMap(id);
 	if (!map) return undefined;
-	const movements = map.movements.map((t) => Math.round(t * 100) / 100).join(',');
-	return `${handMapFingerprint(map.sections)}${movements ? `;movements=${movements}` : ''}`;
+	const list = (xs: number[]) => xs.map((t) => Math.round(t * 100) / 100).join(',');
+	const movements = list(map.movements);
+	const vetoes = list(map.movementVetoes);
+	return `${handMapFingerprint(map.sections)}${movements ? `;movements=${movements}` : ''}${vetoes ? `;vetoes=${vetoes}` : ''}`;
 }
 
 /**
@@ -173,11 +181,15 @@ export async function handMapInput(id: string): Promise<{
 	sectionMapBoundaries?: number[];
 	handSections?: HandSection[];
 	movements?: number[];
+	movementVetoes?: number[];
 }> {
 	const map = await readHandMap(id);
 	if (!map) return {};
 	const { sections, pinnedHash } = map;
-	const movements = map.movements.length > 0 ? { movements: map.movements } : {};
+	const movements = {
+		...(map.movements.length > 0 ? { movements: map.movements } : {}),
+		...(map.movementVetoes.length > 0 ? { movementVetoes: map.movementVetoes } : {})
+	};
 	if (sections.length < 2) return movements;
 	let drawnOn: DrawingGrid | null = null;
 	try {

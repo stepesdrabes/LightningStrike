@@ -11,6 +11,7 @@ import {
 } from '@mv/core';
 import type { BarFeatures } from './structure.ts';
 import type { SegmentGroup } from './structure.ts';
+import { sliceBars } from './structure.ts';
 import type { Spectrogram } from './dsp/spectrogram.ts';
 import { clamp01, mean, median, normalise, quantile } from './dsp/stats.ts';
 import { sectionFeatures } from './sectionFeatures.ts';
@@ -382,7 +383,14 @@ export function arrange(
 	/** Genre family is club-side; arms the pounding form of `hasDrops`. */
 	clubFamily = false,
 	/** Bars where a new song starts, so each is levelled against itself. */
-	movements: readonly number[] = []
+	movements: readonly number[] = [],
+	/**
+	 * Whether these bars end where the record does. An outro is the record leaving; a song
+	 * that ends because the next one starts ends on whatever it was playing - the owner's
+	 * maps put a breakdown before SICKO MODE's second switch and a chorus before Melanz's
+	 * first - so the position rule and the ring-out carve are the last song's alone.
+	 */
+	endsTheRecord = true
 ): Arrangement {
 	const count = bars.count;
 
@@ -658,7 +666,7 @@ export function arrange(
 	const midEnergy = median(segEnergy);
 	if (segments[0].kind !== 'void' && segEnergy[0] < midEnergy) segments[0].kind = 'intro';
 	const last = segments.length - 1;
-	if (last > 0 && segments[last].kind !== 'void' && segEnergy[last] < midEnergy) {
+	if (endsTheRecord && last > 0 && segments[last].kind !== 'void' && segEnergy[last] < midEnergy) {
 		segments[last].kind = 'outro';
 	}
 
@@ -701,7 +709,7 @@ export function arrange(
 	}
 
 	// --- the ring-out ----------------------------------------------------------------------
-	carveRingOut(segments, energy, kicksPerBar, count);
+	if (endsTheRecord) carveRingOut(segments, energy, kicksPerBar, count);
 
 	// A void at the END of the track sets up nothing: the void instruction is the held breath
 	// before a drop, and silence after the last note is the record being over. Same reasoning
@@ -714,6 +722,80 @@ export function arrange(
 	placeEvents(segments, bandsN, kicksPerBar, snaresPerBar, count, events);
 
 	return { segments, energy, energyGlobal, bands: bandsN, events, phraseAnchorBar: anchor };
+}
+
+/**
+ * The arrangement of a track that is several songs: `arrange` run on each song's bars as a
+ * track of its own, and the tables joined.
+ *
+ * Everything `arrange` decides is relative to the passage it reads - the body level a
+ * breakdown sits under, the loudest passage a drop is judged against, the two settling
+ * phrases nothing drops in, the intro and outro by position - and on a medley every one of
+ * those is a fact about one song, not the file. Only the whole-file energy column survives
+ * the join, because "which of these is the peak" is the one question asked across songs.
+ */
+export function arrangeMovements(
+	bandsDb: Float32Array,
+	bars: BarFeatures,
+	bounds: readonly number[],
+	groups: SegmentGroup,
+	shortTerm: Float32Array,
+	shortTermFps: number,
+	kicksPerBar: Int32Array,
+	snaresPerBar: Int32Array,
+	pinned: ReadonlySet<number>,
+	label: LabelTuning,
+	clubFamily: boolean,
+	movements: readonly number[]
+): Arrangement {
+	const count = bars.count;
+	const starts = spansFor(movements, count);
+	if (starts.length <= 2) {
+		return arrange(bandsDb, bars, bounds, groups, shortTerm, shortTermFps, kicksPerBar, snaresPerBar, pinned, label, clubFamily, movements);
+	}
+	const whole = levelEnvelopes(bandsDb, shortTerm, shortTermFps, bars.time, count, movements);
+	const segments: Segment[] = [];
+	const energy = new Float32Array(count);
+	const bands = new Float32Array(count * NUM_BANDS);
+	const events: EventTag[][] = [];
+	let phraseAnchorBar = 0;
+	for (let k = 0; k + 1 < starts.length; k++) {
+		const from = starts[k];
+		const to = starts[k + 1];
+		const local: number[] = [0];
+		const localGroups: SegmentGroup = { repeatOf: [], group: [] };
+		for (let i = 0; i + 1 < bounds.length; i++) {
+			if (bounds[i] < from || bounds[i] >= to) continue;
+			if (bounds[i] > from) local.push(bounds[i] - from);
+			localGroups.group.push(groups.group[i]);
+			localGroups.repeatOf.push(groups.repeatOf[i]);
+		}
+		local.push(to - from);
+		const localPinned = new Set([...pinned].filter((b) => b > from && b < to).map((b) => b - from));
+		const part = arrange(
+			bandsDb.subarray(from * NUM_BANDS, to * NUM_BANDS),
+			sliceBars(bars, from, to),
+			local,
+			localGroups,
+			shortTerm,
+			shortTermFps,
+			kicksPerBar.subarray(from, to),
+			snaresPerBar.subarray(from, to),
+			localPinned,
+			label,
+			clubFamily,
+			[],
+			k + 2 === starts.length
+		);
+		for (const seg of part.segments) {
+			segments.push({ ...seg, startBar: seg.startBar + from, endBar: seg.endBar + from });
+		}
+		energy.set(part.energy, from);
+		bands.set(part.bands, from * NUM_BANDS);
+		events.push(...part.events);
+		if (k === 0) phraseAnchorBar = part.phraseAnchorBar;
+	}
+	return { segments, energy, energyGlobal: whole.energyGlobal, bands, events, phraseAnchorBar };
 }
 
 /**

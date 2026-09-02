@@ -1,6 +1,6 @@
 import type { SectionKind } from './frame.ts';
 
-export const ANALYSIS_VERSION = 24;
+export const ANALYSIS_VERSION = 26;
 
 export interface TempoGrid {
 	/** Median over the track. For display and for a default time constant, never for timing. */
@@ -119,6 +119,32 @@ export interface SectionSpan {
 	group: number;
 	/** Index of the first section carrying this group, or null when this is that one. */
 	repeatOf: number | null;
+	/**
+	 * Which song of a stitched track this section belongs to, indexing `movements`. Absent on
+	 * a track that is one song, which is nearly all of them.
+	 */
+	movement?: number;
+}
+
+/**
+ * One song of a track that is several: a beat switch, a medley, a suite.
+ *
+ * Found by the analyser (a tempo step with material that stops recurring, a beatless
+ * interlude between two songs, a restarted count into new material in a new key) or marked by
+ * the listener; either way the song gets its own count of one, its own energy scale, its own
+ * sections, and the show re-stages at its first bar.
+ */
+export interface MovementSpan {
+	startBar: number;
+	endBar: number;
+	startTime: number;
+	endTime: number;
+	/** Tempo of this song from its own bars, not the track median. */
+	bpm: number;
+	key: KeyEstimate;
+	source: 'auto' | 'mark';
+	/** What convinced the detector, for the panel; empty for a mark. */
+	note: string;
 }
 
 /**
@@ -233,17 +259,13 @@ export interface TrackAnalysis {
 	 */
 	handMap?: string;
 	/**
-	 * Bars where a new song starts, for a track that is several stitched together - SICKO
-	 * MODE's beat switch, Melanz's movements. Listener-marked, because both cheap automatic
-	 * signals were measured and refused: a local tempo step fires on a quarter of the library
-	 * including single-song tracks the room praised, and the spectral break at SICKO MODE's
-	 * real switch is ten times SMALLER than that track's own average moment.
-	 *
-	 * Empty or absent on a normal track, which is nearly all of them. Each entry is a bar
-	 * line by construction: a movement is a grid cut, so the bar table starts a new bar
-	 * exactly there.
+	 * The songs of a track that is several stitched together - SICKO MODE's beat switches,
+	 * Melanz's three records. Absent on a track that is one song, which is nearly all of
+	 * them; present with two or more spans otherwise, tiling the bar table. Each span starts
+	 * on a bar line by construction: a movement is a grid cut, so the bar table starts a new
+	 * bar exactly there.
 	 */
-	movements?: number[];
+	movements?: MovementSpan[];
 	moments: Moment[];
 	/** Every tracked beat, seconds. Exact even where the constant grid is only a fit. */
 	beats: number[];
@@ -257,6 +279,12 @@ export interface TrackAnalysis {
 	 * loading a 79 MB graph again.
 	 */
 	downbeats?: number[];
+	/**
+	 * The tracker's beats and downbeats before the grid repair wrote over any of them:
+	 * what `beats` was made from. A bench or probe that starts from `beats` repairs a repaired
+	 * stream and reports a seam the app never has to find.
+	 */
+	heard?: { beats: number[]; downbeats: number[] };
 	envelopes: Envelopes;
 	spectrum: SpectrumTrack;
 	stereo: StereoImage;

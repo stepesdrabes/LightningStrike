@@ -132,6 +132,31 @@ export function barSynchronousAt(bf: BeatFeatures, starts: readonly number[]): B
 	return { count, time, pattern, patternDim, chroma, rms, low, mid, high, floor };
 }
 
+/** The bars of one movement, as a table of their own, so a stage written for a track runs on a song. */
+export function sliceBars(bars: BarFeatures, from: number, to: number): BarFeatures {
+	const count = Math.max(0, to - from);
+	return {
+		count,
+		time: bars.time.subarray(from, to + 1),
+		pattern: bars.pattern.subarray(from * bars.patternDim, to * bars.patternDim),
+		patternDim: bars.patternDim,
+		chroma: bars.chroma.subarray(from * PITCH_CLASSES, to * PITCH_CLASSES),
+		rms: bars.rms.subarray(from, to),
+		low: bars.low.subarray(from, to),
+		mid: bars.mid.subarray(from, to),
+		high: bars.high.subarray(from, to),
+		floor: bars.floor.subarray(from, to)
+	};
+}
+
+/** The similarity matrix of one movement's bars, cut from the track's. */
+export function sliceSimilarity(sim: Float32Array, n: number, from: number, to: number): Float32Array {
+	const m = to - from;
+	const out = new Float32Array(m * m);
+	for (let i = 0; i < m; i++) out.set(sim.subarray((from + i) * n + from, (from + i) * n + to), i * m);
+	return out;
+}
+
 /**
  * Physics under which the settling-contrast term is allowed to vote: the decisive class
  * (the pin threshold) needs no second witness, and boosting it is how a fill's echo
@@ -278,6 +303,26 @@ function bandedMean(sim: Float32Array, n: number): number {
  * structure entirely. Expressing it as a cost lets the evidence overrule it when the music
  * really does move at seven bars, and lets it win when the evidence is a coin toss.
  */
+/**
+ * Segment each movement on its own and join the tables: the DP's baseline is the mean
+ * similarity of the passage it reads, and two songs share no baseline, so a seam between
+ * them is not a boundary to be found but a wall to segment up to. The movement starts are
+ * bounds by construction.
+ */
+export function segmentMovements(sim: Float32Array, bars: BarFeatures, starts: readonly number[]): number[] {
+	const edges = [...new Set([0, ...starts.filter((b) => b > 0 && b < bars.count), bars.count])].sort((a, b) => a - b);
+	if (edges.length <= 2) return segmentBars(sim, bars);
+	const bounds: number[] = [];
+	for (let k = 0; k + 1 < edges.length; k++) {
+		const from = edges[k];
+		const to = edges[k + 1];
+		const inner = segmentBars(sliceSimilarity(sim, bars.count, from, to), sliceBars(bars, from, to));
+		for (const b of inner) if (b < to - from) bounds.push(from + b);
+	}
+	bounds.push(bars.count);
+	return bounds;
+}
+
 export function segmentBars(sim: Float32Array, bars: BarFeatures): number[] {
 	const n = bars.count;
 	if (n < MIN_SEGMENT_BARS * 2) return [0, n];
@@ -541,7 +586,9 @@ export function refineBoundaries(
 	hooks: Uint8Array | null = null,
 	settle: Float32Array | null = null,
 	settleWeight = 0,
-	reach = REFINE_REACH
+	reach = REFINE_REACH,
+	/** Boundaries that are walls rather than findings - movement starts - which no arrival may move. */
+	fixed: ReadonlySet<number> = new Set()
 ): number[] {
 	const db = barLevels(bars);
 	const tol = LEVEL_TOL * levelSpread(db);
@@ -551,6 +598,7 @@ export function refineBoundaries(
 
 	for (let i = 1; i + 1 < out.length; i++) {
 		const here = out[i];
+		if (fixed.has(here)) continue;
 		let best = here;
 		let bestScore = score(here) * REFINE_MARGIN;
 		for (let c = here - reach; c <= here + reach; c++) {
@@ -659,9 +707,12 @@ export interface SegmentGroup {
 export function groupSegments(
 	sim: Float32Array,
 	n: number,
-	bounds: readonly number[]
+	bounds: readonly number[],
+	/** Movement starts: two songs never share material, however alike a bar of each measures. */
+	movementStarts: readonly number[] = []
 ): SegmentGroup {
 	const count = bounds.length - 1;
+	const movementOf = (segment: number) => movementStarts.filter((m) => m <= bounds[segment]).length;
 	const repeatOf = new Array<number | null>(count).fill(null);
 	const group = new Array<number>(count).fill(-1);
 	if (count === 0) return { repeatOf, group };
@@ -721,6 +772,7 @@ export function groupSegments(
 			// Segments of very different lengths are rarely the same thing, and letting them
 			// link is how a whole track collapses into one group.
 			if (Math.min(aLen, bLen) / Math.max(aLen, bLen) < 0.5) continue;
+			if (movementOf(i) !== movementOf(j)) continue;
 			// Two passages are the same material when they resemble each other nearly as much
 			// as each resembles itself.
 			const reference = Math.max(SAME_MATERIAL_FLOOR, ((self[i] + self[j]) / 2) * SAME_MATERIAL);

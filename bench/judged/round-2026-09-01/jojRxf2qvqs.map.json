@@ -1,0 +1,75 @@
+{
+	"trackId": "jojRxf2qvqs",
+	"title": "Yzomandias - Melan\u017e feat. Nik Tendo (official music video)",
+	"judgedAt": 1788296600629,
+	"analysisHash": "d8e86ad46a595d2e",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 1.76,
+			"endTime": 25.601
+		},
+		{
+			"kind": "build",
+			"startTime": 25.601,
+			"endTime": 41.6,
+			"offGrid": true
+		},
+		{
+			"kind": "chorus",
+			"startTime": 41.6,
+			"endTime": 89.72999999999999,
+			"offGrid": true
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 89.72999999999999,
+			"endTime": 105.6,
+			"offGrid": true
+		},
+		{
+			"kind": "chorus",
+			"startTime": 105.6,
+			"endTime": 169.64,
+			"offGrid": true
+		},
+		{
+			"kind": "build",
+			"startTime": 169.64,
+			"endTime": 181.645
+		},
+		{
+			"kind": "chorus",
+			"startTime": 181.645,
+			"endTime": 202.635,
+			"offGrid": true
+		},
+		{
+			"kind": "outro",
+			"startTime": 202.635,
+			"endTime": 205.645,
+			"offGrid": true
+		},
+		{
+			"kind": "intro",
+			"startTime": 205.645,
+			"endTime": 232.7,
+			"offGrid": true
+		},
+		{
+			"kind": "chorus",
+			"startTime": 232.7,
+			"endTime": 286.76
+		},
+		{
+			"kind": "chorus",
+			"startTime": 286.76,
+			"endTime": 367.88
+		},
+		{
+			"kind": "outro",
+			"startTime": 367.88,
+			"endTime": 381.42
+		}
+	]
+}
