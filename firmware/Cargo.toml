@@ -1,5 +1,5 @@
 [workspace]
-members = ["node", "wire"]
+members = ["light", "node", "wire"]
 resolver = "3"
 
 # A debug-profile cyw43 is too slow to keep the SPI bus fed and the join times out.

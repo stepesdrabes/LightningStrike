@@ -41,40 +41,8 @@ pub fn unpack(bytes: &[u8], out: &mut [RGBW<u8>]) {
 	}
 }
 
-/// Idle frames the twinkle takes to arrive, a few seconds.
-pub const FADE: u32 = 200;
-
-/// Idle frames one point takes to rise and fall, and how bright it gets.
-const PULSE: u32 = 96;
-const PEAK: u32 = 70;
-
-const HUES: [[u8; 3]; 6] =
-	[[255, 55, 20], [255, 150, 30], [40, 255, 90], [30, 175, 255], [90, 80, 255], [220, 60, 200]];
-
-/// Scattered points rising and falling at their own rates, dim. `t` counts idle frames, `gain` is
-/// 0..256, and `seed` is the buffer's offset into the fixture so lines do not twinkle in step.
-pub fn twinkle(buf: &mut [RGBW<u8>], t: u32, gain: u32, seed: u32) {
-	for (i, px) in buf.iter_mut().enumerate() {
-		let h = scatter(i as u32 + seed);
-		let period = PULSE * 5 + (h & 0x1ff);
-		let pos = (t + (h >> 8) % period) % period;
-		*px = if pos < PULSE {
-			let ramp = if pos * 2 <= PULSE { pos * 2 } else { 2 * (PULSE - pos) };
-			let level = ramp * PEAK / PULSE * gain / 256;
-			let hue = HUES[(h >> 24) as usize % HUES.len()];
-			pack([dim(hue[0], level), dim(hue[1], level), dim(hue[2], level), 0])
-		} else {
-			BLACK
-		};
-	}
-}
-
-fn dim(c: u8, level: u32) -> u8 {
-	(c as u32 * level / 255) as u8
-}
-
-/// Knuth's multiplicative hash, enough to keep neighbours off the same rhythm.
-fn scatter(i: u32) -> u32 {
-	let h = i.wrapping_mul(2_654_435_761);
-	h ^ (h >> 15)
+/// Linear RGBW emitters out of `room-light` into strip words; the strip is 8-bit, so the low
+/// byte is dropped here and nowhere else.
+pub fn pack16(emitters: [u16; 4]) -> RGBW<u8> {
+	pack(emitters.map(|e| (e >> 8) as u8))
 }

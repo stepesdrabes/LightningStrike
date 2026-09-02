@@ -3,6 +3,7 @@ use embassy_rp::peripherals::PIO1;
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812Program, Rgbw, RgbwPioWs2812};
 use embassy_time::{Duration, Timer};
+use room_light::effects::twinkle;
 use smart_leds::RGBW;
 
 use crate::board::Board;
@@ -113,8 +114,10 @@ impl Fixture {
 
 	pub async fn idle(&mut self) {
 		self.idle_t = self.idle_t.wrapping_add(1);
-		let gain = (self.idle_t.min(rgbww::FADE) * 256 / rgbww::FADE).min(256);
-		rgbww::twinkle(&mut self.buf, self.idle_t, gain, 0);
+		let gain = (self.idle_t.min(twinkle::FADE) * 256 / twinkle::FADE).min(256);
+		for (i, px) in self.buf.iter_mut().enumerate() {
+			*px = rgbww::pack16(twinkle::twinkle(i as u32, self.idle_t, gain));
+		}
 		self.write().await;
 	}
 

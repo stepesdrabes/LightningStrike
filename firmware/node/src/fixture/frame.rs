@@ -4,6 +4,7 @@ use embassy_rp::peripherals::PIO1;
 use embassy_rp::pio::Pio;
 use embassy_rp::pio_programs::ws2812::{PioWs2812Program, Rgbw, RgbwPioWs2812};
 use embassy_time::{Duration, Timer};
+use room_light::effects::twinkle;
 use smart_leds::RGBW;
 
 use crate::board::Board;
@@ -92,13 +93,20 @@ impl Fixture {
 	/// connected. The measured steps live in the `bench` build.
 	pub async fn selftest(&mut self) {}
 
-	/// Seeded by each line's offset into the fixture, so the three do not twinkle in step.
+	/// Indexed fixture-globally, so the three lines do not twinkle in step.
 	pub async fn idle(&mut self) {
 		self.idle_t = self.idle_t.wrapping_add(1);
-		let gain = (self.idle_t.min(rgbww::FADE) * 256 / rgbww::FADE).min(256);
-		rgbww::twinkle(&mut self.buf_a, self.idle_t, gain, 0);
-		rgbww::twinkle(&mut self.buf_b, self.idle_t, gain, LINE_A as u32);
-		rgbww::twinkle(&mut self.buf_c, self.idle_t, gain, (LINE_A + LINE_B) as u32);
+		let gain = (self.idle_t.min(twinkle::FADE) * 256 / twinkle::FADE).min(256);
+		let t = self.idle_t;
+		for (i, px) in self.buf_a.iter_mut().enumerate() {
+			*px = rgbww::pack16(twinkle::twinkle(i as u32, t, gain));
+		}
+		for (i, px) in self.buf_b.iter_mut().enumerate() {
+			*px = rgbww::pack16(twinkle::twinkle((LINE_A + i) as u32, t, gain));
+		}
+		for (i, px) in self.buf_c.iter_mut().enumerate() {
+			*px = rgbww::pack16(twinkle::twinkle((LINE_A + LINE_B + i) as u32, t, gain));
+		}
 		self.write().await;
 	}
 
