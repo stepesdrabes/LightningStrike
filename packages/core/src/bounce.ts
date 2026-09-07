@@ -44,6 +44,21 @@ const BEAT_RELEASE = 0.1;
 const PASSAGE_TAU = 2;
 
 /**
+ * How far the lamp is lifted above the light the room is actually making.
+ *
+ * Matching the room's light one for one is what the level maths above computes, and it reads too
+ * dim in the corner: the frame is 720 emitters across a wall and the lamp is one small diffuse
+ * source seen in the periphery, so equal light is not equal presence. Applied as a root rather
+ * than a gain so the top of the range is untouched and nothing clips - it lifts the ordinary
+ * passages, where the lamp spends its life, and leaves a drop where it already was.
+ *
+ * It costs contrast, which is the thing to watch: against the measured section table an intro at
+ * 0.37 and a drop at 0.91 become 0.58 and 0.95, so 2.5:1 arrives as 1.6:1. Set it to 1 to get
+ * the untouched room level back.
+ */
+const LIFT = 1.8;
+
+/**
  * The Bounce Lamp: the show's accent hue, pulsed on the kit.
  *
  * A one-pixel fixture. It carries colour, level and timing, and nothing a show says by moving
@@ -98,7 +113,7 @@ export class BounceLamp {
 		// Back across the boundary: `quantize` raises what it is given by gamma, so scaling the
 		// light by `level` means scaling the authoring value by its root. Multiplying `level`
 		// straight into the tint would darken the lamp by its own gamma a second time.
-		const scale = Math.pow(level, 1 / GAMMA);
+		const scale = Math.pow(Math.pow(level, 1 / LIFT), 1 / GAMMA);
 		this.frame[0] = tint[0] * scale;
 		this.frame[1] = tint[1] * scale;
 		this.frame[2] = tint[2] * scale;
