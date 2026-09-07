@@ -26,7 +26,8 @@ That judgement is the ground truth everything below is measured against.
 
 - `/Applications/LightningStrike.app` on `~/Library/Application Support/cz.drabek.lightningstrike/cache`.
   The bundle name decides the cache; a plain name reads the plain `cache`.
-- **The live cache is review corpus 2**: 29 tracks, pre-analysed at v28, unjudged,
+- **The live cache is review corpus 2**: 29 tracks, pre-analysed at v28, judge folder empty (two
+  tracks the owner judged once are frozen in `round-2026-09-07b/` and the cache re-analysed clean),
   listed with reasons in `bench/judged/round-2026-09-07b/corpus.json`. Rap and EDM first, at
   the owner's word that those are always the best: twelve rap tracks (HUMBLE., Thinkin Bout
   You, Best Part, FE!N, ROCKSTAR where the detector hears two songs, Cigo a kava,

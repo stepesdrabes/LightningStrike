@@ -1,0 +1,77 @@
+{
+	"trackId": "6JHu3b-pbh8",
+	"title": "Thinkin Bout You",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.14,
+			"endTime": 7.52,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "chorus",
+			"startTime": 7.52,
+			"endTime": 49.96,
+			"startBar": 4,
+			"endBar": 27
+		},
+		{
+			"kind": "chorus",
+			"startTime": 49.96,
+			"endTime": 64.72,
+			"startBar": 27,
+			"endBar": 35
+		},
+		{
+			"kind": "chorus",
+			"startTime": 64.72,
+			"endTime": 109.04,
+			"startBar": 35,
+			"endBar": 59
+		},
+		{
+			"kind": "chorus",
+			"startTime": 109.04,
+			"endTime": 123.8,
+			"startBar": 59,
+			"endBar": 67
+		},
+		{
+			"kind": "chorus",
+			"startTime": 123.8,
+			"endTime": 138.58,
+			"startBar": 67,
+			"endBar": 75
+		},
+		{
+			"kind": "chorus",
+			"startTime": 138.58,
+			"endTime": 168.12,
+			"startBar": 75,
+			"endBar": 91
+		},
+		{
+			"kind": "outro",
+			"startTime": 168.12,
+			"endTime": 199.5,
+			"startBar": 91,
+			"endBar": 108
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "9baf0cd9dd15890c",
+	"showSeed": 2589306539,
+	"authoredBy": "engine",
+	"updatedAt": 1788799428830,
+	"acceptedAnalysis": {
+		"version": 28,
+		"hash": "9baf0cd9dd15890c",
+		"note": "saved with no section edit: the v28 analysis accepted as it stood"
+	}
+}
