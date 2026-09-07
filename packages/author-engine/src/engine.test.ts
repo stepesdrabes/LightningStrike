@@ -208,6 +208,24 @@ describe('how long a look is held', () => {
 	}
 });
 
+describe('a record with no kit', () => {
+	/** The fixture with every kick and snare removed, filed under rock by its metadata. */
+	const silent: TrackAnalysis = {
+		...fixture(),
+		bars: fixture().bars.map((row) => ({ ...row, kicks: 0, snares: 0, hats: 0 }))
+	};
+	const show = composeShow(silent, { context: { ...emptyContext(), genreFamily: 'rock' } });
+
+	it('gets the ballad restraint: nothing that flashes, and none of the effects a ballad avoids', () => {
+		expect(show.hits.filter((h) => h.kind === 'strobe' || h.kind === 'blackout')).toEqual([]);
+		for (const cue of show.cues) {
+			for (const layer of Object.values(cue.layers)) {
+				expect(['glitchScan', 'moshSlam', 'headbang', 'rollerChase', 'doubleKickGatling']).not.toContain(layer.effect);
+			}
+		}
+	});
+});
+
 describe('colour', () => {
 	it('keeps one identity: a handful of hues, base and accent genuinely apart', () => {
 		const hues = new Set<number>([show.palette.base, show.palette.accent]);

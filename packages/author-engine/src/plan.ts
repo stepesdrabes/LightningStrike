@@ -27,7 +27,7 @@ import {
 	swapped,
 	bpmAt
 } from '@mv/core';
-import { allowedFlashes, profileFor, type GenreProfile } from './genre.ts';
+import { KICK_BURSTS, allowedFlashes, profileFor, type GenreProfile } from './genre.ts';
 import { choosePalette } from './palette.ts';
 import { EffectPicker } from './select.ts';
 
@@ -115,7 +115,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 	const effects = opts.effects ?? BUILT_IN_EFFECTS;
 	const seed = opts.seed ?? seedFrom(analysis.hash);
 	const rng = new Rng(seed);
-	const profile = profileFor(opts.context);
+	const profile = profileFor(opts.context, analysis);
 	// The allowance governs the effects as well as the hits: a family that has earned no
 	// flashes does not get blinder slams by the accent door instead.
 	const flashes = allowedFlashes(analysis, opts.context);
@@ -163,12 +163,11 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 	// effect is so common"). Each show draws at most one member; the rest are foreign for
 	// the night, and one show in seven goes burst-free entirely. Same mechanism as the
 	// signature draw, because it is the same disease: presence arithmetic, not taste.
-	const BURSTS = ['shockwave', 'kickTunnel', 'kickCannon', 'ricochet', 'pyroBursts', 'splash'];
-	const drawnBurst = BURSTS[Math.floor(rng.float() * (BURSTS.length + 1))];
+	const drawnBurst = KICK_BURSTS[Math.floor(rng.float() * (KICK_BURSTS.length + 1))];
 	// Excluded, not merely avoided: in the loud slots the family saturates, an avoided
 	// burst at energy distance zero still outscored honest alternatives two bands away,
 	// and the measured result was two members in most shows - which is the exact defect.
-	const exclude = BURSTS.filter((e) => e !== drawnBurst);
+	const exclude = [...KICK_BURSTS.filter((e) => e !== drawnBurst), ...profile.exclude];
 	const avoid = [
 		...profile.avoid,
 		...profile.signatures.filter((s) => !signatures.includes(s))

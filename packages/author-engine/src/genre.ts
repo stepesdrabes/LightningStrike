@@ -53,39 +53,41 @@ export interface GenreProfile {
 	 * with the thinnest signature lists.
 	 */
 	avoid: readonly string[];
+	/** The hard form of `avoid`: never picked, whatever else is spent. Empty for every family. */
+	exclude: readonly string[];
 }
 
 const PROFILES: Record<GenreFamily, GenreProfile> = {
 	// One saturated hue or white, strobe as the lead instrument, unceremonious darkness.
-	techno: { heatBias: -0.05, heatWidth: 0.3, satScale: 1.05, monochrome: true, flashBudget: 5, peak: 'slam', darkBreakdowns: true, motionScale: 1.05, transientEvery: 2, bumpEvery: 1, signatures: ['impulseSpin'], avoid: ['rainbowRain', 'confetti', 'discoBall', 'mirrorBall'] },
+	techno: { heatBias: -0.05, heatWidth: 0.3, satScale: 1.05, monochrome: true, flashBudget: 5, peak: 'slam', darkBreakdowns: true, motionScale: 1.05, transientEvery: 2, bumpEvery: 1, signatures: ['impulseSpin'], avoid: ['rainbowRain', 'confetti', 'discoBall', 'mirrorBall'], exclude: [] },
 	// Warmer and rounder: wash blooms rather than assaults, gentle punctuation.
-	house: { heatBias: 0, heatWidth: 0.24, satScale: 0.95, monochrome: false, flashBudget: 2, peak: 'bloom', darkBreakdowns: false, motionScale: 1, transientEvery: 2, bumpEvery: 2, signatures: ['impulseSpin', 'rippleTank'], avoid: ['moshSlam', 'headbang', 'doubleKickGatling'] },
+	house: { heatBias: 0, heatWidth: 0.24, satScale: 0.95, monochrome: false, flashBudget: 2, peak: 'bloom', darkBreakdowns: false, motionScale: 1, transientEvery: 2, bumpEvery: 2, signatures: ['impulseSpin', 'rippleTank'], avoid: ['moshSlam', 'headbang', 'doubleKickGatling'], exclude: [] },
 	// Big-room: saturated, loud, the drop is the product.
-	edm: { heatBias: 0.06, heatWidth: 0.3, satScale: 1, monochrome: false, flashBudget: 3, peak: 'slam', darkBreakdowns: true, motionScale: 1.05, transientEvery: 2, bumpEvery: 1, signatures: [], avoid: ['moshSlam', 'headbang'] },
+	edm: { heatBias: 0.06, heatWidth: 0.3, satScale: 1, monochrome: false, flashBudget: 3, peak: 'slam', darkBreakdowns: true, motionScale: 1.05, transientEvery: 2, bumpEvery: 1, signatures: [], avoid: ['moshSlam', 'headbang'], exclude: [] },
 	// Long builds, euphoric blooms, the longest quiet valleys of any dance genre.
-	trance: { heatBias: -0.12, heatWidth: 0.2, satScale: 1, monochrome: false, flashBudget: 2, peak: 'bloom', darkBreakdowns: true, motionScale: 0.9, transientEvery: 3, bumpEvery: 2, signatures: ['pitchRibbon'], avoid: ['moshSlam', 'headbang', 'doubleKickGatling'] },
+	trance: { heatBias: -0.12, heatWidth: 0.2, satScale: 1, monochrome: false, flashBudget: 2, peak: 'bloom', darkBreakdowns: true, motionScale: 0.9, transientEvery: 3, bumpEvery: 2, signatures: ['pitchRibbon'], avoid: ['moshSlam', 'headbang', 'doubleKickGatling'], exclude: [] },
 	// Bimodal: dark simmer between drops, everything at once on them.
-	bass: { heatBias: -0.1, heatWidth: 0.26, satScale: 1.05, monochrome: false, flashBudget: 4, peak: 'slam', darkBreakdowns: true, motionScale: 1.1, transientEvery: 1, bumpEvery: 1, signatures: ['rollerChase'], avoid: ['confetti', 'discoBall', 'mirrorBall'] },
+	bass: { heatBias: -0.1, heatWidth: 0.26, satScale: 1.05, monochrome: false, flashBudget: 4, peak: 'slam', darkBreakdowns: true, motionScale: 1.1, transientEvery: 1, bumpEvery: 1, signatures: ['rollerChase'], avoid: ['confetti', 'discoBall', 'mirrorBall'], exclude: [] },
 	// Bright, clean, chorus-driven; pastels are legal here and nowhere else.
-	pop: { heatBias: 0.1, heatWidth: 0.34, satScale: 0.88, monochrome: false, flashBudget: 1, peak: 'bloom', darkBreakdowns: false, motionScale: 1, transientEvery: 2, bumpEvery: 2, signatures: ['confetti'], avoid: ['moshSlam', 'doubleKickGatling', 'glitchScan'] },
+	pop: { heatBias: 0.1, heatWidth: 0.34, satScale: 0.88, monochrome: false, flashBudget: 1, peak: 'bloom', darkBreakdowns: false, motionScale: 1, transientEvery: 2, bumpEvery: 2, signatures: ['confetti'], avoid: ['moshSlam', 'doubleKickGatling', 'glitchScan'], exclude: [] },
 	// High contrast, warm, blinder-shaped hits on the last chorus.
-	rock: { heatBias: 0.18, heatWidth: 0.24, satScale: 1, monochrome: false, flashBudget: 1, peak: 'slam', darkBreakdowns: false, motionScale: 1.1, transientEvery: 1, bumpEvery: 2, signatures: ['stageBlinders', 'headbang'], avoid: ['rainbowRain', 'discoBall', 'mirrorBall'] },
+	rock: { heatBias: 0.18, heatWidth: 0.24, satScale: 1, monochrome: false, flashBudget: 1, peak: 'slam', darkBreakdowns: false, motionScale: 1.1, transientEvery: 1, bumpEvery: 2, signatures: ['stageBlinders', 'headbang'], avoid: ['rainbowRain', 'discoBall', 'mirrorBall'], exclude: [] },
 	// Aggressive, snap cues, the strobe saved for the heaviest passage.
-	metal: { heatBias: 0.22, heatWidth: 0.3, satScale: 1.05, monochrome: false, flashBudget: 3, peak: 'slam', darkBreakdowns: true, motionScale: 1.2, transientEvery: 1, bumpEvery: 1, signatures: ['moshSlam', 'stageBlinders'], avoid: ['rainbowRain', 'confetti', 'discoBall', 'mirrorBall', 'laidbackWave'] },
+	metal: { heatBias: 0.22, heatWidth: 0.3, satScale: 1.05, monochrome: false, flashBudget: 3, peak: 'slam', darkBreakdowns: true, motionScale: 1.2, transientEvery: 1, bumpEvery: 1, signatures: ['moshSlam', 'stageBlinders'], avoid: ['rainbowRain', 'confetti', 'discoBall', 'mirrorBall', 'laidbackWave'], exclude: [] },
 	// Rock with the subtlety removed: loud, fast, undramatic.
-	punk: { heatBias: 0.2, heatWidth: 0.2, satScale: 1.05, monochrome: false, flashBudget: 2, peak: 'slam', darkBreakdowns: false, motionScale: 1.3, transientEvery: 1, bumpEvery: 1, signatures: ['moshSlam', 'stageBlinders'], avoid: ['rainbowRain', 'confetti', 'discoBall', 'mirrorBall', 'laidbackWave'] },
+	punk: { heatBias: 0.2, heatWidth: 0.2, satScale: 1.05, monochrome: false, flashBudget: 2, peak: 'slam', darkBreakdowns: false, motionScale: 1.3, transientEvery: 1, bumpEvery: 1, signatures: ['moshSlam', 'stageBlinders'], avoid: ['rainbowRain', 'confetti', 'discoBall', 'mirrorBall', 'laidbackWave'], exclude: [] },
 	// Held moody looks, sparse hard accents, the stop-time cut as the signature.
-	hiphop: { heatBias: 0.12, heatWidth: 0.22, satScale: 0.95, monochrome: false, flashBudget: 2, peak: 'slam', darkBreakdowns: false, motionScale: 0.8, transientEvery: 2, bumpEvery: 2, signatures: ['halftimeBounce', 'kitStage', 'stopTime'], avoid: ['moshSlam', 'headbang', 'rollerChase', 'rainbowRain', 'doubleKickGatling'] },
+	hiphop: { heatBias: 0.12, heatWidth: 0.22, satScale: 0.95, monochrome: false, flashBudget: 2, peak: 'slam', darkBreakdowns: false, motionScale: 0.8, transientEvery: 2, bumpEvery: 2, signatures: ['halftimeBounce', 'kitStage', 'stopTime'], avoid: ['moshSlam', 'headbang', 'rollerChase', 'rainbowRain', 'doubleKickGatling'], exclude: [] },
 	// Rich, low, smooth; swells, never hits; no flash has any business here.
-	rnb: { heatBias: 0.1, heatWidth: 0.2, satScale: 0.95, monochrome: false, flashBudget: 0, peak: 'swell', darkBreakdowns: false, motionScale: 0.65, transientEvery: 3, bumpEvery: 3, signatures: [], avoid: ['moshSlam', 'headbang', 'rollerChase', 'rainbowRain', 'glitchScan', 'doubleKickGatling'] },
+	rnb: { heatBias: 0.1, heatWidth: 0.2, satScale: 0.95, monochrome: false, flashBudget: 0, peak: 'swell', darkBreakdowns: false, motionScale: 0.65, transientEvery: 3, bumpEvery: 3, signatures: [], avoid: ['moshSlam', 'headbang', 'rollerChase', 'rainbowRain', 'glitchScan', 'doubleKickGatling'], exclude: [] },
 	// Warm, near-still, the one sanctioned darkness is the final fade.
-	ballad: { heatBias: 0.2, heatWidth: 0.18, satScale: 0.8, monochrome: false, flashBudget: 0, peak: 'swell', darkBreakdowns: false, motionScale: 0.5, transientEvery: 0, bumpEvery: 0, signatures: ['breathe'], avoid: ['moshSlam', 'headbang', 'rollerChase', 'rainbowRain', 'glitchScan', 'doubleKickGatling'] },
+	ballad: { heatBias: 0.2, heatWidth: 0.18, satScale: 0.8, monochrome: false, flashBudget: 0, peak: 'swell', darkBreakdowns: false, motionScale: 0.5, transientEvery: 0, bumpEvery: 0, signatures: ['breathe'], avoid: ['moshSlam', 'headbang', 'rollerChase', 'rainbowRain', 'glitchScan', 'doubleKickGatling'], exclude: [] },
 	// Light as weather: slow drift, no beat-locked activity at all.
-	ambient: { heatBias: -0.15, heatWidth: 0.3, satScale: 0.9, monochrome: false, flashBudget: 0, peak: 'swell', darkBreakdowns: true, motionScale: 0.35, transientEvery: 0, bumpEvery: 0, signatures: [], avoid: ['moshSlam', 'headbang', 'rainbowRain', 'glitchScan'] },
+	ambient: { heatBias: -0.15, heatWidth: 0.3, satScale: 0.9, monochrome: false, flashBudget: 0, peak: 'swell', darkBreakdowns: true, motionScale: 0.35, transientEvery: 0, bumpEvery: 0, signatures: [], avoid: ['moshSlam', 'headbang', 'rainbowRain', 'glitchScan'], exclude: [] },
 	// Colour is the story: hot, saturated, continuously moving, never frozen.
-	latin: { heatBias: 0.15, heatWidth: 0.3, satScale: 1.05, monochrome: false, flashBudget: 2, peak: 'slam', darkBreakdowns: false, motionScale: 1.1, transientEvery: 1, bumpEvery: 1, signatures: [], avoid: ['moshSlam', 'headbang', 'glitchScan'] },
+	latin: { heatBias: 0.15, heatWidth: 0.3, satScale: 1.05, monochrome: false, flashBudget: 2, peak: 'slam', darkBreakdowns: false, motionScale: 1.1, transientEvery: 1, bumpEvery: 1, signatures: [], avoid: ['moshSlam', 'headbang', 'glitchScan'], exclude: [] },
 	// One long pocket: warm gold base, continuous groove, strobe only as quotation.
-	disco: { heatBias: 0.16, heatWidth: 0.22, satScale: 0.92, monochrome: false, flashBudget: 1, peak: 'bloom', darkBreakdowns: false, motionScale: 1, transientEvery: 1, bumpEvery: 2, signatures: ['mirrorBall', 'discoBall'], avoid: ['moshSlam', 'headbang', 'glitchScan', 'doubleKickGatling'] }
+	disco: { heatBias: 0.16, heatWidth: 0.22, satScale: 0.92, monochrome: false, flashBudget: 1, peak: 'bloom', darkBreakdowns: false, motionScale: 1, transientEvery: 1, bumpEvery: 2, signatures: ['mirrorBall', 'discoBall'], avoid: ['moshSlam', 'headbang', 'glitchScan', 'doubleKickGatling'], exclude: [] }
 };
 
 /** The engine's old behaviour, for a track nothing could identify. */
@@ -101,12 +103,51 @@ const DEFAULT_PROFILE: GenreProfile = {
 	transientEvery: 2,
 	bumpEvery: 2,
 	signatures: [],
-	avoid: []
+	avoid: [],
+	exclude: []
 };
 
-export function profileFor(context: TrackContext | null | undefined): GenreProfile {
+export function profileFor(context: TrackContext | null | undefined, analysis?: TrackAnalysis): GenreProfile {
 	const family = context?.genreFamily;
-	return family ? PROFILES[family] : DEFAULT_PROFILE;
+	const profile = family ? PROFILES[family] : DEFAULT_PROFILE;
+	if (!analysis || !kitless(analysis)) return profile;
+	// A track with no kit at all is a ballad whatever its metadata says: Someone You Loved
+	// files under rock and got glitch and pyro in its verses. The family keeps its colour;
+	// the restraint is the ballad's - nothing that flashes, punches or answers a drum - and
+	// it is hard here, because an avoided effect is still picked when the pool runs dry.
+	const ballad = PROFILES.ballad;
+	return {
+		...profile,
+		flashBudget: 0,
+		peak: 'swell',
+		motionScale: Math.min(profile.motionScale, ballad.motionScale),
+		transientEvery: 0,
+		bumpEvery: 0,
+		signatures: ballad.signatures,
+		avoid: [...new Set([...profile.avoid, ...ballad.avoid])],
+		exclude: [...new Set([...profile.exclude, ...ballad.avoid, ...KICK_BURSTS])]
+	};
+}
+
+/** The kick-burst family: one gesture in six files, and nothing to answer on a record with no kit. */
+export const KICK_BURSTS = ['shockwave', 'kickTunnel', 'kickCannon', 'ricochet', 'pyroBursts', 'splash'] as const;
+
+/** Kicks and snares per bar this low, over the bars that are loud, is a record with no kit. */
+const KITLESS_PER_BAR = 0.15;
+
+/**
+ * Whether the drum streams are silent across the loud bars. Read from the analysis's bar
+ * table, which the drum model wrote, so a piano note in the kick band cannot vote.
+ */
+export function kitless(analysis: TrackAnalysis): boolean {
+	let hits = 0;
+	let loud = 0;
+	for (const row of analysis.bars) {
+		if (row.energy < 60) continue;
+		hits += row.kicks + row.snares;
+		loud++;
+	}
+	return loud >= 8 && hits / loud < KITLESS_PER_BAR;
 }
 
 /**
@@ -121,7 +162,7 @@ export function allowedFlashes(
 	analysis: TrackAnalysis,
 	context: TrackContext | null | undefined
 ): number {
-	const profile = profileFor(context);
+	const profile = profileFor(context, analysis);
 	if (profile.flashBudget === 0) return 0;
 
 	let kicks = 0;
