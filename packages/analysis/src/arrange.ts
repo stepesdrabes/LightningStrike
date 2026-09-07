@@ -1022,8 +1022,10 @@ export function snapToPhrases(
 		if (segments[i].group !== segments[i - 1].group) continue;
 		// Two songs are never one passage saying itself twice, however alike the material
 		// measures across the join. Without this the whole movement machinery is inert: the
-		// seam was reaching the table and being merged out again one pass later.
-		if (keep.has(segments[i].startBar)) continue;
+		// seam was reaching the table and being merged out again one pass later. Nor is a
+		// pinned seam: a verse restated on a decisive arrival - Timeless at 1:20, 4.6 on the
+		// refine's scale - is a new statement the room should mark, not the DP's stutter.
+		if (keep.has(segments[i].startBar) || pinned.has(segments[i].startBar)) continue;
 
 
 		// And never past this here: this early merge runs before the vocabulary settles, so

@@ -1,0 +1,107 @@
+{
+	"trackId": "-5XxjPOedc0",
+	"title": "Doppler",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "breakdown",
+			"startTime": 0.56,
+			"endTime": 16.58,
+			"startBar": 0,
+			"endBar": 9
+		},
+		{
+			"kind": "drop",
+			"startTime": 16.58,
+			"endTime": 87.7,
+			"startBar": 9,
+			"endBar": 49
+		},
+		{
+			"kind": "build",
+			"startTime": 87.7,
+			"endTime": 116.14,
+			"startBar": 49,
+			"endBar": 65
+		},
+		{
+			"kind": "drop",
+			"startTime": 116.14,
+			"endTime": 173.02,
+			"startBar": 65,
+			"endBar": 97
+		},
+		{
+			"kind": "drop",
+			"startTime": 173.02,
+			"endTime": 201.48,
+			"startBar": 97,
+			"endBar": 113
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 201.48,
+			"endTime": 229.92,
+			"startBar": 113,
+			"endBar": 129
+		},
+		{
+			"kind": "build",
+			"startTime": 229.92,
+			"endTime": 258.36,
+			"startBar": 129,
+			"endBar": 145
+		},
+		{
+			"kind": "drop",
+			"startTime": 258.36,
+			"endTime": 315.24,
+			"startBar": 145,
+			"endBar": 177
+		},
+		{
+			"kind": "drop",
+			"startTime": 315.24,
+			"endTime": 340.14,
+			"startBar": 177,
+			"endBar": 191
+		},
+		{
+			"kind": "drop",
+			"startTime": 340.14,
+			"endTime": 343.7,
+			"startBar": 191,
+			"endBar": 193
+		},
+		{
+			"kind": "drop",
+			"startTime": 343.7,
+			"endTime": 397.04,
+			"startBar": 193,
+			"endBar": 223
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 397.04,
+			"endTime": 400.58,
+			"startBar": 223,
+			"endBar": 225
+		},
+		{
+			"kind": "outro",
+			"startTime": 400.58,
+			"endTime": 429.02,
+			"startBar": 225,
+			"endBar": 241
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "57928c52c57859bc",
+	"showSeed": 2583824466,
+	"authoredBy": "engine",
+	"updatedAt": 1788784462502
+}

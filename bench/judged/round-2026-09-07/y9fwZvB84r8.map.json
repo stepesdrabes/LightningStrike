@@ -1,0 +1,91 @@
+{
+	"trackId": "y9fwZvB84r8",
+	"title": "Pist\u00e1cie (feat. Sofian Medjmedj)",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0,
+			"endTime": 9.42,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "build",
+			"startTime": 9.42,
+			"endTime": 28.24,
+			"startBar": 4,
+			"endBar": 12
+		},
+		{
+			"kind": "drop",
+			"startTime": 28.24,
+			"endTime": 47.06,
+			"startBar": 12,
+			"endBar": 20
+		},
+		{
+			"kind": "build",
+			"startTime": 47.06,
+			"endTime": 56.46,
+			"startBar": 20,
+			"endBar": 24
+		},
+		{
+			"kind": "drop",
+			"startTime": 56.46,
+			"endTime": 75.3,
+			"startBar": 24,
+			"endBar": 32
+		},
+		{
+			"kind": "build",
+			"startTime": 75.3,
+			"endTime": 84.7,
+			"startBar": 32,
+			"endBar": 36
+		},
+		{
+			"kind": "drop",
+			"startTime": 84.7,
+			"endTime": 103.54,
+			"startBar": 36,
+			"endBar": 44
+		},
+		{
+			"kind": "build",
+			"startTime": 103.54,
+			"endTime": 122.36,
+			"startBar": 44,
+			"endBar": 52
+		},
+		{
+			"kind": "drop",
+			"startTime": 122.36,
+			"endTime": 159.98,
+			"startBar": 52,
+			"endBar": 68
+		},
+		{
+			"kind": "outro",
+			"startTime": 159.98,
+			"endTime": 169.42,
+			"startBar": 68,
+			"endBar": 72
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "fdbdad6c85d7a524",
+	"showSeed": 3636327297,
+	"authoredBy": "engine",
+	"updatedAt": 1788780965234,
+	"acceptedAnalysis": {
+		"version": 27,
+		"hash": "fdbdad6c85d7a524",
+		"note": "the owner saved this judgement with no section edits, so the analysis as it stood is the map"
+	}
+}

@@ -1,0 +1,119 @@
+{
+	"trackId": "jojRxf2qvqs",
+	"title": "Yzomandias - Melan\u017e feat. Nik Tendo (official music video)",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 1.605,
+			"endTime": 9.603,
+			"startBar": 0,
+			"endBar": 2
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 9.603,
+			"endTime": 25.601,
+			"startBar": 2,
+			"endBar": 6
+		},
+		{
+			"kind": "build",
+			"startTime": 25.601,
+			"endTime": 41.6,
+			"startBar": 6,
+			"endBar": 10
+		},
+		{
+			"kind": "chorus",
+			"startTime": 41.6,
+			"endTime": 89.615,
+			"startBar": 10,
+			"endBar": 22
+		},
+		{
+			"kind": "chorus",
+			"startTime": 89.615,
+			"endTime": 105.6,
+			"startBar": 22,
+			"endBar": 26
+		},
+		{
+			"kind": "chorus",
+			"startTime": 105.6,
+			"endTime": 121.6,
+			"startBar": 26,
+			"endBar": 30
+		},
+		{
+			"kind": "chorus",
+			"startTime": 121.6,
+			"endTime": 137.6,
+			"startBar": 30,
+			"endBar": 34
+		},
+		{
+			"kind": "chorus",
+			"startTime": 137.6,
+			"endTime": 169.64,
+			"startBar": 34,
+			"endBar": 42
+		},
+		{
+			"kind": "intro",
+			"startTime": 169.64,
+			"endTime": 178.64,
+			"startBar": 42,
+			"endBar": 45
+		},
+		{
+			"kind": "chorus",
+			"startTime": 178.64,
+			"endTime": 205.66,
+			"startBar": 45,
+			"endBar": 54
+		},
+		{
+			"kind": "intro",
+			"startTime": 205.66,
+			"endTime": 232.7,
+			"startBar": 54,
+			"endBar": 62
+		},
+		{
+			"kind": "chorus",
+			"startTime": 232.7,
+			"endTime": 300.3,
+			"startBar": 62,
+			"endBar": 82
+		},
+		{
+			"kind": "chorus",
+			"startTime": 300.3,
+			"endTime": 367.88,
+			"startBar": 82,
+			"endBar": 102
+		},
+		{
+			"kind": "outro",
+			"startTime": 367.88,
+			"endTime": 381.42,
+			"startBar": 102,
+			"endBar": 106
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "d8e86ad46a595d2e",
+	"showSeed": 432023202,
+	"authoredBy": "engine",
+	"updatedAt": 1788800570654,
+	"acceptedAnalysis": {
+		"version": 28,
+		"hash": "d8e86ad46a595d2e",
+		"note": "saved with no section edit: the v28 analysis accepted as it stood"
+	}
+}

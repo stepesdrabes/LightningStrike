@@ -1,0 +1,107 @@
+{
+	"trackId": "zgychWIo6UA",
+	"title": "Stranded",
+	"rating": 2,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 3.6,
+			"endTime": 14.35,
+			"startBar": 0,
+			"endBar": 9
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 14.35,
+			"endTime": 24.46,
+			"startBar": 9,
+			"endBar": 17
+		},
+		{
+			"kind": "verse",
+			"startTime": 24.46,
+			"endTime": 40.44,
+			"startBar": 17,
+			"endBar": 30
+		},
+		{
+			"kind": "build",
+			"startTime": 40.44,
+			"endTime": 45.32,
+			"startBar": 30,
+			"endBar": 34
+		},
+		{
+			"kind": "chorus",
+			"startTime": 45.32,
+			"endTime": 66.32,
+			"startBar": 34,
+			"endBar": 50
+		},
+		{
+			"kind": "chorus",
+			"startTime": 66.32,
+			"endTime": 100.02,
+			"startBar": 50,
+			"endBar": 76
+		},
+		{
+			"kind": "chorus",
+			"startTime": 100.02,
+			"endTime": 141.48,
+			"startBar": 76,
+			"endBar": 108
+		},
+		{
+			"kind": "verse",
+			"startTime": 141.48,
+			"endTime": 151.92,
+			"startBar": 108,
+			"endBar": 116
+		},
+		{
+			"kind": "chorus",
+			"startTime": 151.92,
+			"endTime": 172.8,
+			"startBar": 116,
+			"endBar": 132
+		},
+		{
+			"kind": "chorus",
+			"startTime": 172.8,
+			"endTime": 203.76,
+			"startBar": 132,
+			"endBar": 156
+		},
+		{
+			"kind": "chorus",
+			"startTime": 203.76,
+			"endTime": 245.72,
+			"startBar": 156,
+			"endBar": 188
+		},
+		{
+			"kind": "verse",
+			"startTime": 245.72,
+			"endTime": 261.38,
+			"startBar": 188,
+			"endBar": 200
+		},
+		{
+			"kind": "outro",
+			"startTime": 261.38,
+			"endTime": 265.32,
+			"startBar": 200,
+			"endBar": 203
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "7165a05584c7b6bb",
+	"showSeed": 3507144625,
+	"authoredBy": "engine",
+	"updatedAt": 1788784290937
+}

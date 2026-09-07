@@ -1,0 +1,74 @@
+{
+	"trackId": "a4O-abCXsfA",
+	"title": "Timeless",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.024,
+			"endTime": 20.02,
+			"startBar": 0,
+			"endBar": 5
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 20.02,
+			"endTime": 24.02,
+			"startBar": 5,
+			"endBar": 6
+		},
+		{
+			"kind": "verse",
+			"startTime": 24.02,
+			"endTime": 79.015,
+			"startBar": 6,
+			"endBar": 19.998
+		},
+		{
+			"kind": "verse",
+			"startTime": 79.015,
+			"endTime": 96.02,
+			"startBar": 19.998,
+			"endBar": 25.126,
+			"offGrid": true
+		},
+		{
+			"kind": "build",
+			"startTime": 96.02,
+			"endTime": 112.02,
+			"startBar": 25.126,
+			"endBar": 29,
+			"offGrid": true
+		},
+		{
+			"kind": "verse",
+			"startTime": 112.02,
+			"endTime": 195.98,
+			"startBar": 29,
+			"endBar": 50
+		},
+		{
+			"kind": "build",
+			"startTime": 195.98,
+			"endTime": 200.02,
+			"startBar": 50,
+			"endBar": 51
+		},
+		{
+			"kind": "chorus",
+			"startTime": 200.02,
+			"endTime": 248.02,
+			"startBar": 51,
+			"endBar": 63
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "18cef35523462835",
+	"showSeed": 48903622,
+	"authoredBy": "engine",
+	"updatedAt": 1788780317902
+}

@@ -803,8 +803,21 @@ describe('pushOntoDeparture', () => {
 			{ startBar: 0, endBar: 9, kind: 'chorus' },
 			{ startBar: 9, endBar: 16, kind: 'breakdown' }
 		];
-		expect(pushOntoDeparture(segments, kicks([8, 9, 10, 11]), level(8), new Set())).toEqual([8]);
+		expect(pushOntoDeparture(segments, kicks([8, 9, 10, 11]), level(8), level(8, 16, 30), new Set())).toEqual([8]);
 		expect(segments[0].endBar).toBe(8);
+		expect(segments[1].startBar).toBe(8);
+	});
+
+	it('moves an outro forward onto the bar the kit leaves when the boundary sits a bar before it', () => {
+		const segments = [{ startBar: 0, endBar: 8, kind: 'chorus' }, { startBar: 8, endBar: 16, kind: 'outro' }];
+		expect(pushOntoDeparture(segments, kicks([9, 10, 11, 12]), level(9), level(9, 16, 30), new Set())).toEqual([9]);
+		expect(segments[0].endBar).toBe(9);
+		expect(segments[1].startBar).toBe(9);
+	});
+
+	it('never moves a build forward: it begins under the kit, on the riser', () => {
+		const segments = [{ startBar: 0, endBar: 8, kind: 'chorus' }, { startBar: 8, endBar: 16, kind: 'build' }];
+		expect(pushOntoDeparture(segments, kicks([9, 10, 11, 12]), level(9), level(9, 16, 30), new Set())).toEqual([]);
 		expect(segments[1].startBar).toBe(8);
 	});
 
@@ -812,12 +825,12 @@ describe('pushOntoDeparture', () => {
 		// SICKO MODE: the kick pauses a bar early while the 808 holds the floor at six tenths.
 		const held = [{ startBar: 0, endBar: 9, kind: 'chorus' }, { startBar: 9, endBar: 16, kind: 'breakdown' }];
 		const holds = Float32Array.from({ length: 16 }, (_, b) => (b < 8 ? 0.85 : b === 8 ? 0.5 : 0.2));
-		expect(pushOntoDeparture(held, kicks([8, 9, 10, 11]), holds, new Set())).toEqual([]);
+		expect(pushOntoDeparture(held, kicks([8, 9, 10, 11]), holds, level(9, 16, 30), new Set())).toEqual([]);
 		const back = [{ startBar: 0, endBar: 9, kind: 'chorus' }, { startBar: 9, endBar: 16, kind: 'breakdown' }];
-		expect(pushOntoDeparture(back, kicks([8]), level(8), new Set())).toEqual([]);
+		expect(pushOntoDeparture(back, kicks([8]), level(8), level(8, 16, 30), new Set())).toEqual([]);
 		const groove = [{ startBar: 0, endBar: 9, kind: 'chorus' }, { startBar: 9, endBar: 16, kind: 'groove' }];
-		expect(pushOntoDeparture(groove, kicks([8, 9, 10]), level(8), new Set())).toEqual([]);
+		expect(pushOntoDeparture(groove, kicks([8, 9, 10]), level(8), level(8, 16, 30), new Set())).toEqual([]);
 		const drawn = [{ startBar: 0, endBar: 9, kind: 'chorus' }, { startBar: 9, endBar: 16, kind: 'breakdown' }];
-		expect(pushOntoDeparture(drawn, kicks([8, 9, 10]), level(8), new Set([9]))).toEqual([]);
+		expect(pushOntoDeparture(drawn, kicks([8, 9, 10]), level(8), level(8, 16, 30), new Set([9]))).toEqual([]);
 	});
 });

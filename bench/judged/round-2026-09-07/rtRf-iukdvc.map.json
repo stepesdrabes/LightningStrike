@@ -1,0 +1,77 @@
+{
+	"trackId": "rtRf-iukdvc",
+	"title": "Hannah Montana",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0,
+			"endTime": 14.22,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "verse",
+			"startTime": 14.22,
+			"endTime": 28.44,
+			"startBar": 8,
+			"endBar": 16
+		},
+		{
+			"kind": "chorus",
+			"startTime": 28.44,
+			"endTime": 56.86,
+			"startBar": 16,
+			"endBar": 32
+		},
+		{
+			"kind": "verse",
+			"startTime": 56.86,
+			"endTime": 85.32,
+			"startBar": 32,
+			"endBar": 48
+		},
+		{
+			"kind": "chorus",
+			"startTime": 85.32,
+			"endTime": 113.72,
+			"startBar": 48,
+			"endBar": 64
+		},
+		{
+			"kind": "build",
+			"startTime": 113.72,
+			"endTime": 126.04,
+			"startBar": 64,
+			"endBar": 71
+		},
+		{
+			"kind": "void",
+			"startTime": 126.04,
+			"endTime": 127.76,
+			"startBar": 71,
+			"endBar": 72
+		},
+		{
+			"kind": "chorus",
+			"startTime": 127.76,
+			"endTime": 155.16,
+			"startBar": 72,
+			"endBar": 88
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "0fd4ceb92247cf5b",
+	"showSeed": 3946345925,
+	"authoredBy": "engine",
+	"updatedAt": 1788783372455,
+	"acceptedAnalysis": {
+		"version": 27,
+		"hash": "0fd4ceb92247cf5b",
+		"note": "the owner saved this judgement with no section edits, so the analysis as it stood is the map"
+	}
+}

@@ -1,0 +1,70 @@
+{
+	"trackId": "nTzU8TjvxyE",
+	"title": "Saf\u00edr",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "build",
+			"startTime": 0.02,
+			"endTime": 14.82,
+			"startBar": 0,
+			"endBar": 9
+		},
+		{
+			"kind": "chorus",
+			"startTime": 14.82,
+			"endTime": 54.2,
+			"startBar": 9,
+			"endBar": 33
+		},
+		{
+			"kind": "build",
+			"startTime": 54.2,
+			"endTime": 67.4,
+			"startBar": 33,
+			"endBar": 41
+		},
+		{
+			"kind": "chorus",
+			"startTime": 67.4,
+			"endTime": 106.8,
+			"startBar": 41,
+			"endBar": 65
+		},
+		{
+			"kind": "chorus",
+			"startTime": 106.8,
+			"endTime": 132.8,
+			"startBar": 65,
+			"endBar": 81
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 132.8,
+			"endTime": 139.38,
+			"startBar": 81,
+			"endBar": 85
+		},
+		{
+			"kind": "outro",
+			"startTime": 139.38,
+			"endTime": 145.833,
+			"startBar": 85,
+			"endBar": 89
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "58f21fd8e30c221b",
+	"showSeed": 2129420673,
+	"authoredBy": "engine",
+	"updatedAt": 1788783410487,
+	"acceptedAnalysis": {
+		"version": 27,
+		"hash": "58f21fd8e30c221b",
+		"note": "the owner saved this judgement with no section edits, so the analysis as it stood is the map"
+	}
+}

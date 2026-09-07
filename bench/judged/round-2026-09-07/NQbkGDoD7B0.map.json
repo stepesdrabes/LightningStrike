@@ -1,0 +1,133 @@
+{
+	"trackId": "NQbkGDoD7B0",
+	"title": "SICKO MODE",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "basically perfect",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.046,
+			"endTime": 27.711,
+			"startBar": 0,
+			"endBar": 16
+		},
+		{
+			"kind": "chorus",
+			"startTime": 27.711,
+			"endTime": 41.48,
+			"startBar": 16,
+			"endBar": 24
+		},
+		{
+			"kind": "build",
+			"startTime": 41.48,
+			"endTime": 53.54,
+			"startBar": 24,
+			"endBar": 31
+		},
+		{
+			"kind": "chorus",
+			"startTime": 53.54,
+			"endTime": 60.38,
+			"startBar": 31,
+			"endBar": 35
+		},
+		{
+			"kind": "verse",
+			"startTime": 60.38,
+			"endTime": 97.54,
+			"startBar": 35,
+			"endBar": 47
+		},
+		{
+			"kind": "build",
+			"startTime": 97.54,
+			"endTime": 109.92,
+			"startBar": 47,
+			"endBar": 51
+		},
+		{
+			"kind": "chorus",
+			"startTime": 109.92,
+			"endTime": 156.38,
+			"startBar": 51,
+			"endBar": 66
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 156.38,
+			"endTime": 165.66,
+			"startBar": 66,
+			"endBar": 69
+		},
+		{
+			"kind": "verse",
+			"startTime": 165.66,
+			"endTime": 176.56,
+			"startBar": 69,
+			"endBar": 73
+		},
+		{
+			"kind": "intro",
+			"startTime": 176.56,
+			"endTime": 188.94,
+			"startBar": 73,
+			"endBar": 77
+		},
+		{
+			"kind": "build",
+			"startTime": 188.94,
+			"endTime": 201.32,
+			"startBar": 77,
+			"endBar": 81
+		},
+		{
+			"kind": "chorus",
+			"startTime": 201.32,
+			"endTime": 226.1,
+			"startBar": 81,
+			"endBar": 89
+		},
+		{
+			"kind": "chorus",
+			"startTime": 226.1,
+			"endTime": 238.48,
+			"startBar": 89,
+			"endBar": 93
+		},
+		{
+			"kind": "chorus",
+			"startTime": 238.48,
+			"endTime": 288.04,
+			"startBar": 93,
+			"endBar": 109
+		},
+		{
+			"kind": "chorus",
+			"startTime": 288.04,
+			"endTime": 300.44,
+			"startBar": 109,
+			"endBar": 113
+		},
+		{
+			"kind": "outro",
+			"startTime": 300.44,
+			"endTime": 312.82,
+			"startBar": 113,
+			"endBar": 117
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "a83f081c4f2f9e51",
+	"showSeed": 3466303507,
+	"authoredBy": "engine",
+	"updatedAt": 1788780369659,
+	"acceptedAnalysis": {
+		"version": 27,
+		"hash": "a83f081c4f2f9e51",
+		"note": "the owner saved this judgement with no section edits, so the analysis as it stood is the map"
+	}
+}

@@ -1,0 +1,49 @@
+{
+	"trackId": "njqxvonZs0I",
+	"title": "Je mi fajn",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0,
+			"endTime": 23.42,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "build",
+			"startTime": 23.42,
+			"endTime": 35.14,
+			"startBar": 8,
+			"endBar": 12
+		},
+		{
+			"kind": "chorus",
+			"startTime": 35.14,
+			"endTime": 81.96,
+			"startBar": 12,
+			"endBar": 28
+		},
+		{
+			"kind": "chorus",
+			"startTime": 81.96,
+			"endTime": 175.62,
+			"startBar": 28,
+			"endBar": 60
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "847a0cc557493d35",
+	"showSeed": 1511530632,
+	"authoredBy": "engine",
+	"updatedAt": 1788780572178,
+	"acceptedAnalysis": {
+		"version": 27,
+		"hash": "847a0cc557493d35",
+		"note": "the owner saved this judgement with no section edits, so the analysis as it stood is the map"
+	}
+}

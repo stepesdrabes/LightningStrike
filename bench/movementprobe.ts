@@ -10,7 +10,7 @@
 // analyser change.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { CACHE_DIR, decodeAudio, handMapInput, readContext } from '@mv/analysis';
+import { CACHE_DIR, decodeAudio, handMapInput, publishedLevel, readContext } from '@mv/analysis';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { BeatThis } from '../packages/analysis/src/beatthis.ts';
 import { Adtof } from '../packages/analysis/src/adtof.ts';
@@ -62,7 +62,20 @@ if (!process.argv.includes('--no-drums')) {
 		}
 	}
 }
+const probe: {
+	arrivals?: Float32Array;
+	physical?: Float32Array;
+	kicks?: Int32Array;
+	settle?: Float32Array | null;
+	stages: { name: string; bounds: number[] }[];
+} = { stages: [] };
+// The level the app reads the grid at: ingest re-reads the beats against the published
+// tempo, and without the same step here Stranded probes at 92 while the app plays it at 185.
+const context = (await readContext(id)) ?? undefined;
+const level = context?.publishedBpm ? publishedLevel(heard.beats, context.publishedBpm, context.genreFamily) : null;
 const analysis = analyzeTrack({
+	probe,
+	metricalLevel: level ?? undefined,
 	mono: decoded.mono,
 	sampleRate: decoded.sampleRate,
 	duration: decoded.duration,
@@ -72,12 +85,21 @@ const analysis = analyzeTrack({
 	beats: heard.beats,
 	downbeats: heard.downbeats,
 	drums,
-	context: (await readContext(id)) ?? undefined,
+	context,
 	...hand
 });
 
 const outPath = process.argv.find((a) => a.startsWith('--out='))?.slice(6);
-if (outPath) writeFileSync(outPath, JSON.stringify(analysis));
+if (outPath) {
+	// The per-bar evidence rides along for the bench, outside the contract.
+	const evidence = {
+		arrivals: Array.from(probe.arrivals ?? [], (v) => Math.round(v * 100) / 100),
+		physical: Array.from(probe.physical ?? [], (v) => Math.round(v * 100) / 100),
+		settle: Array.from(probe.settle ?? [], (v) => Math.round(v * 100) / 100),
+		stages: probe.stages
+	};
+	writeFileSync(outPath, JSON.stringify({ ...analysis, _probe: evidence }));
+}
 const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 console.log(`${cached.title}  ${analysis.tempo.bpm} bpm median, ${analysis.bars.length} bars, ${analysis.sections.length} sections`);
 for (const m of analysis.movements ?? []) {

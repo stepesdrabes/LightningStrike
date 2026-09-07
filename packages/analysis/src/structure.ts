@@ -1,3 +1,4 @@
+import { PHRASE_BARS } from '@mv/core';
 import type { BeatFeatures } from './beatsync.ts';
 import { PITCH_CLASSES } from './chroma.ts';
 import { quantile } from './dsp/stats.ts';
@@ -391,7 +392,10 @@ function arrivalStrength(
 	hooks: Uint8Array | null,
 	b: number,
 	settle: Float32Array | null = null,
-	settleWeight = 0
+	settleWeight = 0,
+	settleGate = SETTLE_GATE,
+	bassWeight = 0,
+	kitMinKicks = 1
 ): number {
 	if (b <= 0 || b >= bars.count) return 0;
 	const step = Math.max(0, db[b] - db[b - 1]) / tol;
@@ -400,7 +404,7 @@ function arrivalStrength(
 	if (kicksPerBar) {
 		const now = kicksPerBar[b] ?? 0;
 		const before = kicksPerBar[b - 1] ?? 0;
-		if (now > 0 && before === 0) kit = 1;
+		if (now >= kitMinKicks && before === 0) kit = 1;
 		else kit = Math.max(0, now - before) / 8;
 	}
 
@@ -442,9 +446,10 @@ function arrivalStrength(
 	// witness left. The gate also keeps every absolute threshold calibrated on the
 	// settle-free scale honest for decisive bars: pins, the snap's cuts and the
 	// consolidation floor all read decisive arrivals exactly as before.
-	const physics = step + kit + 0.8 * dip + 1.5 * novelty;
+	const bass = bassWeight > 0 ? bassWeight * Math.max(0, bars.low[b] - bars.low[b - 1]) : 0;
+	const physics = step + kit + 0.8 * dip + 1.5 * novelty + bass;
 	const settling =
-		settle && settleWeight > 0 && physics < SETTLE_GATE
+		settle && settleWeight > 0 && physics < settleGate
 			? settleWeight * Math.max(0, settle[b])
 			: 0;
 
@@ -512,6 +517,28 @@ export interface StructureTuning {
 	settleWeight: number;
 	/** Bars a boundary may be pulled onto an arrival by the refine pass. */
 	refineReach: number;
+	/** How much more a neighbouring arrival must score than the boundary's own bar to take it. */
+	refineMargin: number;
+	/** Physics score under which the settling term may vote; Infinity lets it vote everywhere. */
+	settleGate: number;
+	/**
+	 * Weight of the low band landing on a bar. The kit and a crash arrive on the fill bar
+	 * and the floor lands one bar later, which is the bar the owner draws: 0 keeps the score
+	 * as shipped.
+	 */
+	bassWeight: number;
+	/**
+	 * Kicks a bar needs before its kit counts as arriving after a bar of none. 1 is the
+	 * shipped reading; with the drum model a lone kick is a pickup, and the kit lands with
+	 * the bar after it (Timeless at 0:24, Melanz at 3:01).
+	 */
+	kitMinKicks: number;
+	/**
+	 * Physical arrival score at which a bar inside a long segment splits it, on the phrase
+	 * grid; 0 never splits. A verse restated on a decisive arrival that the segmenter, which
+	 * reads material, cannot see (Timeless at 1:20, 4.6).
+	 */
+	splitAtArrival: number;
 }
 
 /**
@@ -542,10 +569,18 @@ export const DEFAULT_TUNING: StructureTuning = {
 	// weight starts from here instead of rediscovering the trade.
 	settleWeight: 0,
 	refineReach: 1,
+	refineMargin: REFINE_MARGIN,
+	settleGate: SETTLE_GATE,
+	bassWeight: 0,
+	kitMinKicks: 1,
+	splitAtArrival: 0,
 	// The on-file cases split wide: legitimate stays tower (5.9, 6.0, 7.2 - Vitej's and
 	// Way Too Self Aware's drops, Titi's slam) while the stays that displaced praised or
-	// marked bars sat at 2.4 and below (Titi 74, KITN 50). 3 sits in the gap.
-	stayPinScore: 3
+	// marked bars sat at 2.4 and below (Titi 74, KITN 50), and 3 sat in the gap. The
+	// 2026-09-07 corpus moved it: the refine had Blinding Lights' first chorus on the
+	// owner's bar at 2.72 and the phrase snap took it away, and at 2 the nineteen maps
+	// gain two boundaries with no accepted track moving (`bench/mapsweep.ts`, stay-2).
+	stayPinScore: 2
 };
 
 /**
@@ -587,6 +622,8 @@ export function pullOntoReturn(
 const KIT_LEFT = new Set(['breakdown', 'build', 'outro']);
 /** The bar the kit leaves must carry at most this share of the low band the bar before had. */
 const DEPARTURE_LOW = 0.5;
+/** Or of its level, where the boundary sits a bar before the kit leaves. */
+const DEPARTURE_LEVEL = 0.7;
 
 /**
  * The mirror of `pullOntoReturn`: a section the kit leaves begins on the bar it leaves. Where
@@ -605,6 +642,8 @@ export function pushOntoDeparture(
 	kicks: Int32Array,
 	/** The low band per bar, 0..1. */
 	low: ArrayLike<number>,
+	/** The level per bar, 0..100, for the forward case: a synth bass can hold the low band through an outro. */
+	energy: ArrayLike<number>,
 	keep: ReadonlySet<number>
 ): number[] {
 	const moved: number[] = [];
@@ -613,14 +652,43 @@ export function pushOntoDeparture(
 		const prev = segments[i - 1];
 		const b = here.startBar;
 		if (keep.has(b) || !KIT_LEFT.has(here.kind) || prev.kind === 'void') continue;
-		if (b < 2 || b - 1 - prev.startBar < 2) continue;
-		if (kicks[b] !== 0 || kicks[b - 1] !== 0 || kicks[b - 2] === 0) continue;
-		if (!(low[b - 1] <= DEPARTURE_LOW * low[b - 2])) continue;
-		here.startBar = b - 1;
-		prev.endBar = b - 1;
-		moved.push(b - 1);
+		if (b >= 2 && b - 1 - prev.startBar >= 2 && kicks[b] === 0 && kicks[b - 1] === 0 && kicks[b - 2] > 0 && low[b - 1] <= DEPARTURE_LOW * low[b - 2]) {
+			here.startBar = b - 1;
+			prev.endBar = b - 1;
+			moved.push(b - 1);
+			continue;
+		}
+		// And the other way: the boundary a bar BEFORE the kit leaves - pinned there by a
+		// last vocal pickup on Blinding Lights, by the chorus's tag bar on EARFQUAKE - moves
+		// forward onto the bar it leaves. Outros and breakdowns only: a build begins under the
+		// kit, on the riser or the voice, and the drums drop out a bar into it (PROVENZA).
+		const falls = low[b + 1] <= DEPARTURE_LOW * low[b] || energy[b + 1] <= DEPARTURE_LEVEL * energy[b];
+		if (here.kind !== 'build' && b + 1 < kicks.length && here.endBar - (b + 1) >= 2 && kicks[b] > 0 && kicks[b + 1] <= 1 && falls) {
+			here.startBar = b + 1;
+			prev.endBar = b + 1;
+			moved.push(b + 1);
+		}
 	}
 	return moved;
+}
+
+/**
+ * Split a segment longer than `minBars` at an interior bar whose physical arrival reaches
+ * `floor` and sits on the phrase grid of the segment's own start, so a decisive restatement
+ * the material-reading segmenter cannot see still gets its boundary. Returns the new table.
+ */
+export function splitAtArrivals(bounds: number[], physical: Float32Array, floor: number, minBars = 12): number[] {
+	if (floor <= 0) return bounds;
+	const out = [...bounds];
+	for (let i = 0; i + 1 < bounds.length; i++) {
+		const from = bounds[i];
+		const to = bounds[i + 1];
+		if (to - from < minBars) continue;
+		for (let b = from + PHRASE_BARS; b + PHRASE_BARS <= to; b += PHRASE_BARS) {
+			if (physical[b] >= floor && !out.includes(b)) out.push(b);
+		}
+	}
+	return out.sort((a, b) => a - b);
 }
 
 /**
@@ -633,13 +701,16 @@ export function arrivalStrengths(
 	vocal: Float64Array | null = null,
 	hooks: Uint8Array | null = null,
 	settle: Float32Array | null = null,
-	settleWeight = 0
+	settleWeight = 0,
+	settleGate = SETTLE_GATE,
+	bassWeight = 0,
+	kitMinKicks = 1
 ): Float32Array {
 	const db = barLevels(bars);
 	const tol = LEVEL_TOL * levelSpread(db);
 	const out = new Float32Array(bars.count);
 	for (let b = 1; b < bars.count; b++) {
-		out[b] = arrivalStrength(bars, db, tol, kicksPerBar, vocal, hooks, b, settle, settleWeight);
+		out[b] = arrivalStrength(bars, db, tol, kicksPerBar, vocal, hooks, b, settle, settleWeight, settleGate, bassWeight, kitMinKicks);
 	}
 	return out;
 }
@@ -663,19 +734,23 @@ export function refineBoundaries(
 	settleWeight = 0,
 	reach = REFINE_REACH,
 	/** Boundaries that are walls rather than findings - movement starts - which no arrival may move. */
-	fixed: ReadonlySet<number> = new Set()
+	fixed: ReadonlySet<number> = new Set(),
+	margin = REFINE_MARGIN,
+	settleGate = SETTLE_GATE,
+	bassWeight = 0,
+	kitMinKicks = 1
 ): number[] {
 	const db = barLevels(bars);
 	const tol = LEVEL_TOL * levelSpread(db);
 	const out = [...bounds];
 	const score = (b: number) =>
-		arrivalStrength(bars, db, tol, kicksPerBar, vocal, hooks, b, settle, settleWeight);
+		arrivalStrength(bars, db, tol, kicksPerBar, vocal, hooks, b, settle, settleWeight, settleGate, bassWeight, kitMinKicks);
 
 	for (let i = 1; i + 1 < out.length; i++) {
 		const here = out[i];
 		if (fixed.has(here)) continue;
 		let best = here;
-		let bestScore = score(here) * REFINE_MARGIN;
+		let bestScore = score(here) * margin;
 		for (let c = here - reach; c <= here + reach; c++) {
 			if (c === here) continue;
 			if (c - out[i - 1] < MIN_SEGMENT_BARS || out[i + 1] - c < MIN_SEGMENT_BARS) continue;

@@ -1,0 +1,72 @@
+{
+	"trackId": "J7p4bzqLvCw",
+	"title": "Blinding Lights",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.128,
+			"endTime": 11.36,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "build",
+			"startTime": 11.36,
+			"endTime": 16.96,
+			"startBar": 8,
+			"endBar": 12
+		},
+		{
+			"kind": "chorus",
+			"startTime": 16.96,
+			"endTime": 61.88,
+			"startBar": 12,
+			"endBar": 44
+		},
+		{
+			"kind": "chorus",
+			"startTime": 61.88,
+			"endTime": 95.56,
+			"startBar": 44,
+			"endBar": 68
+		},
+		{
+			"kind": "chorus",
+			"startTime": 95.56,
+			"endTime": 118.02,
+			"startBar": 68,
+			"endBar": 84
+		},
+		{
+			"kind": "chorus",
+			"startTime": 118.02,
+			"endTime": 162.94,
+			"startBar": 84,
+			"endBar": 116
+		},
+		{
+			"kind": "chorus",
+			"startTime": 162.94,
+			"endTime": 185.38,
+			"startBar": 116,
+			"endBar": 132
+		},
+		{
+			"kind": "outro",
+			"startTime": 185.38,
+			"endTime": 193.8,
+			"startBar": 132,
+			"endBar": 138
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "c0bb34803bf2c7ca",
+	"showSeed": 1980261782,
+	"authoredBy": "engine",
+	"updatedAt": 1788783510705
+}

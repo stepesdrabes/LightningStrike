@@ -362,7 +362,10 @@ export function publishedLevel(
 	for (const r of [1, 2, 0.5, 1.5, 2 / 3, 3, 1 / 3]) {
 		if (Math.abs(detected * r - publishedBpm) / publishedBpm < 0.035) {
 			if (r === 1) return null;
-			if (r > 1 && (genreFamily === 'ballad' || genreFamily === 'ambient')) return null;
+			// Metal is listed at its double-time drums: Stranded is published at 184.6, the
+			// model hears its 92 bpm riff, and the owner's map runs in whole bars of 2.6 s.
+			// Punk that really plays at 186 (American Idiot) the model tracks there itself.
+			if (r > 1 && (genreFamily === 'ballad' || genreFamily === 'ambient' || genreFamily === 'metal')) return null;
 			return r;
 		}
 	}

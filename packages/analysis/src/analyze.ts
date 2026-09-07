@@ -40,6 +40,7 @@ import {
 	arrivalStrengths,
 	pullOntoReturn,
 	pushOntoDeparture,
+	splitAtArrivals,
 	barSynchronous,
 	barSynchronousAt,
 	groupSegments,
@@ -166,6 +167,18 @@ export interface AnalyzeInput {
 	movements?: readonly number[];
 	/** Seconds near which the listener refused a detected movement, so it stays refused. */
 	movementVetoes?: readonly number[];
+	/**
+	 * A sink a bench may pass to read the evidence the structure pass decided on; the
+	 * analysis writes into it and never reads it. Nothing shipped passes one.
+	 */
+	probe?: {
+		arrivals?: Float32Array;
+		physical?: Float32Array;
+		kicks?: Int32Array;
+		settle?: Float32Array | null;
+		/** The boundary table after each pass that can move one, in order. */
+		stages?: { name: string; bounds: number[] }[];
+	};
 }
 
 /** A detection within this of a mark defers to the mark; within this of a veto it is refused. */
@@ -440,16 +453,26 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		settle,
 		tuning.settleWeight,
 		tuning.refineReach,
-		fixed
+		fixed,
+		tuning.refineMargin,
+		tuning.settleGate,
+		tuning.bassWeight,
+		tuning.kitMinKicks
 	);
+	const stage = (name: string, bounds: readonly number[]) => input.probe?.stages?.push({ name, bounds: [...bounds] });
+	stage('refined', rough);
 	// Only the decisive arrivals earn pin status; a marginal move may correct its own
 	// boundary without getting a vote over everyone else's.
 	const movePinned = new Set(moves.filter((m) => m.score >= tuning.pinScore).map((m) => m.to));
+	stage('pins', [...movePinned]);
 	// A boundary the segmenter got right from birth records no move, so it earned no pin,
 	// and the phrase snap downstream was free to round it off the very arrival it stands
 	// on - Vitej's last drop shipped a bar early, on a kickless bar, exactly this way.
 	// Physics-only and at stayPinScore, not pinScore: see the tuning docblock.
-	const physical = arrivalStrengths(bars, rawKicks, null, null, settle, tuning.settleWeight);
+	const physical = arrivalStrengths(bars, rawKicks, null, null, settle, tuning.settleWeight, tuning.settleGate, tuning.bassWeight, tuning.kitMinKicks);
+	// A decisive arrival inside a long segment is a restatement the segmenter cannot see.
+	const roughSplit = splitAtArrivals(rough, physical, tuning.splitAtArrival);
+	if (roughSplit.length !== rough.length) rough.splice(0, rough.length, ...roughSplit);
 	const pinned = new Set(movePinned);
 	for (const b of rough) if (b > 0 && b < bars.count && physical[b] >= tuning.stayPinScore) pinned.add(b);
 	// The pinned arrivals know the track's phrase phase; boundaries that had only mush to
@@ -506,6 +529,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		isClubFamily(input.context?.genreFamily ?? null),
 		movementBars
 	);
+	stage('arranged', plan.segments.map((seg) => seg.startBar));
 	/** The movement a bar belongs to, indexing `movementAt` plus one; 0 before any. */
 	const movementOf = (bar: number) => movementBars.filter((m) => m <= bar).length;
 	/** Bar spans of each movement, [from, to). */
@@ -570,7 +594,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// arrange() emitted them while every boundary was still where the energy alone put
 	// it, and a drop downbeat left at a bar its section has moved off - or been demoted
 	// off - fires the show's biggest cue in the wrong section.
-	const arrivals = arrivalStrengths(bars, rawKicks, vocal, hooks, settle, tuning.settleWeight);
+	const arrivals = arrivalStrengths(bars, rawKicks, vocal, hooks, settle, tuning.settleWeight, tuning.settleGate, tuning.bassWeight, tuning.kitMinKicks);
+	if (input.probe) Object.assign(input.probe, { arrivals, physical, kicks, settle });
 	// The snap's veto reads the physics-only arrivals computed above: the sung evidence is
 	// the very thing under adjudication, and with it in the score a hook bar can never read
 	// as "nothing arrives here" - which is exactly what a pickup sung over silence is.
@@ -587,6 +612,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// A drawn seam is not an artefact, whatever arrives on it: Ponyboy's map puts two drop
 	// blocks back to back, which is the shape the room asked for and precisely what this
 	// pass would fuse.
+	stage('hooks', plan.segments.map((seg) => seg.startBar));
 	const rawSectionCount = plan.segments.length;
 	const preConsolidation = plan.segments.map((s) => ({ ...s }));
 	if (!hand) {
@@ -594,9 +620,11 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		const keep = new Set([...pinned, ...drawn]);
 		for (const b of pullOntoReturn(plan.segments, arrivals, kicks, tuning.refineFloor, keep)) keep.add(b);
 		const lowBand = Float32Array.from({ length: bars.count }, (_, b) => plan.bands[b * NUM_BANDS + 1]);
-		for (const b of pushOntoDeparture(plan.segments, kicks, lowBand, drawn)) keep.add(b);
+		for (const b of pushOntoDeparture(plan.segments, kicks, lowBand, plan.energy, drawn)) keep.add(b);
+		stage('pulled', plan.segments.map((seg) => seg.startBar));
 		consolidateSections(plan.segments, arrivals, sim, bars.count, tuning.consolidateFloor, plan.energy, keep);
 	}
+	stage('final', plan.segments.map((seg) => seg.startBar));
 	placeEvents(plan.segments, plan.bands, kicks, snares, bars.count, plan.events);
 
 	// One array decides where every bar is. `bars[].t` is written from it below rather than

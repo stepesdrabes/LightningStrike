@@ -1,0 +1,84 @@
+{
+	"trackId": "pqrUQrAcfo4",
+	"title": "Do I Wanna Know?",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "Just the effect in the first verse is just full green for some reason?",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.32,
+			"endTime": 5.96,
+			"startBar": 0,
+			"endBar": 2
+		},
+		{
+			"kind": "verse",
+			"startTime": 5.96,
+			"endTime": 96.3,
+			"startBar": 2,
+			"endBar": 34
+		},
+		{
+			"kind": "chorus",
+			"startTime": 96.3,
+			"endTime": 118.92,
+			"startBar": 34,
+			"endBar": 42
+		},
+		{
+			"kind": "verse",
+			"startTime": 118.92,
+			"endTime": 152.78,
+			"startBar": 42,
+			"endBar": 54
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 152.78,
+			"endTime": 164.1,
+			"startBar": 54,
+			"endBar": 58
+		},
+		{
+			"kind": "build",
+			"startTime": 164.1,
+			"endTime": 186.66,
+			"startBar": 58,
+			"endBar": 66
+		},
+		{
+			"kind": "chorus",
+			"startTime": 186.66,
+			"endTime": 248.8,
+			"startBar": 66,
+			"endBar": 88
+		},
+		{
+			"kind": "chorus",
+			"startTime": 248.8,
+			"endTime": 260.1,
+			"startBar": 88,
+			"endBar": 92
+		},
+		{
+			"kind": "verse",
+			"startTime": 260.1,
+			"endTime": 268.54,
+			"startBar": 92,
+			"endBar": 95
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "5b158a31ec96c0ab",
+	"showSeed": 604328884,
+	"authoredBy": "engine",
+	"updatedAt": 1788780653192,
+	"acceptedAnalysis": {
+		"version": 27,
+		"hash": "5b158a31ec96c0ab",
+		"note": "the owner saved this judgement with no section edits, so the analysis as it stood is the map"
+	}
+}

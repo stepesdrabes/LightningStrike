@@ -1,0 +1,70 @@
+{
+	"trackId": "Gs5WlUzk_Ec",
+	"title": "HIGHEST IN THE ROOM",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0,
+			"endTime": 12.56,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "verse",
+			"startTime": 12.56,
+			"endTime": 50.22,
+			"startBar": 4,
+			"endBar": 16
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 50.22,
+			"endTime": 75.32,
+			"startBar": 16,
+			"endBar": 24
+		},
+		{
+			"kind": "chorus",
+			"startTime": 75.32,
+			"endTime": 112.94,
+			"startBar": 24,
+			"endBar": 36
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 112.94,
+			"endTime": 138.06,
+			"startBar": 36,
+			"endBar": 44
+		},
+		{
+			"kind": "build",
+			"startTime": 138.06,
+			"endTime": 150.6,
+			"startBar": 44,
+			"endBar": 48
+		},
+		{
+			"kind": "chorus",
+			"startTime": 150.6,
+			"endTime": 175.68,
+			"startBar": 48,
+			"endBar": 56
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "36e5622e1974c878",
+	"showSeed": 2548031910,
+	"authoredBy": "engine",
+	"updatedAt": 1788780324760,
+	"acceptedAnalysis": {
+		"version": 27,
+		"hash": "36e5622e1974c878",
+		"note": "the owner saved this judgement with no section edits, so the analysis as it stood is the map"
+	}
+}

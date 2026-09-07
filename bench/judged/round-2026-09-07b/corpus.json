@@ -1,0 +1,266 @@
+{
+	"note": "Review corpus 2 (2026-09-07, rebuilt clean): the app library. Rap and EDM first, the praised sentinels, and the tracks that carry the open boundary classes. Every judge file is frozen beside this list as <id>.map.json and scored by bench/mapsweep.ts.",
+	"tracks": [
+		{
+			"id": "6JHu3b-pbh8",
+			"title": "Thinkin Bout You",
+			"artist": "Frank Ocean",
+			"bpm": 65,
+			"seconds": 201,
+			"genre": "hiphop",
+			"why": "Thinkin Bout You at 65, August 2"
+		},
+		{
+			"id": "sXf02hCe6fc",
+			"title": "P\u00e1tky",
+			"artist": "Viktor Sheen",
+			"bpm": 70,
+			"seconds": 189,
+			"genre": "hiphop",
+			"why": "Patky, Czech rap at 124"
+		},
+		{
+			"id": "2nR1zrNzgcY",
+			"title": "FE!N",
+			"artist": "Travis Scott, Playboi Carti",
+			"bpm": 74,
+			"seconds": 192,
+			"genre": "hiphop",
+			"why": "FE!N at 74, the 40 s look lived here"
+		},
+		{
+			"id": "zNhtz0Lygik",
+			"title": "Best Part (feat. H.E.R.)",
+			"artist": "Daniel Caesar, H.E.R.",
+			"bpm": 75,
+			"seconds": 210,
+			"genre": "rnb",
+			"why": "Best Part at 75, August 1: every section off"
+		},
+		{
+			"id": "C0cJbz81H6A",
+			"title": "Panama",
+			"artist": "Calin",
+			"bpm": 80,
+			"seconds": 183,
+			"genre": "hiphop",
+			"why": "Panama, Czech rap at 80"
+		},
+		{
+			"id": "2o9aoL0NWpw",
+			"title": "Killing In the Name",
+			"artist": "Rage Against The Machine",
+			"bpm": 89,
+			"seconds": 314,
+			"genre": "rock",
+			"why": "Killing In the Name, rated 3 unsure: three later choruses a bar early, the half-bar builds"
+		},
+		{
+			"id": "h0w5g0p9RsM",
+			"title": "ROCKSTAR",
+			"artist": "DaBaby, Roddy Ricch",
+			"bpm": 90,
+			"seconds": 182,
+			"genre": "hiphop",
+			"why": "ROCKSTAR at 90: the detector hears two songs, a switch to judge"
+		},
+		{
+			"id": "zgychWIo6UA",
+			"title": "Stranded",
+			"artist": "Gojira",
+			"bpm": 92,
+			"seconds": 270,
+			"genre": "metal",
+			"why": "Stranded, rated 2 unsure: now read at its felt 92 bpm instead of 185, judge it afresh"
+		},
+		{
+			"id": "_VyTeP-35cs",
+			"title": "St\u00edny",
+			"artist": "Viktor Sheen",
+			"bpm": 93,
+			"seconds": 173,
+			"genre": "hiphop",
+			"why": "Stiny, Czech rap at 93"
+		},
+		{
+			"id": "cpkdtCSRQVU",
+			"title": "Hovorili mi \u017ee",
+			"artist": "Separ, Raphael",
+			"bpm": 101,
+			"seconds": 163,
+			"genre": "hiphop",
+			"why": "Separ at 101, Slovak rap"
+		},
+		{
+			"id": "pRIZohFFOMo",
+			"title": "Someone You Loved",
+			"artist": "Lewis Capaldi",
+			"bpm": 110,
+			"seconds": 182,
+			"genre": "house",
+			"why": "Someone You Loved, rated 3: a piano ballad with no kit, the glitch effects gone under the kitless restraint"
+		},
+		{
+			"id": "I-HWMiOM8uE",
+			"title": "A\u017e na m\u011bs\u00edc",
+			"artist": "Viktor Sheen, Calin, Hasan, Nik Tendo",
+			"bpm": 115,
+			"seconds": 209,
+			"genre": "hiphop",
+			"why": "Az na mesic at 115, August 4"
+		},
+		{
+			"id": "RAYQTfFh4xk",
+			"title": "Le Freak",
+			"artist": "Chic",
+			"bpm": 119,
+			"seconds": 328,
+			"genre": "disco",
+			"why": "Le Freak, disco at 119, August 1"
+		},
+		{
+			"id": "ZiJWFrSJ7Gk",
+			"title": "V\u00edtej mezi n\u00e1ma (feat. STEIN27)",
+			"artist": "Calin, STEIN27",
+			"bpm": 124,
+			"seconds": 194,
+			"genre": "house",
+			"why": "Vitej mezi nama, rated 5: the praised sentinel"
+		},
+		{
+			"id": "w_pDmpSSbQc",
+			"title": "365",
+			"artist": "Charli xcx",
+			"bpm": 127,
+			"seconds": 204,
+			"genre": "edm",
+			"why": "365, Charli xcx at 127"
+		},
+		{
+			"id": "NZtZzsI8JTA",
+			"title": "Praha/V\u00edde\u0148",
+			"artist": "Calin",
+			"bpm": 130,
+			"seconds": 162,
+			"genre": "hiphop",
+			"why": "Praha/Viden at 130, August 4"
+		},
+		{
+			"id": "oZ-lTp1ZaZQ",
+			"title": "Von dutch",
+			"artist": "Charli xcx",
+			"bpm": 130,
+			"seconds": 164,
+			"genre": "house",
+			"why": "Von dutch, house at 130"
+		},
+		{
+			"id": "x12TeW7LU2E",
+			"title": "Higher",
+			"artist": "Amelie Lens",
+			"bpm": 136,
+			"seconds": 275,
+			"genre": "techno",
+			"why": "Higher, techno at 136"
+		},
+		{
+			"id": "QjwdsQBhWCo",
+			"title": "Windows98",
+			"artist": "frutiger dillon, Gregory Dillon",
+			"bpm": 137,
+			"seconds": 168,
+			"genre": "trance",
+			"why": "Windows98, trance at 137"
+		},
+		{
+			"id": "w5mfm3zx6hs",
+			"title": "Runaway (U & I)",
+			"artist": "Ian Asher, Galantis",
+			"bpm": 138,
+			"seconds": 147,
+			"genre": "edm",
+			"why": "Runaway (U & I) at 138"
+		},
+		{
+			"id": "_LFxr2bUEUY",
+			"title": "Immaterial",
+			"artist": "SOPHIE",
+			"bpm": 140,
+			"seconds": 233,
+			"genre": "house",
+			"why": "Immaterial, SOPHIE at 140"
+		},
+		{
+			"id": "0gIgxTXkI_A",
+			"title": "Faster n Harder",
+			"artist": "6arelyhuman",
+			"bpm": 140,
+			"seconds": 123,
+			"genre": "bass",
+			"why": "Faster n Harder, bass at 141"
+		},
+		{
+			"id": "rgN9j5WQVdc",
+			"title": "C\u00edgo a k\u00e1va (feat. Saul)",
+			"artist": "Viktor Sheen, Saul",
+			"bpm": 140,
+			"seconds": 183,
+			"genre": "hiphop",
+			"why": "Cigo a kava at 155, August 4"
+		},
+		{
+			"id": "XuKq7zT_0nM",
+			"title": "Illegal",
+			"artist": "PinkPantheress",
+			"bpm": 141,
+			"seconds": 150,
+			"genre": "house",
+			"why": "Illegal, PinkPantheress at 141"
+		},
+		{
+			"id": "V2W9QCfYOGU",
+			"title": "Kisses (feat. bbyclose)",
+			"artist": "BL3SS, CamrinWatsin, bbyclose",
+			"bpm": 142,
+			"seconds": 138,
+			"genre": "house",
+			"why": "Kisses at 142, August 4"
+		},
+		{
+			"id": "H4RELGc9su8",
+			"title": "HUMBLE.",
+			"artist": "Kendrick Lamar",
+			"bpm": 150,
+			"seconds": 177,
+			"genre": "hiphop",
+			"why": "HUMBLE., August 2"
+		},
+		{
+			"id": "MLUmX6jf-MM",
+			"title": "Kids (Techno Mix)",
+			"artist": "Boss Cat",
+			"bpm": 155,
+			"seconds": 133,
+			"genre": "bass",
+			"why": "Kids (Techno Mix) at 155"
+		},
+		{
+			"id": "f0pPL5nrFz8",
+			"title": "Way Too Self Aware",
+			"artist": "Ian Asher",
+			"bpm": 169,
+			"seconds": 156,
+			"genre": "house",
+			"why": "Way Too Self Aware at 169, a praised sentinel"
+		},
+		{
+			"id": "J7p4bzqLvCw",
+			"title": "Blinding Lights",
+			"artist": "The Weeknd",
+			"bpm": 171,
+			"seconds": 202,
+			"genre": "pop",
+			"why": "Blinding Lights, rated 4: two choruses a bar early where the bass lands after the crash"
+		}
+	]
+}

@@ -1,0 +1,72 @@
+{
+	"trackId": "t-E2gm0a_N0",
+	"title": "EARFQUAKE",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.06,
+			"endTime": 24.18,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "chorus",
+			"startTime": 24.18,
+			"endTime": 66.4,
+			"startBar": 8,
+			"endBar": 22
+		},
+		{
+			"kind": "build",
+			"startTime": 66.4,
+			"endTime": 72.44,
+			"startBar": 22,
+			"endBar": 24
+		},
+		{
+			"kind": "chorus",
+			"startTime": 72.44,
+			"endTime": 96.58,
+			"startBar": 24,
+			"endBar": 32
+		},
+		{
+			"kind": "build",
+			"startTime": 96.58,
+			"endTime": 120.72,
+			"startBar": 32,
+			"endBar": 40
+		},
+		{
+			"kind": "chorus",
+			"startTime": 120.72,
+			"endTime": 156.9,
+			"startBar": 40,
+			"endBar": 52
+		},
+		{
+			"kind": "verse",
+			"startTime": 156.9,
+			"endTime": 168.96,
+			"startBar": 52,
+			"endBar": 56
+		},
+		{
+			"kind": "outro",
+			"startTime": 168.96,
+			"endTime": 190.06,
+			"startBar": 56,
+			"endBar": 63
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "3397283929f7f0b2",
+	"showSeed": 1696387485,
+	"authoredBy": "engine",
+	"updatedAt": 1788780490783
+}

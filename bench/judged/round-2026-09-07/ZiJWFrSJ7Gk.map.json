@@ -1,0 +1,84 @@
+{
+	"trackId": "ZiJWFrSJ7Gk",
+	"title": "V\u00edtej mezi n\u00e1ma (feat. STEIN27)",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.02,
+			"endTime": 17.44,
+			"startBar": 0,
+			"endBar": 9
+		},
+		{
+			"kind": "build",
+			"startTime": 17.44,
+			"endTime": 21.3,
+			"startBar": 9,
+			"endBar": 11
+		},
+		{
+			"kind": "drop",
+			"startTime": 21.3,
+			"endTime": 48.4,
+			"startBar": 11,
+			"endBar": 25
+		},
+		{
+			"kind": "groove",
+			"startTime": 48.4,
+			"endTime": 79.36,
+			"startBar": 25,
+			"endBar": 41
+		},
+		{
+			"kind": "drop",
+			"startTime": 79.36,
+			"endTime": 112.26,
+			"startBar": 41,
+			"endBar": 58
+		},
+		{
+			"kind": "groove",
+			"startTime": 112.26,
+			"endTime": 127.76,
+			"startBar": 58,
+			"endBar": 66
+		},
+		{
+			"kind": "groove",
+			"startTime": 127.76,
+			"endTime": 143.22,
+			"startBar": 66,
+			"endBar": 74
+		},
+		{
+			"kind": "groove",
+			"startTime": 143.22,
+			"endTime": 158.72,
+			"startBar": 74,
+			"endBar": 82
+		},
+		{
+			"kind": "drop",
+			"startTime": 158.72,
+			"endTime": 189.68,
+			"startBar": 82,
+			"endBar": 98
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "6c772059d6407c3f",
+	"showSeed": 2405777905,
+	"authoredBy": "engine",
+	"updatedAt": 1788781264451,
+	"acceptedAnalysis": {
+		"version": 27,
+		"hash": "6c772059d6407c3f",
+		"note": "the owner saved this judgement with no section edits, so the analysis as it stood is the map"
+	}
+}

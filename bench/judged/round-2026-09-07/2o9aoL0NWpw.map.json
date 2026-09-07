@@ -1,0 +1,97 @@
+{
+	"trackId": "2o9aoL0NWpw",
+	"title": "Killing In the Name",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "I’m really unsure in this one myself",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.631,
+			"endTime": 17.558,
+			"startBar": 0,
+			"endBar": 5.75
+		},
+		{
+			"kind": "build",
+			"startTime": 17.558,
+			"endTime": 41.76,
+			"startBar": 5.75,
+			"endBar": 14,
+			"offGrid": true
+		},
+		{
+			"kind": "chorus",
+			"startTime": 41.76,
+			"endTime": 88.98,
+			"startBar": 14,
+			"endBar": 30
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 88.98,
+			"endTime": 100.99000000000001,
+			"startBar": 30,
+			"endBar": 34.5
+		},
+		{
+			"kind": "build",
+			"startTime": 100.99000000000001,
+			"endTime": 120.36,
+			"startBar": 34.5,
+			"endBar": 42,
+			"offGrid": true
+		},
+		{
+			"kind": "chorus",
+			"startTime": 120.36,
+			"endTime": 142.18,
+			"startBar": 42,
+			"endBar": 50
+		},
+		{
+			"kind": "chorus",
+			"startTime": 142.18,
+			"endTime": 177.32,
+			"startBar": 50,
+			"endBar": 62
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 177.32,
+			"endTime": 189.39,
+			"startBar": 62,
+			"endBar": 66.5
+		},
+		{
+			"kind": "build",
+			"startTime": 189.39,
+			"endTime": 208.9,
+			"startBar": 66.5,
+			"endBar": 74,
+			"offGrid": true
+		},
+		{
+			"kind": "chorus",
+			"startTime": 208.9,
+			"endTime": 274.69,
+			"startBar": 74,
+			"endBar": 98.25
+		},
+		{
+			"kind": "chorus",
+			"startTime": 274.69,
+			"endTime": 310.86,
+			"startBar": 98.25,
+			"endBar": 112,
+			"offGrid": true
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "1b9f2810213ae19c",
+	"showSeed": 967500093,
+	"authoredBy": "engine",
+	"updatedAt": 1788780917546
+}

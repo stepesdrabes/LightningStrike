@@ -1,0 +1,176 @@
+{
+	"note": "The review corpus of 2026-09-07: the app library was reduced to these, the rest archived under cache-archive-2026-09-07. The owner reviews every one in full; each judge file is frozen beside this list as <id>.map.json and scored by bench/mapdiff.ts.",
+	"tracks": [
+		{
+			"id": "a4O-abCXsfA",
+			"title": "Timeless",
+			"artist": "The Weeknd, Playboi Carti",
+			"bpm": 60,
+			"seconds": 256,
+			"genre": "hiphop",
+			"why": "the slowest track in the library, 60 bpm trap; the 44 s look was here"
+		},
+		{
+			"id": "jojRxf2qvqs",
+			"title": "Yzomandias - Melan\u017e feat. Nik Tendo (official music video)",
+			"artist": "Yzomandias",
+			"bpm": 71,
+			"seconds": 384,
+			"genre": "hiphop",
+			"why": "three songs in one; both seams to the bar on the 2026-09-01 map"
+		},
+		{
+			"id": "Gs5WlUzk_Ec",
+			"title": "HIGHEST IN THE ROOM",
+			"artist": "Travis Scott",
+			"bpm": 76,
+			"seconds": 176,
+			"genre": "hiphop",
+			"why": "seven of seven on the 2026-09-02 map after the blip repair"
+		},
+		{
+			"id": "NQbkGDoD7B0",
+			"title": "SICKO MODE",
+			"artist": "Travis Scott",
+			"bpm": 78,
+			"seconds": 313,
+			"genre": "hiphop",
+			"why": "three songs in one; both seams exact, 12 of 15 boundaries"
+		},
+		{
+			"id": "t-E2gm0a_N0",
+			"title": "EARFQUAKE",
+			"artist": "Tyler\uff0c The Creator",
+			"bpm": 79,
+			"seconds": 190,
+			"genre": "hiphop",
+			"why": "rated 5 in August: sectioning great"
+		},
+		{
+			"id": "njqxvonZs0I",
+			"title": "Je mi fajn",
+			"artist": "Earth",
+			"bpm": 82,
+			"seconds": 181,
+			"genre": "hiphop",
+			"why": "rated 4 in August: sections correct"
+		},
+		{
+			"id": "pqrUQrAcfo4",
+			"title": "Do I Wanna Know?",
+			"artist": "Arctic Monkeys",
+			"bpm": 85,
+			"seconds": 272,
+			"genre": "rock",
+			"why": "rated 4 in August; rock at 85 bpm"
+		},
+		{
+			"id": "2o9aoL0NWpw",
+			"title": "Killing In the Name",
+			"artist": "Rage Against The Machine",
+			"bpm": 90,
+			"seconds": 314,
+			"genre": "rock",
+			"why": "tempo transitions inside one song; a phase-suspect sentinel"
+		},
+		{
+			"id": "y9fwZvB84r8",
+			"title": "Pist\u00e1cie (feat. Sofian Medjmedj)",
+			"artist": "Calin, Sofian Medjmedj",
+			"bpm": 102,
+			"seconds": 174,
+			"genre": "house",
+			"why": "rated 5 in August: sections almost perfect"
+		},
+		{
+			"id": "pRIZohFFOMo",
+			"title": "Someone You Loved",
+			"artist": "Lewis Capaldi",
+			"bpm": 110,
+			"seconds": 182,
+			"genre": "house",
+			"why": "rated 4 in August; a piano ballad with a beatless opening"
+		},
+		{
+			"id": "i9gxO_5vA-Q",
+			"title": "PROVENZA",
+			"artist": "KAROL G",
+			"bpm": 111,
+			"seconds": 208,
+			"genre": "pop",
+			"why": "rated 4 in August; Latin pop at 111"
+		},
+		{
+			"id": "ZiJWFrSJ7Gk",
+			"title": "V\u00edtej mezi n\u00e1ma (feat. STEIN27)",
+			"artist": "Calin, STEIN27",
+			"bpm": 124,
+			"seconds": 194,
+			"genre": "house",
+			"why": "called great on 2026-09-02; nine of nine on its map"
+		},
+		{
+			"id": "bEgS_KJCxTU",
+			"title": "Sunset",
+			"artist": "Separ, Jerry Lee, P T K",
+			"bpm": 125,
+			"seconds": 156,
+			"genre": "house",
+			"why": "called great on 2026-09-02; frozen as praised"
+		},
+		{
+			"id": "-5XxjPOedc0",
+			"title": "Doppler",
+			"artist": "Charlotte de Witte, Charlotte De Witte, Dave Robertson",
+			"bpm": 135,
+			"seconds": 434,
+			"genre": "techno",
+			"why": "seven minutes of techno; long-form club structure"
+		},
+		{
+			"id": "rtRf-iukdvc",
+			"title": "Hannah Montana",
+			"artist": "Calin",
+			"bpm": 135,
+			"seconds": 159,
+			"genre": "hiphop",
+			"why": "rated 5 in August: perfect sectioning"
+		},
+		{
+			"id": "nTzU8TjvxyE",
+			"title": "Saf\u00edr",
+			"artist": "Calin, Viktor Sheen",
+			"bpm": 146,
+			"seconds": 150,
+			"genre": "hiphop",
+			"why": "the record inserts two beats twice; the half-bar edit sentinel"
+		},
+		{
+			"id": "DmlkcUkXDC4",
+			"title": "Self Aware",
+			"artist": "LUM!X",
+			"bpm": 155,
+			"seconds": 152,
+			"genre": "bass",
+			"why": "rated 4 in August; bass at 155, the drums read the bassline"
+		},
+		{
+			"id": "J7p4bzqLvCw",
+			"title": "Blinding Lights",
+			"artist": "The Weeknd",
+			"bpm": 171,
+			"seconds": 202,
+			"genre": "pop",
+			"why": "rated 5 in August; pop at 171"
+		},
+		{
+			"id": "zgychWIo6UA",
+			"title": "Stranded",
+			"artist": "Gojira",
+			"bpm": 186,
+			"seconds": 270,
+			"genre": "metal",
+			"why": "rated 3 in August; metal at 186, the effects fit but were argued with"
+		}
+	]
+}

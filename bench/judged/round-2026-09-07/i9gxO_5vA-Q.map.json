@@ -1,0 +1,79 @@
+{
+	"trackId": "i9gxO_5vA-Q",
+	"title": "PROVENZA",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.22,
+			"endTime": 17.54,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "chorus",
+			"startTime": 17.54,
+			"endTime": 52.14,
+			"startBar": 8,
+			"endBar": 24
+		},
+		{
+			"kind": "chorus",
+			"startTime": 52.14,
+			"endTime": 84.56,
+			"startBar": 24,
+			"endBar": 39
+		},
+		{
+			"kind": "build",
+			"startTime": 84.56,
+			"endTime": 91.06,
+			"startBar": 39,
+			"endBar": 42
+		},
+		{
+			"kind": "chorus",
+			"startTime": 91.06,
+			"endTime": 121.32,
+			"startBar": 42,
+			"endBar": 56
+		},
+		{
+			"kind": "verse",
+			"startTime": 121.32,
+			"endTime": 155.9,
+			"startBar": 56,
+			"endBar": 72
+		},
+		{
+			"kind": "build",
+			"startTime": 155.9,
+			"endTime": 173.22,
+			"startBar": 72,
+			"endBar": 80
+		},
+		{
+			"kind": "chorus",
+			"startTime": 173.22,
+			"endTime": 190.5,
+			"startBar": 80,
+			"endBar": 88
+		},
+		{
+			"kind": "outro",
+			"startTime": 190.5,
+			"endTime": 205.64,
+			"startBar": 88,
+			"endBar": 95
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "51d107764f3e7c8f",
+	"showSeed": 888674518,
+	"authoredBy": "engine",
+	"updatedAt": 1788781242152
+}

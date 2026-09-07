@@ -159,6 +159,9 @@ describe('publishedLevel', () => {
 
 	it('doubles a halved reading toward the published figure', () => {
 		expect(publishedLevel(beatsAt(87), 174)).toBe(2);
+		// Metal is listed at its double-time drums; the model's felt tempo stands.
+		expect(publishedLevel(beatsAt(92), 184.6, 'metal')).toBeNull();
+		expect(publishedLevel(beatsAt(186), 93, 'metal')).toBe(0.5);
 	});
 
 	it('leaves an agreeing grid alone', () => {
