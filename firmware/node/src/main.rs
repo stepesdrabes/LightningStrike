@@ -42,6 +42,6 @@ async fn main(spawner: Spawner) -> ! {
 		Either::First(stack) => stack,
 		Either::Second(never) => never,
 	};
-	spawner.spawn(httpd::httpd_task(stack).unwrap());
+	httpd::spawn(spawner, stack);
 	node::run(stack, &mut fixture, &mut engine, &mut persist).await
 }

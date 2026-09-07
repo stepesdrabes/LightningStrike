@@ -60,15 +60,63 @@ curl -X POST http://room-frame/api/identify -H 'content-length: 0'
 # two white pulses, for telling boards apart; 204
 
 curl http://room-frame/api/info
-# the hello line as JSON, plus the effects this build runs
+# the hello line as JSON, plus the board's own address and the effects this build runs
 ```
 
 `mode` reads `smart`, `party` or `party-muted` and is the one read-only field. Unknown JSON
 fields are ignored, so an older phone shortcut keeps working against a newer build. iOS
 Shortcuts or anything that can POST is already a remote.
 
+Every response carries `Access-Control-Allow-Origin: *`, and `OPTIONS` on any path answers 204.
+The controller (`apps/controller`) is served from somewhere else on the network, so every request
+it makes is cross-origin; without those headers a browser may send to a board and never read the
+reply, which is what limited the first controller page to displaying its own guesses. Nothing on
+these boards is worth protecting from a device that is already on the WLAN, and the alternative
+is a light that cannot be driven from a phone at all.
+
+`info.ip` is the address DHCP landed on, read once when the HTTP task starts. It is redundant to
+whoever already routed a request there, and it is the one thing a browser cannot work out for
+itself: a page opened at a name has no way to learn its own subnet, and that subnet is what the
+controller sweeps to find the rest of the lights.
+
+Two listeners serve the API rather than one. The controller polls while it sends, and a board
+with a single socket drops the SYN of whichever arrives second.
+
 The implementation is `firmware/api`, which speaks only `embedded-io-async` and therefore
 serves both boards from one host-tested crate.
+
+## The controller
+
+`apps/controller` is the phone side of that API: power, brightness, colour, effect, power-on
+policy and identify, and nothing invented on top of them. Svelte and TypeScript, no dependencies
+of its own, no backend - `npm run build -w @mv/controller` produces a `dist/` of five static
+files that any web server on the network can hold. It is meant to live on the Pi.
+
+```sh
+npm run build -w @mv/controller
+rsync -a apps/controller/dist/ pi@raspberrypi:/var/www/lights/
+```
+
+**Serve it over plain HTTP.** A page served over HTTPS cannot fetch `http://192.168.0.106` -
+browsers block that as mixed content - so a TLS controller cannot reach a board at all. The cost
+is that it is not a secure context and so has no service worker: iOS "Add to Home Screen" gives
+the standalone window and the icon, Chrome will not offer an install prompt.
+
+It finds the boards itself. The trick is that `location.hostname` is the address the page was
+served from, so the subnet is known; from there it knocks on all 254 addresses in parallel and
+keeps whatever answers `/api/info` with a name and a DDP port. Known hostnames and previously
+seen addresses are tried first, so the usual case resolves in well under a second and the sweep
+only runs to find siblings. **Open it at an address rather than a name** - `http://192.168.0.50/`
+rather than `http://raspberrypi.local/` - or the first scan has no subnet to work from and falls
+back to the known hostnames alone. After one light has been found the address is remembered and
+either form works.
+
+Two things follow from reading `/api/info` rather than assuming: the effect picker shows what the
+fixture actually runs, so the lamp offers only `wash` and does not ask for effects it would
+reject; and `mode` is surfaced, so a light being driven by a show says so instead of appearing to
+ignore you.
+
+The old `firmware/controller/frame-control.html` was a one-way prototype and is gone.
 
 ## Layout
 
@@ -155,7 +203,8 @@ room-frame on 192.168.1.57, DDP :4048, stats -> :4049, http :80
 ```
 
 A DHCP reservation is worth setting up; the hostnames offered are `room-frame`, `room-bench`
-and `room-bounce`.
+and `room-bounce`. The controller does not need one - it scans - but the board panel in
+`apps/web` is still told an address by hand.
 
 ## What the host sends
 
@@ -223,7 +272,8 @@ TM1814 (inverted waveform, runs a test pattern when data stops) and UCS8904B (16
 ## The Bounce Lamp
 
 An RGB lamp taken apart for its strip and its driver board - a generic `UL NR:E330731` analog
-RGBW controller: 12 V common anode, four low-side MOSFET gates, and originally an unmarked
+RGBW controller: common anode at whatever the supply is, four low-side MOSFET gates, and an
+unmarked
 SOIC-8 doing the PWM. The brain is gone (its eight legs snipped) and an ESP32-C3-Zero drives
 the four gate stubs directly. The board's own regulator is a 3.3 V `7533-1`, so the gates have
 been driven at 3.3 V their whole life and the C3's pins are an exact replacement - no level
@@ -236,15 +286,33 @@ shifter, unlike the SK6812 lines.
   GPIO6 -> W gate stub
   GND   -> GND-             the only wire that is not a gate
 
-  12 V supply -> 10V+ and GND-     despite the silkscreen; the board passes its
-  strip       -> the 5-pin header   input straight through to the strip
+  supply -> 10V+ and GND-     the board passes its input straight through
+  strip  -> the 5-pin header   to the strip, unchanged
 ```
+
+**The board's two labels disagree with each other.** Its input terminal is silkscreened `10V+`
+and its strip terminal `12V+`, and measured 2026-09-06 both sit at **10.33 V**. Since the board
+is a pass-through, at most one of those labels can be describing the strip, so neither is worth
+believing on its own. An earlier revision of this document read the input label, decided it was
+wrong, and told you to feed 12 V; that was a guess dressed as an instruction.
+
+The only label attached to the actual load is the one printed on the strip itself, and that is
+what settles it. If the FPC says 12 V the lamp has been running underdriven and the supply is
+the odd one out. If it says 10 V, do not raise it: an analog strip sets its channel current with
+a resistor in series with three LEDs, the LEDs hold their forward drop regardless, and so nearly
+all of an extra volt and a half lands on the resistor. That is a current increase far larger
+than the voltage increase, and the strip will not complain until it has been on for weeks.
+
+Until the strip has been read, leave the supply alone. It has run at 10.33 V its whole life.
 
 GPIO3-6 keep clear of the C3's strapping pins (2, 8, 9). Ground is the only thing the two
 boards share, and the strip's current never touches that jumper - it carries the microamps of
 four gates and is also the C3's entire voltage reference, so make it solid. The C3 runs off
 USB-C; a 12 V to 5 V buck into 5V is the one-cable version once the console stops being worth
-a lead. Check for a pull-down from each gate to ground and fit 10k where there is none, or the
+a lead, and it has to be a switcher: the board's own 3.3 V rail is a 100 mA `7533-1` sized for
+the SOIC-8 it fed, and a linear part dropping 10.3 V to 5 V burns half a watt to run a radio
+that peaks at 350 mA. Check for a pull-down from each gate to ground and fit 10k where there is
+none, or the
 day a wire falls off is the day the lamp decides for itself.
 
 **On every boot it plays R, G, B, then R+G+B, then W**, half a second each, before the radio

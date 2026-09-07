@@ -8,6 +8,7 @@ use heapless::String;
 use static_cell::StaticCell;
 
 use crate::config::{WIFI_PASSWORD, WIFI_SSID};
+use crate::status::{Status, status_task};
 
 #[embassy_executor::task]
 async fn net_task(mut runner: Runner<'static, Interface>) -> ! {
@@ -35,6 +36,7 @@ pub async fn join(
 	spawner: Spawner,
 	wifi: WIFI<'static>,
 	hostname: &str,
+	status: Status,
 ) -> embassy_net::Stack<'static> {
 	let station = WifiConfig::Station(
 		StationConfig::default().with_ssid(WIFI_SSID).with_password(WIFI_PASSWORD.into()),
@@ -50,8 +52,8 @@ pub async fn join(
 	let rng = Rng::new();
 	let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
-	// One slot each for DHCP, the DDP socket and the HTTP listener, plus headroom.
-	static RESOURCES: StaticCell<StackResources<6>> = StaticCell::new();
+	// One slot each for DHCP, the DDP socket and the two HTTP listeners, plus headroom.
+	static RESOURCES: StaticCell<StackResources<8>> = StaticCell::new();
 	let (stack, runner) = embassy_net::new(
 		interface,
 		Config::dhcpv4(dhcp),
@@ -61,6 +63,7 @@ pub async fn join(
 
 	spawner.spawn(net_task(runner).unwrap());
 	spawner.spawn(connection_task(controller).unwrap());
+	spawner.spawn(status_task(status, stack).unwrap());
 
 	stack.wait_config_up().await;
 	stack

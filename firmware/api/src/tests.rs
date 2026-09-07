@@ -95,6 +95,7 @@ impl Api for MockApi {
 	fn info(&self) -> InfoDto<'static> {
 		InfoDto {
 			name: "room-frame",
+			ip: "192.168.1.57",
 			firmware: "0.2.0",
 			uptime_s: 42,
 			pixels: 720,
@@ -204,6 +205,35 @@ fn info_carries_the_effects() {
 	assert!(res.starts_with("HTTP/1.1 200"), "{res}");
 	assert!(res.contains(r#""effects":["wash","twinkle","fire"]"#), "{res}");
 	assert!(res.contains(r#""ddpPort":4048"#), "{res}");
+	// What the controller derives a subnet from when it was opened at a `.local` name.
+	assert!(res.contains(r#""ip":"192.168.1.57""#), "{res}");
+}
+
+/// The header the whole two-way controller rests on. The app is served from elsewhere on the
+/// network, so every request it makes is cross-origin; without this a browser may send but never
+/// read, which is the flaw the app was rebuilt to fix.
+#[test]
+fn cors_is_on_every_response() {
+	let mut api = MockApi::new();
+	for req in [
+		&b"GET /api/state HTTP/1.1\r\n\r\n"[..],
+		&b"GET /api/info HTTP/1.1\r\n\r\n"[..],
+		&b"GET /nope HTTP/1.1\r\n\r\n"[..],
+	] {
+		let res = run(&mut api, &[req]);
+		assert!(res.contains("Access-Control-Allow-Origin: *"), "{res}");
+	}
+}
+
+#[test]
+fn preflight_is_answered_on_any_path() {
+	let mut api = MockApi::new();
+	for path in ["/api/state", "/api/identify", "/whatever"] {
+		let req = std::format!("OPTIONS {path} HTTP/1.1\r\n\r\n");
+		let res = run(&mut api, &[req.as_bytes()]);
+		assert!(res.starts_with("HTTP/1.1 204"), "{path}: {res}");
+		assert!(res.contains("Access-Control-Allow-Headers: content-type"), "{path}: {res}");
+	}
 }
 
 #[test]

@@ -52,6 +52,7 @@ pub async fn serve<C: Read + Write>(conn: &mut C, api: &mut impl Api) -> Result<
 	enum Method {
 		Get,
 		Post,
+		Options,
 		Other,
 	}
 
@@ -70,6 +71,7 @@ pub async fn serve<C: Read + Write>(conn: &mut C, api: &mut impl Api) -> Result<
 		let method = match req.method {
 			Some("GET") => Method::Get,
 			Some("POST") => Method::Post,
+			Some("OPTIONS") => Method::Options,
 			_ => Method::Other,
 		};
 		let length = req
@@ -81,6 +83,9 @@ pub async fn serve<C: Read + Write>(conn: &mut C, api: &mut impl Api) -> Result<
 	};
 
 	match (method, route) {
+		// Answered for every path, including unknown ones: a preflight that 404s reads to the
+		// browser as the whole origin being unreachable rather than one route being absent.
+		(Method::Options, _) => respond(conn, 204, "No Content", b"").await,
 		(Method::Get, Route::State) => {
 			let state = api.state().await;
 			respond_json(conn, &state).await
@@ -152,17 +157,28 @@ async fn respond_error<C: Write>(conn: &mut C, msg: &str) -> Result<(), C::Error
 	respond(conn, 400, "Bad Request", body.as_bytes()).await
 }
 
+/// The CORS headers are on every response rather than the API routes alone.
+///
+/// The controller is served from somewhere else on the network - a Pi, a laptop - so every
+/// request it makes is cross-origin. Without `Access-Control-Allow-Origin` a browser may send to
+/// a board and never read the reply, which is what limited the old controller page to displaying
+/// its own guesses rather than what the light actually holds.
+///
+/// The head goes into a fixed buffer and a `core::fmt` overflow is silent, so [`HEAD_CAP`] has to
+/// stay ahead of the longest line this can produce.
 async fn respond<C: Write>(
 	conn: &mut C,
 	status: u16,
 	reason: &str,
 	body: &[u8],
 ) -> Result<(), C::Error> {
-	let mut head = heapless::String::<160>::new();
+	const HEAD_CAP: usize = 320;
+
+	let mut head = heapless::String::<HEAD_CAP>::new();
 	let _ = core::fmt::write(
 		&mut head,
 		format_args!(
-			"HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+			"HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: content-type\r\n\r\n",
 			body.len()
 		),
 	);

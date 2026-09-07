@@ -94,6 +94,12 @@ impl PatchDto<'_> {
 #[derive(Serialize, Debug)]
 pub struct InfoDto<'a> {
 	pub name: &'a str,
+	/// The board's own address, dotted-quad, empty before DHCP has landed.
+	///
+	/// Redundant to whoever already routed a request here, and the one thing a browser cannot
+	/// work out for itself: a page opened at `room-bounce.local` has no way to learn the subnet
+	/// it is on, and that subnet is what the controller sweeps to find the other lights.
+	pub ip: &'a str,
 	pub firmware: &'a str,
 	#[serde(rename = "uptimeS")]
 	pub uptime_s: u64,

@@ -7,6 +7,7 @@ mod httpd;
 mod net;
 mod node;
 mod persist;
+mod status;
 
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
@@ -20,6 +21,7 @@ use room_light::engine::Engine;
 
 use crate::fixture::{Fixture, Pins};
 use crate::persist::Persist;
+use crate::status::Status;
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -38,6 +40,7 @@ async fn main(spawner: Spawner) -> ! {
 
 	let mut fixture =
 		Fixture::claim(Pins { ledc: p.LEDC, r: p.GPIO3, g: p.GPIO4, b: p.GPIO5, w: p.GPIO6 });
+	let status = Status::new(p.RMT, p.GPIO10);
 	// Before the radio, so a join that never lands cannot hide the wiring check.
 	fixture.selftest().await;
 
@@ -47,7 +50,7 @@ async fn main(spawner: Spawner) -> ! {
 
 	// The join takes a second or two and the light should not be dark for it.
 	let stack = match select(
-		net::join(spawner, p.WIFI, Fixture::HOSTNAME),
+		net::join(spawner, p.WIFI, Fixture::HOSTNAME, status),
 		node::run_engine(&mut fixture, &mut engine),
 	)
 	.await
@@ -55,6 +58,6 @@ async fn main(spawner: Spawner) -> ! {
 		Either::First(stack) => stack,
 		Either::Second(never) => never,
 	};
-	spawner.spawn(httpd::httpd_task(stack).unwrap());
+	httpd::spawn(spawner, stack);
 	node::run(stack, &mut fixture, &mut engine, &mut persist).await
 }
