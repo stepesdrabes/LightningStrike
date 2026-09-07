@@ -13,7 +13,7 @@
 	"scripts": {
 		"dev": "npm run dev -w @mv/web",
 		"build": "npm run build -w @mv/web",
-		"check": "tsc --build packages/core packages/analysis packages/author-engine packages/author-ai packages/transport packages/preview3d && npm run check -w @mv/web",
+		"check": "tsc --build packages/core packages/analysis packages/author-engine packages/author-ai packages/transport packages/preview3d && npm run check -w @mv/web && npm run check -w @mv/controller",
 		"test": "vitest run",
 		"test:watch": "vitest"
 	},
