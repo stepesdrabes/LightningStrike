@@ -222,23 +222,33 @@ export class EffectPicker {
 			quietStep = Math.min(1.1, QUIET_WEIGHT / Math.max(1, eligible.length - 1));
 		}
 
+		// In a drop-class passage an effect a band too quiet costs more than a repeat of the
+		// right one. At one price for both directions, the third loud cue of a track has spent
+		// every top-band look once and the novelty penalty hands the final chorus to a chest
+		// pulse and a confetti pop: Panama's last chorus, "these effects carry NO energy". A
+		// look that is too big for a quiet passage stays at the old price - that mismatch reads
+		// as over-lighting, and the room has never asked for more of it.
+		const loud = sectionBase(req.section) === 'drop';
 		const scored = eligible.map((e) => {
 			// Two bands out is a different kind of moment, not a slightly wrong one.
-			const distance = Math.abs(e.taste.energy - target);
+			const above = Math.max(0, e.taste.energy - target);
+			const below = Math.max(0, target - e.taste.energy);
 			const seen = this.used.get(e.id) ?? 0;
 			const score =
-				-1.6 * distance -
+				-1.6 * above -
+				(loud ? 2.6 : 1.6) * below -
 				2.2 * seen -
 				(e.id === previous ? 6 : 0) +
 				// A tie-breaker, deliberately under one energy band and half a use of novelty.
 				// At 3 it was a mandate: within a family, every show reached for the same
 				// signatures and two-thirds of any two shows' vocabularies were identical.
 				(req.prefer?.includes(e.id) ? 1.1 : 0) -
-				// A foreign gesture costs one use of novelty: the same force that stops a repeat
-				// stops a mismatch. Above the 1.4 jitter, so it reliably loses ties - at 1.2 it
-				// did not, and moshSlam still opened rap choruses - and still no filter: an
-				// avoided effect stays reachable when the natives are spent or two bands wrong.
-				(req.avoid?.includes(e.id) ? 2.4 : 0) +
+				// A foreign gesture costs two uses of novelty. It has to clear the loud-passage
+				// band price above plus the jitter, or the steeper price hands the last chorus of
+				// a rap track to moshSlam the moment the native top band has been used once - at
+				// 2.4 it did exactly that. Still no filter: an avoided effect stays reachable when
+				// the natives are spent twice over or three bands wrong.
+				(req.avoid?.includes(e.id) ? 4.4 : 0) +
 				// Only where it is the whole show. In a groove or a drop there is a kit, a
 				// transient layer and a master doing the reacting, and a bed that fights them is
 				// noise rather than information.

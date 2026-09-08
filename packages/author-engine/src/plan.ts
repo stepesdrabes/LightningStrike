@@ -214,6 +214,8 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 	const cues: Cue[] = [];
 	let grooveIndex = 0;
 	let peakCue = -1;
+	/** Whether the last breakdown cue kept the accent of the one before it. */
+	let breakdownHeld = false;
 
 	for (const slot of slots) {
 		const layers: Partial<Record<LayerRole, LayerSpec>> = {};
@@ -261,8 +263,16 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		// wearing and everything else leaves - the change IS the thinning. Fresh draws
 		// only when there is nothing to inherit, or the inherited bed cannot hold a room
 		// alone (beds are written to sit under something).
+		// A breakdown that follows a breakdown keeps the bed too. The segmenter cuts a long
+		// stripped passage into its phrases, each a section of its own, and a fresh bed on
+		// each one is four looks in thirty bars where the record holds one: Immaterial's
+		// owner heard "a bit of mess in the breakdown sections". The accent is what may
+		// still move, and only every other cue (below), so the passage breathes without
+		// being re-staged.
+		const last = cues.length > 0 ? cues[cues.length - 1] : undefined;
+		const continued = slot.section === 'breakdown' && last?.section === 'breakdown';
 		const inheritedBed =
-			slot.section === 'outro' && cues.length > 0 ? cues[cues.length - 1].layers.bed : undefined;
+			(slot.section === 'outro' || continued) && last ? last.layers.bed : undefined;
 		if (inheritedBed) {
 			layers.bed = { ...inheritedBed };
 		} else {
@@ -300,6 +310,15 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 				// actually produced was a passage lit by one slow bed and nothing else, half the
 				// time. Taking the drums out is what makes a breakdown; taking the light out makes
 				// it look broken.
+				//
+				// Across a run of breakdown cues the accent moves every second cue: a cue that
+				// inherited the bed and follows one that changed its accent keeps that accent too.
+				if (continued && last?.layers.accent && !breakdownHeld) {
+					layers.accent = { ...last.layers.accent };
+					breakdownHeld = true;
+					break;
+				}
+				breakdownHeld = false;
 				add('accent', picker.pick({ drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
 				// The kit, where the passage still has one. A breakdown with a beat under it is
 				// common in this repertoire and the room should be answering it; a genuinely
@@ -1393,7 +1412,7 @@ function writeBrief(
 	// The show's own voice says so, not just a chip on the queue: everything below is built
 	// on a grid the analyser itself does not believe, and anyone reading the brief - the
 	// owner or the agent revising it - should know the room runs lounge over this track.
-	const trust = gridTrust(analysis);
+	const trust = gridTrust(analysis, context?.publishedBpm);
 	const doubt = trust.trusted
 		? ''
 		: `The analyser was not sure of this track (${trust.reasons.join('; ')}), so the room runs the calm lounge scenes over it and this show is only the fallback behind the override. `;
