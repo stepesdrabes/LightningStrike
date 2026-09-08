@@ -1,24 +1,25 @@
 # Handover
 
 The current state of LightningStrike's analysis and show engine, as of the evening of
-2026-09-07. This is the one document: what runs, where it stands against the owner's
+2026-09-08. This is the one document: what runs, where it stands against the owner's
 judgements, how the review loop works, what was measured and rejected, and how to gate a
 change. `README.md` says what the product is; `CLAUDE.md` holds the house rules. The narrative
 round records that used to sit beside this file were removed on 2026-09-07 and live in git
 history.
 
-Versions: **ANALYSIS 29 / SHOW 24 / CONTEXT 3.** The installed app carries them since
-2026-09-08. Everything through the afternoon of 2026-09-07 is committed at `3976d48`; the
-evening's analysis, engine and bench changes are in the working tree, uncommitted.
+Versions: **ANALYSIS 30 / SHOW 25 / CONTEXT 3.** The 2026-09-08 round is committed (the
+evening-of-09-07 round at `0266ffc`, this one in the three commits after it), and the installed
+app carries it since the evening of 2026-09-08, running on corpus 3.
 
 ## What the system is
 
 Ingest downloads a track, looks it up (genre family, published tempo, lyrics), runs Beat This
 for beats and downbeats and the ADTOF drum model for the kit, then `analyzeTrack` in
-`packages/analysis`: grid repair, movement detection, bar-synchronous features, structure
-(segments, refine, phrase snap, vocabulary, consolidation), events and moments. The engine in
-`packages/author-engine` composes a show from that analysis: a palette, cues by bar, hits, a
-brief. The linter refuses anything the room cannot show. The app plays the show to the strips.
+`packages/analysis`: grid repair, the downbeat phase walk, movement detection, bar-synchronous
+features, structure (segments, refine, phrase snap, vocabulary, consolidation), events and
+moments. The engine in `packages/author-engine` composes a show from that analysis: a palette,
+cues by bar, hits, a brief. The linter refuses anything the room cannot show. The app plays
+the show to the strips.
 
 The owner judges in the app: a rating, a comment, and a section map drawn on the analysis.
 That judgement is the ground truth everything below is measured against.
@@ -27,26 +28,41 @@ That judgement is the ground truth everything below is measured against.
 
 - `/Applications/LightningStrike.app` on `~/Library/Application Support/cz.drabek.lightningstrike/cache`.
   The bundle name decides the cache; a plain name reads the plain `cache`.
-- **The live cache is review corpus 2**: 29 tracks listed with reasons in
-  `bench/judged/round-2026-09-07b/corpus.json`, re-analysed clean at v29 on 2026-09-08 for the
-  owner's second judgement. The 28 judge files of the evening of 2026-09-07 are frozen in
-  `bench/judged/round-2026-09-07d/` (see below) and moved out of the app's sight to
-  `cache/judge-archive-2026-09-07d`, so the analysis adopts no map; move them back into
-  `cache/judge` to hear the maps again. Twelve rap tracks (HUMBLE., Thinkin Bout You,
-  Best Part, FE!N, ROCKSTAR where the detector hears two songs, Cigo a kava, Praha/Viden, Az na
-  mesic, Patky, Stiny, Panama, Separ's Hovorili mi ze), twelve EDM (Way Too Self Aware and Vitej
-  as praised sentinels, Kisses, Higher, 365, Von dutch, Immaterial, Illegal, Faster n Harder,
-  Kids Techno Mix, Runaway (U & I), Windows98), and five that carry the open classes: Blinding
-  Lights, Killing In the Name, Stranded now read at 92 bpm, Someone You Loved with no kit, Le
-  Freak.
-- `cache-corpus1-2026-09-07`: corpus 1 rebuilt fresh at v28 with no map adopted, plus the
-  owner's second look at four of its tracks (HIGHEST IN THE ROOM, SICKO MODE, Timeless,
-  Melanz), frozen in `bench/judged/round-2026-09-07c/` for comparison with the first
-  judgements in `round-2026-09-07/`. Swap the two directory names to hear it.
+- **The live cache is review corpus 3, the owner's final corpus**: 65 tracks from the archive
+  that no map has covered, listed with reasons in `bench/judged/round-2026-09-08b/corpus.json`,
+  pre-analysed clean at v30 with no map adopted and an empty `judge` folder. The owner asked
+  for sixty to seventy unique songs in the genres they judge (rap and EDM first), not the whole
+  library: 26 rap (Czech and US), 22 club (house, edm, bass, trance, the two techno tracks Xtal
+  and Doppler), 14 pop, rock, metal and rnb, and three disco and latin. Thirty were picked for what
+  this round shipped (the tracks the model read in 2/4, the ones whose downbeats move
+  mid-track, the ones with synced lyrics, the techno profile) and thirty-five for spread; the
+  ambient set, the remixes of songs already there and the corpus-1 tracks were left out.
+  Doppler is the one track with a map (`round-2026-09-07/`), kept because techno is three
+  tracks in the whole library. Take Me (To The Moon) runs in lounge under the fragmentation
+  gate (17 sections in 159 s at 175 bpm); the queue's override plays the authored show if the
+  owner wants to judge it anyway. **The autopilot trap**: launched on a corpus queue the app
+  pulled two unrelated tracks into it (Vandr, a Skibidi remix) and dropped four items within
+  ten minutes; the queue was reconciled to the cache afterwards, and the first thing to check
+  after a launch is that `queue.json` still lists exactly the corpus. **The stale-context
+  trap**: eleven archive contexts were at version 1 or 2, which the app re-fetches on first
+  play, and the lookups drift: the app's own refresh left Doppler with no family and filed Lose
+  Yourself as ambient; a scripted refresh through the same path (`probe` then `enrichTrack`)
+  moved Enter Sandman to metal, American Idiot to rock, As It Was to house and lost
+  September's 48 lyric lines. Every corpus-3 context is at version 3 now, with the archive's
+  family kept where the lookup returned nothing or ambient (Doppler, Lose Yourself, Take Me,
+  Xtal, the hardstyle Summertime Sadness) and September's lyrics carried over; the analyses
+  were redone after the refresh, so a track's show and its sections come from one context.
+- `cache-corpus2-2026-09-08`: corpus 2 (32 tracks) as the owner left it on 2026-09-08, at v29,
+  with the second judgement's 32 judge files in `judge/` and the evening-of-09-07 files in
+  `judge-archive-2026-09-07d/`. Rename it to `cache` to hear those tracks again; the app will
+  re-analyse them at v30 on play (about 60 s a track) and adopt the maps, so move `judge/`
+  aside first to hear the automatic reading.
+- `cache-corpus1-2026-09-07`: corpus 1 at v28 with the owner's second look at four of its
+  tracks (frozen in `bench/judged/round-2026-09-07c/`).
 - `cache-archive-2026-09-07`: the whole 161-track library as it was, with the 43 old
   judgements under `judge-archive-2026-09-01`. Any gate that reads the app cache
   (`phasegrid`, `lintsweep`, `movements --set=app`) must be pointed here with `MV_CACHE_DIR`
-  to see the whole library; off the corpus cache phasegrid sees 16 of its 28 targets.
+  to see the whole library.
 - `cache-A-archive`, `cache-B-archive`: the retired A/B stores. Do not build a second app
   without asking; the owner wants one.
 - **The install trap**: `cp -R` onto an existing bundle nests it and the old binary keeps
@@ -54,80 +70,77 @@ That judgement is the ground truth everything below is measured against.
   `xattr -dr com.apple.quarantine`.
 - A cleared blob re-derives on first play (~60 s a track);
   `MV_CACHE_DIR=<cache> node bench/reanalyse.ts [--skip-current]` does a cache ahead of time
-  with both models.
+  with both models and refreshes each meta's trust verdict.
 
 ## Where it stands against the owner's judgements
 
-Corpus 2 (29 tracks, judged on the evening of 2026-09-07; frozen in
-`bench/judged/round-2026-09-07d/`, 27 maps): 15 edited maps and 12 accepted as they stood.
-HUMBLE. could not be judged (the app ran it in lounge mode) and Way Too Self Aware was not
-judged. Higher was accepted at a rating of 2 with the owner unsure, and counts as accepted by
-the rule.
+Corpus 2 was judged a second time on 2026-09-08 (04:28 to 14:10) on the v29 app with no map
+adopted, plus three tracks the owner added (bad guy, SICKO MODE, goosebumps): 31 maps, 16
+accepted as they stood, frozen in `bench/judged/round-2026-09-08/`. It supersedes
+`round-2026-09-07d` for the same tracks: Praha/Viden, Blinding Lights, Le Freak, Az na mesic,
+Someone You Loved and Hovorili mi ze, edited the evening before, were accepted as the v29
+analysis had them. The owner's comment on Someone You Loved fixes the reading of every map:
+"the thing I am mainly judging is the segmentation boundaries, not the labels".
 
-Ratings: nine 5s (Faster n Harder, Kids, Windows98, Kisses, Illegal, Vitej, Cigo a kava,
-Runaway, and none of the edited maps), nine 4s (Thinkin Bout You "almost perfect, wrongly
-sub-sectioned per the bars", Panama, Immaterial, Az na mesic, Blinding Lights, Hovorili mi ze,
-ROCKSTAR, Someone You Loved, Patky, Stiny), seven 3s (FE!N, Killing In the Name, Le Freak,
-Praha/Viden, 365, Best Part "not so sure myself", Stranded), one 2 (Higher, "not sure how to
-section techno").
+Ratings: eleven 5s (Az na mesic, Blinding Lights "almost perfect! I really like this one",
+Cigo a kava, Faster n Harder, HUMBLE., Immaterial, Kids, Kisses, Praha/Viden, Runaway, Vitej,
+Windows98), sixteen 4s, three 3s (Higher "the effects in techno are just off", Best Part,
+Thinkin Bout You "the original sections were fine honestly, but can be better"). Stranded:
+"This is getting good!".
 
 | | before this round | after |
 |---|---|---|
-| corpus 2: owner boundaries to the bar | 214 of 266 | **232 of 266** |
-| corpus 2: one bar early / late | 38 / 14 | 25 / 9 |
-| corpus 2: labels wrong on hits | 1 | 0 |
-| corpus 2: accepted-as-is tracks moved | 0 of 12 | 0 of 12 |
-| corpus 1 (19 maps of 2026-09-07): to the bar | 151 of 180 | **158 of 180** |
-| corpus 1: early / late | 22 / 7 | 17 / 5 |
-| corpus 1: accepted-as-is tracks moved | 0 of 10 | 0 of 10 |
+| corpus 2 (31 maps of 2026-09-08): owner boundaries to the bar | 290 of 318 | **301 of 318** |
+| corpus 2: one bar early / late | 21 / 7 | 9 / 8 |
+| corpus 2: seams the analysis adds that no owner boundary has, on accepted tables | 0 | 0 |
+| corpus 2: accepted-as-is tracks losing a boundary | 0 of 16 | 0 of 16 |
+| corpus 1 (19 maps of 2026-09-07): to the bar | 158 of 180 | **158 of 180** |
+| corpus 1: accepted-as-is tracks losing a boundary | 0 of 10 | 1 of 10 (SICKO MODE, see below) |
 
-Per track after the round, corpus 2: Killing In the Name 10 of 12, Az na mesic 12 of 12,
-Blinding Lights 8 of 12, Praha/Viden 9 of 10, Le Freak 8 of 11 (from 2), Stiny 5 of 9, Von
-dutch 5 of 9, Someone You Loved 10 of 10, 365 10 of 10 (from 6), Stranded 8 of 10, FE!N 4 of
-8, ROCKSTAR 12 of 13, Hovorili mi ze 5 of 6, Patky 6 of 7, Best Part 1 of 8 (from 3, the one
-map that loses), and the twelve accepted tracks whole. Corpus 1: Killing In the Name 7 of 11,
-Blinding Lights 7 of 8, Melanz 13 of 13, Someone You Loved 10 of 11, Stranded 5 of 13; the rest
-as before.
+Per track after the round, corpus 2: Best Part 8 of 8 (from 2), FE!N 7 of 8 (from 4), Stiny 8
+of 8 (from 7), Panama 7 of 7, SICKO MODE 16 of 16, ROCKSTAR 11 of 12 (from 10), Stranded 8 of
+9 (from 7), Killing In the Name 10 of 12 (from 11), Thinkin Bout You 3 of 8 (from 4), bad guy
+12 of 13 (from 13), goosebumps 8 of 10, Von dutch 5 of 9, and the sixteen accepted tracks
+whole. Corpus 1: Stranded 6 of 13 (from 5), SICKO MODE 15 of 16 (from 16), the rest as before.
 
-**What is still wrong, by class**, which is the next session's work list:
+**The owner's own judgements conflict twice, and the newer deliberate one wins.** SICKO
+MODE's second build was accepted at 97.5 s in corpus 1 (twice) and dragged to 100.6 s in round
+08, where the kit leaves; the analysis now says 100.6 and the corpus-1 row loses that hit.
+Killing In the Name's last chorus was dragged off-grid to 274.7 s on 2026-09-07 (the model's
+downbeat) and left at the analysis's 274.02 in round 08; the walk now puts it at 274.7 and the
+round-08 row loses that hit. Both are recorded here so the next round does not re-litigate
+them.
 
-1. **The model's downbeat phase changes mid-track where the owner placed his off-grid marks.**
-   FE!N's first minute has the downbeat at residue 3 of the shipped grid and the owner's four
-   boundaries at bars 2.75, 6.75, 10.75 and 14.75; Stiny's last chorus at 57.5 and Killing In
-   the Name's at 99.25 sit exactly where the model's residue run changes; Von dutch alternates
-   half bars in its builds. `phaseSegments` (the downbeat phase walk, `bench/walkprobe`-style
-   readings in the round's scratch) finds every one of these at the shipped reset cost and
-   ships scoped to marked movements only, because the unrestricted walk was 5 worse on the
-   frozen targets last time. Higher, accepted at 2, restarts in its intro at every cost tried,
-   so any re-opening needs the walk to require a long consistent residue run. Eight boundaries.
-2. **The repair's half when it folds a doubled regime.** Patky's note "the chorus should start
-   EXACTLY HERE, I can't drag it there" is 116.6 s: the model's own downbeat at 116.58 falls
-   between the beats of the repaired 70 bpm grid, because the fold kept the half that continued
-   the previous phase rather than the half the model's downbeats sit on. The editor snaps to
-   beats, so the owner could not place the mark.
-3. **The DP two bars early on Blinding Lights** (66 for 68, 74 for 76) and its 92, a chorus
-   whose only evidence is the phrase grid and the one-bar kick suspension every Blinding Lights
-   chorus opens with (kicks 3, 3, 1, 4 around each). Le Freak 104 (consolidated at an arrival
-   of 1.55 against the 1.6 floor), 144 (the DP two bars early) and its ending.
-4. **Praha/Viden 7**: a rap pickup line sung out of a quiet intro, allowed by the same
-   sung-entrance rule that Thinkin Bout You's every hook needs. Not separable on the evidence
-   the arrival score carries.
-5. **Restatements the owner hears and the DP does not**: Stiny 37 and 41 (a four-bar kick-out
-   inside a chorus), Hovorili mi ze 56, Stranded 78 (a riff change at constant level, removed
-   by the early same-kind merge).
-6. **Best Part**, rated 3 "not so sure myself": the DP itself sits a bar early through the
-   first half (3, 11, 39 for 4, 12, 40) and hears the chorus at 15 where the owner draws 20.
-7. **Thinkin Bout You's bars are half bars.** It now reproduces the accepted map at 65 bpm, but
-   with two beats to a bar: the model's downbeats alternate 1.84 s and 3.7 s spacing and the
-   record inserts two beats near 35 s, so the sub-sectioning "not per the bars" the owner heard
-   needs 65 in four with the phase flip honoured, which is class 1 again.
+**What is still wrong, by class**, the next session's work list:
+
+1. **Thinkin Bout You's phrases** (3 of 8). One groove for three minutes, read in four now
+   (3.7 s bars); the owner draws its sections where the verses and the hook begin, eight bars
+   apart, and the DP sees no material change to put a boundary on. The hook split below found
+   two of them and was rejected for the seams it planted elsewhere.
+2. **Von dutch** (5 of 9). The owner's five off-grid marks sit one or two beats before the
+   model's downbeats, which are unanimous on the grid bars there (bars 6 to 15 and 40 to 47
+   have every downbeat at residue 0). Nothing in the evidence supports the marks; leave it
+   until the owner hears it again.
+3. **Killing In the Name's intro** (bar 5.75, 17.56 s). The model's downbeats wander through
+   the first thirteen bars (residues 2.4, 1.4, 0.3, 3.3 ...), and the owner's verse sits on
+   one of them a beat before the grid; the walk refuses a chaotic run by design.
+4. **Restatements inside a homogeneous section**: goosebumps 54 and 58 (a four-bar build the
+   snare leaves inside the last chorus), Stranded's breakdown at 3 against the DP's 4 (both in
+   near-silence), bad guy's coda build (167.6 s on the old grid, a beat and a half before the
+   level drop the new grid puts at bar 94), ROCKSTAR's outro (172.9 on the old grid, 170.9
+   now), FE!N's bar 0 (the model's first downbeat is at 0.02 s, the owner's intro at 0.82).
+5. **Labels the owner mentioned**: Illegal's four bars at 60 are a "verse" to the owner and a
+   drop to the analysis (a vocal passage in club vocabulary); Someone You Loved's second
+   chorus now reads chorus.
+6. **Techno effects**: the profile changed this round (below) and the owner has not heard it.
+   Xtal and Doppler are in corpus 3 for that.
 
 ## The review loop
 
 1. The owner maps a track in the app -> `cache/judge/<id>.json`. A judgement saved with no
    section edit means the analysis was accepted as it stood; freeze it from the analysis,
    with `acceptedAnalysis` stamped, which `mapsweep` reads as a regression row. A judgement
-   with neither a rating nor a map (HUMBLE.) is a note, not a map: list it in the round's
+   with neither a rating nor a map is a note, not a map: list it in the round's
    `corpus.json` and freeze nothing.
 2. Copy the judgement to `bench/judged/round-<date>/<id>.map.json`. It is frozen there.
 3. `MV_CACHE_DIR=<cache> node bench/movementprobe.ts <id> --no-hand-maps --no-marks --out=<file>`
@@ -135,124 +148,136 @@ as before.
    the published-level re-read with the kit and runs the drum model exactly as ingest does,
    and its `--out` carries `_probe`: per-bar arrival, physics, the score's components (step,
    kit, dip, novelty, voice), the fill bars, the anacrusis guard's verdict on every move it was
-   asked about, and the boundary table after every pass (`dp`, `refined`, `pins`, `arranged`,
-   `hooks`, `pulled`, `final`). `--tuning='{"pickupGuard":false}'` reads any sweep variant in
-   full. **A saved judgement is law in the app** (the analysis adopts the map), so the
-   automatic reading is only visible here.
+   asked about, the phase walk's runs and the cuts it took, and the boundary table after every
+   pass (`dp`, `refined`, `pins`, `sung`, `arranged`, `hooks`, `pulled`, `final`).
+   `--tuning='{"hookSplit":true}'` reads any sweep variant in full. **A saved judgement is law
+   in the app** (the analysis adopts the map), so the automatic reading is only visible here.
 4. `node bench/mapdiff.ts <map> <analysis>` per track;
    `MV_CACHE_DIR=<cache> node bench/mapsweep.ts [--maps=<round>] [--variant=a,b] [--only=<id>]`
    for every map at once, any `StructureTuning` variant, hits to 0.6 s, misses signed in bars,
-   regressions on the accepted rows. `bench/reports/mapsweep.json` holds the per-track rows.
-   Corpus 2 needs `--maps=bench/judged/round-2026-09-07d` against the live cache; corpus 1 the
-   default maps against `cache-corpus1-2026-09-07`. Its drum cache under `bench/corpus/.drums`
-   now round-trips the activation curves; before this round a cached run handed the quantiser
-   an unreadable curve and two tracks moved a boundary between a fresh run and a cached one.
-5. The `dp` stage against `refined` is the first thing to read: on this corpus the DP had the
-   owner's table on Le Freak, Praha/Viden, 365 and Killing In the Name, and every miss was a
-   later pass moving a correct boundary.
+   regressions on the accepted rows, and the `extra` column: analysis boundaries no owner
+   boundary sits near, which on an accepted row is a seam the owner never drew. A rule that
+   gains hits by splitting shows there before it shows anywhere else. Corpus 2 needs
+   `--maps=bench/judged/round-2026-09-08` against `cache-corpus2-2026-09-08`; corpus 1 the
+   default maps against `cache-corpus1-2026-09-07`.
+5. Read the `dp` stage against `refined` first, then the phase runs: on the second corpus the
+   dominant fault was the grid, and every one of the owner's off-grid marks was the model's
+   own downbeat.
 6. Find the general cause across tracks, fix it, then every gate below.
 
 ## What ships in the analysis
 
 - **Grid repair** (`movements.ts`, `repairGrid`): tempo regimes from a 16-beat median
   change-point; tracker level flips undone (2:1, 3:1; 3:2 and 4:3 only when phase-continuous
-  within 40 ms); chaotic edges up to 45 s and interior gaps up to 20 s written at the
-  neighbouring song's period; a lead-in rewritten at the first song's period when under nine
-  in ten of its intervals hold it; short blips (a few beats at double time inside a steady
-  song) rewritten at the period; a pause before a new song written from the outgoing song's
-  last complete bar as the incoming song's pickup; the handshake for a switch the tracker rode
-  through. Bar phase from the walk segment at the first steady song.
-- **Movements** (`proposeSeams`, `judgeSeams`): a tempo step between two steady songs (ratio
-  >= 1.10, both >= 20 s) with a step-not-ramp test or a pause >= 2 periods; a same-tempo seam
-  needs the walk to restart or the beat to stop, plus new material on timbre and centred
-  chroma (<= 0.88, <= 0.70) and a pause >= 2 s or a key change >= 3 fifths at confidence
-  >= 0.45; long pauses also need timbre under 0.95. Witnesses skip a written zone. Nothing
-  before 45 s. Seams the repair placed on a bar line are cut exactly there.
-- **Structure** (`structure.ts`, `arrange.ts`, `consolidate.ts`): per-movement DP
-  segmentation; `refineBoundaries` moves a boundary at most one bar onto an arrival that
-  beats its own bar by 45% and clears 2, **never onto a drum fill** (a loud bar whose pattern
-  neither neighbour holds while the bar after settles), and **never off the local phrase grid
-  without an impact** (`offGridImpact`: the kit landing, a pattern break, a sung entrance after
-  a collapse, the kit returning after a silent bar with the voice on it, music rising out of
-  the quiet floor 8 dB under the loud passages, or a non-periodic collapse); a boundary the
-  guard held pins as a stay does. Moved arrivals >= 2 and stays >= 2 are pinned;
-  `rephaseToPins` (moved pins vote); the phrase snap (one bar, never a pin); vocabulary (club:
-  drop/groove/breakdown/build; song: chorus/verse, promoted and demoted from the repeated lyric
-  lines); the hook snap, **strict**: no window claims a bar the record has not arrived at, a
-  decisive incumbent is never displaced, and the same off-grid guard applies; `pullOntoReturn`
-  and `pushOntoDeparture`; the early same-kind merge keeps pinned and held seams; consolidation
-  merges same-kind seams nothing arrives on. Outro and ring-out only where the record ends.
+  within 40 ms); **a doubled regime is folded onto the half of its beats the model's downbeats
+  sit on**, with one short beat at the seam that the dedup and the blip repair leave alone
+  (Patky's chorus at 116.6 s sat half a beat off every bar line; FE!N's chorus stretch the
+  same); chaotic edges up to 45 s and interior gaps up to 20 s written at the neighbouring
+  song's period; a lead-in rewritten at the first song's period; short blips rewritten; a pause
+  before a new song written as the incoming song's pickup; the handshake for a switch the
+  tracker rode through. **Bars are never read in two**: a downbeat every two beats is the
+  model hedging half bars on a slow record, and the meter folds it to four with the phase the
+  four-beat downbeats favour.
+- **The downbeat phase walk** (`downbeatPhase.ts`) now runs on every track. Its runs are judged
+  by `acceptedRestarts`: the track opens on the first run with a majority (60%) over eight
+  bars, else the first solid one; a later run changes the bar line only when it is solid (85%
+  unanimous, six or more downbeats, eight bars, six to the end of the record, 0.7 downbeats a
+  bar) or a body (60% over 32 bars), the run before did not already carry a quarter of the new
+  residue, and a half-bar flip that later returns to the old residue is refused as the 2-bar
+  loop heard from its other half. Every accepted restart is a grid cut. A seam the repair
+  placed on a bar line gets a second cut at the walk's next line within a bar of it, so the
+  pickup written across a pause is one short bar and the count runs from the model's downbeat
+  (ROCKSTAR's second half was a beat early to its end). Under a hand-drawn map the walk's cuts
+  are off: the map's off-grid boundaries already say where the grid is cut.
+- **Movements** (`proposeSeams`, `judgeSeams`): unchanged this round.
+- **Structure** (`structure.ts`, `arrange.ts`, `consolidate.ts`, `vocabulary.ts`): per-movement
+  DP segmentation; **two DP boundaries two bars apart with a decisive physical arrival between
+  them collapse onto it** (the straddle: Stranded's chorus at 17, sung and kicked, between 16
+  and 18); `refineBoundaries` moves a boundary at most one bar onto an arrival that beats its
+  own bar by 45% and clears 2, never onto a drum fill, and never off the local phrase grid
+  without an impact (`offGridImpact`: the kit landing, a pattern break, a sung entrance after a
+  collapse, the kit returning after a silent bar with the voice on it, **music rising out of
+  the quiet floor with physics of 2.5 or more** (Panama's pad at 2.03 was not the build), or a
+  non-periodic collapse); a boundary the guard held pins as a stay does. Moved arrivals >= 2
+  and stays >= 2 are pinned; `rephaseToPins`; **the sung phase**: on a song-vocabulary track
+  whose three or more sung hooks agree on one phrase residue and whose table mostly sits one
+  bar before it, every such boundary moves onto the singer's bar unless the kit lands (four
+  kicks after one or none, or three more) or leaves there (Best Part 2 -> 8 of 8); the phrase
+  snap; vocabulary (club: drop/groove/breakdown/build; song: chorus/verse, promoted from the
+  repeated lines, **and a loud verse that is the sung chorus's own material is promoted with
+  it**, while a chorus whose sibling keeps its label on thinner evidence is not demoted); the
+  strict hook snap under the same off-grid guard; `pullOntoReturn` and `pushOntoDeparture`,
+  **the latter now moving a build the DP opened on a drum fill onto the bar the kit leaves**
+  (SICKO MODE 47 -> 48; PROVENZA's build, which begins under the kit, keeps its bar); the
+  early same-kind merge keeps pinned and held seams; consolidation merges same-kind seams
+  nothing arrives on.
 - **Levels**: the published tempo re-reads the beats at 2, 0.5, 1.5 etc. when the model's
-  reading is a clean ratio off it; hip-hop, rnb, ballad and ambient never double, and metal
-  does not either (Stranded). **The snare checks the catalogue's octave**: on the faster of the
-  two grids, with the bar phase from the model's downbeats, under half the snares on beats two
-  and four refuses a doubling and confirms a halving (Thinkin Bout You: Deezer's 130, the
-  model's 65, the snare on two and four at 65).
+  reading is a clean ratio off it; hip-hop, rnb, ballad, ambient and metal never double; the
+  snare on two and four checks the catalogue's octave.
 - **The kit**: the ADTOF drum model, snapped to onsets; the DSP detector only as fallback.
-- **Trust** (`core/trust.ts`): the fragmentation gate is corroborated by a published tempo at
-  the same level, which is what HUMBLE.'s sixteen stop-time sections needed to leave lounge.
+- **Trust** (`core/trust.ts`): the fragmentation gate, corroborated by a published tempo at
+  the same level.
 - `TrackAnalysis.heard` keeps the model's own beats and downbeats; benches start from it.
 
 ## What ships in the engine
 
-- A palette per song of a multi-song track, a quarter turn from the one before, written into
-  every cue; the switch arrives on its downbeat with a slam; each song's loudest passage at
-  0.96 under the one peak.
-- No cue holds the room past eight bars, and a remainder past eight bars that would hold past
-  30 s splits into the eight and a stub of at least 6 s; the burst re-landing rounds down;
-  outros and voids exempt.
-- A record with no kit (kicks and snares under 0.15 per loud bar, from the drum model) takes
-  the ballad's restraint whatever its family: no flashes, swell peak, no transient or bump
-  cadence, and the ballad's avoid list plus the kick-burst family hard-excluded.
-- Genre profiles (heat, saturation, flash budget, peak treatment, signatures, avoid lists),
-  the kick-burst family drawn at most one per show, the 8 Hz strobe ceiling, hit budgets by
-  kick density.
-- **The picker prices a band too quiet at 2.6 in drop-class passages** (1.6 elsewhere and for
-  a band too loud), so a top-band look used once beats a fresh look two bands down; a foreign
-  gesture costs 4.4, two uses of novelty, so the steeper price cannot buy an avoided effect
-  (Panama's last chorus: "these effects carry NO energy", heartbeat and confetti after the
-  three native top-band rhythms had each been used once).
-- **Consecutive breakdown cues inherit the bed** and move the accent every second cue
-  (Immaterial: "a bit of mess in the breakdown sections", four breakdown sections in 32 bars
-  with a fresh bed on each).
+- **Techno holds its looks** (`genre.ts` `holdLooks`, `plan.ts`): interior cues keep the
+  section's bed and rhythm layer and move only the transient or the accent, every second cue;
+  builds dim toward the drop instead of climbing (`buildDims`); the colour bump comes every
+  four phrases, the flash budget is three; the signatures are impulseSpin, glitchScan, pump,
+  subThrob and flexStrobe; moshSlam, headbang, stageBlinders and chorusBloom are avoided and
+  the pop decorations and hue cycles (confetti, sparkle, emberStorm, crownSpill, discoBall,
+  mirrorBall, rainbowRain, hueCarousel, gradientSpin, vocalGlow) are excluded outright, the
+  first use of `exclude` by a family; the wildcard obeys the exclusions too. Drawn from the
+  Berghain, Panorama Bar, Tresor and Awakenings lighting accounts researched on 2026-09-08:
+  one hue or white, darkness as the bed, looks held across sections, the strobe as punctuation
+  on the kick's return. Higher composes as one bed and one rhythm across every drop with the
+  accent alternating; the owner has not heard it.
+- **Hiphop and rnb avoid undertow and glitchScan**: Hovorili mi ze's last chorus lit by the
+  club floor under the techno scanner read as "almost entirely blue Frame, nothing moves and
+  it is very bright".
+- A palette per song of a multi-song track; no cue past eight bars; a record with no kit
+  takes the ballad's restraint; genre profiles; the kick-burst family drawn at most one per
+  show; the 8 Hz strobe ceiling; hit budgets by kick density; the picker prices a band too
+  quiet at 2.6 in drop-class passages and a foreign gesture at 4.4; consecutive breakdown cues
+  inherit the bed.
 - The owner's standing taste verdicts, not to be re-proposed: no whole-field displacement; no
   fill-and-drain wipes; no strobing accents in rap verses; buildStrobe only in a build's back
   half; the strobe before a drop is endorsed; outros keep their look and thin; endings anchor
   to the finish line; the pre-arrival breath dims and never strikes the set; the cue ceiling
-  must not be brought down at slow tempos (five looks became nine on Melanz's third song).
+  must not be brought down at slow tempos.
 
 ## Measured and rejected, do not re-propose
 
-- The unrestricted downbeat phase walk: 5 worse on the frozen time-scored targets, including a
-  praised Killing In the Name seam moving 0.64 s. It ships scoped to marked movements. The
-  evening corpus is the case for re-opening it with a stricter restart (class 1 above).
-- A key change as the only witness of a seam (confidence 0.2-0.5 on rap, related keys in
-  multi-movement rock); raw chroma cosine (0.95 between two different songs; centre it);
-  per-track chroma thresholds fitted on two tracks; phase continuity anchored on a regime's
-  own first beat or at 70 ms on a 0.33 s lattice; "a pause is quiet" (real switches carry the
-  hook a cappella through the pause); the median interval as the lead-in test; the last bar
-  line as the seam whatever the gap (SICKO's switch moved a bar and a half).
-- Against the 19 maps of 2026-09-07: the settling term gated at 0.8 (no change) and 1.2 (one
-  loss), ungated at 1.2 and 1.6 (two accepted tracks move); a bass-landing term at 1 and 2
-  (not one boundary moves); the refine margin at 1.2 (five losses); a kit minimum of 2 or 3
-  kicks (SICKO loses one); an arrival split inside long segments (no gain, label errors
-  double). The dials stay in `StructureTuning` at no-change defaults.
-- Against the 27 maps of the evening of 2026-09-07 plus the 19: the DP's phrase-length prior
-  `lambda` at 1.6 and 2.2 (201 and 193 of 266, six and eight accepted tracks moved);
-  `stayPinScore` 3 (207 of 266, two accepted moved); `hookSnapReach` 1 (no change); the
-  anacrusis guard with "the kit returns after one silent bar" as an impact (Le Freak's
-  alternating kick detections fire it on every other bar), with a single-bar quiet floor
-  (Blinding Lights' pre-chorus dip), or with the quiet floor by rank alone (a compressed record
-  spans six decibels and its verses are its bottom decile); refusing the fill veto's bar a stay
-  pin as well as a move (Doppler's build opens on a fill-shaped bar).
-- The MusicFM section-label head (P6): built, A/B'd, judged worse, rolled back. Hook-placed
-  choruses fix Snooze and wreck Blinding Lights; no column separates the two. If a learned
-  labeller is reopened, SongFormer (MuQ + MusicFM, HR.5F 0.696 on Harmonix, weights on
-  Hugging Face, ASLP-lab) is the 2026 reference, and every annotation convention on record
-  (Harmonix, JSD, SLMS, Raveform) places a section on the downbeat that begins the phrase,
-  never on the fill or pickup, which is the owner's convention too.
-- A `MASTER` dimmer at 0.7 (flat); tuning `GAMMA` to make the effects calibration test green
-  (the calibration is a settled decision, and that one test is expected to fail).
+- **The hook split** (`hookSplit`, off): a sung block beginning eight bars into a chorus or
+  verse of twelve bars or more splits it. Thinkin Bout You +2 and goosebumps +1, against seven
+  seams the owner never drew on four accepted corpus-1 tables (Hannah Montana three, Je mi fajn
+  two, Safir, Do I Wanna Know?) and four more on Le Freak and Az na mesic, accepted in corpus
+  2. Measurable as the `hooksplit` variant; read the `extra` column.
+- The phase walk's opening rule without the body tier: a 15-bar solid intro held its phase
+  over Lose Yourself's 100-bar body at 83% and put every boundary a beat late.
+- Solid runs without the density floor: Safir's outro carried 11 downbeats over 16 bars on a
+  new residue and re-barring it a beat later lost the owner's accepted outro to the DP.
+- The straddle on the full arrival score: a sung line in the middle of goosebumps' two-bar
+  breakdown collapsed the breakdown; physics only.
+- The sung phase with any kick after none as a landing: Best Part's drummer plays one pickup
+  kick before the last chorus.
+- The unrestricted downbeat phase walk (5 worse on the phasegrid targets); the walk now runs
+  under `acceptedRestarts` instead.
+- A key change as the only witness of a seam; raw chroma cosine; per-track chroma thresholds
+  fitted on two tracks; "a pause is quiet"; the median interval as the lead-in test; the last
+  bar line as the seam whatever the gap.
+- Against the 19 maps of 2026-09-07: the settling term at 0.8 and 1.2, ungated at 1.2 and
+  1.6; a bass-landing term at 1 and 2; the refine margin at 1.2; a kit minimum of 2 or 3; an
+  arrival split inside long segments. Against the 27 maps of the evening of 2026-09-07: lambda
+  1.6 and 2.2; stayPinScore 3; hookSnapReach 1; the anacrusis guard with "the kit returns after
+  one silent bar" as an impact, with a single-bar quiet floor, or with the quiet floor by rank
+  alone; refusing the fill veto's bar a stay pin.
+- The MusicFM section-label head (P6): built, A/B'd, judged worse, rolled back. If a learned
+  labeller is reopened, SongFormer (MuQ + MusicFM, HR.5F 0.696 on Harmonix) is the 2026
+  reference, and every annotation convention on record places a section on the downbeat that
+  begins the phrase, never on the fill or pickup, which is the owner's convention too.
+- A `MASTER` dimmer at 0.7; tuning `GAMMA` to make the effects calibration test green.
 
 ## Gates, with the current floors
 
@@ -262,34 +287,65 @@ analysis code once per process and run the variants inside it, so an edit to
 that runs two of them in sequence loads the code again for the second, and an edit between the
 two contaminates it. Land edits between runs.
 
-1. `npm test`: **941 green** with the one known failure (`effects.test.ts`, "every effect
-   claiming to carry a room can actually fill one", the calibration). An ambient test times
-   out only when several benches share the machine. `npm run check` clean.
-2. `MV_CACHE_DIR=<live cache> node bench/mapsweep.ts --maps=bench/judged/round-2026-09-07d --variant=current`:
-   **232 of 266**, 0 regressions on accepted rows; and
-   `MV_CACHE_DIR=<corpus-1 cache> node bench/mapsweep.ts --variant=current`: **158 of 180**, 0
-   regressions. The floors for any structure change. The variant `before-2026-09-07d` is the
-   evening's starting point (214 and 151) for a re-measurement.
-3. `MV_CACHE_DIR=<archive> node bench/phasegrid.ts`: **28 same / 0 worse of 28**. The
-   time-scored bar-line gate; the only one that can judge a change that re-bars a track. `bench/earlybars.ts`
-   scores the same targets by bar and cannot. Note that two of its sentinels are older than the
-   owner's newest maps and disagree with them: Le Freak 45 (the owner now draws 48) and Killing
-   In the Name 49.
-4. `node bench/structscore.ts --dataset harmonix|raveform --limit 60`: Harmonix F0.5 0.210,
-   F3 0.541, label 10.0%, sections 11.2 against 10.1 annotated; Raveform F0.5 0.422, F3 0.537,
-   label 35.3%, sections 19.3 against 9.4 annotated (before this round 0.200 / 0.538 and 0.422
-   / 0.536). Read F0.5/F3/sections; the label column is blind to same-kind merges.
-5. `node bench/movements.ts --set=multisong|app|harmonix|raveform`: multi-song 10 hit / 12
-   missed of 22 (known misses: A-B-A rock, Know Yourself, Sing About Me, Paranoid's first and
-   third, Suburbia's first and third), one false (the Stairway cover's real tempo change);
-   Harmonix Five Magics only, four splits; Raveform 0 of 60; the library (`--set=app` on the
-   archive) 4 of 4 with no false seam, six tracks given a movement.
-6. `MV_CACHE_DIR=<cache> node bench/lintsweep.ts`: **0 rejected** (29 clean on the live cache,
-   10 buttons placed). The app fails dark on a lint error.
+1. `npm test`: **968 green** with the one known failure (`effects.test.ts`, "every effect
+   claiming to carry a room can actually fill one", the calibration). Two tests
+   (`measure.test.ts`'s void bars and `ambient.test.ts`'s scenes) time out at 60 s only when
+   several benches share the machine; run the suite on a quiet one. `npm run check` clean.
+2. `MV_CACHE_DIR=<corpus-2 cache> node bench/mapsweep.ts --maps=bench/judged/round-2026-09-08 --variant=current`:
+   **301 of 318**, extra 0 on accepted rows, 0 regressions; and
+   `MV_CACHE_DIR=<corpus-1 cache> node bench/mapsweep.ts --variant=current`: **158 of 180**,
+   the one accepted-row loss being SICKO MODE's superseded build. The variant
+   `before-2026-09-08` is this round's structure starting point (the grid work has no variant;
+   measure it by running the sweep on the previous commit).
+3. `MV_CACHE_DIR=<archive> node bench/phasegrid.ts`: **27 same / 1 worse of 28**. The worse
+   row is Titi Me Pregunto's last chorus, a boundary the analysis missed by 4.6 s on both
+   sides that the coda's re-bar (43 of 44 downbeats on the new residue) moves a beat further:
+   the instrument converts the target bar through the A-side grid, so a re-barred tail scores
+   against itself. Two of its sentinels disagree with the owner's newest maps (Le Freak 45,
+   the owner draws 48; Killing In the Name 49).
+4. `node bench/structscore.ts --dataset harmonix|raveform --limit 60`: Harmonix F0.5 0.208,
+   F3 0.535, label 9.9%, sections 10.9 against 10.1 annotated (before this round 0.210 /
+   0.541 / 11.2, within the noise the grid work was always going to cost a corpus with no
+   published tempo or lyrics); Raveform F0.5 **0.469**, F3 **0.574**, label 36.1%, sections
+   17.6 against 9.4 (before 0.422 / 0.537 / 19.3: the fold parity and the strict walk on
+   records whose downbeats the model hedges). Read F0.5/F3/sections; the label column is blind
+   to same-kind merges.
+5. `node bench/movements.ts --set=multisong|app|harmonix|raveform`: multi-song **10 hit / 12
+   missed of 22, one false** (known misses: A-B-A rock, Know Yourself, Sing About Me,
+   Paranoid's first and third, Suburbia's first and third; the false one is the Stairway
+   cover's real tempo change); Harmonix Five Magics only, four splits; Raveform 0 of 60; the
+   library (`--set=app` on the archive) **4 of 4 with no false seam**, six tracks given a
+   movement. Unchanged by this round.
+6. `MV_CACHE_DIR=<cache> node bench/lintsweep.ts`: **0 rejected** (65 clean on the corpus-3
+   cache, 18 buttons placed). The app fails dark on a lint error.
 7. Versions: any analyser change bumps `ANALYSIS_VERSION`, any composition change bumps
    `SHOW_VERSION`, in the same change.
 8. Build: `npm run bundle -w @mv/desktop`, then `npx tauri build --bundles app` from
-   `apps/desktop` (~8 min), then the install ritual above.
+   `apps/desktop` (~3 min), then the install ritual above.
+
+## Start here next session
+
+1. Read this file and `CLAUDE.md`, then the analyser stack in order (`core/contracts/analysis.ts`,
+   `analysis/analyze.ts`, `movements.ts`, `downbeatPhase.ts`, `structure.ts`, `arrange.ts`,
+   `vocabulary.ts`, `consolidate.ts`, `ingest.ts`) and the engine (`author-engine/plan.ts`,
+   `genre.ts`, `select.ts`), then the instruments (`bench/movementprobe.ts`, `mapdiff.ts`,
+   `mapsweep.ts`).
+2. This round is committed in three commits (analysis, engine, docs) on top of `0266ffc`;
+   `git log -4` names them. Never touch `apps/controller/`, `firmware/` or
+   `docs/frame-wiring.md`, which are the owner's and sit uncommitted in the working tree; commit
+   only when asked, staging explicit paths.
+3. The owner's judge files land in `cache/judge/`. Freeze them into `bench/judged/round-<date>/`
+   by the rule in the review loop (a judgement with no section edit is frozen from the v30
+   analysis with `acceptedAnalysis`), then `movementprobe --no-hand-maps --no-marks --out`,
+   `mapdiff`, and `mapsweep --maps=<round>` on the live cache. Report by fault class across
+   tracks before proposing a fix; a fix is a guard or a rule measured on every map and gate.
+4. The floors are in the gates section. The sweep's `extra` column is the phantom-split gate;
+   a rule that gains hits by splitting accepted tables is a loss.
+5. **The owner's next steps, in their words**: the AI-authoring part; code cleanups without
+   changing anything functionally; and the brightness of the effects, which is "way too high
+   for some, the LEDs are powerful". The brightness is a look call of theirs: ship the level
+   they ask for and report what the calibration tests say as room consequences (`GAMMA` and
+   the effects calibration test are settled decisions, not dials to tune green).
 
 ## House rules that bite
 
