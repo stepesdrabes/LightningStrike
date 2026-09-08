@@ -20,7 +20,24 @@ const LINE_A: usize = 300;
 const LINE_B: usize = 300;
 const LINE_C: usize = 120;
 
+/// The five runs where `packages/core/src/geometry.ts` puts them, at `DEFAULT_ROOM`'s 60 LED/m,
+/// and what each takes in the selftest: N red, E green, S blue, W white, beam magenta. 96 is well
+/// under full scale, so the whole pass draws about a quarter of what the frame can.
+#[cfg(feature = "selftest")]
+const RUNS: [(usize, usize, [u8; 4]); 5] = [
+	(0, 180, [96, 0, 0, 0]),
+	(180, 120, [0, 96, 0, 0]),
+	(300, 180, [0, 0, 96, 0]),
+	(480, 120, [96, 96, 96, 0]),
+	(600, 120, [96, 0, 96, 0]),
+];
+
 /// The Frame: 3 x 2 m of SK6812 RGBWW at 60 LED/m, on GP2, GP3 and GP4 through the level shifter.
+///
+/// B and the beam are laid against the buffer. The perimeter is one loop cut in half, so its two
+/// halves start at opposite corners; running B back the other way, and the beam with it, puts the
+/// start of every line at the corner the board sits on. Reversed in copper and not here, the room
+/// shows its own mirror image.
 pub struct Fixture {
 	a: RgbwPioWs2812<'static, PIO1, 0, LINE_A, Rgbw>,
 	b: RgbwPioWs2812<'static, PIO1, 1, LINE_B, Rgbw>,
@@ -97,9 +114,35 @@ impl Fixture {
 		(fixture, board, Store { flash: p.FLASH, dma: p.DMA_CH1 })
 	}
 
-	/// The boot look is the engine's fade-in, and it is the wiring check: a line that never
-	/// lights is not connected. The measured steps live in the `bench` build.
-	pub async fn selftest(&mut self) {}
+	/// Off by default the boot look is the engine's fade-in, which shows a line that is not
+	/// connected but not a run that is in the wrong place. `--features selftest` paints each of the
+	/// five runs its own colour for four seconds instead, which is the one look that shows a
+	/// swapped pair. The measured steps live in the `bench` build.
+	pub async fn selftest(&mut self) {
+		#[cfg(feature = "selftest")]
+		{
+			for (from, count, emitters) in RUNS {
+				self.paint(from, count, rgbww::pack(emitters));
+			}
+			self.write().await;
+			Timer::after_millis(4000).await;
+		}
+	}
+
+	/// A range of the host's buffer, through the same flip `show` uses, so the pass tests the
+	/// firmware's mapping and the copper together rather than agreeing with itself.
+	#[cfg(feature = "selftest")]
+	fn paint(&mut self, from: usize, count: usize, c: RGBW<u8>) {
+		for j in from..from + count {
+			if j < LINE_A {
+				self.buf_a[j] = c;
+			} else if j < LINE_A + LINE_B {
+				self.buf_b[LINE_A + LINE_B - 1 - j] = c;
+			} else {
+				self.buf_c[LINE_A + LINE_B + LINE_C - 1 - j] = c;
+			}
+		}
+	}
 
 	/// The engine's frame, linear RGBW; the measured trims are applied here and nowhere above.
 	pub async fn show(&mut self, out: &[[u16; 4]]) {
@@ -107,10 +150,10 @@ impl Fixture {
 			*px = rgbww::pack16(out[i]);
 		}
 		for (i, px) in self.buf_b.iter_mut().enumerate() {
-			*px = rgbww::pack16(out[LINE_A + i]);
+			*px = rgbww::pack16(out[LINE_A + LINE_B - 1 - i]);
 		}
 		for (i, px) in self.buf_c.iter_mut().enumerate() {
-			*px = rgbww::pack16(out[LINE_A + LINE_B + i]);
+			*px = rgbww::pack16(out[LINE_A + LINE_B + LINE_C - 1 - i]);
 		}
 		self.write().await;
 	}
@@ -120,8 +163,8 @@ impl Fixture {
 		let (head, rest) = pixels.split_at(pixels.len().min(LINE_A * 3));
 		let (mid, tail) = rest.split_at(rest.len().min(LINE_B * 3));
 		rgbww::unpack(head, &mut self.buf_a);
-		rgbww::unpack(mid, &mut self.buf_b);
-		rgbww::unpack(tail, &mut self.buf_c);
+		rgbww::unpack_rev(mid, &mut self.buf_b);
+		rgbww::unpack_rev(tail, &mut self.buf_c);
 		self.write().await;
 	}
 

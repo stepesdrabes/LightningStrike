@@ -1,10 +1,10 @@
 /**
  * Talking to one board.
  *
- * The board serves one connection at a time and silently drops a SYN that arrives while it is
- * busy, so requests are strictly single-file. A slider drag coalesces into the latest value
- * rather than queueing behind every value it passed through, and a dropped request is retried
- * once - the usual cause is the board still closing the previous connection.
+ * The board listens on two sockets and refuses a third, so requests are kept strictly single-file
+ * and `busy` is what lets the poll stand aside for an edit. A slider drag coalesces into the
+ * latest value rather than queueing behind every value it passed through, and a dropped request
+ * is retried once - the usual cause is the board still closing the previous connection.
  *
  * Every POST answers with the state that resulted, so the board is the authority and the app
  * only ever holds a prediction between sending and hearing back.
@@ -36,6 +36,11 @@ export class DeviceClient {
 		private readonly net: Net,
 		private readonly events: ClientEvents
 	) {}
+
+	/** True while a patch is in the air, including the sleep before its retry. */
+	get busy(): boolean {
+		return this.inFlight;
+	}
 
 	private url(path: string): string {
 		return `http://${this.host}${path}`;

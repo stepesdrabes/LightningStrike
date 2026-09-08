@@ -41,6 +41,18 @@ pub fn unpack(bytes: &[u8], out: &mut [RGBW<u8>]) {
 	}
 }
 
+/// The same, for a run laid against the buffer's direction: the host's last pixel is physical 0.
+pub fn unpack_rev(bytes: &[u8], out: &mut [RGBW<u8>]) {
+	let last = out.len() - 1;
+	for (i, px) in out.iter_mut().enumerate() {
+		let j = last - i;
+		*px = match bytes.get(j * 3..j * 3 + 3) {
+			Some(c) => pack([c[0], c[1], c[2], 0]),
+			None => BLACK,
+		};
+	}
+}
+
 /// Linear RGBW emitters out of `room-light` into strip words; the strip is 8-bit, so the low
 /// byte is dropped here and nowhere else.
 pub fn pack16(emitters: [u16; 4]) -> RGBW<u8> {

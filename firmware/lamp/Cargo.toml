@@ -1,11 +1,18 @@
 [package]
 name = "room-lamp"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 publish = false
 
 # Detached from the thumbv6m workspace above; see the exclude there.
 [workspace]
+
+[features]
+# The gate-order colour pass at boot. Off by default, so the boot look is the engine's fade into
+# the remembered state, the same as the frame.
+selftest = []
+# The onboard WS2812. Off by default: a second light beside the fixture reads as a fault.
+status-led = []
 
 [dependencies]
 room-api = { path = "../api" }

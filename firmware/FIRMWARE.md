@@ -44,7 +44,7 @@ sequential-storage wear-levels, so even pathological use takes years to matter.
 
 ## The HTTP API
 
-Port 80, JSON, one connection at a time, every response `Connection: close`. The same four
+Port 80, JSON, two connections at a time, every response `Connection: close`. The same four
 routes on both boards:
 
 ```sh
@@ -81,6 +81,12 @@ controller sweeps to find the rest of the lights.
 
 Two listeners serve the API rather than one. The controller polls while it sends, and a board
 with a single socket drops the SYN of whichever arrives second.
+
+Each listener carries its own reply slot, and the fixture loop answers into the slot that came
+with the request. A shared mailbox pairs answers to requests only while there is one of each:
+with two in flight one answer was dropped and its connection blocked, and the block outlived the
+socket, so from the first overlap onward every reply went to the previous waiter and the board
+looked like it had stopped taking commands.
 
 The implementation is `firmware/api`, which speaks only `embedded-io-async` and therefore
 serves both boards from one host-tested crate.
@@ -163,6 +169,7 @@ The Pico, from `firmware/node`:
 
 ```sh
 cargo build --release                                         # The Frame
+cargo build --release --features selftest                     # The Frame, five-run colour pass
 cargo build --release --no-default-features --features bench  # the bench run
 
 # hold BOOTSEL while plugging the board in, then
@@ -171,20 +178,30 @@ cargo run --release
 screen /dev/tty.usbmodem* 115200
 ```
 
-**Both write to the same path.** `target/thumbv6m-none-eabi/release/room-node` is whichever
+**Both write to the same path**, and it is the workspace's, not the crate's:
+`firmware/target/thumbv6m-none-eabi/release/room-node` is whichever
 build ran last, and flashing the wrong one costs an evening because the symptom is a strip that
 does nothing on a board that is working perfectly. Check before flashing:
 
 ```sh
-strings target/thumbv6m-none-eabi/release/room-node | grep -E 'room-(frame|bench)'
+strings ../target/thumbv6m-none-eabi/release/room-node | grep -E 'room-(frame|bench)'
+
+# the SSID will not show up here if it has a non-ASCII character; strings splits the run
 ```
 
 The lamp, from `firmware/lamp` - espflash writes bootloader, partition table and app, and stays
 attached as the console:
 
 ```sh
-cargo run --release
+cargo run --release                                   # the lamp
+cargo run --release --features selftest,status-led    # plus the gate check and the onboard LED
 ```
+
+**The C3 has no mass-storage bootloader**, so there is no drag-and-drop image; the board has to be
+attached. After a flash it can come up in `USB_BOOT` ("wait usb download") rather than running,
+which is GPIO9 reading low at reset - `espflash reset` clears it. Verifying an ESP build by
+grepping the binary for the SSID does not work: `Ssid` is `{ ssid: [u8; 32], len: u8 }`, so a
+const-folded SSID is materialised with immediate instructions and never appears as a string.
 
 The host-side tests, from `firmware/`:
 
@@ -233,10 +250,21 @@ and DMA_CH2/CH3/CH4 on GP2, GP3 and GP4; the PIO program is loaded once and shar
 line (the frame-brain board has the buffer and terminal for it on GP5) costs a state machine
 and a DMA channel only.
 
-The boot look is the engine's fade into the remembered state, and it doubles as the wiring
-check: a line that never lights is a line that is not connected. The strip's measured facts -
-byte order `SLOTS`, white trim, latch time - live in `fixture/rgbww.rs`; `bench` measures them
-and `frame` inherits them.
+**B and C run against the host's buffer.** The perimeter is one loop walked N, E, S, W and cut in
+half, so its two halves start at opposite corners. The fixture is laid with B and the beam the
+other way round, which brings every data line to one corner of the frame, and `present` and `show`
+flip those two blocks to match. Reversed in copper and not here, the room shows its own mirror
+image, so the two facts have to move together.
+
+The boot look is the engine's fade into the remembered state, which shows a line that is not
+connected but not a run that is in the wrong place. `--features selftest` paints each of the five
+runs its own colour for four seconds instead - N red, E green, S blue, W white, beam magenta -
+through that same flip, so it tests the mapping and the copper together. Off by default, because
+`restore` exists precisely so that a midnight power blip does not relight the room.
+
+The strip's measured facts - byte order `SLOTS`, white trim, latch time - live in
+`fixture/rgbww.rs`; `bench` measures them and `frame` inherits them. What the fixture draws, how it
+is fed and how it is wired is `docs/frame-wiring.md`.
 
 ## The bench run
 
@@ -315,10 +343,18 @@ that peaks at 350 mA. Check for a pull-down from each gate to ground and fit 10k
 none, or the
 day a wire falls off is the day the lamp decides for itself.
 
-**On every boot it plays R, G, B, then R+G+B, then W**, half a second each, before the radio
-comes up. The first three answer the question the firmware cannot - which gate is which - and
-the last two are the white-trim measurement at raw duty, so a wrong trim cannot hide a wiring
-fault. White is added, not subtracted (a warm phosphor shares no white point with the RGB mix,
+**`--features selftest` plays R, G, B, then R+G+B, then W**, half a second each, before the radio
+comes up. The first three answer the question the firmware cannot - which gate is which - and the
+last two are the white-trim measurement at raw duty, so a wrong trim cannot hide a wiring fault.
+Off by default, so the boot look is the engine's fade into the remembered state, the same as the
+frame; a lamp that announces every power cut to the room is a fault light, not a feature.
+
+**`--features status-led`** drives the C3's onboard WS2812 on GPIO10, solid while joining and
+blinking once a second on the network. Also off by default, and for the same reason: it stands
+beside the fixture it reports on. `net::join` needs a `Status` either way, so with the feature off
+it gets a zero-sized stub whose task parks and GPIO10 is dropped back to an input.
+
+White is added, not subtracted (a warm phosphor shares no white point with the RGB mix,
 and adding cannot shift a hue), and `TRIM[3]` in `lamp/src/fixture.rs` ships at a quarter
 because the phosphor pair outruns the colour dies several times over. Full white is also the
 strip's peak draw, so that is the channel to pull down if the supply is short.
@@ -383,8 +419,9 @@ deterministic and the host can render ahead and cancel the lag with `offsetMs`. 
 right: occupancy has to steer the present period slowly (the two clocks drift), and a seek or
 pause has to flush.
 
-**The Frame has not been run against three strips at once.** `bench` measured one reel; the
-three-line timing is arithmetic until `led` on the stats line confirms it.
+**The three-line timing is still arithmetic.** The Frame has run all 720 addresses on three
+strips against real shows since 2026-09-08, but `led` has not been read off the stats line, so
+12.3 ms remains calculated rather than confirmed.
 
 **Reconnect on the Pico.** The lamp reconnects for life (its join is a task); the Pico still
 joins once at boot and that is all. Note `is_link_up()` always returns true after the first

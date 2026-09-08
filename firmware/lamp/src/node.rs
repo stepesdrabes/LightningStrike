@@ -13,7 +13,7 @@ use room_wire::{ddp, hello};
 
 use crate::config::{DDP_PORT, HTTP_PORT, STATS_PORT};
 use crate::fixture::Fixture;
-use crate::httpd::{REPLIES, REQUESTS, Request};
+use crate::httpd::{REQUESTS, Request};
 use crate::persist::Persist;
 
 const IDENTITY: Identity<'static> = Identity {
@@ -136,8 +136,8 @@ pub async fn run(
 				}
 			}
 			Either4::First(Err(_)) => stats.bad += 1,
-			Either4::Second(req) => {
-				if let Request::Cmd(cmd) = req {
+			Either4::Second(envelope) => {
+				if let Request::Cmd(cmd) = envelope.req {
 					match engine.on_command(Instant::now().as_millis(), cmd) {
 						// Off is the state a power cut must find, so it skips the debounce.
 						Save::Immediate => {
@@ -148,7 +148,7 @@ pub async fn run(
 						Save::No => {}
 					}
 				}
-				let _ = REPLIES.try_send(engine.status());
+				envelope.reply.signal(engine.status());
 			}
 			Either4::Third(_) => {
 				let now = Instant::now();

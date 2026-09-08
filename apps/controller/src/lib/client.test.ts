@@ -115,6 +115,19 @@ describe('DeviceClient.send', () => {
 
 		expect(board.bodies).toEqual([]);
 	});
+
+	/** What the poll stands aside on, so an edit never has to share the board's two listeners. */
+	it('reads busy for as long as a patch is unanswered', async () => {
+		const board = fakeBoard();
+		const { c, states } = client(board.net);
+
+		expect(c.busy).toBe(false);
+		c.send({ colour: '#112233' });
+		expect(c.busy).toBe(true);
+
+		await vi.waitFor(() => expect(states).toHaveLength(1));
+		expect(c.busy).toBe(false);
+	});
 });
 
 describe('DeviceClient.readState', () => {

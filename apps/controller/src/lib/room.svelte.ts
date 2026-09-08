@@ -63,7 +63,13 @@ export class Device {
 		this.client.send(patch);
 	}
 
+	/**
+	 * Skipped while an edit is in the air. The board has two listeners and the reply to that edit
+	 * carries fresher state than this would, so a poll laid across a tap only takes a listener
+	 * away from it.
+	 */
 	async poll(): Promise<void> {
+		if (this.client.busy) return;
 		const state = await this.client.readState();
 		if (!state) this.online = false;
 	}

@@ -1,4 +1,6 @@
-use embassy_time::{Duration, Timer};
+use embassy_time::Duration;
+#[cfg(feature = "selftest")]
+use embassy_time::Timer;
 use esp_hal::gpio::DriveMode;
 use esp_hal::gpio::interconnect::PeripheralOutput;
 use esp_hal::ledc::channel::{self, ChannelHW, ChannelIFace};
@@ -22,7 +24,7 @@ const TRIM: [u32; 4] = [256, 256, 256, 64];
 
 /// The Bounce Lamp on its own brain: one pixel on an analog RGBW strip, four low-side MOSFET
 /// gates on LEDC PWM. R GPIO3, G GPIO4, B GPIO5, W GPIO6 - the C3's strapping pins 2, 8 and 9
-/// stay untouched, and a wrong colour order is a moved wire, shown by the boot selftest.
+/// stay untouched, and a wrong colour order is a moved wire, which `--features selftest` shows.
 pub struct Fixture {
 	r: channel::Channel<'static, LowSpeed>,
 	g: channel::Channel<'static, LowSpeed>,
@@ -101,18 +103,22 @@ impl Fixture {
 		}
 	}
 
-	/// R, G, B, then R+G+B and W alone, half a second each. The first three say which gate is
-	/// which; the last two are the [`TRIM`] measurement, at raw duty so a wrong trim cannot
-	/// hide a wiring fault.
+	/// Off by default, so the boot look is the engine's fade into the remembered state and a
+	/// power cut is not announced to the room. `--features selftest` plays R, G, B, then R+G+B and
+	/// W alone, half a second each: the first three say which gate is which, and the last two are
+	/// the [`TRIM`] measurement at raw duty, so a wrong trim cannot hide a wiring fault.
 	pub async fn selftest(&mut self) {
-		const ON: u16 = u16::MAX;
-		for (r, g, b, w) in
-			[(ON, 0, 0, 0), (0, ON, 0, 0), (0, 0, ON, 0), (ON, ON, ON, 0), (0, 0, 0, ON)]
+		#[cfg(feature = "selftest")]
 		{
-			self.write_raw(r, g, b, w);
-			Timer::after_millis(500).await;
+			const ON: u16 = u16::MAX;
+			for (r, g, b, w) in
+				[(ON, 0, 0, 0), (0, ON, 0, 0), (0, 0, ON, 0), (ON, ON, ON, 0), (0, 0, 0, ON)]
+			{
+				self.write_raw(r, g, b, w);
+				Timer::after_millis(500).await;
+			}
+			self.write_raw(0, 0, 0, 0);
 		}
-		self.write_raw(0, 0, 0, 0);
 	}
 
 	/// The engine's one pixel, linear RGBW with the white already derived; only the trim is
