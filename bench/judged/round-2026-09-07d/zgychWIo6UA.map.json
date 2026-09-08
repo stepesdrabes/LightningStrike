@@ -1,0 +1,86 @@
+{
+	"trackId": "zgychWIo6UA",
+	"title": "Stranded",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.999,
+			"endTime": 11.416,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 11.416,
+			"endTime": 19.24,
+			"startBar": 4,
+			"endBar": 7
+		},
+		{
+			"kind": "verse",
+			"startTime": 19.24,
+			"endTime": 45.32,
+			"startBar": 7,
+			"endBar": 17
+		},
+		{
+			"kind": "chorus",
+			"startTime": 45.32,
+			"endTime": 100.02,
+			"startBar": 17,
+			"endBar": 38
+		},
+		{
+			"kind": "chorus",
+			"startTime": 100.02,
+			"endTime": 141.48,
+			"startBar": 38,
+			"endBar": 54
+		},
+		{
+			"kind": "verse",
+			"startTime": 141.48,
+			"endTime": 151.92,
+			"startBar": 54,
+			"endBar": 58
+		},
+		{
+			"kind": "build",
+			"startTime": 151.92,
+			"endTime": 172.8,
+			"startBar": 58,
+			"endBar": 66
+		},
+		{
+			"kind": "chorus",
+			"startTime": 172.8,
+			"endTime": 203.76,
+			"startBar": 66,
+			"endBar": 78
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 203.76,
+			"endTime": 245.72,
+			"startBar": 78,
+			"endBar": 94
+		},
+		{
+			"kind": "outro",
+			"startTime": 245.72,
+			"endTime": 264,
+			"startBar": 94,
+			"endBar": 101
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "7165a05584c7b6bb",
+	"showSeed": 3507144625,
+	"authoredBy": "engine",
+	"updatedAt": 1788809858115
+}

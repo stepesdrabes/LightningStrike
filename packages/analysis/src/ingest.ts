@@ -353,7 +353,12 @@ export function correctGenreFamily(
 export function publishedLevel(
 	beats: readonly number[],
 	publishedBpm: number,
-	genreFamily?: string | null
+	genreFamily?: string | null,
+	/**
+	 * The model's downbeats and the drum model's snares, when the caller has them: the
+	 * snare says which of two octaves carries the backbeat, which no catalogue can.
+	 */
+	kit?: { downbeats?: readonly number[]; snares?: readonly number[] }
 ): number | null {
 	if (genreFamily === 'hiphop' || genreFamily === 'rnb') return null;
 	const period = medianPeriod(beats);
@@ -366,10 +371,70 @@ export function publishedLevel(
 			// model hears its 92 bpm riff, and the owner's map runs in whole bars of 2.6 s.
 			// Punk that really plays at 186 (American Idiot) the model tracks there itself.
 			if (r > 1 && (genreFamily === 'ballad' || genreFamily === 'ambient' || genreFamily === 'metal')) return null;
+			// The octave the catalogue names is checked against the snare. Deezer publishes
+			// Frank Ocean's Thinkin Bout You at 130; the model hears 65 with the snare on two
+			// and four, and re-read at 130 that snare sits on beat three of every bar, which
+			// no backbeat does. The faster of the two grids is the one the test can fail: a
+			// backbeat there confirms a doubling and refuses a halving, its absence the reverse.
+			if ((r === 2 || r === 0.5) && kit?.downbeats && kit.snares) {
+				const share = backbeatShare(beats, r === 2 ? 2 : 1, kit.downbeats, kit.snares);
+				if (share !== null && (r === 2 ? share < BACKBEAT_SHARE : share >= BACKBEAT_SHARE)) return null;
+			}
 			return r;
 		}
 	}
 	return null;
+}
+
+/** Under this share of snares on beats two and four, the grid is not at the backbeat's level. */
+const BACKBEAT_SHARE = 0.5;
+/** Fewer snares or downbeats than this cannot say where the backbeat is. */
+const BACKBEAT_MIN_SNARES = 24;
+const BACKBEAT_MIN_DOWNBEATS = 8;
+
+/**
+ * Share of snare hits on the second and fourth beat of the bar, on the beat grid read at
+ * `mult` times its tracked rate (1 or 2), with the bar phase taken from the model's own
+ * downbeats. Null where there is too little kit to read.
+ */
+function backbeatShare(
+	beats: readonly number[],
+	mult: 1 | 2,
+	downbeats: readonly number[],
+	snares: readonly number[]
+): number | null {
+	if (beats.length < 8 || snares.length < BACKBEAT_MIN_SNARES || downbeats.length < BACKBEAT_MIN_DOWNBEATS) return null;
+	const last = beats.length - 1;
+	const indexAt = (t: number): number | null => {
+		if (t < beats[0] || t > beats[last]) return null;
+		let lo = 0;
+		let hi = last;
+		while (hi - lo > 1) {
+			const mid = (lo + hi) >> 1;
+			if (beats[mid] <= t) lo = mid;
+			else hi = mid;
+		}
+		const span = beats[hi] - beats[lo];
+		const frac = span > 1e-6 ? (t - beats[lo]) / span : 0;
+		return Math.round(mult * (lo + frac));
+	};
+	const votes = new Int32Array(4);
+	for (const d of downbeats) {
+		const i = indexAt(d);
+		if (i !== null) votes[i % 4]++;
+	}
+	let phase = 0;
+	for (let k = 1; k < 4; k++) if (votes[k] > votes[phase]) phase = k;
+	let onBackbeat = 0;
+	let counted = 0;
+	for (const t of snares) {
+		const i = indexAt(t);
+		if (i === null) continue;
+		counted++;
+		const position = (((i - phase) % 4) + 4) % 4;
+		if (position === 1 || position === 3) onBackbeat++;
+	}
+	return counted >= BACKBEAT_MIN_SNARES ? onBackbeat / counted : null;
 }
 
 /**
@@ -523,7 +588,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			// here, so a list of the cache does not have to open a 400 kB analysis per row.
 			if (!meta.duration || !meta.gridTrust) {
 				meta.duration = meta.duration || cached.duration;
-				meta.gridTrust = meta.gridTrust ?? gridTrust(cached);
+				meta.gridTrust = meta.gridTrust ?? gridTrust(cached, context.publishedBpm);
 				await writeFile(metaPath(id), JSON.stringify(meta, null, '\t'));
 			}
 			context = await settleGenreFamily(id, context, cached);
@@ -562,18 +627,6 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		log(`beat model unavailable, falling back: ${e instanceof Error ? e.message : String(e)}`);
 	}
 
-	// A published tempo that re-hears the tracked one at a clean ratio settles the octave
-	// automatically, which until now only happened when the AI author researched the track.
-	// An explicit request still wins: it is a listener's correction, which outranks a catalogue.
-	let metricalLevel = opts.metricalLevel;
-	if (metricalLevel === undefined && tracked && context.publishedBpm) {
-		const level = publishedLevel(tracked.beats, context.publishedBpm, context.genreFamily);
-		if (level !== null) {
-			log(`re-reading the grid at ${level}x toward a published ${context.publishedBpm} bpm`);
-			metricalLevel = level;
-		}
-	}
-
 	// The drum model hears the kit through the whole mix where the band-flux DSP hears
 	// bands; like the beat model it is optional, and its absence is the DSP path working
 	// exactly as before. It listens at the training frontend's rate, so it decodes its own
@@ -593,6 +646,22 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		}
 	} catch (e) {
 		log(`drum model unavailable, falling back: ${e instanceof Error ? e.message : String(e)}`);
+	}
+
+	// A published tempo that re-hears the tracked one at a clean ratio settles the octave
+	// automatically, which until now only happened when the AI author researched the track.
+	// An explicit request still wins: it is a listener's correction, which outranks a catalogue.
+	// After the drum model, because the snare is what checks the catalogue's octave.
+	let metricalLevel = opts.metricalLevel;
+	if (metricalLevel === undefined && tracked && context.publishedBpm) {
+		const level = publishedLevel(tracked.beats, context.publishedBpm, context.genreFamily, {
+			downbeats: tracked.downbeats,
+			snares: drums?.snare.times
+		});
+		if (level !== null) {
+			log(`re-reading the grid at ${level}x toward a published ${context.publishedBpm} bpm`);
+			metricalLevel = level;
+		}
 	}
 
 	log('analysing');
@@ -616,7 +685,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	await writeFile(analysisPath(id), JSON.stringify(analysis, null, '\t'));
 	// A fresh grid means a fresh verdict on it; the override, being the owner's, survives.
 	meta.duration = meta.duration || analysis.duration;
-	meta.gridTrust = gridTrust(analysis);
+	meta.gridTrust = gridTrust(analysis, context.publishedBpm);
 	await writeFile(metaPath(id), JSON.stringify(meta, null, '\t'));
 	context = await settleGenreFamily(id, context, analysis);
 	return { id, audioPath, analysis, meta, context, fromCache: false };

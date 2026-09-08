@@ -8,11 +8,13 @@ function sketch(input: {
 	sections: number;
 	meterConfidence?: number;
 	beatsPerBar?: number;
+	bpm?: number;
 }): TrackAnalysis {
 	return {
 		duration: input.duration,
 		sections: Array.from({ length: input.sections }, (_, index) => ({ index })),
 		tempo: {
+			bpm: input.bpm ?? 120,
 			meterConfidence: input.meterConfidence ?? 0.9,
 			beatsPerBar: input.beatsPerBar ?? 4
 		}
@@ -65,5 +67,19 @@ describe('gridTrust', () => {
 	it('leaves stubs and empty analyses alone', () => {
 		expect(gridTrust(sketch({ duration: 30, sections: 5 })).trusted).toBe(true);
 		expect(gridTrust(sketch({ duration: 200, sections: 0 })).trusted).toBe(true);
+	});
+
+	it('trusts a fragmented grid the published tempo corroborates', () => {
+		// HUMBLE.: 16 sections in 177 s are its stop-time drops, at meter confidence 0.99 and
+		// 150 bpm against Deezer's 149.8. Without the catalogue it reads as a wreck.
+		const humble = sketch({ duration: 177, sections: 16, meterConfidence: 0.99, bpm: 150 });
+		expect(gridTrust(humble).trusted).toBe(false);
+		expect(gridTrust(humble, 149.8).trusted).toBe(true);
+		// A catalogue figure at another level corroborates nothing.
+		expect(gridTrust(humble, 75).trusted).toBe(false);
+		// Nor does one on a 2/4 grid: real 2/4 barely exists in this repertoire.
+		expect(
+			gridTrust(sketch({ duration: 177, sections: 16, meterConfidence: 0.99, bpm: 150, beatsPerBar: 2 }), 149.8).trusted
+		).toBe(false);
 	});
 });

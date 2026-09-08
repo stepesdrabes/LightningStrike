@@ -310,21 +310,21 @@ function bandedMean(sim: Float32Array, n: number): number {
  * them is not a boundary to be found but a wall to segment up to. The movement starts are
  * bounds by construction.
  */
-export function segmentMovements(sim: Float32Array, bars: BarFeatures, starts: readonly number[]): number[] {
+export function segmentMovements(sim: Float32Array, bars: BarFeatures, starts: readonly number[], lambda = LAMBDA): number[] {
 	const edges = [...new Set([0, ...starts.filter((b) => b > 0 && b < bars.count), bars.count])].sort((a, b) => a - b);
-	if (edges.length <= 2) return segmentBars(sim, bars);
+	if (edges.length <= 2) return segmentBars(sim, bars, lambda);
 	const bounds: number[] = [];
 	for (let k = 0; k + 1 < edges.length; k++) {
 		const from = edges[k];
 		const to = edges[k + 1];
-		const inner = segmentBars(sliceSimilarity(sim, bars.count, from, to), sliceBars(bars, from, to));
+		const inner = segmentBars(sliceSimilarity(sim, bars.count, from, to), sliceBars(bars, from, to), lambda);
 		for (const b of inner) if (b < to - from) bounds.push(from + b);
 	}
 	bounds.push(bars.count);
 	return bounds;
 }
 
-export function segmentBars(sim: Float32Array, bars: BarFeatures): number[] {
+export function segmentBars(sim: Float32Array, bars: BarFeatures, lambda = LAMBDA): number[] {
 	const n = bars.count;
 	if (n < MIN_SEGMENT_BARS * 2) return [0, n];
 
@@ -344,7 +344,7 @@ export function segmentBars(sim: Float32Array, bars: BarFeatures): number[] {
 			// The tail of a track is often a fade whose length nobody chose; charging it the
 			// full phrase penalty would drag the previous boundary out of place.
 			const penalty = end === n ? lengthPenalty(len) * 0.5 : lengthPenalty(len);
-			const v = best[start] + segmentScore(sim, n, start, end, baseline) - unit * LAMBDA * penalty;
+			const v = best[start] + segmentScore(sim, n, start, end, baseline) - unit * lambda * penalty;
 			if (v > best[end]) {
 				best[end] = v;
 				link[end] = start;
@@ -383,7 +383,22 @@ const REFINE_REACH = 1;
  * before collapsing, and the pattern changing, in comparable units. Zero for a bar that
  * continues its passage.
  */
-function arrivalStrength(
+/** The arrival score taken apart, in the units the score sums them in. */
+interface ArrivalParts {
+	step: number;
+	kit: number;
+	/** 0..1, how far the bar before collapses under this one; the score weighs it at 0.8. */
+	collapse: number;
+	/** 0..1, one minus the pattern dot with the bar before; the score weighs it at 1.5. */
+	novelty: number;
+	voice: number;
+	bass: number;
+	/** The kit, the level, the collapse, the novelty and the bass: everything but the voice and the settling. */
+	physics: number;
+	settling: number;
+}
+
+function arrivalParts(
 	bars: BarFeatures,
 	db: Float32Array,
 	tol: number,
@@ -396,8 +411,9 @@ function arrivalStrength(
 	settleGate = SETTLE_GATE,
 	bassWeight = 0,
 	kitMinKicks = 1
-): number {
-	if (b <= 0 || b >= bars.count) return 0;
+): ArrivalParts {
+	const zero: ArrivalParts = { step: 0, kit: 0, collapse: 0, novelty: 0, voice: 0, bass: 0, physics: 0, settling: 0 };
+	if (b <= 0 || b >= bars.count) return zero;
 	const step = Math.max(0, db[b] - db[b - 1]) / tol;
 
 	let kit = 0;
@@ -420,8 +436,7 @@ function arrivalStrength(
 
 	// The held-breath bar: its quietest beat collapses while the arrival bar slams. Measured
 	// against the bar's own mean so a track-wide quiet passage does not read as a dip.
-	const dipRef = Math.max(bars.rms[b], 1e-6);
-	const dip = Math.max(0, 1 - bars.floor[b - 1] / dipRef);
+	const collapse = collapseBefore(bars, b);
 
 	let novelty = 0;
 	{
@@ -447,13 +462,152 @@ function arrivalStrength(
 	// settle-free scale honest for decisive bars: pins, the snap's cuts and the
 	// consolidation floor all read decisive arrivals exactly as before.
 	const bass = bassWeight > 0 ? bassWeight * Math.max(0, bars.low[b] - bars.low[b - 1]) : 0;
-	const physics = step + kit + 0.8 * dip + 1.5 * novelty + bass;
+	const physics = step + kit + 0.8 * collapse + 1.5 * novelty + bass;
 	const settling =
 		settle && settleWeight > 0 && physics < settleGate
 			? settleWeight * Math.max(0, settle[b])
 			: 0;
+	return { step, kit, collapse, novelty, voice, bass, physics, settling };
+}
 
-	return physics + voice + settling;
+function arrivalStrength(
+	bars: BarFeatures,
+	db: Float32Array,
+	tol: number,
+	kicksPerBar: Int32Array | null,
+	vocal: Float64Array | null,
+	hooks: Uint8Array | null,
+	b: number,
+	settle: Float32Array | null = null,
+	settleWeight = 0,
+	settleGate = SETTLE_GATE,
+	bassWeight = 0,
+	kitMinKicks = 1
+): number {
+	const p = arrivalParts(bars, db, tol, kicksPerBar, vocal, hooks, b, settle, settleWeight, settleGate, bassWeight, kitMinKicks);
+	return p.physics + p.voice + p.settling;
+}
+
+/**
+ * Whether an arrival is the kind a section starts on when it starts OFF the phrase grid.
+ *
+ * The owner draws sections on phrase downbeats: over the 2026-09-07 corpus the refine's
+ * moves off that grid were right twenty times and wrong seventeen, and the two groups do
+ * not overlap in what the target bar carries. The wrong ones are a level step that the kit
+ * does not join - the hook riff, the shout or the voice entering on the last bar of the
+ * phrase (Blinding Lights, Le Freak, Praha/Viden), a drum fill before a breakdown, or the
+ * groove's own two-bar figure (365, an arrival every odd bar). The right ones carry one of:
+ *
+ * - the kit landing outright, four kicks after a bar of one or none, or three more than
+ *   the bar before (Vitej's fourth groove, Kisses' last drop), or returning after a bar of
+ *   none with the voice on the same bar (SICKO MODE's first chorus, sparse trap kicks and
+ *   the hook together on the bar after the break);
+ * - the pattern breaking, a dot under a half with the bar before (Someone You Loved's
+ *   verse halves, Cigo a kava's build);
+ * - a sung entrance after the bar before collapsed under it (Thinkin Bout You's every
+ *   hook, sung into a breath);
+ * - music rising out of the track's own quiet floor (Panama's and Cigo's three-bar intros,
+ *   Stranded's riff, Higher's breakdowns);
+ * - a collapse that is not periodic - the arrival two bars either side does not match it,
+ *   so it is not the groove's figure (Hovorili mi ze's verse, seventeen bars in).
+ *
+ * And in every case the physics have to be decisive on their own: a voice or a settling
+ * term cannot carry a boundary off the grid.
+ */
+const IMPACT_KICKS = 4;
+const IMPACT_KICK_JUMP = 3;
+const IMPACT_NOVELTY = 0.5;
+const IMPACT_COLLAPSE = 0.625;
+/**
+ * Share of the track's p10-p90 level range under which a bar sits on the quiet floor. Both
+ * bars before the target have to: a single quiet bar is the pre-chorus dip Blinding Lights
+ * takes before its hook riff, not an intro.
+ */
+const QUIET_FLOOR = 0.45;
+/**
+ * And the floor has to be a floor: at least this far under the track's loud passages. A
+ * compressed record spans six decibels end to end and its verses ARE its bottom decile (Le
+ * Freak), which is not what music rising out of silence sounds like.
+ */
+const QUIET_DEPTH_DB = 8;
+/**
+ * An arrival two bars either side this close to the target's is the groove's own figure.
+ * 365's odd bars arrive at 0.47 to 0.94 of each other; every real collapse on file sits
+ * at 0.25 or under (Higher's builds, Hovorili mi ze's verse).
+ */
+const PERIODIC_SHARE = 0.35;
+/** Why an off-grid target counts as an impact, or the empty string when it does not. */
+function offGridImpact(
+	parts: ArrivalParts,
+	physicsAt: (b: number) => number,
+	kicksPerBar: Int32Array | null,
+	/** The two bars before the target, as shares of the track's level range. */
+	levelBefore: [number, number],
+	/** How far the louder of those two bars sits under the track's p90 level, dB. */
+	depthBefore: number,
+	c: number,
+	count: number,
+	kitMinKicks = 1
+): string {
+	if (parts.physics < 2) return '';
+	if (kicksPerBar) {
+		const now = kicksPerBar[c] ?? 0;
+		const before = kicksPerBar[c - 1] ?? 0;
+		if ((now >= IMPACT_KICKS && before <= 1) || now >= before + IMPACT_KICK_JUMP) return 'kit';
+		if (before === 0 && now >= kitMinKicks && parts.voice > 0) return 'kit+voice';
+	}
+	if (parts.novelty >= IMPACT_NOVELTY) return 'novelty';
+	if (parts.voice > 0 && parts.collapse >= IMPACT_COLLAPSE) return 'voice';
+	if (levelBefore[0] <= QUIET_FLOOR && levelBefore[1] <= QUIET_FLOOR && depthBefore >= QUIET_DEPTH_DB) return 'quiet';
+	if (parts.collapse >= IMPACT_COLLAPSE) {
+		const own = parts.physics;
+		const periodic =
+			c - 2 >= 1 && c + 2 < count && physicsAt(c - 2) >= PERIODIC_SHARE * own && physicsAt(c + 2) >= PERIODIC_SHARE * own;
+		if (!periodic) return 'collapse';
+	}
+	return '';
+}
+
+/**
+ * The same guard for every later pass that can move a boundary off the phrase grid - the
+ * hook snap, today. Physics only: the voice is the evidence a hook snap is adjudicating, so
+ * it may not vouch for the bar. Returns whether a move from `from` to `to`, with the section
+ * before starting at `prevStart`, is allowed.
+ */
+export function offGridMoveGuard(
+	bars: BarFeatures,
+	kicksPerBar: Int32Array | null,
+	kitMinKicks = 1
+): (prevStart: number, from: number, to: number) => boolean {
+	const db = barLevels(bars);
+	const spread = levelSpread(db);
+	const tol = LEVEL_TOL * spread;
+	const q10 = quantile(db, 0.1);
+	const q90 = quantile(db, 0.9);
+	const parts = (b: number) => arrivalParts(bars, db, tol, kicksPerBar, null, null, b, null, 0, SETTLE_GATE, 0, kitMinKicks);
+	const physicsAt = (b: number) => parts(b).physics;
+	return (prevStart, from, to) => {
+		const onGrid = (b: number) => (b - prevStart) % PHRASE_BARS === 0;
+		if (!onGrid(from) || onGrid(to) || to < 2 || to >= bars.count) return true;
+		const levelBefore: [number, number] = [(db[to - 1] - q10) / spread, (db[to - 2] - q10) / spread];
+		const depthBefore = q90 - Math.max(db[to - 1], db[to - 2]);
+		return offGridImpact(parts(to), physicsAt, kicksPerBar, levelBefore, depthBefore, to, bars.count, kitMinKicks) !== '';
+	};
+}
+
+/** One guard decision, for the bench: what the refine wanted and why it was or was not allowed. */
+export interface GuardDecision {
+	here: number;
+	to: number;
+	/** Empty when the move was refused. */
+	impact: string;
+	physics: number;
+	kit: number;
+	novelty: number;
+	voice: number;
+	collapse: number;
+	levelBefore: [number, number];
+	depthBefore: number;
 }
 
 /**
@@ -539,6 +693,32 @@ export interface StructureTuning {
 	 * reads material, cannot see (Timeless at 1:20, 4.6).
 	 */
 	splitAtArrival: number;
+	/** Weight of the DP's phrase-length prior, in bars-worth of banded evidence. */
+	lambda: number;
+	/** Bars the hook snap may pull a chorus-class start back onto a sung hook; 0 disables the snap. */
+	hookSnapReach: number;
+	/**
+	 * The hook snap never displaces a boundary on a decisive arrival: a restart window is
+	 * held to the same dominance test an entrance is, and the one-bar move LATER onto a
+	 * restart is refused outright. The evening corpus had it pull 365's drop, Praha/Viden's
+	 * chorus and Az na mesic's last chorus off arrivals of 2.2, 4.2 and 4.7 onto sung lines.
+	 */
+	hookSnapStrict: boolean;
+	/**
+	 * The refine may not move a boundary OFF the local phrase grid (a section length that is
+	 * a multiple of four bars) onto a bar the kit does not land on. The anacrusis class: the
+	 * hook riff, the shout or the voice enters on the last bar of the phrase and the owner
+	 * draws the downbeat after it (Blinding Lights 27 -> 28, Praha/Viden 7 -> 8, Best Part).
+	 */
+	pickupGuard: boolean;
+	/**
+	 * The refine never moves a boundary onto a drum fill: a loud bar whose pattern is held
+	 * by neither neighbour while the bar after it settles into what follows (Killing In the
+	 * Name 29 and 61, where the fill pinned and re-phased three correct choruses a bar
+	 * early). A boundary the DP itself put on such a bar keeps its pin - Doppler's build
+	 * opens on one - because the material changed there, whatever the bar's shape.
+	 */
+	fillVeto: boolean;
 }
 
 /**
@@ -580,8 +760,49 @@ export const DEFAULT_TUNING: StructureTuning = {
 	// 2026-09-07 corpus moved it: the refine had Blinding Lights' first chorus on the
 	// owner's bar at 2.72 and the phrase snap took it away, and at 2 the nineteen maps
 	// gain two boundaries with no accepted track moving (`bench/mapsweep.ts`, stay-2).
-	stayPinScore: 2
+	stayPinScore: 2,
+	lambda: LAMBDA,
+	hookSnapReach: 2,
+	// The three below shipped together from the 2026-09-07 evening corpus (bench/mapsweep.ts,
+	// 27 maps of review corpus 2 plus the 19 of corpus 1): 214 -> 232 of 266 and 151 -> 158
+	// of 180, early misses 38 -> 25 and 22 -> 17, no accepted track moving on either. The
+	// refine's moves off the phrase grid had been right twenty times and wrong seventeen on
+	// the same maps; the guard keeps every one of the twenty. The one map that loses is Best
+	// Part, which the owner rated 3 "not so sure myself". Measured and rejected beside them:
+	// lambda 1.6 and 2.2 (six and eight accepted tracks moved), stayPinScore 3 (two moved),
+	// hookSnapReach 1 (nothing), and a guard without the quiet-floor depth (Le Freak's
+	// verses are its bottom decile) or with the kit returning after a single silent bar
+	// (Le Freak's alternating kick detections).
+	hookSnapStrict: true,
+	pickupGuard: true,
+	fillVeto: true
 };
+
+/**
+ * Whether bar `b` is a drum fill: its pattern is held by neither neighbour while the bar
+ * after it belongs to what follows, and it is louder than that bar. Read on the level-free
+ * pattern, because the level term is exactly what binds a loud fill to the loud passage
+ * before it in the similarity matrix.
+ */
+const FILL_SETTLE = 0.25;
+const FILL_LOUDER_DB = 1.5;
+export function isFill(bars: BarFeatures, db: Float32Array, b: number): boolean {
+	if (b < 1 || b + 4 >= bars.count) return false;
+	const dim = bars.patternDim;
+	const dot = (x: number, y: number) => {
+		let s = 0;
+		for (let k = 0; k < dim; k++) s += bars.pattern[x * dim + k] * bars.pattern[y * dim + k];
+		return s;
+	};
+	const ahead = (x: number) => (dot(x, x + 1) + dot(x, x + 2) + dot(x, x + 3)) / 3;
+	return ahead(b + 1) - ahead(b) >= FILL_SETTLE && db[b] >= db[b + 1] + FILL_LOUDER_DB;
+}
+
+/** The held-breath test the arrival score uses: the bar before collapses into this one. */
+function collapseBefore(bars: BarFeatures, b: number): number {
+	const dipRef = Math.max(bars.rms[b], 1e-6);
+	return Math.max(0, 1 - bars.floor[b - 1] / dipRef);
+}
 
 /**
  * A boundary sitting on the bar the kit drops out of, one bar before it comes back on a
@@ -715,6 +936,44 @@ export function arrivalStrengths(
 	return out;
 }
 
+/** Which bars read as drum fills, for the pin pass and the bench. */
+export function fillBars(bars: BarFeatures): Uint8Array {
+	const db = barLevels(bars);
+	const out = new Uint8Array(bars.count);
+	for (let b = 1; b < bars.count; b++) if (isFill(bars, db, b)) out[b] = 1;
+	return out;
+}
+
+/**
+ * The arrival score taken apart, per bar, for the bench: the level step, the kit, the
+ * collapse before, the pattern novelty and the voice, in the units the score sums them in.
+ */
+export function arrivalComponents(
+	bars: BarFeatures,
+	kicksPerBar: Int32Array | null,
+	vocal: Float64Array | null,
+	hooks: Uint8Array | null,
+	kitMinKicks = 1
+): { step: Float32Array; kit: Float32Array; dip: Float32Array; novelty: Float32Array; voice: Float32Array } {
+	const db = barLevels(bars);
+	const tol = LEVEL_TOL * levelSpread(db);
+	const n = bars.count;
+	const step = new Float32Array(n);
+	const kit = new Float32Array(n);
+	const dip = new Float32Array(n);
+	const novelty = new Float32Array(n);
+	const voice = new Float32Array(n);
+	for (let b = 1; b < n; b++) {
+		const p = arrivalParts(bars, db, tol, kicksPerBar, vocal, hooks, b, null, 0, SETTLE_GATE, 0, kitMinKicks);
+		step[b] = p.step;
+		kit[b] = p.kit;
+		dip[b] = 0.8 * p.collapse;
+		novelty[b] = 1.5 * p.novelty;
+		voice[b] = p.voice;
+	}
+	return { step, kit, dip, novelty, voice };
+}
+
 /**
  * Pull each boundary onto the arrival next door when the evidence there clearly beats it.
  *
@@ -738,22 +997,62 @@ export function refineBoundaries(
 	margin = REFINE_MARGIN,
 	settleGate = SETTLE_GATE,
 	bassWeight = 0,
-	kitMinKicks = 1
+	kitMinKicks = 1,
+	pickupGuard = false,
+	fillVeto = false,
+	/** A bench sink for the guard's decisions; nothing shipped passes one. */
+	guardLog?: GuardDecision[],
+	/**
+	 * Boundaries the guard kept on the grid against a decisive neighbour, collected for the
+	 * caller: something arrives within a bar of each, so no later pass may read them as a seam
+	 * nothing arrives on and merge them away - which is exactly what the wrong move used to
+	 * protect them from, as a pin.
+	 */
+	held?: number[]
 ): number[] {
 	const db = barLevels(bars);
-	const tol = LEVEL_TOL * levelSpread(db);
+	const spread = levelSpread(db);
+	const tol = LEVEL_TOL * spread;
+	const q10 = quantile(db, 0.1);
+	const q90 = quantile(db, 0.9);
 	const out = [...bounds];
-	const score = (b: number) =>
-		arrivalStrength(bars, db, tol, kicksPerBar, vocal, hooks, b, settle, settleWeight, settleGate, bassWeight, kitMinKicks);
+	const parts = (b: number) =>
+		arrivalParts(bars, db, tol, kicksPerBar, vocal, hooks, b, settle, settleWeight, settleGate, bassWeight, kitMinKicks);
+	const score = (b: number) => {
+		const p = parts(b);
+		return p.physics + p.voice + p.settling;
+	};
+	const physicsAt = (b: number) => parts(b).physics;
 
 	for (let i = 1; i + 1 < out.length; i++) {
 		const here = out[i];
 		if (fixed.has(here)) continue;
+		// The phrase grid the previous boundary implies: a section that is a whole number of
+		// phrases long is the owner's overwhelming reading, and a bar before that grid is where
+		// an anacrusis lands.
+		const onGrid = (b: number) => (b - out[i - 1]) % PHRASE_BARS === 0;
 		let best = here;
 		let bestScore = score(here) * margin;
 		for (let c = here - reach; c <= here + reach; c++) {
 			if (c === here) continue;
 			if (c - out[i - 1] < MIN_SEGMENT_BARS || out[i + 1] - c < MIN_SEGMENT_BARS) continue;
+			if (fillVeto && isFill(bars, db, c)) continue;
+			if (pickupGuard && onGrid(here) && !onGrid(c)) {
+				const p = parts(c);
+				const levelBefore: [number, number] = [(db[c - 1] - q10) / spread, (db[Math.max(0, c - 2)] - q10) / spread];
+				const depthBefore = q90 - Math.max(db[c - 1], db[Math.max(0, c - 2)]);
+				const impact = offGridImpact(p, physicsAt, kicksPerBar, levelBefore, depthBefore, c, bars.count, kitMinKicks);
+				// Logged only where the move would otherwise have been taken, so the log reads as
+				// the guard's verdicts and not as every neighbour the refine glanced at.
+				const wanted = score(c) > score(here) * margin && score(c) > floor;
+				if (guardLog && wanted) {
+					guardLog.push({ here, to: c, impact, physics: p.physics, kit: p.kit, novelty: p.novelty, voice: p.voice, collapse: p.collapse, levelBefore, depthBefore });
+				}
+				if (!impact) {
+					if (wanted && held && !held.includes(here)) held.push(here);
+					continue;
+				}
+			}
 			const v = score(c);
 			if (v > bestScore && v > floor) {
 				bestScore = v;

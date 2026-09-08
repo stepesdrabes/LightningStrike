@@ -1,0 +1,72 @@
+{
+	"trackId": "sXf02hCe6fc",
+	"title": "Pátky",
+	"rating": 4,
+	"tags": [],
+	"notes": [
+		{
+			"t": 116.6,
+			"bar": 33,
+			"text": "the chrus should start EXACTLY HERE (I can’t drag it there for some reason?)"
+		}
+	],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0,
+			"endTime": 6.86,
+			"startBar": 0,
+			"endBar": 2
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 6.86,
+			"endTime": 20.58,
+			"startBar": 2,
+			"endBar": 6
+		},
+		{
+			"kind": "verse",
+			"startTime": 20.58,
+			"endTime": 75.42,
+			"startBar": 6,
+			"endBar": 22
+		},
+		{
+			"kind": "chorus",
+			"startTime": 75.42,
+			"endTime": 102.86,
+			"startBar": 22,
+			"endBar": 30
+		},
+		{
+			"kind": "verse",
+			"startTime": 102.86,
+			"endTime": 116.145,
+			"startBar": 30,
+			"endBar": 33.75
+		},
+		{
+			"kind": "chorus",
+			"startTime": 116.145,
+			"endTime": 171.88,
+			"startBar": 33.75,
+			"endBar": 50,
+			"offGrid": true
+		},
+		{
+			"kind": "outro",
+			"startTime": 171.88,
+			"endTime": 182.16,
+			"startBar": 50,
+			"endBar": 53
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "f463e93b1d327d72",
+	"showSeed": 3607624745,
+	"authoredBy": "engine",
+	"updatedAt": 1788807674995
+}

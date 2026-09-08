@@ -181,4 +181,25 @@ describe('publishedLevel', () => {
 		expect(publishedLevel(beatsAt(68), 136, 'ballad')).toBeNull();
 		expect(publishedLevel(beatsAt(136), 68, 'ballad')).toBe(0.5);
 	});
+
+	it('lets the snare decide which octave carries the backbeat', () => {
+		const beats = Array.from({ length: 128 }, (_, i) => (i * 60) / 65);
+		const period = 60 / 65;
+		const downbeats = beats.filter((_, i) => i % 4 === 0);
+		// Thinkin Bout You: the snare on two and four of the 65 bpm bar. Read at Deezer's 130 it
+		// would sit on beat three of every bar, so the doubling is refused.
+		const backbeatAt65 = beats.filter((_, i) => i % 4 === 1 || i % 4 === 3);
+		expect(publishedLevel(beats, 130, 'pop', { downbeats, snares: backbeatAt65 })).toBeNull();
+		// A house record the model halved: its snare falls between the tracked beats, on two
+		// and four of the 130 bpm bar, and the doubling stands.
+		const backbeatAt130 = beats.slice(0, -1).map((t) => t + period / 2);
+		expect(publishedLevel(beats, 130, 'pop', { downbeats, snares: backbeatAt130 })).toBe(2);
+		// Too little kit to read leaves the catalogue's word as it was.
+		expect(publishedLevel(beats, 130, 'pop', { downbeats, snares: backbeatAt65.slice(0, 8) })).toBe(2);
+		// And the halving of a doubled reading is confirmed when the fast grid has no backbeat.
+		const fast = Array.from({ length: 256 }, (_, i) => (i * 60) / 184);
+		const fastDownbeats = fast.filter((_, i) => i % 8 === 0);
+		expect(publishedLevel(fast, 92, 'rock', { downbeats: fastDownbeats, snares: fast.filter((_, i) => i % 4 === 2) })).toBe(0.5);
+		expect(publishedLevel(fast, 92, 'rock', { downbeats: fastDownbeats, snares: fast.filter((_, i) => i % 4 === 1 || i % 4 === 3) })).toBeNull();
+	});
 });

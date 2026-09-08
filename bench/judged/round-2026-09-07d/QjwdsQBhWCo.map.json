@@ -1,0 +1,84 @@
+{
+	"trackId": "QjwdsQBhWCo",
+	"title": "Windows98",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 1.736,
+			"endTime": 5.249,
+			"startBar": 0,
+			"endBar": 2
+		},
+		{
+			"kind": "groove",
+			"startTime": 5.249,
+			"endTime": 19.28,
+			"startBar": 2,
+			"endBar": 10
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 19.28,
+			"endTime": 33.28,
+			"startBar": 10,
+			"endBar": 18
+		},
+		{
+			"kind": "build",
+			"startTime": 33.28,
+			"endTime": 47.26,
+			"startBar": 18,
+			"endBar": 26
+		},
+		{
+			"kind": "drop",
+			"startTime": 47.26,
+			"endTime": 89.34,
+			"startBar": 26,
+			"endBar": 50
+		},
+		{
+			"kind": "drop",
+			"startTime": 89.34,
+			"endTime": 131.38,
+			"startBar": 50,
+			"endBar": 74
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 131.38,
+			"endTime": 152.2,
+			"startBar": 74,
+			"endBar": 86
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 152.2,
+			"endTime": 155.74,
+			"startBar": 86,
+			"endBar": 88
+		},
+		{
+			"kind": "outro",
+			"startTime": 155.74,
+			"endTime": 161.82,
+			"startBar": 88,
+			"endBar": 91
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "a70e001adcccc2c1",
+	"showSeed": 2430497866,
+	"authoredBy": "engine",
+	"updatedAt": 1788808514794,
+	"acceptedAnalysis": {
+		"version": 28,
+		"hash": "a70e001adcccc2c1",
+		"note": "saved with no section edit: the v28 analysis accepted as it stood"
+	}
+}

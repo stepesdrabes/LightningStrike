@@ -38,8 +38,16 @@ const SHAKY_METER = 0.55;
  * its rate says.
  */
 const MIN_SECTIONS = 10;
+/**
+ * A published tempo this close to the analysed one, at the same level, corroborates the
+ * grid: the wrecks this gate catches are wrong-level grids, and a catalogue that agrees on
+ * the level is the witness a fragmented but honest arrangement needs. HUMBLE. is 16
+ * sections in 177 s at meter confidence 0.99 with Deezer's 149.8 against the model's 150,
+ * and the fragmentation is the record's stop-time drops, not a broken grid.
+ */
+const CORROBORATED_BPM = 0.035;
 
-export function gridTrust(analysis: TrackAnalysis): GridTrust {
+export function gridTrust(analysis: TrackAnalysis, publishedBpm?: number | null): GridTrust {
 	const minutes = analysis.duration / 60;
 	// The PRE-consolidation count where the analysis carries one: fragmentation is a fact
 	// about what the segmenter heard, and a wreck that merged into a tidy table is still
@@ -53,11 +61,15 @@ export function gridTrust(analysis: TrackAnalysis): GridTrust {
 	const perMinute = sectionCount / minutes;
 	const meter = analysis.tempo.meterConfidence;
 	const halfBars = analysis.tempo.beatsPerBar === 2;
+	const corroborated =
+		typeof publishedBpm === 'number' &&
+		publishedBpm > 0 &&
+		Math.abs(analysis.tempo.bpm - publishedBpm) / publishedBpm <= CORROBORATED_BPM;
 
 	const reasons: string[] = [];
-	if (perMinute > FRAGMENTED) {
+	if (perMinute > FRAGMENTED && !(corroborated && !halfBars)) {
 		reasons.push(`${perMinute.toFixed(1)} sections a minute`);
-	} else if (perMinute > SUSPECT && (meter <= SHAKY_METER || halfBars)) {
+	} else if (perMinute > SUSPECT && !corroborated && (meter <= SHAKY_METER || halfBars)) {
 		reasons.push(
 			`${perMinute.toFixed(1)} sections a minute on ${
 				halfBars ? 'a 2/4 grid' : `meter confidence ${meter.toFixed(2)}`

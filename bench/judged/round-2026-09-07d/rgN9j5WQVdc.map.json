@@ -1,0 +1,98 @@
+{
+	"trackId": "rgN9j5WQVdc",
+	"title": "Cígo a káva (feat. Saul)",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0,
+			"endTime": 5.18,
+			"startBar": 0,
+			"endBar": 3
+		},
+		{
+			"kind": "build",
+			"startTime": 5.18,
+			"endTime": 13.7,
+			"startBar": 3,
+			"endBar": 8
+		},
+		{
+			"kind": "chorus",
+			"startTime": 13.7,
+			"endTime": 68.6,
+			"startBar": 8,
+			"endBar": 40
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 68.6,
+			"endTime": 75.46,
+			"startBar": 40,
+			"endBar": 44
+		},
+		{
+			"kind": "build",
+			"startTime": 75.46,
+			"endTime": 80.52,
+			"startBar": 44,
+			"endBar": 47
+		},
+		{
+			"kind": "void",
+			"startTime": 80.52,
+			"endTime": 82.22,
+			"startBar": 47,
+			"endBar": 48
+		},
+		{
+			"kind": "chorus",
+			"startTime": 82.22,
+			"endTime": 137.14,
+			"startBar": 48,
+			"endBar": 80
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 137.14,
+			"endTime": 144.04,
+			"startBar": 80,
+			"endBar": 84
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 144.04,
+			"endTime": 150.84,
+			"startBar": 84,
+			"endBar": 88
+		},
+		{
+			"kind": "void",
+			"startTime": 150.84,
+			"endTime": 152.52,
+			"startBar": 88,
+			"endBar": 89
+		},
+		{
+			"kind": "chorus",
+			"startTime": 152.52,
+			"endTime": 180.04,
+			"startBar": 89,
+			"endBar": 105
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "bf30d81699bacb87",
+	"showSeed": 2463544854,
+	"authoredBy": "engine",
+	"updatedAt": 1788809410232,
+	"acceptedAnalysis": {
+		"version": 28,
+		"hash": "bf30d81699bacb87",
+		"note": "saved with no section edit: the v28 analysis accepted as it stood"
+	}
+}

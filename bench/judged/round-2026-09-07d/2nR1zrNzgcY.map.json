@@ -1,0 +1,76 @@
+{
+	"trackId": "2nR1zrNzgcY",
+	"title": "FE!N",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.82,
+			"endTime": 9.73,
+			"startBar": 0,
+			"endBar": 2.75
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 9.73,
+			"endTime": 22.695,
+			"startBar": 2.75,
+			"endBar": 6.75,
+			"offGrid": true
+		},
+		{
+			"kind": "build",
+			"startTime": 22.695,
+			"endTime": 35.65,
+			"startBar": 6.75,
+			"endBar": 10.75,
+			"offGrid": true
+		},
+		{
+			"kind": "build",
+			"startTime": 35.65,
+			"endTime": 48.605000000000004,
+			"startBar": 10.75,
+			"endBar": 14.75,
+			"offGrid": true
+		},
+		{
+			"kind": "chorus",
+			"startTime": 48.605000000000004,
+			"endTime": 90.78,
+			"startBar": 14.75,
+			"endBar": 28,
+			"offGrid": true
+		},
+		{
+			"kind": "build",
+			"startTime": 90.78,
+			"endTime": 103.76,
+			"startBar": 28,
+			"endBar": 32
+		},
+		{
+			"kind": "chorus",
+			"startTime": 103.76,
+			"endTime": 181.58,
+			"startBar": 32,
+			"endBar": 56
+		},
+		{
+			"kind": "verse",
+			"startTime": 181.58,
+			"endTime": 188.1,
+			"startBar": 56,
+			"endBar": 58
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "9c201e4f4a1a5eb6",
+	"showSeed": 2565589156,
+	"authoredBy": "engine",
+	"updatedAt": 1788806335925
+}

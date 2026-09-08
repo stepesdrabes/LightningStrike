@@ -14,6 +14,7 @@ import { CACHE_DIR, decodeAudio, handMapInput, publishedLevel, readContext } fro
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { BeatThis } from '../packages/analysis/src/beatthis.ts';
 import { Adtof } from '../packages/analysis/src/adtof.ts';
+import { DEFAULT_TUNING, type GuardDecision, type StructureTuning } from '../packages/analysis/src/structure.ts';
 
 const id = process.argv[2];
 if (!id) throw new Error('usage: node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks]');
@@ -67,12 +68,21 @@ const probe: {
 	physical?: Float32Array;
 	kicks?: Int32Array;
 	settle?: Float32Array | null;
+	components?: { step: Float32Array; kit: Float32Array; dip: Float32Array; novelty: Float32Array; voice: Float32Array };
+	fills?: Uint8Array;
+	guard: GuardDecision[];
 	stages: { name: string; bounds: number[] }[];
-} = { stages: [] };
+} = { guard: [], stages: [] };
+// A structure-tuning override, JSON, so a variant the sweep scores can be read here in full:
+//   --tuning='{"pickupGuard":true,"fillVeto":true}'
+const tuningArg = process.argv.find((a) => a.startsWith('--tuning='))?.slice(9);
+const tuning = tuningArg ? { ...DEFAULT_TUNING, ...(JSON.parse(tuningArg) as Partial<StructureTuning>) } : undefined;
 // The level the app reads the grid at: ingest re-reads the beats against the published
 // tempo, and without the same step here Stranded probes at 92 while the app plays it at 185.
 const context = (await readContext(id)) ?? undefined;
-const level = context?.publishedBpm ? publishedLevel(heard.beats, context.publishedBpm, context.genreFamily) : null;
+const level = context?.publishedBpm
+	? publishedLevel(heard.beats, context.publishedBpm, context.genreFamily, { downbeats: heard.downbeats, snares: drums?.snare.times })
+	: null;
 const analysis = analyzeTrack({
 	probe,
 	metricalLevel: level ?? undefined,
@@ -86,16 +96,23 @@ const analysis = analyzeTrack({
 	downbeats: heard.downbeats,
 	drums,
 	context,
+	tuning,
 	...hand
 });
 
 const outPath = process.argv.find((a) => a.startsWith('--out='))?.slice(6);
 if (outPath) {
 	// The per-bar evidence rides along for the bench, outside the contract.
+	const round = (xs: ArrayLike<number> | null | undefined) => Array.from(xs ?? [], (v) => Math.round(v * 100) / 100);
 	const evidence = {
-		arrivals: Array.from(probe.arrivals ?? [], (v) => Math.round(v * 100) / 100),
-		physical: Array.from(probe.physical ?? [], (v) => Math.round(v * 100) / 100),
-		settle: Array.from(probe.settle ?? [], (v) => Math.round(v * 100) / 100),
+		arrivals: round(probe.arrivals),
+		physical: round(probe.physical),
+		settle: round(probe.settle),
+		components: probe.components
+			? { step: round(probe.components.step), kit: round(probe.components.kit), dip: round(probe.components.dip), novelty: round(probe.components.novelty), voice: round(probe.components.voice) }
+			: undefined,
+		fills: Array.from(probe.fills ?? []),
+		guard: probe.guard,
 		stages: probe.stages
 	};
 	writeFileSync(outPath, JSON.stringify({ ...analysis, _probe: evidence }));
@@ -112,3 +129,8 @@ for (const s of analysis.sections) {
 }
 const durations = analysis.tempo.barTimes.slice(1).map((t, i) => t - analysis.tempo.barTimes[i]);
 console.log('  bar seconds: ' + durations.map((d) => d.toFixed(2)).join(' '));
+for (const g of probe.guard) {
+	console.log(
+		`  guard ${g.here} -> ${g.to}: ${g.impact ? `allowed (${g.impact})` : 'refused'}  physics ${g.physics.toFixed(2)} kit ${g.kit.toFixed(2)} novelty ${g.novelty.toFixed(2)} voice ${g.voice.toFixed(1)} collapse ${g.collapse.toFixed(2)} level before ${g.levelBefore.map((v) => v.toFixed(2)).join('/')} depth ${g.depthBefore.toFixed(1)} dB`
+	);
+}

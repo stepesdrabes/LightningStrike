@@ -1,0 +1,72 @@
+{
+	"trackId": "zNhtz0Lygik",
+	"title": "Best Part (feat. H.E.R.)",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "TBH I’m not so sure myself, but this adjusted sectioning should be correct",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.84,
+			"endTime": 13.62,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "verse",
+			"startTime": 13.62,
+			"endTime": 39.22,
+			"startBar": 4,
+			"endBar": 12
+		},
+		{
+			"kind": "verse",
+			"startTime": 39.22,
+			"endTime": 64.84,
+			"startBar": 12,
+			"endBar": 20
+		},
+		{
+			"kind": "chorus",
+			"startTime": 64.84,
+			"endTime": 77.64,
+			"startBar": 20,
+			"endBar": 24
+		},
+		{
+			"kind": "verse",
+			"startTime": 77.64,
+			"endTime": 128.84,
+			"startBar": 24,
+			"endBar": 40
+		},
+		{
+			"kind": "chorus",
+			"startTime": 128.84,
+			"endTime": 167.22,
+			"startBar": 40,
+			"endBar": 52
+		},
+		{
+			"kind": "verse",
+			"startTime": 167.22,
+			"endTime": 179.98,
+			"startBar": 52,
+			"endBar": 56
+		},
+		{
+			"kind": "chorus",
+			"startTime": 179.98,
+			"endTime": 205.56,
+			"startBar": 56,
+			"endBar": 64
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "2b5e2914b5e0db40",
+	"showSeed": 3795565361,
+	"authoredBy": "engine",
+	"updatedAt": 1788806583867
+}

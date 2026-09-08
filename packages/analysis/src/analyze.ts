@@ -37,7 +37,10 @@ import { analyseStereo } from './stereo.ts';
 import { consolidateSections } from './consolidate.ts';
 import {
 	DEFAULT_TUNING,
+	arrivalComponents,
 	arrivalStrengths,
+	fillBars,
+	offGridMoveGuard,
 	pullOntoReturn,
 	pushOntoDeparture,
 	splitAtArrivals,
@@ -50,6 +53,7 @@ import {
 	settlingContrast,
 	similarityMatrix,
 	type BoundaryMove,
+	type GuardDecision,
 	type StructureTuning
 } from './structure.ts';
 import {
@@ -176,6 +180,12 @@ export interface AnalyzeInput {
 		physical?: Float32Array;
 		kicks?: Int32Array;
 		settle?: Float32Array | null;
+		/** The arrival score taken apart per bar, in the units it sums them in. */
+		components?: { step: Float32Array; kit: Float32Array; dip: Float32Array; novelty: Float32Array; voice: Float32Array };
+		/** Bars that read as drum fills. */
+		fills?: Uint8Array;
+		/** The anacrusis guard's verdict on every refine move it was asked about. */
+		guard?: GuardDecision[];
 		/** The boundary table after each pass that can move one, in order. */
 		stages?: { name: string; bounds: number[] }[];
 	};
@@ -440,10 +450,14 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	const sim = similarityMatrix(bars);
 	const settle = settlingContrast(sim, bars.count);
 	const moves: BoundaryMove[] = [];
+	const stage = (name: string, bounds: readonly number[]) => input.probe?.stages?.push({ name, bounds: [...bounds] });
 	// Segmented song by song: a movement start is a wall the DP segments up to, never a
 	// boundary it may weigh, and no arrival may move it.
+	const segmented = segmentMovements(sim, bars, movementBars, tuning.lambda);
+	stage('dp', segmented);
+	const held: number[] = [];
 	const rough = refineBoundaries(
-		segmentMovements(sim, bars, movementBars),
+		segmented,
 		bars,
 		rawKicks,
 		moves,
@@ -457,9 +471,12 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		tuning.refineMargin,
 		tuning.settleGate,
 		tuning.bassWeight,
-		tuning.kitMinKicks
+		tuning.kitMinKicks,
+		tuning.pickupGuard,
+		tuning.fillVeto,
+		input.probe?.guard,
+		held
 	);
-	const stage = (name: string, bounds: readonly number[]) => input.probe?.stages?.push({ name, bounds: [...bounds] });
 	stage('refined', rough);
 	// Only the decisive arrivals earn pin status; a marginal move may correct its own
 	// boundary without getting a vote over everyone else's.
@@ -475,6 +492,9 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	if (roughSplit.length !== rough.length) rough.splice(0, rough.length, ...roughSplit);
 	const pinned = new Set(movePinned);
 	for (const b of rough) if (b > 0 && b < bars.count && physical[b] >= tuning.stayPinScore) pinned.add(b);
+	// A boundary the guard kept on the grid has an arrival next door, so it pins as a stay
+	// does: it votes for no phase, and no merge may read it as a seam nothing arrives on.
+	for (const b of held) if (rough.includes(b)) pinned.add(b);
 	// The pinned arrivals know the track's phrase phase; boundaries that had only mush to
 	// stand on are re-read onto it. This is what was arriving a bar early at the top of a
 	// track whose own drop later proved where the phrases actually sit.
@@ -595,13 +615,33 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// it, and a drop downbeat left at a bar its section has moved off - or been demoted
 	// off - fires the show's biggest cue in the wrong section.
 	const arrivals = arrivalStrengths(bars, rawKicks, vocal, hooks, settle, tuning.settleWeight, tuning.settleGate, tuning.bassWeight, tuning.kitMinKicks);
-	if (input.probe) Object.assign(input.probe, { arrivals, physical, kicks, settle });
+	if (input.probe) {
+		Object.assign(input.probe, {
+			arrivals,
+			physical,
+			kicks,
+			settle,
+			components: arrivalComponents(bars, rawKicks, vocal, hooks, tuning.kitMinKicks),
+			fills: fillBars(bars)
+		});
+	}
 	// The snap's veto reads the physics-only arrivals computed above: the sung evidence is
 	// the very thing under adjudication, and with it in the score a hook bar can never read
 	// as "nothing arrives here" - which is exactly what a pickup sung over silence is.
 	const snapMoves =
 		!hand && lyricLines && lyricLines.length > 0
-			? snapToHooks(plan.segments, hookStarts(lyricLines), bars.time, bars.count, 2, physical, fixed)
+			? snapToHooks(
+					plan.segments,
+					hookStarts(lyricLines),
+					bars.time,
+					bars.count,
+					2,
+					physical,
+					fixed,
+					tuning.hookSnapReach,
+					tuning.hookSnapStrict,
+					tuning.pickupGuard ? offGridMoveGuard(bars, rawKicks, tuning.kitMinKicks) : undefined
+				)
 			: [];
 	// The last structural word: seams between same-kind sections that nothing arrives on
 	// are DP artefacts, and each one downstream is a cue change and a punctuated false

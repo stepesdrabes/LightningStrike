@@ -1,0 +1,86 @@
+{
+	"trackId": "NZtZzsI8JTA",
+	"title": "Praha/Vídeň",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.007,
+			"endTime": 14.773,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 14.773,
+			"endTime": 29.54,
+			"startBar": 8,
+			"endBar": 16
+		},
+		{
+			"kind": "chorus",
+			"startTime": 29.54,
+			"endTime": 44.32,
+			"startBar": 16,
+			"endBar": 24
+		},
+		{
+			"kind": "build",
+			"startTime": 44.32,
+			"endTime": 59.06,
+			"startBar": 24,
+			"endBar": 32
+		},
+		{
+			"kind": "chorus",
+			"startTime": 59.06,
+			"endTime": 88.62,
+			"startBar": 32,
+			"endBar": 48
+		},
+		{
+			"kind": "chorus",
+			"startTime": 88.62,
+			"endTime": 103.38,
+			"startBar": 48,
+			"endBar": 56
+		},
+		{
+			"kind": "chorus",
+			"startTime": 103.38,
+			"endTime": 118.16,
+			"startBar": 56,
+			"endBar": 64
+		},
+		{
+			"kind": "build",
+			"startTime": 118.16,
+			"endTime": 132.92,
+			"startBar": 64,
+			"endBar": 72
+		},
+		{
+			"kind": "chorus",
+			"startTime": 132.92,
+			"endTime": 155.08,
+			"startBar": 72,
+			"endBar": 84
+		},
+		{
+			"kind": "outro",
+			"startTime": 155.08,
+			"endTime": 162.44,
+			"startBar": 84,
+			"endBar": 88
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "e7e2ff1f7ad510ee",
+	"showSeed": 2041997845,
+	"authoredBy": "engine",
+	"updatedAt": 1788808097920
+}

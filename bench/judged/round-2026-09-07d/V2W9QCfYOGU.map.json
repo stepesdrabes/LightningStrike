@@ -1,0 +1,63 @@
+{
+	"trackId": "V2W9QCfYOGU",
+	"title": "Kisses (feat. bbyclose)",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 1.38,
+			"endTime": 13.18,
+			"startBar": 0,
+			"endBar": 7
+		},
+		{
+			"kind": "groove",
+			"startTime": 13.18,
+			"endTime": 40.22,
+			"startBar": 7,
+			"endBar": 23
+		},
+		{
+			"kind": "drop",
+			"startTime": 40.22,
+			"endTime": 80.84,
+			"startBar": 23,
+			"endBar": 47
+		},
+		{
+			"kind": "groove",
+			"startTime": 80.84,
+			"endTime": 107.84,
+			"startBar": 47,
+			"endBar": 63
+		},
+		{
+			"kind": "drop",
+			"startTime": 107.84,
+			"endTime": 134.92,
+			"startBar": 63,
+			"endBar": 79
+		},
+		{
+			"kind": "outro",
+			"startTime": 134.92,
+			"endTime": 136.6,
+			"startBar": 79,
+			"endBar": 80
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "df1c439fa29972db",
+	"showSeed": 4255558651,
+	"authoredBy": "engine",
+	"updatedAt": 1788809261237,
+	"acceptedAnalysis": {
+		"version": 28,
+		"hash": "df1c439fa29972db",
+		"note": "saved with no section edit: the v28 analysis accepted as it stood"
+	}
+}

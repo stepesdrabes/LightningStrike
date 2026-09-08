@@ -1,0 +1,87 @@
+{
+	"trackId": "w_pDmpSSbQc",
+	"title": "365",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.22,
+			"endTime": 3.98,
+			"startBar": 0,
+			"endBar": 2
+		},
+		{
+			"kind": "groove",
+			"startTime": 3.98,
+			"endTime": 19.1,
+			"startBar": 2,
+			"endBar": 10
+		},
+		{
+			"kind": "groove",
+			"startTime": 19.1,
+			"endTime": 34.2,
+			"startBar": 10,
+			"endBar": 18
+		},
+		{
+			"kind": "groove",
+			"startTime": 34.2,
+			"endTime": 49.3,
+			"startBar": 18,
+			"endBar": 26
+		},
+		{
+			"kind": "groove",
+			"startTime": 49.3,
+			"endTime": 64.4,
+			"startBar": 26,
+			"endBar": 34
+		},
+		{
+			"kind": "drop",
+			"startTime": 64.4,
+			"endTime": 109.7,
+			"startBar": 34,
+			"endBar": 58
+		},
+		{
+			"kind": "drop",
+			"startTime": 109.7,
+			"endTime": 124.78,
+			"startBar": 58,
+			"endBar": 66
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 124.78,
+			"endTime": 139.9,
+			"startBar": 66,
+			"endBar": 74
+		},
+		{
+			"kind": "build",
+			"startTime": 139.9,
+			"endTime": 155.005,
+			"startBar": 74,
+			"endBar": 81.75
+		},
+		{
+			"kind": "drop",
+			"startTime": 155.005,
+			"endTime": 200.8,
+			"startBar": 81.75,
+			"endBar": 106,
+			"offGrid": true
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "d833405d4c73f6f7",
+	"showSeed": 3969395930,
+	"authoredBy": "engine",
+	"updatedAt": 1788807950184
+}

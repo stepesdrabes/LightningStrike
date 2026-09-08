@@ -1,0 +1,91 @@
+{
+	"trackId": "XuKq7zT_0nM",
+	"title": "Illegal",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.326,
+			"endTime": 13.88,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "drop",
+			"startTime": 13.88,
+			"endTime": 41.04,
+			"startBar": 8,
+			"endBar": 24
+		},
+		{
+			"kind": "build",
+			"startTime": 41.04,
+			"endTime": 54.6,
+			"startBar": 24,
+			"endBar": 32
+		},
+		{
+			"kind": "drop",
+			"startTime": 54.6,
+			"endTime": 81.76,
+			"startBar": 32,
+			"endBar": 48
+		},
+		{
+			"kind": "groove",
+			"startTime": 81.76,
+			"endTime": 88.54,
+			"startBar": 48,
+			"endBar": 52
+		},
+		{
+			"kind": "build",
+			"startTime": 88.54,
+			"endTime": 95.34,
+			"startBar": 52,
+			"endBar": 56
+		},
+		{
+			"kind": "build",
+			"startTime": 95.34,
+			"endTime": 102.12,
+			"startBar": 56,
+			"endBar": 60
+		},
+		{
+			"kind": "drop",
+			"startTime": 102.12,
+			"endTime": 108.92,
+			"startBar": 60,
+			"endBar": 64
+		},
+		{
+			"kind": "build",
+			"startTime": 108.92,
+			"endTime": 122.44,
+			"startBar": 64,
+			"endBar": 72
+		},
+		{
+			"kind": "drop",
+			"startTime": 122.44,
+			"endTime": 148.3,
+			"startBar": 72,
+			"endBar": 87
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "05e730684b46e497",
+	"showSeed": 1923286098,
+	"authoredBy": "engine",
+	"updatedAt": 1788808963901,
+	"acceptedAnalysis": {
+		"version": 28,
+		"hash": "05e730684b46e497",
+		"note": "saved with no section edit: the v28 analysis accepted as it stood"
+	}
+}

@@ -1,0 +1,108 @@
+{
+	"trackId": "h0w5g0p9RsM",
+	"title": "ROCKSTAR",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.22,
+			"endTime": 10.86,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "build",
+			"startTime": 10.86,
+			"endTime": 21.52,
+			"startBar": 4,
+			"endBar": 8
+		},
+		{
+			"kind": "chorus",
+			"startTime": 21.52,
+			"endTime": 42.88,
+			"startBar": 8,
+			"endBar": 16
+		},
+		{
+			"kind": "build",
+			"startTime": 42.88,
+			"endTime": 53.54,
+			"startBar": 16,
+			"endBar": 20
+		},
+		{
+			"kind": "chorus",
+			"startTime": 53.54,
+			"endTime": 74.88,
+			"startBar": 20,
+			"endBar": 28
+		},
+		{
+			"kind": "build",
+			"startTime": 74.88,
+			"endTime": 85.54,
+			"startBar": 28,
+			"endBar": 32
+		},
+		{
+			"kind": "chorus",
+			"startTime": 85.54,
+			"endTime": 106.9,
+			"startBar": 32,
+			"endBar": 40
+		},
+		{
+			"kind": "build",
+			"startTime": 106.9,
+			"endTime": 117.56,
+			"startBar": 40,
+			"endBar": 44
+		},
+		{
+			"kind": "verse",
+			"startTime": 117.56,
+			"endTime": 124.9,
+			"startBar": 44,
+			"endBar": 47
+		},
+		{
+			"kind": "verse",
+			"startTime": 124.9,
+			"endTime": 138.24,
+			"startBar": 47,
+			"endBar": 52
+		},
+		{
+			"kind": "build",
+			"startTime": 138.24,
+			"endTime": 149.545,
+			"startBar": 52,
+			"endBar": 56.25
+		},
+		{
+			"kind": "chorus",
+			"startTime": 149.545,
+			"endTime": 172.88,
+			"startBar": 56.25,
+			"endBar": 65,
+			"offGrid": true
+		},
+		{
+			"kind": "outro",
+			"startTime": 172.88,
+			"endTime": 180.9,
+			"startBar": 65,
+			"endBar": 68
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "b8b10552315cc2d5",
+	"showSeed": 2868932516,
+	"authoredBy": "engine",
+	"updatedAt": 1788806727970
+}

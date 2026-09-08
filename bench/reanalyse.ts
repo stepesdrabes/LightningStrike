@@ -1,6 +1,6 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { ANALYSIS_VERSION } from '@mv/core';
+import { ANALYSIS_VERSION, gridTrust } from '@mv/core';
 import {
 	CACHE_DIR,
 	decodeAudio,
@@ -77,7 +77,10 @@ for (const f of metas) {
 
 		let metricalLevel: number | undefined;
 		if (context?.publishedBpm) {
-			const level = publishedLevel(tracked.beats, context.publishedBpm, context.genreFamily);
+			const level = publishedLevel(tracked.beats, context.publishedBpm, context.genreFamily, {
+				downbeats: tracked.downbeats,
+				snares: drums?.snare.times
+			});
 			if (level !== null) metricalLevel = level;
 		}
 
@@ -98,6 +101,13 @@ for (const f of metas) {
 			...(noHandMaps ? {} : await handMapInput(meta.id))
 		});
 		await writeFile(analysisPath(meta.id), JSON.stringify(analysis, null, '\t'));
+		// The verdict the queue routes on lives on the meta, and ingest only refreshes it on
+		// the fresh path: a cache built here would keep a stale lounge verdict forever (HUMBLE.
+		// stayed unjudgeable that way). The owner's override survives, as in ingest.
+		const metaFile = JSON.parse(await readFile(join(CACHE_DIR, f), 'utf8')) as Record<string, unknown>;
+		metaFile.duration = metaFile.duration || analysis.duration;
+		metaFile.gridTrust = gridTrust(analysis, context?.publishedBpm);
+		await writeFile(join(CACHE_DIR, f), JSON.stringify(metaFile, null, '\t'));
 		console.log(
 			`${at} ${meta.title.slice(0, 50)} -> ${analysis.tempo.bpm} bpm` +
 				`${metricalLevel ? ` (x${metricalLevel})` : ''}, ${analysis.sections.length} sections, ` +

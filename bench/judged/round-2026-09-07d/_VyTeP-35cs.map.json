@@ -1,0 +1,81 @@
+{
+	"trackId": "_VyTeP-35cs",
+	"title": "Stíny",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.02,
+			"endTime": 10.4,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 10.4,
+			"endTime": 20.76,
+			"startBar": 4,
+			"endBar": 8
+		},
+		{
+			"kind": "build",
+			"startTime": 20.76,
+			"endTime": 31.14,
+			"startBar": 8,
+			"endBar": 12
+		},
+		{
+			"kind": "chorus",
+			"startTime": 31.14,
+			"endTime": 63.56,
+			"startBar": 12,
+			"endBar": 24.5
+		},
+		{
+			"kind": "build",
+			"startTime": 63.56,
+			"endTime": 75.24,
+			"startBar": 24.5,
+			"endBar": 29,
+			"offGrid": true
+		},
+		{
+			"kind": "chorus",
+			"startTime": 75.24,
+			"endTime": 96,
+			"startBar": 29,
+			"endBar": 37
+		},
+		{
+			"kind": "chorus",
+			"startTime": 96,
+			"endTime": 106.38,
+			"startBar": 37,
+			"endBar": 41
+		},
+		{
+			"kind": "chorus",
+			"startTime": 106.38,
+			"endTime": 149.19,
+			"startBar": 41,
+			"endBar": 57.5
+		},
+		{
+			"kind": "chorus",
+			"startTime": 149.19,
+			"endTime": 168.66,
+			"startBar": 57.5,
+			"endBar": 65,
+			"offGrid": true
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "a4d7af2672fb672e",
+	"showSeed": 1400086361,
+	"authoredBy": "engine",
+	"updatedAt": 1788807036968
+}

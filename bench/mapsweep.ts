@@ -43,7 +43,24 @@ const VARIANTS: Record<string, Partial<StructureTuning>> = {
 	'kit-3': { kitMinKicks: 3 },
 	'split-4': { splitAtArrival: 4 },
 	'split-3': { splitAtArrival: 3 },
-	'stay-2-kit-2-split-4': { stayPinScore: 2, kitMinKicks: 2, splitAtArrival: 4 }
+	'stay-2-kit-2-split-4': { stayPinScore: 2, kitMinKicks: 2, splitAtArrival: 4 },
+	// The 2026-09-07 evening corpus: anacrusis and fill bars carrying the arrival a bar
+	// before the owner's downbeat, the hook snap dragging decisive boundaries onto vocal
+	// pickups, and the DP's phrase-length prior. The guard, the fill veto and the strict
+	// snap ship as the defaults; these rows switch each one back off, so the negative stays
+	// measurable against the next round's maps.
+	'nohook': { hookSnapReach: 0 },
+	'hook-1': { hookSnapReach: 1 },
+	'hooklax': { hookSnapStrict: false },
+	'noguard': { pickupGuard: false },
+	'nofill': { fillVeto: false },
+	'noguard-nofill': { pickupGuard: false, fillVeto: false },
+	'before-2026-09-07d': { pickupGuard: false, fillVeto: false, hookSnapStrict: false },
+	'lambda-1.6': { lambda: 1.6 },
+	'lambda-2.2': { lambda: 2.2 },
+	'pickup-fill-lambda-1.6': { pickupGuard: true, fillVeto: true, lambda: 1.6 },
+	'stay-3': { stayPinScore: 3 },
+	'pickup-fill-stay-3': { pickupGuard: true, fillVeto: true, stayPinScore: 3 }
 };
 const wanted = flag('variant')?.split(',') ?? Object.keys(VARIANTS);
 
@@ -61,6 +78,24 @@ interface Row {
 
 const DRUMS = join(import.meta.dirname, 'corpus', '.drums');
 mkdirSync(DRUMS, { recursive: true });
+
+/**
+ * A cached drum run with its activation curves restored to Float32Array. JSON writes a typed
+ * array as an object of index keys, and a curve read back as that object is one the
+ * quantiser cannot see - two tracks of the corpus moved a boundary between a fresh run and a
+ * cached one until this was noticed. Older caches in the object shape are read the same way.
+ */
+function readDrums(path: string): Awaited<ReturnType<Adtof['run']>> {
+	const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+	for (const key of ['kick', 'snare', 'hat']) {
+		const stream = raw[key] as { curve?: unknown } | undefined;
+		if (!stream || stream.curve === undefined || stream.curve instanceof Float32Array) continue;
+		stream.curve = Float32Array.from(
+			Array.isArray(stream.curve) ? (stream.curve as number[]) : Object.values(stream.curve as Record<string, number>)
+		);
+	}
+	return raw as Awaited<ReturnType<Adtof['run']>>;
+}
 const files = readdirSync(CACHE_DIR);
 const maps = readdirSync(mapsDir).filter((f) => f.endsWith('.map.json'));
 const results = new Map<string, Row[]>();
@@ -82,16 +117,18 @@ for (const f of maps) {
 	const decoded = await decodeAudio(join(CACHE_DIR, audio));
 	const drumPath = join(DRUMS, `app-${id}.json`);
 	let drums: Awaited<ReturnType<Adtof['run']>> | undefined;
-	if (existsSync(drumPath)) drums = JSON.parse(readFileSync(drumPath, 'utf8'));
+	if (existsSync(drumPath)) drums = readDrums(drumPath);
 	else {
 		drumModel ??= await Adtof.create();
 		if (drumModel) {
 			drums = await drumModel.run((await decodeAudio(join(CACHE_DIR, audio), 44100)).mono);
-			writeFileSync(drumPath, JSON.stringify(drums));
+			writeFileSync(drumPath, JSON.stringify(drums, (_, v) => (v instanceof Float32Array ? Array.from(v) : v)));
 		}
 	}
 	const context = (await readContext(id)) ?? undefined;
-	const level = context?.publishedBpm ? publishedLevel(blob.heard.beats, context.publishedBpm, context.genreFamily) : null;
+	const level = context?.publishedBpm
+		? publishedLevel(blob.heard.beats, context.publishedBpm, context.genreFamily, { downbeats: blob.heard.downbeats, snares: drums?.snare.times })
+		: null;
 
 	for (const name of wanted) {
 		const tuning = { ...DEFAULT_TUNING, ...VARIANTS[name] };

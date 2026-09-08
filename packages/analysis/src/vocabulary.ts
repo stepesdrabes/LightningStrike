@@ -358,10 +358,20 @@ export function snapToHooks(
 	/** PHYSICS-ONLY arrival strengths - no voice term, which is the evidence on trial. */
 	arrivals: Float32Array | null = null,
 	/** Boundaries that are walls - movement starts - which no hook may move or absorb across. */
-	fixed: ReadonlySet<number> = new Set()
+	fixed: ReadonlySet<number> = new Set(),
+	/** How far a boundary may be pulled back onto a hook window; 0 switches the snap off. */
+	reachEarlier = SNAP_REACH_EARLIER,
+	/** A decisive incumbent is never displaced: restarts obey the dominance test, and no move later. */
+	strict = false,
+	/**
+	 * Whether a move may leave the phrase grid, given the section before, the boundary and its
+	 * target: the anacrusis guard the refine obeys, so the sung hook cannot do by the snap what
+	 * the level step may not do by the refine (Killing In the Name's chorus, sung a bar early).
+	 */
+	mayMove?: (prevStart: number, from: number, to: number) => boolean
 ): HookSnapMove[] {
 	const moves: HookSnapMove[] = [];
-	if (starts.length === 0 || barCount < 2) return moves;
+	if (starts.length === 0 || barCount < 2 || reachEarlier <= 0) return moves;
 
 	const windows: { bar: number; restart: boolean }[] = [];
 	let lastBar = -Infinity;
@@ -392,8 +402,12 @@ export function snapToHooks(
 			const edge = from < w.bar ? w.bar : w.bar + 1;
 			const d = Math.abs(edge - from);
 			if (d >= dist) continue;
-			if (edge < from && from - edge > SNAP_REACH_EARLIER) continue;
+			if (edge < from && from - edge > reachEarlier) continue;
 			if (edge > from && (edge - from > 1 || !w.restart)) continue;
+			if (mayMove && !mayMove(prev.startBar, from, edge)) continue;
+			// The later move exists for a vocal entrance lagging its drop; a boundary that already
+			// sits on a decisive arrival is not lagging anything (Az na mesic's last chorus, 4.7).
+			if (strict && edge > from && arrivals && (arrivals[from] ?? 0) >= SNAP_KEEP_DECISIVE) continue;
 			// The physics veto on the pull-back: a singer leading the beat puts the hook
 			// window on bars the record has not arrived at yet, and the snap was dragging
 			// correct boundaries off the beat and onto them - EARFQUAKE's second drop by two
@@ -412,15 +426,18 @@ export function snapToHooks(
 			// restart edge against a decisive incumbent (the lyric does that), but it can
 			// tell a band-backed edge from the voice alone, and only the absolute noise
 			// floor makes that call.
-			if (
-				edge < from &&
-				arrivals &&
-				(arrivals[from] ?? 0) >= SNAP_KEEP_DECISIVE &&
-				(w.restart
-					? (arrivals[edge] ?? 0) < SNAP_RESTART_NOISE
-					: (arrivals[from] ?? 0) >= Math.max(1, arrivals[edge] ?? 0) * SNAP_DOMINANCE)
-			) {
-				continue;
+			if (edge < from && arrivals) {
+				const incumbent = arrivals[from] ?? 0;
+				const target = arrivals[edge] ?? 0;
+				// Strict: no window, entrance or restart, claims a bar the record never arrives
+				// at (Von dutch's last drop was pulled onto a sung line at 0.25).
+				if (strict && target < SNAP_RESTART_NOISE) continue;
+				if (
+					incumbent >= SNAP_KEEP_DECISIVE &&
+					(w.restart && !strict ? target < SNAP_RESTART_NOISE : incumbent >= Math.max(1, target) * SNAP_DOMINANCE)
+				) {
+					continue;
+				}
 			}
 			// A move that would shrink the previous segment below the minimum is normally
 			// refused - except when that segment is a two-bar BUILD, the connective tissue
