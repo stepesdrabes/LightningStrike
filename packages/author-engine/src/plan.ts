@@ -219,7 +219,23 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 
 	for (const slot of slots) {
 		const layers: Partial<Record<LayerRole, LayerSpec>> = {};
+		// A family that holds its looks re-stages nothing inside a section: the interior cues
+		// keep the bed and the rhythm layer the section opened with and move the transient or
+		// the accent every second cue, so a techno drop is one look that changes one thing.
+		const previous = cues.length > 0 ? cues[cues.length - 1] : undefined;
+		const heldLook =
+			profile.holdLooks && slot.index > 0 && previous?.section === slot.section ? previous.layers : null;
+		const holds = (role: LayerRole) =>
+			!!heldLook?.[role] && (role === 'bed' || role === 'rhythm' || slot.index % 2 === 1);
+		// The picker is asked only for the layers this cue may change, so a held layer is
+		// never counted as spent twice.
+		const choose = (role: LayerRole, req: Parameters<EffectPicker['pick']>[0]) =>
+			holds(role) ? null : picker.pick(req);
 		const add = (role: LayerRole, def: EffectDef | null) => {
+			if (holds(role)) {
+				layers[role] = { ...heldLook![role]! };
+				return;
+			}
 			if (!def) return;
 			const params = paramsFor(def, slot, analysis);
 			layers[role] = params ? { effect: def.id, params } : { effect: def.id };
@@ -276,7 +292,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		if (inheritedBed) {
 			layers.bed = { ...inheritedBed };
 		} else {
-			add('bed', picker.pick({ drums, role: 'bed', section: slot.section, lengthBars: length, energy: bedEnergy, pounding, mustCarry: carrier, bare, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
+			add('bed', choose('bed', { drums, role: 'bed', section: slot.section, lengthBars: length, energy: bedEnergy, pounding, mustCarry: carrier, bare, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
 		}
 		switch (sectionBase(slot.section)) {
 			case 'void':
@@ -301,7 +317,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 				) {
 					break;
 				}
-				add('accent', picker.pick({ drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
+				add('accent', choose('accent', { drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
 				break;
 
 			case 'breakdown':
@@ -319,31 +335,31 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 					break;
 				}
 				breakdownHeld = false;
-				add('accent', picker.pick({ drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
+				add('accent', choose('accent', { drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
 				// The kit, where the passage still has one. A breakdown with a beat under it is
 				// common in this repertoire and the room should be answering it; a genuinely
 				// stripped one has no onsets to answer and gets nothing, which is the difference
 				// the coin toss was reaching for and could not see.
 				if (profile.transientEvery > 0 && kickDensity(analysis, slot) > 0.25) {
-					add('transient', picker.pick({ drums, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+					add('transient', choose('transient', { drums, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
 				}
 				break;
 
 			case 'build':
-				add('rhythm', picker.pick({ drums, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+				add('rhythm', choose('rhythm', { drums, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
 				// A build is the one place an accent belongs before the drop rather than in it, and
 				// without one the two effects written for exactly this moment were unreachable.
-				add('accent', picker.pick({ drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+				add('accent', choose('accent', { drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
 				break;
 
 			case 'groove':
-				add('rhythm', picker.pick({ drums, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+				add('rhythm', choose('rhythm', { drums, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
 				// The drum layer runs at the genre's cadence, never in every cue. Firing a light
 				// at every hit is the documented failure of audio-to-light mapping: it reads as
 				// mechanical however well timed it is, and leaving it out is what makes it land
 				// on return. A ballad leaves it out entirely; punk and funk barely rest it.
 				if (profile.transientEvery > 0 && grooveIndex % profile.transientEvery === profile.transientEvery - 1) {
-					add('transient', picker.pick({ drums, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+					add('transient', choose('transient', { drums, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
 				}
 				grooveIndex++;
 				break;
@@ -353,16 +369,16 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 				// chorus whose VISIBLE layers look nothing like the first says the room is not
 				// listening, and without the group the novelty penalty actively pushes the
 				// repeat away from what the first one used.
-				add('rhythm', picker.pick({ drums, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
+				add('rhythm', choose('rhythm', { drums, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
 				if (profile.transientEvery > 0) {
-					add('transient', picker.pick({ drums, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+					add('transient', choose('transient', { drums, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
 				}
 				// The first appearance of material that returns holds its accent back, so the
 				// return ADDS something: escalation by vocabulary rather than by brightness,
 				// which prompt.ts warns is the cliche. The peak section and material that never
 				// returns get the full stack from the start.
 				if (!(slot.dropIndex === 0 && !slot.finalOfGroup && slot.span !== peakSpan)) {
-					add('accent', picker.pick({ drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+					add('accent', choose('accent', { drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
 				}
 				break;
 		}
@@ -401,7 +417,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 	carryThePeak(cues, peakCue);
 	stripBuilds(cues);
 	shapeApproaches(cues, profile);
-	plantWildcard(cues, slots, picker, analysis);
+	plantWildcard(cues, slots, picker, analysis, exclude);
 	inheritWhereEmpty(cues);
 	trackTheLeaving(cues, analysis);
 
@@ -643,8 +659,12 @@ function intensityFor(slot: Slot, spread = 0, profile?: GenreProfile): number {
 	// genre expects; everyone else keeps a lit room playing quietly.
 	if (profile?.darkBreakdowns && slot.section === 'breakdown') floor = Math.min(floor, 0.42);
 	// A build that sits at one level is not a build. Climbing across its cues is what makes the
-	// drop feel arrived at rather than merely loud.
-	const climb = slot.section === 'build' && slot.of > 1 ? (slot.index / (slot.of - 1)) * 0.16 : 0;
+	// drop feel arrived at rather than merely loud - or, in the family that lights its risers by
+	// taking the room away, dimming across them so the return lands out of near-black.
+	const climb =
+		slot.section === 'build' && slot.of > 1
+			? (slot.index / (slot.of - 1)) * (profile?.buildDims ? -0.2 : 0.16)
+			: 0;
 	// The final chorus outranks its siblings: everything the room has, short of the peak's 1.0.
 	const finale = slot.section === 'chorus' && slot.finalOfGroup ? 0.05 : 0;
 	// A song's own biggest moment on a stitched track: above anything else in that song,
@@ -997,7 +1017,7 @@ function shapeApproaches(cues: Cue[], profile: GenreProfile): void {
  * opacity-bounded, and planting it mid-passage keeps it away from every structural moment
  * the show is already spending real cards on.
  */
-function plantWildcard(cues: Cue[], slots: Slot[], picker: EffectPicker, analysis: TrackAnalysis): void {
+function plantWildcard(cues: Cue[], slots: Slot[], picker: EffectPicker, analysis: TrackAnalysis, exclude: readonly string[] = []): void {
 	const steady = slots.filter(
 		(s) => sectionBase(s.section) === 'groove' && s.of >= 3 && !s.peak && s.index > 0
 	);
@@ -1020,6 +1040,8 @@ function plantWildcard(cues: Cue[], slots: Slot[], picker: EffectPicker, analysi
 		energy: host.energy,
 		anySection: true,
 		noCharacter: true,
+		// Foreign every night, so a stranger too: the family's hard exclusions hold here.
+		exclude,
 		drums: drumDensity(analysis, host.bar, host.endBar)
 	});
 	if (!def) return;
