@@ -514,8 +514,8 @@ function arrivalStrength(
  * And in every case the physics have to be decisive on their own: a voice or a settling
  * term cannot carry a boundary off the grid.
  */
-const IMPACT_KICKS = 4;
-const IMPACT_KICK_JUMP = 3;
+export const IMPACT_KICKS = 4;
+export const IMPACT_KICK_JUMP = 3;
 const IMPACT_NOVELTY = 0.5;
 const IMPACT_COLLAPSE = 0.625;
 /**
@@ -536,6 +536,12 @@ const QUIET_DEPTH_DB = 8;
  * at 0.25 or under (Higher's builds, Hovorili mi ze's verse).
  */
 const PERIODIC_SHARE = 0.35;
+/**
+ * And music rising out of the floor has to arrive: the rises the owner kept sit at 2.96 and
+ * above (Stranded's riff 8.2, Higher's breakdowns 3.6 and 3.0), the one refused was Panama's
+ * pad at 2.03, a bar before the phrase downbeat the build actually starts on.
+ */
+const QUIET_PHYSICS = 2.5;
 /** Why an off-grid target counts as an impact, or the empty string when it does not. */
 function offGridImpact(
 	parts: ArrivalParts,
@@ -547,7 +553,8 @@ function offGridImpact(
 	depthBefore: number,
 	c: number,
 	count: number,
-	kitMinKicks = 1
+	kitMinKicks = 1,
+	quietPhysics = QUIET_PHYSICS
 ): string {
 	if (parts.physics < 2) return '';
 	if (kicksPerBar) {
@@ -558,7 +565,14 @@ function offGridImpact(
 	}
 	if (parts.novelty >= IMPACT_NOVELTY) return 'novelty';
 	if (parts.voice > 0 && parts.collapse >= IMPACT_COLLAPSE) return 'voice';
-	if (levelBefore[0] <= QUIET_FLOOR && levelBefore[1] <= QUIET_FLOOR && depthBefore >= QUIET_DEPTH_DB) return 'quiet';
+	if (
+		levelBefore[0] <= QUIET_FLOOR &&
+		levelBefore[1] <= QUIET_FLOOR &&
+		depthBefore >= QUIET_DEPTH_DB &&
+		parts.physics >= quietPhysics
+	) {
+		return 'quiet';
+	}
 	if (parts.collapse >= IMPACT_COLLAPSE) {
 		const own = parts.physics;
 		const periodic =
@@ -577,7 +591,8 @@ function offGridImpact(
 export function offGridMoveGuard(
 	bars: BarFeatures,
 	kicksPerBar: Int32Array | null,
-	kitMinKicks = 1
+	kitMinKicks = 1,
+	quietPhysics = QUIET_PHYSICS
 ): (prevStart: number, from: number, to: number) => boolean {
 	const db = barLevels(bars);
 	const spread = levelSpread(db);
@@ -591,7 +606,7 @@ export function offGridMoveGuard(
 		if (!onGrid(from) || onGrid(to) || to < 2 || to >= bars.count) return true;
 		const levelBefore: [number, number] = [(db[to - 1] - q10) / spread, (db[to - 2] - q10) / spread];
 		const depthBefore = q90 - Math.max(db[to - 1], db[to - 2]);
-		return offGridImpact(parts(to), physicsAt, kicksPerBar, levelBefore, depthBefore, to, bars.count, kitMinKicks) !== '';
+		return offGridImpact(parts(to), physicsAt, kicksPerBar, levelBefore, depthBefore, to, bars.count, kitMinKicks, quietPhysics) !== '';
 	};
 }
 
@@ -719,6 +734,42 @@ export interface StructureTuning {
 	 * opens on one - because the material changed there, whatever the bar's shape.
 	 */
 	fillVeto: boolean;
+	/**
+	 * Physics an arrival out of the quiet floor needs before the guard lets it off the grid.
+	 * 2 is the refine floor itself, which let Panama's pad a bar before the phrase move the
+	 * build onto it.
+	 */
+	quietImpactPhysics: number;
+	/**
+	 * Two DP boundaries two bars apart with the arrival between them collapse onto it. The DP
+	 * cannot express a one-bar transition, so it fences the arrival in (Stranded's chorus at
+	 * 17, sung and kicked, between boundaries at 16 and 18 that the two-bar minimum kept the
+	 * refine from moving).
+	 */
+	straddle: boolean;
+	/**
+	 * A build the DP opened on a drum fill moves onto the bar after it when the kit leaves
+	 * there. A build otherwise begins under the kit (PROVENZA) and keeps its bar; a fill with
+	 * the kit gone the next bar is the fill INTO the build (SICKO MODE's second, 47 -> 48).
+	 */
+	departFromFill: boolean;
+	/**
+	 * On a song-vocabulary track whose sung hooks agree on a phrase phase, boundaries sitting one
+	 * bar before it move onto it when most of the table does: the instrumental changes a bar
+	 * ahead of the singer all song long, and the owner draws where the singer starts (Best
+	 * Part, six of seven boundaries a bar early with every hook on the owner's bar).
+	 */
+	sungPhase: boolean;
+	/**
+	 * A chorus-class or verse-class section of twelve bars or more splits where a sung block
+	 * begins a whole phrase into it. One loop played end to end has no material change for the
+	 * DP to find, and the owner draws its sections where the verses and hooks begin (Thinkin
+	 * Bout You, eight-bar phrases of one groove). OFF: measured on 2026-09-08 it found two of
+	 * those and one on goosebumps, and planted seven seams the owner never drew across four
+	 * accepted corpus-1 tables (Hannah Montana three, Je mi fajn two, Safír, Do I Wanna Know?),
+	 * where a repeated line starts eight bars into a section that is one section.
+	 */
+	hookSplit: boolean;
 }
 
 /**
@@ -775,7 +826,16 @@ export const DEFAULT_TUNING: StructureTuning = {
 	// (Le Freak's alternating kick detections).
 	hookSnapStrict: true,
 	pickupGuard: true,
-	fillVeto: true
+	fillVeto: true,
+	// The 2026-09-08 round (bench/mapsweep.ts, the 31 maps of round-2026-09-08 plus the 19 of
+	// corpus 1): the four below ship together with the grid work of the same round (the fold
+	// parity, bars never in two, the strict phase walk), 290 -> 300 of 318 and 158 of 180 held,
+	// no accepted table losing a boundary. The hook split stays measurable and off.
+	quietImpactPhysics: QUIET_PHYSICS,
+	straddle: true,
+	departFromFill: true,
+	sungPhase: true,
+	hookSplit: false
 };
 
 /**
@@ -865,7 +925,9 @@ export function pushOntoDeparture(
 	low: ArrayLike<number>,
 	/** The level per bar, 0..100, for the forward case: a synth bass can hold the low band through an outro. */
 	energy: ArrayLike<number>,
-	keep: ReadonlySet<number>
+	keep: ReadonlySet<number>,
+	/** Bars that read as drum fills; a build opened on one may move forward onto the departure. */
+	fills: Uint8Array | null = null
 ): number[] {
 	const moved: number[] = [];
 	for (let i = 1; i < segments.length; i++) {
@@ -881,10 +943,13 @@ export function pushOntoDeparture(
 		}
 		// And the other way: the boundary a bar BEFORE the kit leaves - pinned there by a
 		// last vocal pickup on Blinding Lights, by the chorus's tag bar on EARFQUAKE - moves
-		// forward onto the bar it leaves. Outros and breakdowns only: a build begins under the
-		// kit, on the riser or the voice, and the drums drop out a bar into it (PROVENZA).
+		// forward onto the bar it leaves. Outros and breakdowns, and a build only when the DP
+		// opened it on a drum fill: a build otherwise begins under the kit, on the riser or the
+		// voice, and the drums drop out a bar into it (PROVENZA), but a fill with the kit gone
+		// the next bar is the fill INTO the build (SICKO MODE's second build, 47 -> 48).
 		const falls = low[b + 1] <= DEPARTURE_LOW * low[b] || energy[b + 1] <= DEPARTURE_LEVEL * energy[b];
-		if (here.kind !== 'build' && b + 1 < kicks.length && here.endBar - (b + 1) >= 2 && kicks[b] > 0 && kicks[b + 1] <= 1 && falls) {
+		const mayLead = here.kind !== 'build' || fills?.[b] === 1;
+		if (mayLead && b + 1 < kicks.length && here.endBar - (b + 1) >= 2 && kicks[b] > 0 && kicks[b + 1] <= 1 && falls) {
 			here.startBar = b + 1;
 			prev.endBar = b + 1;
 			moved.push(b + 1);
@@ -1008,7 +1073,9 @@ export function refineBoundaries(
 	 * nothing arrives on and merge them away - which is exactly what the wrong move used to
 	 * protect them from, as a pin.
 	 */
-	held?: number[]
+	held?: number[],
+	quietPhysics = QUIET_PHYSICS,
+	straddle = false
 ): number[] {
 	const db = barLevels(bars);
 	const spread = levelSpread(db);
@@ -1023,6 +1090,28 @@ export function refineBoundaries(
 		return p.physics + p.voice + p.settling;
 	};
 	const physicsAt = (b: number) => parts(b).physics;
+
+	// Two boundaries two bars apart with the arrival between them are the DP fencing in a
+	// one-bar transition it cannot express: the bar before (a fill, a pickup) and the bar after
+	// both read as changes of material, and the two-bar minimum then keeps the refine from
+	// moving either onto the arrival. Both collapse onto it when it beats each by the margin
+	// and clears the floor on its PHYSICS alone - a sung line in the middle of a two-bar
+	// breakdown is the breakdown's own second bar (goosebumps at 33), while Stranded's chorus
+	// at 17 lands with the kit and the level under the voice - and the arrival keeps the pin
+	// the move earns.
+	if (straddle) {
+		for (let i = 1; i + 2 < out.length; i++) {
+			const a = out[i];
+			const b = out[i + 1];
+			if (b - a !== 2 || fixed.has(a) || fixed.has(b)) continue;
+			const mid = a + 1;
+			if (fillVeto && isFill(bars, db, mid)) continue;
+			const v = score(mid);
+			if (physicsAt(mid) < floor || v <= margin * Math.max(score(a), score(b))) continue;
+			out.splice(i, 2, mid);
+			moves?.push({ from: a, to: mid, score: v }, { from: b, to: mid, score: v });
+		}
+	}
 
 	for (let i = 1; i + 1 < out.length; i++) {
 		const here = out[i];
@@ -1041,7 +1130,7 @@ export function refineBoundaries(
 				const p = parts(c);
 				const levelBefore: [number, number] = [(db[c - 1] - q10) / spread, (db[Math.max(0, c - 2)] - q10) / spread];
 				const depthBefore = q90 - Math.max(db[c - 1], db[Math.max(0, c - 2)]);
-				const impact = offGridImpact(p, physicsAt, kicksPerBar, levelBefore, depthBefore, c, bars.count, kitMinKicks);
+				const impact = offGridImpact(p, physicsAt, kicksPerBar, levelBefore, depthBefore, c, bars.count, kitMinKicks, quietPhysics);
 				// Logged only where the move would otherwise have been taken, so the log reads as
 				// the guard's verdicts and not as every neighbour the refine glanced at.
 				const wanted = score(c) > score(here) * margin && score(c) > floor;

@@ -10,6 +10,8 @@ import {
 	snapToHooks,
 	spanOverlap,
 	speaksClub,
+	splitAtHooks,
+	sungPhaseShift,
 	toSongVocabulary
 } from './vocabulary.ts';
 
@@ -385,5 +387,139 @@ describe('spanOverlap', () => {
 		expect(spanOverlap(spans, 10, 20)).toBe(1);
 		expect(spanOverlap(spans, 15, 25)).toBe(0.5);
 		expect(spanOverlap(spans, 30, 40)).toBe(0);
+	});
+});
+
+describe('demoteVersesFromLyrics: siblings', () => {
+	it('keeps a chorus whose sibling keeps its label on thinner evidence', () => {
+		// Someone You Loved: three statements of one material; the sync file words the second
+		// differently, so it carries none of the repeated lines while the first carries a third.
+		const spans = [{ start: 20, end: 26 }];
+		const segments: Segment[] = [
+			{ startBar: 10, endBar: 20, kind: 'chorus', group: 3 },
+			{ startBar: 40, endBar: 50, kind: 'chorus', group: 3 },
+			{ startBar: 60, endBar: 70, kind: 'verse', group: 1 }
+		];
+		demoteVersesFromLyrics(segments, (bar) => bar * 2, [...spans, { start: 130, end: 140 }]);
+		expect(segments.map((s) => s.kind)).toEqual(['chorus', 'chorus', 'verse']);
+	});
+});
+
+describe('sungPhaseShift', () => {
+	// Best Part: hooks sung at 16, 40 and 52, every boundary a bar before the sung grid, and
+	// the build at 51 where the kit stops.
+	const hooks = new Uint8Array(64);
+	for (const b of [16, 40, 52]) hooks[b] = 1;
+	const kicks = Int32Array.from({ length: 64 }, (_, b) => (b >= 51 && b < 55 ? 0 : 2));
+
+	it('moves the table onto the singer\'s grid', () => {
+		const bounds = [0, 3, 11, 15, 27, 39, 51, 55, 64];
+		const moved = sungPhaseShift(bounds, hooks, kicks, 64, new Set());
+		expect(bounds).toEqual([0, 4, 12, 16, 28, 40, 51, 56, 64]);
+		expect(moved).toEqual([4, 12, 16, 28, 40, 56]);
+	});
+
+	it('leaves a table that already sits on it', () => {
+		const bounds = [0, 4, 12, 16, 28, 40, 51, 56, 64];
+		expect(sungPhaseShift(bounds, hooks, kicks, 64, new Set())).toEqual([]);
+		expect(bounds).toEqual([0, 4, 12, 16, 28, 40, 51, 56, 64]);
+	});
+
+	it('needs three hooks that agree and a table that mostly sits early', () => {
+		const two = new Uint8Array(64);
+		two[16] = 1;
+		two[40] = 1;
+		expect(sungPhaseShift([0, 3, 11, 15, 27, 39, 64], two, kicks, 64, new Set())).toEqual([]);
+		const split = new Uint8Array(64);
+		for (const b of [16, 41, 54]) split[b] = 1;
+		expect(sungPhaseShift([0, 3, 11, 15, 27, 39, 64], split, kicks, 64, new Set())).toEqual([]);
+		expect(sungPhaseShift([0, 4, 12, 15, 28, 40, 64], hooks, kicks, 64, new Set())).toEqual([]);
+	});
+
+	it('leaves the bar the kit lands on and a pinned move alone', () => {
+		const landing = Int32Array.from(kicks);
+		landing[26] = 0;
+		landing[27] = 4;
+		const bounds = [0, 3, 11, 15, 27, 39, 55, 64];
+		sungPhaseShift(bounds, hooks, landing, 64, new Set([15]));
+		expect(bounds).toEqual([0, 4, 12, 15, 27, 40, 56, 64]);
+	});
+});
+
+describe('splitAtHooks', () => {
+	const barTime = Float64Array.from({ length: 61 }, (_, b) => b * 2);
+	const start = (t: number) => ({ t, restart: false });
+	const restart = (t: number) => ({ t, restart: true });
+
+	it('splits a long section where a sung block begins a phrase into it', () => {
+		// Thinkin Bout You: one groove, the pre-chorus repeated four bars in and the hook
+		// restarting eight bars in, sung a third of a bar early.
+		const segments: Segment[] = [
+			{ startBar: 0, endBar: 2, kind: 'intro', group: 0 },
+			{ startBar: 2, endBar: 18, kind: 'chorus', group: 1 },
+			{ startBar: 18, endBar: 40, kind: 'verse', group: 1 }
+		];
+		const hooks = [start(12.1), restart(19.3), start(44.2), restart(51.4)];
+		expect(splitAtHooks(segments, hooks, barTime, 60)).toEqual([10, 26]);
+		expect(segments.map((s) => [s.kind, s.startBar, s.endBar])).toEqual([
+			['intro', 0, 2],
+			['chorus', 2, 10],
+			['chorus', 10, 18],
+			['verse', 18, 26],
+			['chorus', 26, 40]
+		]);
+	});
+
+	it('ignores short sections, edges, club kinds and hooks off the eight-bar grid', () => {
+		const segments: Segment[] = [
+			{ startBar: 0, endBar: 10, kind: 'chorus', group: 0 },
+			{ startBar: 10, endBar: 30, kind: 'chorus', group: 1 },
+			{ startBar: 30, endBar: 50, kind: 'drop', group: 2 }
+		];
+		const hooks = [start(8.2), start(28.1), restart(32.5), start(56.2), start(76.1)];
+		expect(splitAtHooks(segments, hooks, barTime, 60)).toEqual([]);
+		expect(segments).toHaveLength(3);
+	});
+});
+
+describe('promoteChorusesFromLyrics: siblings', () => {
+	it('promotes the loud verse that is the sung chorus\'s own material', () => {
+		// Someone You Loved: the second chorus carries none of the repeated lines the file has
+		// for the first and last, and is the same material at the same energy.
+		const spans = [
+			{ start: 40, end: 56 },
+			{ start: 136, end: 152 }
+		];
+		const segments: Segment[] = [
+			{ startBar: 0, endBar: 20, kind: 'verse', group: 1 },
+			{ startBar: 20, endBar: 28, kind: 'verse', group: 3 },
+			{ startBar: 28, endBar: 44, kind: 'verse', group: 1 },
+			{ startBar: 44, endBar: 60, kind: 'verse', group: 3 },
+			{ startBar: 60, endBar: 68, kind: 'verse', group: 4 },
+			{ startBar: 68, endBar: 76, kind: 'verse', group: 3 }
+		];
+		promoteChorusesFromLyrics(segments, [0.5, 0.9, 0.6, 0.89, 0.5, 0.93], (bar) => bar * 2, spans);
+		expect(segments.map((s) => s.kind)).toEqual(['verse', 'chorus', 'verse', 'chorus', 'verse', 'chorus']);
+	});
+
+	it('does not promote a quiet passage of the chorus material', () => {
+		const spans = [{ start: 40, end: 56 }, { start: 136, end: 152 }];
+		const segments: Segment[] = [
+			{ startBar: 20, endBar: 28, kind: 'verse', group: 3 },
+			{ startBar: 44, endBar: 60, kind: 'verse', group: 3 },
+			{ startBar: 68, endBar: 76, kind: 'verse', group: 3 }
+		];
+		promoteChorusesFromLyrics(segments, [0.9, 0.4, 0.93], (bar) => bar * 2, spans);
+		expect(segments.map((s) => s.kind)).toEqual(['chorus', 'verse', 'chorus']);
+	});
+});
+
+describe('promoteChorusesFromLyrics: the bed', () => {
+	it('leaves a rap record\'s loop verses alone when the hook is the minority of the material', () => {
+		// HUMBLE.: eight loud sections on one loop, two of them the sung hook.
+		const spans = [{ start: 136, end: 152 }, { start: 184, end: 200 }];
+		const segments: Segment[] = Array.from({ length: 8 }, (_, k) => ({ startBar: 4 + k * 12, endBar: 16 + k * 12, kind: 'verse' as const, group: 1 }));
+		promoteChorusesFromLyrics(segments, segments.map(() => 0.9), (bar) => bar * 2, spans);
+		expect(segments.filter((s) => s.kind === 'chorus')).toHaveLength(2);
 	});
 });

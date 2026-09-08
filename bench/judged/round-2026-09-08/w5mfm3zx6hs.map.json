@@ -1,0 +1,84 @@
+{
+	"trackId": "w5mfm3zx6hs",
+	"title": "Runaway (U & I)",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 1.06,
+			"endTime": 4.52,
+			"startBar": 0,
+			"endBar": 2
+		},
+		{
+			"kind": "groove",
+			"startTime": 4.52,
+			"endTime": 39.28,
+			"startBar": 2,
+			"endBar": 22
+		},
+		{
+			"kind": "build",
+			"startTime": 39.28,
+			"endTime": 46.24,
+			"startBar": 22,
+			"endBar": 26
+		},
+		{
+			"kind": "drop",
+			"startTime": 46.24,
+			"endTime": 74.06,
+			"startBar": 26,
+			"endBar": 42
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 74.06,
+			"endTime": 101.92,
+			"startBar": 42,
+			"endBar": 58
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 101.92,
+			"endTime": 108.86,
+			"startBar": 58,
+			"endBar": 62
+		},
+		{
+			"kind": "build",
+			"startTime": 108.86,
+			"endTime": 115.84,
+			"startBar": 62,
+			"endBar": 66
+		},
+		{
+			"kind": "build",
+			"startTime": 115.84,
+			"endTime": 122.78,
+			"startBar": 66,
+			"endBar": 70
+		},
+		{
+			"kind": "drop",
+			"startTime": 122.78,
+			"endTime": 143.64,
+			"startBar": 70,
+			"endBar": 82
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "53e79fb6e6b7c775",
+	"showSeed": 3339458332,
+	"authoredBy": "engine",
+	"updatedAt": 1788836011704,
+	"acceptedAnalysis": {
+		"version": 29,
+		"hash": "53e79fb6e6b7c775",
+		"note": "saved with no section edit: the v29 analysis accepted as it stood"
+	}
+}

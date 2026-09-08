@@ -26,7 +26,7 @@ import { detectDrums, snapTimesToOnsets, type DrumStream } from './drums.ts';
 import { extractFeatures } from './features.ts';
 import { detectMeter, type Meter } from './downbeats.ts';
 import { barStartsAtCuts, deriveGridCuts, resyncedCuts } from './gridedits.ts';
-import { barLinesFrom, phaseSegments } from './downbeatPhase.ts';
+import { acceptedRestarts, barLinesFrom, openingRun, phaseRuns, phaseSegments, type PhaseRun } from './downbeatPhase.ts';
 import { handMapFingerprint, handSectionBars, type HandSection } from './handSections.ts';
 import { judgeSeams, proposeSeams, repairGrid, witnessBarLines } from './movements.ts';
 import { applyHeadLabels, type SectionPosteriors } from './headLabels.ts';
@@ -66,6 +66,8 @@ import {
 	promoteChorusesFromLyrics,
 	snapToHooks,
 	speaksClub,
+	splitAtHooks,
+	sungPhaseShift,
 	toSongVocabulary
 } from './vocabulary.ts';
 
@@ -188,6 +190,8 @@ export interface AnalyzeInput {
 		guard?: GuardDecision[];
 		/** The boundary table after each pass that can move one, in order. */
 		stages?: { name: string; bounds: number[] }[];
+		/** The downbeat phase walk's runs and the restarts the grid took, as beat indices. */
+		phase?: { runs: PhaseRun[]; cuts: number[]; opening: number };
 	};
 }
 
@@ -337,38 +341,58 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	].sort((a, b) => a.t - b.t);
 
 	const phasing =
-		downbeats.length > 2 && movementTimes.length > 0
+		downbeats.length > 2
 			? phaseSegments(grid.beats, downbeats, meter.beatsPerBar, input.phaseResetCost)
 			: null;
-	// A mark says the track is several records, so the FIRST one is owed its own count of one
-	// as much as the others are. Taking the walk's opening phase here and nothing else is what
-	// separates this from re-phasing the library: no bar line moves that a mark did not ask
-	// for, and an unmarked track never reaches this line at all. SICKO MODE's carry is 70.8%
-	// on the meter's phase and 85.8% on the walk's.
-	// Anchored on the walk's segment at the first steady song, not its first segment: a
-	// spoken intro carries hallucinated downbeats the walk fits before restarting at the
-	// song, and the opening phase read there put Melanz's whole first song half a bar off.
-	if (phasing) {
+	const runs = phasing ? phaseRuns(phasing, grid.beats, downbeats, meter.beatsPerBar) : [];
+	if (phasing && movementTimes.length > 0) {
+		// A mark says the track is several records, so the FIRST one is owed its own count of
+		// one as much as the others are. SICKO MODE's carry is 70.8% on the meter's phase and
+		// 85.8% on the walk's. Anchored on the walk's segment at the first steady song, not its
+		// first segment: a spoken intro carries hallucinated downbeats the walk fits before
+		// restarting at the song, and the opening phase read there put Melanz's whole first song
+		// half a bar off.
 		const firstSong = repair.songs.find((song) => song.seconds >= 20 && song.steady >= 0.7);
 		const at = firstSong ? firstSong.fromBeat + Math.floor((firstSong.toBeat - firstSong.fromBeat) / 2) : 0;
 		const covering = [...phasing].reverse().find((seg) => seg.startBeat <= at) ?? phasing[0];
 		barPhase = covering.phase;
+	} else if (runs.length > 0) {
+		// One song: the modal residue is right for nearly every track, and wrong for the one
+		// that opens on another phase for a minute and spends the rest on the modal one (FE!N),
+		// where the first solid run of the model's own downbeats is the count the record starts
+		// on. Read from the runs rather than the modal vote, so a wandering intro cannot
+		// outvote the song (Higher's first minute hedges two phases and reads its drops' one).
+		barPhase = openingRun(runs)?.phase ?? barPhase;
 	}
 	const phaseLines = phasing
 		? barLinesFrom(phasing, grid.beats.length, meter.beatsPerBar)
 		: [];
-	const movementCuts = movementTimes.map(({ t, exact }) => {
+	const movementCuts = movementTimes.flatMap(({ t, exact }) => {
 		const mark = beatAt(t);
-		// A seam the repair placed on a bar line is cut there. The walk counts beats across
-		// the rewritten pause and its lines there name nothing the record plays.
-		if (exact) return mark;
+		if (exact) {
+			// A seam the repair placed on a bar line is cut there: the walk counts beats across
+			// the rewritten pause and its lines there name nothing the record plays. But the
+			// incoming song's count of one is the model's downbeat, and a pickup written across a
+			// pause can miss it by a beat (ROCKSTAR's second half sat a beat early to its end,
+			// where the owner drew two boundaries a beat later): where the walk's next line is
+			// within a bar of the seam and not on it, the beats between are the pickup, cut as one
+			// short bar, and the count runs from the downbeat.
+			const line = phaseLines.find((b) => b > mark && b - mark < meter.beatsPerBar);
+			return line !== undefined && !phaseLines.includes(mark) ? [mark, line] : [mark];
+		}
 		const inReach = phaseLines.filter((b) => Math.abs(b - mark) <= meter.beatsPerBar);
-		if (inReach.length === 0) return mark;
-		return inReach.reduce((best, b) => (Math.abs(b - mark) < Math.abs(best - mark) ? b : best));
+		if (inReach.length === 0) return [mark];
+		return [inReach.reduce((best, b) => (Math.abs(b - mark) < Math.abs(best - mark) ? b : best))];
 	});
+	// Where the record moves its bar line inside one song, read from the model's own downbeats
+	// under the strictness `acceptedRestarts` documents: a solid run on a new residue that the
+	// run before did not already carry and that a half-bar hesitation does not explain. Off
+	// under a hand-drawn map, whose off-grid boundaries already say where the grid is cut.
+	const walkCuts = input.handSections ? [] : acceptedRestarts(runs, meter.beatsPerBar, movementCuts);
+	if (input.probe) input.probe.phase = { runs, cuts: walkCuts, opening: barPhase };
 	const drawn = (input.handSections ?? []).slice(1);
 	const cuts = resyncedCuts(
-		[...mapCuts, ...movementCuts],
+		[...mapCuts, ...movementCuts, ...walkCuts],
 		drawn.filter((s) => s.offGrid).map((s) => beatAt(s.startTime)),
 		drawn.map((s) => beatAt(s.startTime)),
 		grid.beats.length,
@@ -475,7 +499,9 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		tuning.pickupGuard,
 		tuning.fillVeto,
 		input.probe?.guard,
-		held
+		held,
+		tuning.quietImpactPhysics,
+		tuning.straddle
 	);
 	stage('refined', rough);
 	// Only the decisive arrivals earn pin status; a marginal move may correct its own
@@ -512,6 +538,15 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// miss it - on the DP path only, since a map has already said where every boundary goes.
 	for (const b of movementBars) pinned.add(b);
 	const dpBounds = rephaseToPins(rough, pinned, bars.count, tuning, movePinned);
+	// The singer's phrase grid, where the lyrics prove one and the table sits a bar ahead of
+	// it. After the pins and the re-phasing, because it overrides stays: a stay pin is decisive
+	// about its own bar and says nothing about which bar the owner draws the section on.
+	if (tuning.sungPhase && !hand && !isClubFamily(input.context?.genreFamily ?? null)) {
+		for (const b of sungPhaseShift(dpBounds, hooks, rawKicks, bars.count, new Set([...movePinned, ...movementBars]))) {
+			pinned.add(b);
+		}
+	}
+	stage('sung', dpBounds);
 	const bounds =
 		hand?.bounds ?? [...new Set([...dpBounds, ...movementBars])].sort((a, b) => a - b);
 	const groups = groupSegments(sim, bars.count, bounds, movementBars);
@@ -615,6 +650,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// it, and a drop downbeat left at a bar its section has moved off - or been demoted
 	// off - fires the show's biggest cue in the wrong section.
 	const arrivals = arrivalStrengths(bars, rawKicks, vocal, hooks, settle, tuning.settleWeight, tuning.settleGate, tuning.bassWeight, tuning.kitMinKicks);
+	const fills = fillBars(bars);
 	if (input.probe) {
 		Object.assign(input.probe, {
 			arrivals,
@@ -622,17 +658,25 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 			kicks,
 			settle,
 			components: arrivalComponents(bars, rawKicks, vocal, hooks, tuning.kitMinKicks),
-			fills: fillBars(bars)
+			fills
 		});
 	}
+	// Where a sung block starts a phrase or more inside a long chorus or verse, that is a
+	// section the material-reading DP could not see; split first, so the snap below reads the
+	// finished table.
+	const sungStarts = lyricLines && lyricLines.length > 0 ? hookStarts(lyricLines) : [];
+	const hookSplits =
+		!hand && tuning.hookSplit && sungStarts.length > 0
+			? splitAtHooks(plan.segments, sungStarts, bars.time, bars.count)
+			: [];
 	// The snap's veto reads the physics-only arrivals computed above: the sung evidence is
 	// the very thing under adjudication, and with it in the score a hook bar can never read
 	// as "nothing arrives here" - which is exactly what a pickup sung over silence is.
 	const snapMoves =
-		!hand && lyricLines && lyricLines.length > 0
+		!hand && sungStarts.length > 0
 			? snapToHooks(
 					plan.segments,
-					hookStarts(lyricLines),
+					sungStarts,
 					bars.time,
 					bars.count,
 					2,
@@ -640,7 +684,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 					fixed,
 					tuning.hookSnapReach,
 					tuning.hookSnapStrict,
-					tuning.pickupGuard ? offGridMoveGuard(bars, rawKicks, tuning.kitMinKicks) : undefined
+					tuning.pickupGuard ? offGridMoveGuard(bars, rawKicks, tuning.kitMinKicks, tuning.quietImpactPhysics) : undefined
 				)
 			: [];
 	// The last structural word: seams between same-kind sections that nothing arrives on
@@ -656,11 +700,11 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	const rawSectionCount = plan.segments.length;
 	const preConsolidation = plan.segments.map((s) => ({ ...s }));
 	if (!hand) {
-		const drawn = new Set([...movementBars, ...snapMoves.map((m) => m.to), ...fixed]);
+		const drawn = new Set([...movementBars, ...snapMoves.map((m) => m.to), ...hookSplits, ...fixed]);
 		const keep = new Set([...pinned, ...drawn]);
 		for (const b of pullOntoReturn(plan.segments, arrivals, kicks, tuning.refineFloor, keep)) keep.add(b);
 		const lowBand = Float32Array.from({ length: bars.count }, (_, b) => plan.bands[b * NUM_BANDS + 1]);
-		for (const b of pushOntoDeparture(plan.segments, kicks, lowBand, plan.energy, drawn)) keep.add(b);
+		for (const b of pushOntoDeparture(plan.segments, kicks, lowBand, plan.energy, drawn, tuning.departFromFill ? fills : null)) keep.add(b);
 		stage('pulled', plan.segments.map((seg) => seg.startBar));
 		consolidateSections(plan.segments, arrivals, sim, bars.count, tuning.consolidateFloor, plan.energy, keep);
 	}
@@ -1020,9 +1064,14 @@ function meterFromDownbeats(beats: Float64Array, downbeats: readonly number[]): 
 	// A downbeat every 8 or 6 beats is a 4- or 3-beat bar heard at double length, which is
 	// what a metrical-level correction produces: doubling the beats doubles the model's
 	// downbeat spacing, and an 8-beat bar is not a meter this repertoire has. Folding keeps
-	// the phase valid because a downbeat 8 beats apart is still on the 4-beat grid.
+	// the phase valid because a downbeat 8 beats apart is still on the 4-beat grid. A
+	// downbeat every 2 beats is the other half of the same hedge: on a slow record the model
+	// alternates 2 and 4 (Thinkin Bout You at 65, 1.8 s against 3.7 s), real 2/4 barely
+	// exists in this repertoire, and a 2-beat bar halves every phrase the engine writes to.
+	// Read in four; the vote below settles which half the 4-beat downbeats favour.
 	if (beatsPerBar === 8 || beatsPerBar === 12) beatsPerBar = 4;
 	else if (beatsPerBar === 6) beatsPerBar = 3;
+	else if (beatsPerBar === 2) beatsPerBar = 4;
 
 	// The phase the most downbeats already agree with, which is the only thing a residue class
 	// can mean once the spacing is fixed.

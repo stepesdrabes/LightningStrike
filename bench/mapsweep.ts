@@ -60,7 +60,18 @@ const VARIANTS: Record<string, Partial<StructureTuning>> = {
 	'lambda-2.2': { lambda: 2.2 },
 	'pickup-fill-lambda-1.6': { pickupGuard: true, fillVeto: true, lambda: 1.6 },
 	'stay-3': { stayPinScore: 3 },
-	'pickup-fill-stay-3': { pickupGuard: true, fillVeto: true, stayPinScore: 3 }
+	'pickup-fill-stay-3': { pickupGuard: true, fillVeto: true, stayPinScore: 3 },
+	// The 2026-09-08 round: the quiet-floor arrival's own physics, the DP's two-bar straddle
+	// of an arrival, a build opened on a fill moving onto the departure, and the singer's
+	// phrase grid. Each row switches one back off; `before-2026-09-08` all four.
+	'quiet-2': { quietImpactPhysics: 2 },
+	'nostraddle': { straddle: false },
+	'nodepartfill': { departFromFill: false },
+	'nosung': { sungPhase: false },
+	// Off by default: Thinkin Bout You +2 and goosebumps +1 against seven phantom seams on
+	// accepted corpus-1 tables (read the extra column).
+	'hooksplit': { hookSplit: true },
+	'before-2026-09-08': { quietImpactPhysics: 2, straddle: false, departFromFill: false, sungPhase: false }
 };
 const wanted = flag('variant')?.split(',') ?? Object.keys(VARIANTS);
 
@@ -73,6 +84,12 @@ interface Row {
 	early: number;
 	late: number;
 	labelWrong: number;
+	/**
+	 * Analysis boundaries no owner boundary sits within 0.6 s of: the phantom splits. Not a
+	 * miss - the hit count reads the owner's boundaries - but on an accepted row every one is
+	 * a seam the owner did not hear, and a rule that gains hits by splitting shows here.
+	 */
+	extra: number;
 	deltas: number[];
 }
 
@@ -147,7 +164,10 @@ for (const f of maps) {
 			tuning
 		});
 		const barSeconds = (analysis.tempo.barTimes[analysis.tempo.barTimes.length - 1] - analysis.tempo.barTimes[0]) / Math.max(1, analysis.tempo.barTimes.length - 1);
-		const row: Row = { id, title: blob.title, accepted: !!map.acceptedAnalysis, hits: 0, total: map.sections.length, early: 0, late: 0, labelWrong: 0, deltas: [] };
+		const row: Row = { id, title: blob.title, accepted: !!map.acceptedAnalysis, hits: 0, total: map.sections.length, early: 0, late: 0, labelWrong: 0, extra: 0, deltas: [] };
+		for (const s of analysis.sections) {
+			if (s.startBar > 0 && !map.sections.some((own) => Math.abs(own.startTime - s.startTime) <= HIT_S)) row.extra++;
+		}
 		for (const own of map.sections) {
 			const near = analysis.sections.reduce((best, s) => (Math.abs(s.startTime - own.startTime) < Math.abs(best.startTime - own.startTime) ? s : best));
 			const d = near.startTime - own.startTime;
@@ -160,11 +180,11 @@ for (const f of maps) {
 		}
 		results.set(name, [...(results.get(name) ?? []), row]);
 	}
-	console.log(`${id}  ${blob.title.slice(0, 36)}  ${wanted.map((n) => `${n}:${results.get(n)!.at(-1)!.hits}/${map.sections.length}`).join('  ')}`);
+	console.log(`${id}  ${blob.title.slice(0, 36)}  ${wanted.map((n) => { const r = results.get(n)!.at(-1)!; return `${n}:${r.hits}/${map.sections.length}${r.extra ? `+${r.extra}` : ''}`; }).join('  ')}`);
 }
 if (drumModel) await drumModel.close();
 
-console.log('\nvariant                  hits/total  early  late  label-wrong  regressions-on-accepted');
+console.log('\nvariant                  hits/total  early  late  label-wrong  extra(accepted)  regressions-on-accepted');
 const base = results.get('current');
 for (const name of wanted) {
 	const rows = results.get(name) ?? [];
@@ -173,12 +193,14 @@ for (const name of wanted) {
 	const early = rows.reduce((a, r) => a + r.early, 0);
 	const late = rows.reduce((a, r) => a + r.late, 0);
 	const wrong = rows.reduce((a, r) => a + r.labelWrong, 0);
+	const extra = rows.reduce((a, r) => a + r.extra, 0);
+	const extraAccepted = rows.reduce((a, r) => a + (r.accepted ? r.extra : 0), 0);
 	let regressions = 0;
 	for (const r of rows) {
 		const b = base?.find((x) => x.id === r.id);
 		if (r.accepted && b && r.hits < b.hits) regressions++;
 	}
-	console.log(`${name.padEnd(24)} ${String(hits).padStart(4)}/${total}   ${String(early).padStart(4)}  ${String(late).padStart(4)}  ${String(wrong).padStart(6)}       ${regressions}`);
+	console.log(`${name.padEnd(24)} ${String(hits).padStart(4)}/${total}   ${String(early).padStart(4)}  ${String(late).padStart(4)}  ${String(wrong).padStart(6)}     ${String(extra).padStart(4)}(${extraAccepted})          ${regressions}`);
 }
 const out = join(import.meta.dirname, 'reports', 'mapsweep.json');
 mkdirSync(join(import.meta.dirname, 'reports'), { recursive: true });

@@ -1,0 +1,147 @@
+{
+	"trackId": "x12TeW7LU2E",
+	"title": "Higher",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "The effects in techno are just off.. I don’t know what more to say about it tbh - we will have to work on techno I think.",
+	"sections": [
+		{
+			"kind": "groove",
+			"startTime": 0.2,
+			"endTime": 40.78,
+			"startBar": 0,
+			"endBar": 23
+		},
+		{
+			"kind": "drop",
+			"startTime": 40.78,
+			"endTime": 56.68,
+			"startBar": 23,
+			"endBar": 32
+		},
+		{
+			"kind": "drop",
+			"startTime": 56.68,
+			"endTime": 83.14,
+			"startBar": 32,
+			"endBar": 47
+		},
+		{
+			"kind": "drop",
+			"startTime": 83.14,
+			"endTime": 113.14,
+			"startBar": 47,
+			"endBar": 64
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 113.14,
+			"endTime": 118.42,
+			"startBar": 64,
+			"endBar": 67
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 118.42,
+			"endTime": 125.48,
+			"startBar": 67,
+			"endBar": 71
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 125.48,
+			"endTime": 132.56,
+			"startBar": 71,
+			"endBar": 75
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 132.56,
+			"endTime": 139.62,
+			"startBar": 75,
+			"endBar": 79
+		},
+		{
+			"kind": "build",
+			"startTime": 139.62,
+			"endTime": 146.68,
+			"startBar": 79,
+			"endBar": 83
+		},
+		{
+			"kind": "drop",
+			"startTime": 146.68,
+			"endTime": 153.74,
+			"startBar": 83,
+			"endBar": 87
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 153.74,
+			"endTime": 160.78,
+			"startBar": 87,
+			"endBar": 91
+		},
+		{
+			"kind": "build",
+			"startTime": 160.78,
+			"endTime": 167.86,
+			"startBar": 91,
+			"endBar": 95
+		},
+		{
+			"kind": "void",
+			"startTime": 167.86,
+			"endTime": 169.62,
+			"startBar": 95,
+			"endBar": 96
+		},
+		{
+			"kind": "drop",
+			"startTime": 169.62,
+			"endTime": 210.2,
+			"startBar": 96,
+			"endBar": 119
+		},
+		{
+			"kind": "void",
+			"startTime": 210.2,
+			"endTime": 211.96,
+			"startBar": 119,
+			"endBar": 120
+		},
+		{
+			"kind": "drop",
+			"startTime": 211.96,
+			"endTime": 226.08,
+			"startBar": 120,
+			"endBar": 128
+		},
+		{
+			"kind": "drop",
+			"startTime": 226.08,
+			"endTime": 254.32,
+			"startBar": 128,
+			"endBar": 144
+		},
+		{
+			"kind": "drop",
+			"startTime": 254.32,
+			"endTime": 268.42,
+			"startBar": 144,
+			"endBar": 152
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "fd3a63cdad750468",
+	"showSeed": 2279462484,
+	"authoredBy": "engine",
+	"updatedAt": 1788868555045,
+	"acceptedAnalysis": {
+		"version": 29,
+		"hash": "fd3a63cdad750468",
+		"note": "saved with no section edit: the v29 analysis accepted as it stood"
+	}
+}

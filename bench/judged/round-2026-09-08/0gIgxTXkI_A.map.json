@@ -1,0 +1,70 @@
+{
+	"trackId": "0gIgxTXkI_A",
+	"title": "Faster n Harder",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.202,
+			"endTime": 7.001,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 7.001,
+			"endTime": 13.801,
+			"startBar": 4,
+			"endBar": 8
+		},
+		{
+			"kind": "build",
+			"startTime": 13.801,
+			"endTime": 27.46,
+			"startBar": 8,
+			"endBar": 16
+		},
+		{
+			"kind": "drop",
+			"startTime": 27.46,
+			"endTime": 54.9,
+			"startBar": 16,
+			"endBar": 32
+		},
+		{
+			"kind": "groove",
+			"startTime": 54.9,
+			"endTime": 82.32,
+			"startBar": 32,
+			"endBar": 48
+		},
+		{
+			"kind": "drop",
+			"startTime": 82.32,
+			"endTime": 115.94,
+			"startBar": 48,
+			"endBar": 68
+		},
+		{
+			"kind": "outro",
+			"startTime": 115.94,
+			"endTime": 120.92,
+			"startBar": 68,
+			"endBar": 71
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "2501cf4fd1e190a8",
+	"showSeed": 2808118729,
+	"authoredBy": "engine",
+	"updatedAt": 1788868359517,
+	"acceptedAnalysis": {
+		"version": 29,
+		"hash": "2501cf4fd1e190a8",
+		"note": "saved with no section edit: the v29 analysis accepted as it stood"
+	}
+}

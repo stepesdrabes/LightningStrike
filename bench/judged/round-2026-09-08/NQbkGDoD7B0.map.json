@@ -1,0 +1,128 @@
+{
+	"trackId": "NQbkGDoD7B0",
+	"title": "SICKO MODE",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.046,
+			"endTime": 27.711,
+			"startBar": 0,
+			"endBar": 16
+		},
+		{
+			"kind": "chorus",
+			"startTime": 27.711,
+			"endTime": 41.48,
+			"startBar": 16,
+			"endBar": 24
+		},
+		{
+			"kind": "build",
+			"startTime": 41.48,
+			"endTime": 53.54,
+			"startBar": 24,
+			"endBar": 31
+		},
+		{
+			"kind": "chorus",
+			"startTime": 53.54,
+			"endTime": 60.38,
+			"startBar": 31,
+			"endBar": 35
+		},
+		{
+			"kind": "verse",
+			"startTime": 60.38,
+			"endTime": 100.64,
+			"startBar": 35,
+			"endBar": 48
+		},
+		{
+			"kind": "build",
+			"startTime": 100.64,
+			"endTime": 109.92,
+			"startBar": 48,
+			"endBar": 52
+		},
+		{
+			"kind": "chorus",
+			"startTime": 109.92,
+			"endTime": 156.38,
+			"startBar": 52,
+			"endBar": 67
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 156.38,
+			"endTime": 165.66,
+			"startBar": 67,
+			"endBar": 70
+		},
+		{
+			"kind": "verse",
+			"startTime": 165.66,
+			"endTime": 176.56,
+			"startBar": 70,
+			"endBar": 74
+		},
+		{
+			"kind": "intro",
+			"startTime": 176.56,
+			"endTime": 188.94,
+			"startBar": 74,
+			"endBar": 78
+		},
+		{
+			"kind": "build",
+			"startTime": 188.94,
+			"endTime": 201.32,
+			"startBar": 78,
+			"endBar": 82
+		},
+		{
+			"kind": "chorus",
+			"startTime": 201.32,
+			"endTime": 226.1,
+			"startBar": 82,
+			"endBar": 90
+		},
+		{
+			"kind": "chorus",
+			"startTime": 226.1,
+			"endTime": 238.48,
+			"startBar": 90,
+			"endBar": 94
+		},
+		{
+			"kind": "chorus",
+			"startTime": 238.48,
+			"endTime": 288.04,
+			"startBar": 94,
+			"endBar": 110
+		},
+		{
+			"kind": "chorus",
+			"startTime": 288.04,
+			"endTime": 300.44,
+			"startBar": 110,
+			"endBar": 114
+		},
+		{
+			"kind": "outro",
+			"startTime": 300.44,
+			"endTime": 312.82,
+			"startBar": 114,
+			"endBar": 118
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "a83f081c4f2f9e51",
+	"showSeed": 3466303507,
+	"authoredBy": "engine",
+	"updatedAt": 1788869012027
+}

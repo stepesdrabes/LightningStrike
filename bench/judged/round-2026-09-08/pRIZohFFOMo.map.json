@@ -1,0 +1,91 @@
+{
+	"trackId": "pRIZohFFOMo",
+	"title": "Someone You Loved",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "The only thing I would say… (applies to almost EVERY song) -> the thing I am mainly judging is the segmentation boundaries, not the labels. For example here, chorus should be there more times, etc… (so labels are NOT correct 100% (but they are also very good), but sections is the main thing now. And they are starting to be really good.)",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.16,
+			"endTime": 8.88,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "verse",
+			"startTime": 8.88,
+			"endTime": 24.16,
+			"startBar": 4,
+			"endBar": 11
+		},
+		{
+			"kind": "verse",
+			"startTime": 24.16,
+			"endTime": 43.8,
+			"startBar": 11,
+			"endBar": 20
+		},
+		{
+			"kind": "chorus",
+			"startTime": 43.8,
+			"endTime": 61.26,
+			"startBar": 20,
+			"endBar": 28
+		},
+		{
+			"kind": "verse",
+			"startTime": 61.26,
+			"endTime": 76.52,
+			"startBar": 28,
+			"endBar": 35
+		},
+		{
+			"kind": "verse",
+			"startTime": 76.52,
+			"endTime": 96.16,
+			"startBar": 35,
+			"endBar": 44
+		},
+		{
+			"kind": "verse",
+			"startTime": 96.16,
+			"endTime": 131.08,
+			"startBar": 44,
+			"endBar": 60
+		},
+		{
+			"kind": "verse",
+			"startTime": 131.08,
+			"endTime": 148.54,
+			"startBar": 60,
+			"endBar": 68
+		},
+		{
+			"kind": "chorus",
+			"startTime": 148.54,
+			"endTime": 166,
+			"startBar": 68,
+			"endBar": 76
+		},
+		{
+			"kind": "outro",
+			"startTime": 166,
+			"endTime": 172.72,
+			"startBar": 76,
+			"endBar": 79
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "df7bd7183bc8a625",
+	"showSeed": 1220907950,
+	"authoredBy": "engine",
+	"updatedAt": 1788868855564,
+	"acceptedAnalysis": {
+		"version": 29,
+		"hash": "df7bd7183bc8a625",
+		"note": "saved with no section edit: the v29 analysis accepted as it stood"
+	}
+}

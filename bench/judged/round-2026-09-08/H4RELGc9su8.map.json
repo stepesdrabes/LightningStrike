@@ -1,0 +1,133 @@
+{
+	"trackId": "H4RELGc9su8",
+	"title": "HUMBLE.",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 1.215,
+			"endTime": 7.619,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "verse",
+			"startTime": 7.619,
+			"endTime": 46,
+			"startBar": 4,
+			"endBar": 28
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 46,
+			"endTime": 49.2,
+			"startBar": 28,
+			"endBar": 30
+		},
+		{
+			"kind": "verse",
+			"startTime": 49.2,
+			"endTime": 65.18,
+			"startBar": 30,
+			"endBar": 40
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 65.18,
+			"endTime": 68.4,
+			"startBar": 40,
+			"endBar": 42
+		},
+		{
+			"kind": "chorus",
+			"startTime": 68.4,
+			"endTime": 77.96,
+			"startBar": 42,
+			"endBar": 48
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 77.96,
+			"endTime": 81.2,
+			"startBar": 48,
+			"endBar": 50
+		},
+		{
+			"kind": "verse",
+			"startTime": 81.2,
+			"endTime": 97.22,
+			"startBar": 50,
+			"endBar": 60
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 97.22,
+			"endTime": 100.4,
+			"startBar": 60,
+			"endBar": 62
+		},
+		{
+			"kind": "verse",
+			"startTime": 100.4,
+			"endTime": 122.8,
+			"startBar": 62,
+			"endBar": 76
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 122.8,
+			"endTime": 126,
+			"startBar": 76,
+			"endBar": 78
+		},
+		{
+			"kind": "verse",
+			"startTime": 126,
+			"endTime": 142,
+			"startBar": 78,
+			"endBar": 88
+		},
+		{
+			"kind": "build",
+			"startTime": 142,
+			"endTime": 145.2,
+			"startBar": 88,
+			"endBar": 90
+		},
+		{
+			"kind": "chorus",
+			"startTime": 145.2,
+			"endTime": 154.82,
+			"startBar": 90,
+			"endBar": 96
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 154.82,
+			"endTime": 158.02,
+			"startBar": 96,
+			"endBar": 98
+		},
+		{
+			"kind": "verse",
+			"startTime": 158.02,
+			"endTime": 174.02,
+			"startBar": 98,
+			"endBar": 108
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "6006facf2a625373",
+	"showSeed": 164467794,
+	"authoredBy": "engine",
+	"updatedAt": 1788868212123,
+	"acceptedAnalysis": {
+		"version": 29,
+		"hash": "6006facf2a625373",
+		"note": "saved with no section edit: the v29 analysis accepted as it stood"
+	}
+}

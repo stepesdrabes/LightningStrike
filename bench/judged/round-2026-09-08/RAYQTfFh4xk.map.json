@@ -1,0 +1,105 @@
+{
+	"trackId": "RAYQTfFh4xk",
+	"title": "Le Freak",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 2.3,
+			"endTime": 18.54,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "build",
+			"startTime": 18.54,
+			"endTime": 34.74,
+			"startBar": 8,
+			"endBar": 16
+		},
+		{
+			"kind": "chorus",
+			"startTime": 34.74,
+			"endTime": 67.32,
+			"startBar": 16,
+			"endBar": 32
+		},
+		{
+			"kind": "verse",
+			"startTime": 67.32,
+			"endTime": 99.72,
+			"startBar": 32,
+			"endBar": 48
+		},
+		{
+			"kind": "chorus",
+			"startTime": 99.72,
+			"endTime": 132.22,
+			"startBar": 48,
+			"endBar": 64
+		},
+		{
+			"kind": "verse",
+			"startTime": 132.22,
+			"endTime": 164.64,
+			"startBar": 64,
+			"endBar": 80
+		},
+		{
+			"kind": "chorus",
+			"startTime": 164.64,
+			"endTime": 261.7,
+			"startBar": 80,
+			"endBar": 128
+		},
+		{
+			"kind": "verse",
+			"startTime": 261.7,
+			"endTime": 291.9,
+			"startBar": 128,
+			"endBar": 143
+		},
+		{
+			"kind": "chorus",
+			"startTime": 291.9,
+			"endTime": 308.02,
+			"startBar": 143,
+			"endBar": 151
+		},
+		{
+			"kind": "chorus",
+			"startTime": 308.02,
+			"endTime": 314.06,
+			"startBar": 151,
+			"endBar": 154
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 314.06,
+			"endTime": 322.1,
+			"startBar": 154,
+			"endBar": 158
+		},
+		{
+			"kind": "outro",
+			"startTime": 322.1,
+			"endTime": 326.12,
+			"startBar": 158,
+			"endBar": 160
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "501cff3a57aea33b",
+	"showSeed": 2766866691,
+	"authoredBy": "engine",
+	"updatedAt": 1788868781131,
+	"acceptedAnalysis": {
+		"version": 29,
+		"hash": "501cff3a57aea33b",
+		"note": "saved with no section edit: the v29 analysis accepted as it stood"
+	}
+}

@@ -1,0 +1,109 @@
+{
+	"trackId": "ZD6rXLXZOEI",
+	"title": "bad guy",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "verse",
+			"startTime": 0,
+			"endTime": 40.88,
+			"startBar": 0,
+			"endBar": 23
+		},
+		{
+			"kind": "void",
+			"startTime": 40.88,
+			"endTime": 42.64,
+			"startBar": 23,
+			"endBar": 24
+		},
+		{
+			"kind": "chorus",
+			"startTime": 42.64,
+			"endTime": 56.88,
+			"startBar": 24,
+			"endBar": 32
+		},
+		{
+			"kind": "build",
+			"startTime": 56.88,
+			"endTime": 60.42,
+			"startBar": 32,
+			"endBar": 34
+		},
+		{
+			"kind": "chorus",
+			"startTime": 60.42,
+			"endTime": 74.64,
+			"startBar": 34,
+			"endBar": 42
+		},
+		{
+			"kind": "build",
+			"startTime": 74.64,
+			"endTime": 88.86,
+			"startBar": 42,
+			"endBar": 50
+		},
+		{
+			"kind": "chorus",
+			"startTime": 88.86,
+			"endTime": 117.32,
+			"startBar": 50,
+			"endBar": 66
+		},
+		{
+			"kind": "build",
+			"startTime": 117.32,
+			"endTime": 120.86,
+			"startBar": 66,
+			"endBar": 68
+		},
+		{
+			"kind": "chorus",
+			"startTime": 120.86,
+			"endTime": 147.54,
+			"startBar": 68,
+			"endBar": 83
+		},
+		{
+			"kind": "intro",
+			"startTime": 147.54,
+			"endTime": 151.11950000000002,
+			"startBar": 83,
+			"endBar": 84.75
+		},
+		{
+			"kind": "verse",
+			"startTime": 151.11950000000002,
+			"endTime": 167.62,
+			"startBar": 84.75,
+			"endBar": 93,
+			"offGrid": true
+		},
+		{
+			"kind": "build",
+			"startTime": 167.62,
+			"endTime": 175.14,
+			"startBar": 93,
+			"endBar": 97.01
+		},
+		{
+			"kind": "chorus",
+			"startTime": 175.14,
+			"endTime": 189.621,
+			"startBar": 97.01,
+			"endBar": 104.251,
+			"offGrid": true
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "424160a7a35e5236",
+	"showSeed": 2730245322,
+	"authoredBy": "engine",
+	"updatedAt": 1788835674286
+}

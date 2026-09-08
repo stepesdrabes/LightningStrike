@@ -1,0 +1,105 @@
+{
+	"trackId": "I-HWMiOM8uE",
+	"title": "Až na měsíc",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.38,
+			"endTime": 17.08,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "build",
+			"startTime": 17.08,
+			"endTime": 33.74,
+			"startBar": 8,
+			"endBar": 16
+		},
+		{
+			"kind": "chorus",
+			"startTime": 33.74,
+			"endTime": 83.84,
+			"startBar": 16,
+			"endBar": 40
+		},
+		{
+			"kind": "build",
+			"startTime": 83.84,
+			"endTime": 100.54,
+			"startBar": 40,
+			"endBar": 48
+		},
+		{
+			"kind": "chorus",
+			"startTime": 100.54,
+			"endTime": 117.24,
+			"startBar": 48,
+			"endBar": 56
+		},
+		{
+			"kind": "verse",
+			"startTime": 117.24,
+			"endTime": 125.58,
+			"startBar": 56,
+			"endBar": 60
+		},
+		{
+			"kind": "chorus",
+			"startTime": 125.58,
+			"endTime": 146.44,
+			"startBar": 60,
+			"endBar": 70
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 146.44,
+			"endTime": 150.66,
+			"startBar": 70,
+			"endBar": 72
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 150.66,
+			"endTime": 167.32,
+			"startBar": 72,
+			"endBar": 80
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 167.32,
+			"endTime": 184.02,
+			"startBar": 80,
+			"endBar": 88
+		},
+		{
+			"kind": "chorus",
+			"startTime": 184.02,
+			"endTime": 200.72,
+			"startBar": 88,
+			"endBar": 96
+		},
+		{
+			"kind": "outro",
+			"startTime": 200.72,
+			"endTime": 202.8,
+			"startBar": 96,
+			"endBar": 97
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "2ff075de88d53a5a",
+	"showSeed": 39590645,
+	"authoredBy": "engine",
+	"updatedAt": 1788836140670,
+	"acceptedAnalysis": {
+		"version": 29,
+		"hash": "2ff075de88d53a5a",
+		"note": "saved with no section edit: the v29 analysis accepted as it stood"
+	}
+}

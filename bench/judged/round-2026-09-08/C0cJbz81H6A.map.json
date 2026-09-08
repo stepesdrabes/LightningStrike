@@ -1,0 +1,65 @@
+{
+	"trackId": "C0cJbz81H6A",
+	"title": "Panama",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0,
+			"endTime": 12.02,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "build",
+			"startTime": 12.02,
+			"endTime": 24,
+			"startBar": 4,
+			"endBar": 8
+		},
+		{
+			"kind": "chorus",
+			"startTime": 24,
+			"endTime": 72,
+			"startBar": 8,
+			"endBar": 24
+		},
+		{
+			"kind": "verse",
+			"startTime": 72,
+			"endTime": 84,
+			"startBar": 24,
+			"endBar": 28
+		},
+		{
+			"kind": "verse",
+			"startTime": 84,
+			"endTime": 96,
+			"startBar": 28,
+			"endBar": 32
+		},
+		{
+			"kind": "chorus",
+			"startTime": 96,
+			"endTime": 168,
+			"startBar": 32,
+			"endBar": 56
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 168,
+			"endTime": 177,
+			"startBar": 56,
+			"endBar": 59
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "f4136570cf2ca39b",
+	"showSeed": 3161701292,
+	"authoredBy": "engine",
+	"updatedAt": 1788834491198
+}

@@ -1,0 +1,71 @@
+{
+	"trackId": "sXf02hCe6fc",
+	"title": "Pátky",
+	"rating": 4,
+	"tags": [],
+	"notes": [
+		{
+			"t": 116.5,
+			"bar": 33,
+			"text": "for some reason I CANNOT pin the chorus here- but it should be exactly there"
+		}
+	],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0,
+			"endTime": 6.86,
+			"startBar": 0,
+			"endBar": 2
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 6.86,
+			"endTime": 20.58,
+			"startBar": 2,
+			"endBar": 6
+		},
+		{
+			"kind": "verse",
+			"startTime": 20.58,
+			"endTime": 75.42,
+			"startBar": 6,
+			"endBar": 22
+		},
+		{
+			"kind": "chorus",
+			"startTime": 75.42,
+			"endTime": 102.86,
+			"startBar": 22,
+			"endBar": 30
+		},
+		{
+			"kind": "verse",
+			"startTime": 102.86,
+			"endTime": 117,
+			"startBar": 30,
+			"endBar": 34
+		},
+		{
+			"kind": "chorus",
+			"startTime": 117,
+			"endTime": 171.88,
+			"startBar": 34,
+			"endBar": 50
+		},
+		{
+			"kind": "outro",
+			"startTime": 171.88,
+			"endTime": 182.16,
+			"startBar": 50,
+			"endBar": 53
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "f463e93b1d327d72",
+	"showSeed": 3607624745,
+	"authoredBy": "engine",
+	"updatedAt": 1788835853965
+}

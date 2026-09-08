@@ -1,0 +1,126 @@
+{
+	"trackId": "_LFxr2bUEUY",
+	"title": "Immaterial",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.02,
+			"endTime": 6.9,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 6.9,
+			"endTime": 13.74,
+			"startBar": 4,
+			"endBar": 8
+		},
+		{
+			"kind": "build",
+			"startTime": 13.74,
+			"endTime": 27.44,
+			"startBar": 8,
+			"endBar": 16
+		},
+		{
+			"kind": "drop",
+			"startTime": 27.44,
+			"endTime": 54.86,
+			"startBar": 16,
+			"endBar": 32
+		},
+		{
+			"kind": "groove",
+			"startTime": 54.86,
+			"endTime": 68.58,
+			"startBar": 32,
+			"endBar": 40
+		},
+		{
+			"kind": "build",
+			"startTime": 68.58,
+			"endTime": 78.86,
+			"startBar": 40,
+			"endBar": 46
+		},
+		{
+			"kind": "build",
+			"startTime": 78.86,
+			"endTime": 82.3,
+			"startBar": 46,
+			"endBar": 48
+		},
+		{
+			"kind": "drop",
+			"startTime": 82.3,
+			"endTime": 109.72,
+			"startBar": 48,
+			"endBar": 64
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 109.72,
+			"endTime": 116.58,
+			"startBar": 64,
+			"endBar": 68
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 116.58,
+			"endTime": 123.44,
+			"startBar": 68,
+			"endBar": 72
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 123.44,
+			"endTime": 136.92,
+			"startBar": 72,
+			"endBar": 80
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 136.92,
+			"endTime": 164.58,
+			"startBar": 80,
+			"endBar": 96
+		},
+		{
+			"kind": "drop",
+			"startTime": 164.58,
+			"endTime": 205.74,
+			"startBar": 96,
+			"endBar": 120
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 205.74,
+			"endTime": 219.66,
+			"startBar": 120,
+			"endBar": 128
+		},
+		{
+			"kind": "outro",
+			"startTime": 219.66,
+			"endTime": 228.68,
+			"startBar": 128,
+			"endBar": 133
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "01969f410f7790ad",
+	"showSeed": 2320420301,
+	"authoredBy": "engine",
+	"updatedAt": 1788868455832,
+	"acceptedAnalysis": {
+		"version": 29,
+		"hash": "01969f410f7790ad",
+		"note": "saved with no section edit: the v29 analysis accepted as it stood"
+	}
+}

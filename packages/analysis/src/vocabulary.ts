@@ -1,6 +1,7 @@
-import type { GenreFamily, LyricLine } from '@mv/core';
+import { BARS_PER_PHRASE, PHRASE_BARS, type GenreFamily, type LyricLine } from '@mv/core';
 import type { Segment } from './arrange.ts';
 import { mean } from './dsp/stats.ts';
+import { IMPACT_KICKS, IMPACT_KICK_JUMP } from './structure.ts';
 
 /**
  * Where a repeated-line block BEGINS, as a per-bar flag: on a wall-to-wall vocal track
@@ -23,6 +24,73 @@ export function hookBars(
 		hooks[b] = 1;
 	}
 	return hooks;
+}
+
+/**
+ * Fewest sung hooks that may vote for the phrase phase, and how many must agree: two hooks
+ * agree by chance half the time, three choruses is the smallest song this is for.
+ */
+const SUNG_MIN_HOOKS = 3;
+const SUNG_AGREEMENT = 0.8;
+/**
+ * Share of the interior boundaries that must sit a bar before the sung phase before the shift
+ * is the song's habit rather than one boundary's: an instrumental change a bar ahead of the
+ * singer is a production choice a record makes everywhere or nowhere.
+ */
+const SUNG_MAJORITY = 0.6;
+
+/**
+ * Move the boundaries a song places a bar before its sung phrases onto the phrases, in place.
+ *
+ * The DP reads material and the refine reads arrivals, and on a record whose instrumental
+ * turns a bar ahead of the singer both put every section a bar early: Best Part's chords and
+ * level move at bars 3, 11, 15, 27, 39 and 55 and the owner draws 4, 12, 16, 28, 40 and 56,
+ * where each sung phrase begins. The hooks the lyrics prove (`hookBars`) carry the phrase
+ * phase the owner hears; where three or more agree on one residue and most of the table sits
+ * exactly a bar before it, the table moves. A boundary the kit lands on or leaves at keeps its
+ * bar - the drums arriving or stopping is the record's own line, and the owner draws it there
+ * (Best Part's build at 51, where the kit stops under the bridge) - and so does a movement
+ * start or a boundary an arrival moved and pinned. Song vocabulary only: a club track's hook
+ * lags the drop it belongs to, which is the snap's business.
+ */
+export function sungPhaseShift(
+	bounds: number[],
+	hooks: Uint8Array,
+	kicksPerBar: Int32Array,
+	barCount: number,
+	fixed: ReadonlySet<number>
+): number[] {
+	const sung: number[] = [];
+	for (let b = 1; b < barCount; b++) if (hooks[b] === 1) sung.push(b);
+	if (sung.length < SUNG_MIN_HOOKS) return [];
+	const votes = new Int32Array(PHRASE_BARS);
+	for (const b of sung) votes[b % PHRASE_BARS]++;
+	let phase = 0;
+	for (let k = 1; k < PHRASE_BARS; k++) if (votes[k] > votes[phase]) phase = k;
+	if (votes[phase] < SUNG_AGREEMENT * sung.length) return [];
+	const before = (phase - 1 + PHRASE_BARS) % PHRASE_BARS;
+	const interior = bounds.filter((b) => b > 0 && b < barCount);
+	if (interior.length === 0) return [];
+	const early = interior.filter((b) => b % PHRASE_BARS === before);
+	if (early.length < SUNG_MAJORITY * interior.length) return [];
+
+	const moved: number[] = [];
+	for (let i = 1; i + 1 < bounds.length; i++) {
+		const b = bounds[i];
+		if (b % PHRASE_BARS !== before || fixed.has(b)) continue;
+		const now = kicksPerBar[b] ?? 0;
+		const prev = kicksPerBar[b - 1] ?? 0;
+		// The landing the anacrusis guard reads, not any kick after none: one kick on the bar
+		// before the sung phrase is the drummer's pickup (Best Part's last chorus).
+		const kitLands = (prev <= 1 && now >= IMPACT_KICKS) || now >= prev + IMPACT_KICK_JUMP;
+		const kitLeaves = now === 0 && prev > 0;
+		if (kitLands || kitLeaves) continue;
+		const to = b + 1;
+		if (to >= barCount || bounds.includes(to) || bounds[i + 1] - to < 2) continue;
+		bounds[i] = to;
+		moved.push(to);
+	}
+	return moved;
 }
 
 /**
@@ -196,11 +264,35 @@ export function promoteChorusesFromLyrics(
 ): void {
 	if (spans.length === 0) return;
 	const loudest = Math.max(...segEnergy, 0.001);
+	const loud = (i: number) => segEnergy[i] >= loudest * 0.8;
 	for (let i = 0; i < segments.length; i++) {
 		const s = segments[i];
 		if (s.kind !== 'verse') continue;
 		const overlap = spanOverlap(spans, barTime(s.startBar), barTime(s.endBar));
-		if (overlap >= 0.55 && segEnergy[i] >= loudest * 0.8) s.kind = 'chorus';
+		if (overlap >= 0.55 && loud(i)) s.kind = 'chorus';
+	}
+	// And the same material at the same energy is the same chorus, whatever the sync file
+	// made of its words: Someone You Loved's second chorus shares its group with the first and
+	// the last, sits within a few points of them, and carried none of the repeated lines
+	// because the file words it differently - the owner heard the chorus "there more times".
+	// Only where the sung statements are the MAJORITY of the material's loud statements: on a
+	// rap record the verses and the hook ride one loop and share one group (HUMBLE.'s eight
+	// loud sections, two of them the hook), and there the material is the song's bed, not its
+	// chorus.
+	const groups = new Map<number, { chorus: number; loud: number }>();
+	for (let i = 0; i < segments.length; i++) {
+		const s = segments[i];
+		if (s.group < 0 || !loud(i) || (s.kind !== 'chorus' && s.kind !== 'verse')) continue;
+		const cell = groups.get(s.group) ?? { chorus: 0, loud: 0 };
+		cell.loud++;
+		if (s.kind === 'chorus') cell.chorus++;
+		groups.set(s.group, cell);
+	}
+	for (let i = 0; i < segments.length; i++) {
+		const s = segments[i];
+		if (s.kind !== 'verse' || s.group < 0 || !loud(i)) continue;
+		const cell = groups.get(s.group);
+		if (cell && cell.chorus > 0 && cell.chorus * 2 >= cell.loud) s.kind = 'chorus';
 	}
 }
 
@@ -222,15 +314,18 @@ export function demoteVersesFromLyrics(
 	);
 	const anchored = overlaps.some((o) => o >= 0.5);
 	if (!anchored) return;
-	// A group with any sung member is chorus MATERIAL: an instrumental reprise of the hook
-	// carries no lines and must not be demoted away from its own siblings.
-	const sungGroups = new Set<number>();
+	// A group with a chorus member that KEEPS its label is chorus MATERIAL: an instrumental
+	// reprise of the hook carries no lines and must not be demoted away from its own siblings,
+	// and neither may a second chorus whose lines the sync file words differently (Someone You
+	// Loved's second chorus, the same material as the first and last at the same energy, came
+	// out a verse while they stayed choruses, and the owner heard the chorus "there more times").
+	const kept = new Set<number>();
 	for (let i = 0; i < segments.length; i++) {
-		if (segments[i].kind === 'chorus' && overlaps[i] >= 0.5) sungGroups.add(segments[i].group);
+		if (segments[i].kind === 'chorus' && overlaps[i] >= 0.12) kept.add(segments[i].group);
 	}
 	for (let i = 0; i < segments.length; i++) {
 		if (segments[i].kind !== 'chorus' || overlaps[i] >= 0.12) continue;
-		if (segments[i].group >= 0 && sungGroups.has(segments[i].group)) continue;
+		if (segments[i].group >= 0 && kept.has(segments[i].group)) continue;
 		segments[i].kind = 'verse';
 	}
 }
@@ -301,6 +396,57 @@ export function hookStarts(lyrics: readonly LyricLine[]): HookStart[] {
 export interface HookSnapMove {
 	from: number;
 	to: number;
+}
+
+/**
+ * Fewest bars a section needs before a hook inside it may split it, and how far from either
+ * end the hook has to sit: twelve is a phrase and a half, under which the DP already put its
+ * boundary where it heard a change, and a phrase from each edge keeps the split from being
+ * the refine's one-bar business.
+ */
+const SPLIT_MIN_BARS = 12;
+const SPLIT_EDGE_BARS = 4;
+
+/**
+ * Split long song-vocabulary sections where a sung block begins a whole phrase into them, in
+ * place; returns the bars the new sections begin on.
+ *
+ * The DP reads material and one loop played end to end has none to change: Thinkin Bout You
+ * is one groove for three minutes, and the owner draws its sections where the verses and the
+ * hook begin, eight bars apart. A repeated block beginning eight (or sixteen) bars into a
+ * chorus or a verse is that boundary, whether the lyrics call it the start of a run or a
+ * restart inside one - the pre-chorus and the hook are both repeated lines, and only the
+ * eight-bar grid tells the hook from the refrain four bars before it. The block's bar is the
+ * nearest bar line, not the sung-into rule the snap uses: a singer on a slow record leads the
+ * downbeat by a beat or more ("Or do you not think so far ahead" a third of a bar early).
+ */
+export function splitAtHooks(
+	segments: Segment[],
+	starts: readonly HookStart[],
+	barTime: Float64Array,
+	barCount: number
+): number[] {
+	const out: number[] = [];
+	const barOf = (t: number) => {
+		let b = 0;
+		while (b < barCount - 1 && barTime[b + 1] <= t) b++;
+		const len = barTime[b + 1] - barTime[b];
+		return len > 0 && (t - barTime[b]) / len > 0.5 && b + 1 < barCount ? b + 1 : b;
+	};
+	const hookBars = [...new Set(starts.map((h) => barOf(h.t)))].sort((a, b) => a - b);
+	for (let i = 0; i < segments.length; i++) {
+		const s = segments[i];
+		if (s.kind !== 'chorus' && s.kind !== 'verse') continue;
+		if (s.endBar - s.startBar < SPLIT_MIN_BARS) continue;
+		const b = hookBars.find(
+			(h) => h - s.startBar >= SPLIT_EDGE_BARS && s.endBar - h >= SPLIT_EDGE_BARS && (h - s.startBar) % BARS_PER_PHRASE === 0
+		);
+		if (b === undefined) continue;
+		segments.splice(i + 1, 0, { startBar: b, endBar: s.endBar, kind: 'chorus', group: s.group });
+		s.endBar = b;
+		out.push(b);
+	}
+	return out;
 }
 
 /**

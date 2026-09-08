@@ -1,0 +1,84 @@
+{
+	"trackId": "MLUmX6jf-MM",
+	"title": "Kids (Techno Mix)",
+	"rating": 5,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.18,
+			"endTime": 12.6,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "build",
+			"startTime": 12.6,
+			"endTime": 24.98,
+			"startBar": 8,
+			"endBar": 16
+		},
+		{
+			"kind": "drop",
+			"startTime": 24.98,
+			"endTime": 49.8,
+			"startBar": 16,
+			"endBar": 32
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 49.8,
+			"endTime": 62.16,
+			"startBar": 32,
+			"endBar": 40
+		},
+		{
+			"kind": "groove",
+			"startTime": 62.16,
+			"endTime": 74.52,
+			"startBar": 40,
+			"endBar": 48
+		},
+		{
+			"kind": "groove",
+			"startTime": 74.52,
+			"endTime": 86.92,
+			"startBar": 48,
+			"endBar": 56
+		},
+		{
+			"kind": "build",
+			"startTime": 86.92,
+			"endTime": 99.3,
+			"startBar": 56,
+			"endBar": 64
+		},
+		{
+			"kind": "drop",
+			"startTime": 99.3,
+			"endTime": 124.08,
+			"startBar": 64,
+			"endBar": 80
+		},
+		{
+			"kind": "outro",
+			"startTime": 124.08,
+			"endTime": 130.26,
+			"startBar": 80,
+			"endBar": 84
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "fa6290d064952615",
+	"showSeed": 2774606303,
+	"authoredBy": "engine",
+	"updatedAt": 1788836188751,
+	"acceptedAnalysis": {
+		"version": 29,
+		"hash": "fa6290d064952615",
+		"note": "saved with no section edit: the v29 analysis accepted as it stood"
+	}
+}

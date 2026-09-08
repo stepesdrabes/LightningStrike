@@ -1,0 +1,73 @@
+{
+	"trackId": "_VyTeP-35cs",
+	"title": "Stíny",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.02,
+			"endTime": 10.4,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 10.4,
+			"endTime": 20.76,
+			"startBar": 4,
+			"endBar": 8
+		},
+		{
+			"kind": "build",
+			"startTime": 20.76,
+			"endTime": 31.14,
+			"startBar": 8,
+			"endBar": 12
+		},
+		{
+			"kind": "chorus",
+			"startTime": 31.14,
+			"endTime": 62.26,
+			"startBar": 12,
+			"endBar": 24
+		},
+		{
+			"kind": "build",
+			"startTime": 62.26,
+			"endTime": 75.24,
+			"startBar": 24,
+			"endBar": 29
+		},
+		{
+			"kind": "chorus",
+			"startTime": 75.24,
+			"endTime": 134.92,
+			"startBar": 29,
+			"endBar": 52
+		},
+		{
+			"kind": "chorus",
+			"startTime": 134.92,
+			"endTime": 149.19,
+			"startBar": 52,
+			"endBar": 57.5
+		},
+		{
+			"kind": "chorus",
+			"startTime": 149.19,
+			"endTime": 168.66,
+			"startBar": 57.5,
+			"endBar": 65,
+			"offGrid": true
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "a4d7af2672fb672e",
+	"showSeed": 1400086361,
+	"authoredBy": "engine",
+	"updatedAt": 1788836114962
+}

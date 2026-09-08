@@ -391,8 +391,17 @@ export function beatsPerBarOf(beats: ArrayLike<number>, downbeats: readonly numb
 			bpb = g;
 		}
 	}
-	return bpb === 8 || bpb === 12 ? 4 : bpb === 6 ? 3 : bpb;
+	// Two is the model hedging half bars on a slow record, not a meter: see `meterFromDownbeats`.
+	return bpb === 8 || bpb === 12 || bpb === 2 ? 4 : bpb === 6 ? 3 : bpb;
 }
+
+/**
+ * Downbeats a flipped regime must carry before they may say which of its beats the fold
+ * keeps, and by how much they must favour one parity: two on the other half against one on
+ * the walk's own is a hedge, six against one is the record.
+ */
+const FOLD_MIN_DOWNBEATS = 3;
+const FOLD_MAJORITY = 2;
 
 export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly number[]): GridRepair {
 	const beats = Array.from(beatsIn as ArrayLike<number>);
@@ -416,8 +425,10 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 
 	const chaotic = (s: SongRun) => s.steady < CHAOS || s.toBeat - s.fromBeat < MIN_RUN_BEATS;
 	const lp = (i: number) => Math.log(Math.max(1e-3, beats[i + 1] - beats[i]));
-	// Each beat keeps a flag saying whether it was heard or written.
-	const out: { t: number; heard: boolean }[] = [];
+	// Each beat keeps a flag saying whether it was heard or written; `fold` marks the one beat a
+	// fold moved onto the other half of a doubled regime, so the passes that drop or rewrite a
+	// short interval leave that seam alone.
+	const out: { t: number; heard: boolean; fold?: boolean }[] = [];
 	const zones: { from: number; to: number; filled: boolean }[] = [];
 	const handshakes: { seam: number; first: number }[] = [];
 	let filledSeconds = 0;
@@ -448,6 +459,29 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 
 	const pushHeard = (from: number, to: number) => {
 		for (let i = from; i < to; i++) out.push({ t: beats[i], heard: true });
+	};
+	/**
+	 * Which of a flipped regime's heard beats carry the model's downbeats, as the fraction of
+	 * the song's period past the walk's own grid from `anchor`: 0 when they sit on the beats
+	 * the walk keeps, 1/2 (or 1/3, 2/3) when they sit on the ones it drops. A regime heard at
+	 * double time has two halves the fold can keep, and continuing the phase before it is a
+	 * guess about the record: Pátky's chorus is heard at 140 over a 70 song, its downbeats fall
+	 * on the half the continuing fold dropped, and the owner's "the chorus starts EXACTLY here"
+	 * at 116.6 s sat half a beat off every bar line, unreachable in the editor. Zero when the
+	 * regime carries too few downbeats to say, or when they hedge both halves.
+	 */
+	const foldOffset = (r: TempoRegime, anchor: number, period: number): number => {
+		const f = Math.round(r.flip ?? 1);
+		if (f < 2 || Math.abs((r.flip ?? 1) - f) > 0.05) return 0;
+		const votes = new Int32Array(f);
+		for (const d of downbeatIndex) {
+			if (d < r.fromBeat || d >= r.toBeat) continue;
+			const x = (beats[d] - anchor) / period;
+			votes[Math.round((x - Math.floor(x)) * f) % f]++;
+		}
+		let k = 0;
+		for (let j = 1; j < f; j++) if (votes[j] > votes[k]) k = j;
+		return k > 0 && votes[k] >= FOLD_MIN_DOWNBEATS && votes[k] >= FOLD_MAJORITY * votes[0] ? k / f : 0;
 	};
 	/** The incoming song's grid walked back from its first beat to `from`, in order. */
 	const fillBack = (firstBeat: number, from: number, period: number) => {
@@ -617,18 +651,24 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 			relevelled += beats[r.toBeat] - beats[r.fromBeat];
 			// Walk the song's period from the last kept beat through the flipped stretch, taking
 			// the heard beat nearest each step where one is close and writing one where not.
+			// The first step is shorter where the model's downbeats sit on the other half of the
+			// doubled beats: one short beat at the seam, and every bar line after it is where the
+			// model heard one, at the same count.
 			const anchor = out[out.length - 1]?.t ?? beats[r.fromBeat] - period;
 			const end = beats[Math.min(r.toBeat, beats.length - 1)];
+			const offset = foldOffset(r, anchor, period);
+			let fold = offset > 0;
 			let i = r.fromBeat;
-			for (let t = anchor + period; t < end + period * 0.25; t += period) {
+			for (let t = anchor + (fold ? offset : 1) * period; t < end + period * 0.25; t += period) {
 				while (i < r.toBeat && beats[i] < t - period * 0.25) i++;
 				const near = i < r.toBeat && Math.abs(beats[i] - t) <= period * 0.25 ? beats[i] : null;
 				if (near !== null) {
-					out.push({ t: near, heard: true });
+					out.push({ t: near, heard: true, fold });
 					t = near;
 				} else {
-					out.push({ t, heard: false });
+					out.push({ t, heard: false, fold });
 				}
+				fold = false;
 			}
 		}
 	}
@@ -640,7 +680,8 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 
 	// A written beat that lands on a heard one is the same beat, and a beat under six tenths
 	// of its song's period from the one before is a leftover of the other level - the regime
-	// cut sits a beat or two off the true end of a flip - and goes.
+	// cut sits a beat or two off the true end of a flip - and goes. The one exception is the
+	// fold's own short beat, which is exactly that distance on purpose.
 	const periodAt = (t: number) => {
 		const song = runs.find((r) => beats[r.fromBeat] <= t && t < beats[r.toBeat]) ?? runs[runs.length - 1];
 		return 60 / song.bpm;
@@ -648,7 +689,7 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 	const times: number[] = [];
 	const heardAt = new Set<number>();
 	for (const b of out) {
-		if (times.length > 0 && b.t - times[times.length - 1] < 0.6 * periodAt(b.t)) continue;
+		if (!b.fold && times.length > 0 && b.t - times[times.length - 1] < 0.6 * periodAt(b.t)) continue;
 		times.push(b.t);
 		if (b.heard) heardAt.add(Math.round(b.t * 1000));
 	}
@@ -686,7 +727,7 @@ const MAX_BLIP_BARS = 4;
  * never across a song's edge, where a written zone or the lead-in already holds.
  * Returns the seconds rewritten; the stream is edited in place.
  */
-function repairBlips(out: { t: number; heard: boolean }[], runs: readonly SongRun[], beats: readonly number[]): number {
+function repairBlips(out: { t: number; heard: boolean; fold?: boolean }[], runs: readonly SongRun[], beats: readonly number[]): number {
 	let rewritten = 0;
 	for (const s of runs) {
 		if (s.steady < MIN_STEADY || s.seconds < MIN_SONG_S) continue;
@@ -701,9 +742,10 @@ function repairBlips(out: { t: number; heard: boolean }[], runs: readonly SongRu
 				continue;
 			}
 			// A is a steady beat: the interval into it and out of it is the count... the one
-			// out of it is not, which is where the blip starts.
+			// out of it is not, which is where the blip starts. A fold's short beat is the one
+			// short interval that is the record, not a lost count.
 			const intoA = i > 0 ? out[i].t - out[i - 1].t : P;
-			if (!good(intoA) || good(out[i + 1].t - out[i].t)) {
+			if (!good(intoA) || good(out[i + 1].t - out[i].t) || out[i + 1].fold) {
 				i++;
 				continue;
 			}

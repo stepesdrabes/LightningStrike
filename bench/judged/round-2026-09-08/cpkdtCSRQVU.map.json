@@ -1,0 +1,62 @@
+{
+	"trackId": "cpkdtCSRQVU",
+	"title": "Hovorili mi že",
+	"rating": 4,
+	"tags": [],
+	"notes": [
+		{
+			"t": 113.9,
+			"bar": 47,
+			"text": "Effects at THIS place produce almost entirely blue Frame, nothing moves and it is very bright"
+		}
+	],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0,
+			"endTime": 19.02,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "chorus",
+			"startTime": 19.02,
+			"endTime": 59.42,
+			"startBar": 8,
+			"endBar": 25
+		},
+		{
+			"kind": "verse",
+			"startTime": 59.42,
+			"endTime": 76.06,
+			"startBar": 25,
+			"endBar": 32
+		},
+		{
+			"kind": "chorus",
+			"startTime": 76.06,
+			"endTime": 152.08,
+			"startBar": 32,
+			"endBar": 64
+		},
+		{
+			"kind": "outro",
+			"startTime": 152.08,
+			"endTime": 161.02,
+			"startBar": 64,
+			"endBar": 68
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "1e317c3b25b14a6a",
+	"showSeed": 2788316102,
+	"authoredBy": "engine",
+	"updatedAt": 1788868910859,
+	"acceptedAnalysis": {
+		"version": 29,
+		"hash": "1e317c3b25b14a6a",
+		"note": "saved with no section edit: the v29 analysis accepted as it stood"
+	}
+}

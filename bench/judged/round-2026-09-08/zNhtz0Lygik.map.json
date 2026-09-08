@@ -1,0 +1,72 @@
+{
+	"trackId": "zNhtz0Lygik",
+	"title": "Best Part (feat. H.E.R.)",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.84,
+			"endTime": 13.62,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "verse",
+			"startTime": 13.62,
+			"endTime": 39.22,
+			"startBar": 4,
+			"endBar": 12
+		},
+		{
+			"kind": "build",
+			"startTime": 39.22,
+			"endTime": 52.02,
+			"startBar": 12,
+			"endBar": 16
+		},
+		{
+			"kind": "chorus",
+			"startTime": 52.02,
+			"endTime": 90.44,
+			"startBar": 16,
+			"endBar": 28
+		},
+		{
+			"kind": "verse",
+			"startTime": 90.44,
+			"endTime": 128.84,
+			"startBar": 28,
+			"endBar": 40
+		},
+		{
+			"kind": "chorus",
+			"startTime": 128.84,
+			"endTime": 164.02,
+			"startBar": 40,
+			"endBar": 51
+		},
+		{
+			"kind": "build",
+			"startTime": 164.02,
+			"endTime": 179.98,
+			"startBar": 51,
+			"endBar": 56
+		},
+		{
+			"kind": "chorus",
+			"startTime": 179.98,
+			"endTime": 205.56,
+			"startBar": 56,
+			"endBar": 64
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "2b5e2914b5e0db40",
+	"showSeed": 3795565361,
+	"authoredBy": "engine",
+	"updatedAt": 1788869207726
+}

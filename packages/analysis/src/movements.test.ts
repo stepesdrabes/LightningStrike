@@ -3,6 +3,7 @@ import type { Chromagram } from './chroma.ts';
 import type { BarFeatures } from './structure.ts';
 import { similarityMatrix } from './structure.ts';
 import {
+	beatsPerBarOf,
 	judgeSeams,
 	proposeSeams,
 	repairGrid,
@@ -368,5 +369,57 @@ describe('judgeSeams', () => {
 	it('ignores a seam too near either end to leave a song on both sides', () => {
 		const m = twoSongMaterial(8, 72);
 		expect(judgeSeams([tempoSeam(m.seamTime, 32)], m, m.duration)).toHaveLength(0);
+	});
+});
+
+describe('repairGrid: the fold and the model\'s downbeats', () => {
+	it('folds a doubled stretch onto the half the downbeats sit on', () => {
+		// Pátky: a 70 bpm song the tracker doubles for its last third, with every downbeat of
+		// the doubled stretch on the fast beats BETWEEN the slow ones. The fold that continues
+		// the previous phase drops exactly those beats, and the owner's chorus sat half a beat
+		// off every bar line.
+		const period = 60 / 70;
+		const truth = grid(0, 70, 120, 0);
+		const beats: number[] = [];
+		for (let i = 0; i < truth.length; i++) {
+			beats.push(truth[i]);
+			if (i >= 80) beats.push(truth[i] + period / 2);
+		}
+		const downbeats = [
+			...downbeatsOf(truth.slice(0, 80)),
+			...truth.slice(80).filter((_, k) => k % 4 === 0).map((t) => t + period / 2)
+		];
+		const repaired = repairGrid(beats, downbeats);
+		const kept = Array.from(repaired.beats, (t) => Math.round(t * 1000));
+		for (const d of downbeats) expect(kept).toContain(Math.round(d * 1000));
+		// One short beat at the seam carries the half-beat move; every other interval is the song's.
+		const periods = Array.from(repaired.beats).slice(1).map((t, i) => t - repaired.beats[i]);
+		expect(periods.filter((p) => p < period * 0.7)).toHaveLength(1);
+		expect(periods.filter((p) => p > period * 1.3)).toHaveLength(0);
+		expect(repaired.downbeats).toHaveLength(downbeats.length);
+	});
+
+	it('keeps the fold on the walk\'s own half when the downbeats sit there', () => {
+		const period = 60 / 71;
+		const truth = grid(0, 71, 280, 0);
+		const beats: number[] = [];
+		for (let i = 0; i < truth.length; i++) {
+			beats.push(truth[i]);
+			if (i >= 120 && i < 160) beats.push(truth[i] + period / 2);
+		}
+		const repaired = repairGrid(beats, downbeatsOf(truth));
+		const periods = Array.from(repaired.beats).slice(1).map((t, i) => t - repaired.beats[i]);
+		expect(periods.filter((p) => p < period * 0.7)).toHaveLength(0);
+	});
+});
+
+describe('beatsPerBarOf', () => {
+	it('never reads two beats to a bar', () => {
+		// A slow record the model hedges: a downbeat every two beats is the half bar, read in four.
+		const beats = grid(0, 65, 200, 0);
+		const every2 = beats.filter((_, i) => i % 2 === 0);
+		expect(beatsPerBarOf(beats, every2)).toBe(4);
+		expect(beatsPerBarOf(beats, downbeatsOf(beats))).toBe(4);
+		expect(beatsPerBarOf(beats, beats.filter((_, i) => i % 3 === 0))).toBe(3);
 	});
 });

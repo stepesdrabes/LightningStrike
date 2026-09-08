@@ -101,3 +101,73 @@ describe('the fill veto', () => {
 		expect(refine([0, 11, 24], bars, kicks, false, true)).toEqual([0, 11, 24]);
 	});
 });
+
+/** The refine with the round's dials: the guard on, the fill veto on, and the two under test. */
+const refineWith = (
+	bounds: number[],
+	bars: BarFeatures,
+	kicks: Int32Array,
+	opts: { quietPhysics?: number; straddle?: boolean; hooks?: Uint8Array | null } = {}
+) =>
+	refineBoundaries(
+		bounds, bars, kicks, undefined, 2, null, opts.hooks ?? null, null, 0, 1, new Set(), 1.45, 2, 0, 1, true, true,
+		undefined, undefined, opts.quietPhysics ?? 2.5, opts.straddle ?? false
+	);
+
+describe('the quiet floor needs an arrival', () => {
+	// Three bars of near-silence, a pad seven decibels up for the build, then the chorus twenty
+	// above that: Panama's intro, where the pad enters a bar before the phrase downbeat the
+	// build starts on, out of a floor deep enough for the quiet rule to see.
+	const pad = [1, 0.9, 0.2, 0.1];
+	const soft = table([
+		...Array.from({ length: 3 }, () => ({ rms: 0.0137, pattern: pad })),
+		...Array.from({ length: 21 }, () => ({ rms: 0.03, pattern: pad })),
+		...Array.from({ length: 24 }, () => ({ rms: 0.3, pattern: pad }))
+	]);
+	const silent = new Int32Array(48);
+
+	it('keeps a weak rise on the grid', () => {
+		expect(refineWith([0, 4, 24, 48], soft, silent)).toEqual([0, 4, 24, 48]);
+	});
+
+	it('is the refine floor alone that let it off', () => {
+		expect(refineWith([0, 4, 24, 48], soft, silent, { quietPhysics: 2 })).toEqual([0, 3, 24, 48]);
+	});
+});
+
+describe('the straddle', () => {
+	const verse = [1, 0.9, 0.2, 0.1];
+	const chorus = [1, 0.7, 0.5, 0.1];
+	// Stranded: the riff steps up a little at 16, the band lands with the kit and the singer
+	// at 17, and the DP fenced the arrival in with boundaries at 16 and 18.
+	const rows = [
+		...Array.from({ length: 16 }, () => ({ rms: 0.15, pattern: verse })),
+		{ rms: 0.18, pattern: chorus },
+		...Array.from({ length: 23 }, () => ({ rms: 0.3, pattern: chorus }))
+	];
+	const bars = table(rows);
+	const kicks = Int32Array.from(rows, (_, b) => (b >= 17 ? 6 : 2));
+	const sung = new Uint8Array(40);
+	sung[17] = 1;
+
+	it('collapses the two boundaries onto the arrival between them', () => {
+		expect(refineWith([0, 16, 18, 40], bars, kicks, { straddle: true, hooks: sung })).toEqual([0, 17, 40]);
+	});
+
+	it('is the two-bar minimum that held them apart without it', () => {
+		expect(refineWith([0, 16, 18, 40], bars, kicks, { hooks: sung })).toEqual([0, 16, 18, 40]);
+	});
+
+	it('leaves a two-bar breakdown whose second bar only sings', () => {
+		// goosebumps at 33: the kit stays out, the level barely moves, and the hook lands.
+		const flat = table([
+			...Array.from({ length: 16 }, () => ({ rms: 0.3, pattern: chorus })),
+			...Array.from({ length: 2 }, () => ({ rms: 0.12, pattern: verse })),
+			...Array.from({ length: 22 }, () => ({ rms: 0.14, pattern: verse }))
+		]);
+		const kit = Int32Array.from({ length: 40 }, (_, b) => (b < 16 ? 4 : 0));
+		const hooks = new Uint8Array(40);
+		hooks[17] = 1;
+		expect(refineWith([0, 16, 18, 40], flat, kit, { straddle: true, hooks })).toEqual([0, 16, 18, 40]);
+	});
+});

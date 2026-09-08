@@ -1,0 +1,72 @@
+{
+	"trackId": "6JHu3b-pbh8",
+	"title": "Thinkin Bout You",
+	"rating": 3,
+	"tags": [],
+	"notes": [],
+	"comment": "I’m not 100% sure. The original sections were fine honestly, but can be better.",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.14,
+			"endTime": 7.52,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "chorus",
+			"startTime": 7.52,
+			"endTime": 37.04,
+			"startBar": 4,
+			"endBar": 20
+		},
+		{
+			"kind": "chorus",
+			"startTime": 37.04,
+			"endTime": 66.58,
+			"startBar": 20,
+			"endBar": 36
+		},
+		{
+			"kind": "chorus",
+			"startTime": 66.58,
+			"endTime": 96.12,
+			"startBar": 36,
+			"endBar": 52
+		},
+		{
+			"kind": "chorus",
+			"startTime": 96.12,
+			"endTime": 123.8,
+			"startBar": 52,
+			"endBar": 67
+		},
+		{
+			"kind": "chorus",
+			"startTime": 123.8,
+			"endTime": 138.58,
+			"startBar": 67,
+			"endBar": 75
+		},
+		{
+			"kind": "chorus",
+			"startTime": 138.58,
+			"endTime": 184.74,
+			"startBar": 75,
+			"endBar": 100
+		},
+		{
+			"kind": "outro",
+			"startTime": 184.74,
+			"endTime": 199.5,
+			"startBar": 100,
+			"endBar": 108
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "9baf0cd9dd15890c",
+	"showSeed": 2589306539,
+	"authoredBy": "engine",
+	"updatedAt": 1788869342315
+}

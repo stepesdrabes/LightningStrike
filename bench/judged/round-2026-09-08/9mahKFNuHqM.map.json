@@ -1,0 +1,86 @@
+{
+	"trackId": "9mahKFNuHqM",
+	"title": "goosebumps",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 0.005,
+			"endTime": 14.779,
+			"startBar": 0,
+			"endBar": 4
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 14.779,
+			"endTime": 29.553,
+			"startBar": 4,
+			"endBar": 8
+		},
+		{
+			"kind": "build",
+			"startTime": 29.553,
+			"endTime": 44.32,
+			"startBar": 8,
+			"endBar": 12
+		},
+		{
+			"kind": "verse",
+			"startTime": 44.32,
+			"endTime": 118.14,
+			"startBar": 12,
+			"endBar": 32
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 118.14,
+			"endTime": 125.74,
+			"startBar": 32,
+			"endBar": 34
+		},
+		{
+			"kind": "build",
+			"startTime": 125.74,
+			"endTime": 140.32,
+			"startBar": 34,
+			"endBar": 38
+		},
+		{
+			"kind": "chorus",
+			"startTime": 140.32,
+			"endTime": 169.86,
+			"startBar": 38,
+			"endBar": 46
+		},
+		{
+			"kind": "chorus",
+			"startTime": 169.86,
+			"endTime": 199.38,
+			"startBar": 46,
+			"endBar": 54
+		},
+		{
+			"kind": "build",
+			"startTime": 199.38,
+			"endTime": 214.16,
+			"startBar": 54,
+			"endBar": 58
+		},
+		{
+			"kind": "chorus",
+			"startTime": 214.16,
+			"endTime": 243.7,
+			"startBar": 58,
+			"endBar": 66
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "c4a9b4708eac98f9",
+	"showSeed": 3453407678,
+	"authoredBy": "engine",
+	"updatedAt": 1788869447991
+}

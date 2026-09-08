@@ -1,0 +1,84 @@
+{
+	"trackId": "oZ-lTp1ZaZQ",
+	"title": "Von dutch",
+	"rating": 4,
+	"tags": [],
+	"notes": [],
+	"comment": "",
+	"sections": [
+		{
+			"kind": "intro",
+			"startTime": 1.14,
+			"endTime": 15.92,
+			"startBar": 0,
+			"endBar": 8
+		},
+		{
+			"kind": "build",
+			"startTime": 15.92,
+			"endTime": 22.380000000000003,
+			"startBar": 8,
+			"endBar": 11.5
+		},
+		{
+			"kind": "build",
+			"startTime": 22.380000000000003,
+			"endTime": 30.24,
+			"startBar": 11.5,
+			"endBar": 15.75,
+			"offGrid": true
+		},
+		{
+			"kind": "drop",
+			"startTime": 30.24,
+			"endTime": 74.06,
+			"startBar": 15.75,
+			"endBar": 39.5,
+			"offGrid": true
+		},
+		{
+			"kind": "breakdown",
+			"startTime": 74.06,
+			"endTime": 88.84,
+			"startBar": 39.5,
+			"endBar": 47.5,
+			"offGrid": true
+		},
+		{
+			"kind": "build",
+			"startTime": 88.84,
+			"endTime": 96.69999999999999,
+			"startBar": 47.5,
+			"endBar": 51.75,
+			"offGrid": true
+		},
+		{
+			"kind": "drop",
+			"startTime": 96.69999999999999,
+			"endTime": 141.46,
+			"startBar": 51.75,
+			"endBar": 76,
+			"offGrid": true
+		},
+		{
+			"kind": "drop",
+			"startTime": 141.46,
+			"endTime": 156.24,
+			"startBar": 76,
+			"endBar": 84
+		},
+		{
+			"kind": "outro",
+			"startTime": 156.24,
+			"endTime": 158.08,
+			"startBar": 84,
+			"endBar": 85
+		}
+	],
+	"movements": null,
+	"movementVetoes": null,
+	"analysisHash": "a2574cae19c3d4f3",
+	"showSeed": 3162413102,
+	"authoredBy": "engine",
+	"updatedAt": 1788868739995
+}

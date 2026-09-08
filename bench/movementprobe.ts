@@ -15,6 +15,7 @@ import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { BeatThis } from '../packages/analysis/src/beatthis.ts';
 import { Adtof } from '../packages/analysis/src/adtof.ts';
 import { DEFAULT_TUNING, type GuardDecision, type StructureTuning } from '../packages/analysis/src/structure.ts';
+import type { PhaseRun } from '../packages/analysis/src/downbeatPhase.ts';
 
 const id = process.argv[2];
 if (!id) throw new Error('usage: node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks]');
@@ -72,6 +73,7 @@ const probe: {
 	fills?: Uint8Array;
 	guard: GuardDecision[];
 	stages: { name: string; bounds: number[] }[];
+	phase?: { runs: PhaseRun[]; cuts: number[]; opening: number };
 } = { guard: [], stages: [] };
 // A structure-tuning override, JSON, so a variant the sweep scores can be read here in full:
 //   --tuning='{"pickupGuard":true,"fillVeto":true}'
@@ -129,6 +131,15 @@ for (const s of analysis.sections) {
 }
 const durations = analysis.tempo.barTimes.slice(1).map((t, i) => t - analysis.tempo.barTimes[i]);
 console.log('  bar seconds: ' + durations.map((d) => d.toFixed(2)).join(' '));
+if (probe.phase) {
+	const beats = analysis.beats;
+	console.log(`  phase: opening ${probe.phase.opening}, cuts at ${probe.phase.cuts.map((b) => `${clock(beats[b] ?? 0)} (beat ${b})`).join(', ') || 'none'}`);
+	for (const r of probe.phase.runs) {
+		console.log(
+			`    run ${clock(beats[r.startBeat] ?? 0)}-${clock(beats[Math.min(r.endBeat, beats.length - 1)] ?? 0)} phase ${r.phase} bars ${r.bars.toFixed(1)} downbeats ${r.downbeats} on phase ${r.onPhase.join('/')} share ${r.share.toFixed(2)}`
+		);
+	}
+}
 for (const g of probe.guard) {
 	console.log(
 		`  guard ${g.here} -> ${g.to}: ${g.impact ? `allowed (${g.impact})` : 'refused'}  physics ${g.physics.toFixed(2)} kit ${g.kit.toFixed(2)} novelty ${g.novelty.toFixed(2)} voice ${g.voice.toFixed(1)} collapse ${g.collapse.toFixed(2)} level before ${g.levelBefore.map((v) => v.toFixed(2)).join('/')} depth ${g.depthBefore.toFixed(1)} dB`
