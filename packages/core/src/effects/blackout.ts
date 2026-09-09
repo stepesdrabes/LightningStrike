@@ -21,6 +21,7 @@ export const blackout: EffectDef = {
 		minBars: 1,
 		maxBars: 4,
 		peakReserved: false,
+		activity: 0,
 		quiet: 1.06,
 		// Darkness is the whole instruction.
 		carries: false

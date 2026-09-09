@@ -18,6 +18,7 @@ export const splash: EffectDef = {
 		minBars: 1,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.4,
 		kit: 'any'
 	},
 	params: [INTENSITY, param('size', 'Size', 0.35, 0.1, 1), param('decay', 'Decay beats', 0.55, 0.1, 2)],
@@ -36,9 +37,11 @@ export const splash: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette } = ctx;
-				fadeToBlack(out, f.dt, (p.decay * f.beatPeriod) / 3);
+				// Four fifths of the decay setting in beats: a splash that was gone inside an
+				// eighth read as a shutter, and a lamp takes most of a beat to go dark.
+				fadeToBlack(out, f.dt, p.decay * f.beatPeriod * 0.8);
 
-				const sigma = p.size * 28;
+				const sigma = 8 + p.size * 30;
 
 				if (f.kick && kickWalls.length > 0) {
 					const wall = kickWalls[kickCount % kickWalls.length];
@@ -46,7 +49,7 @@ export const splash: EffectDef = {
 					// stays even, which random placement does not guarantee.
 					const u = (kickCount * 0.618034) % 1;
 					kickCount++;
-					const strength = clamp(0.5 + 0.5 * f.bands[Band.Sub]) * p.intensity;
+					const strength = clamp(0.5 + 0.4 * f.bands[Band.Sub]) * (0.45 + p.intensity * 0.7);
 					const c = sample(palette, SLOT.base + ctx.hueShift, strength);
 					stampOnStrip(
 						out,
@@ -62,7 +65,7 @@ export const splash: EffectDef = {
 					const wall = snareWalls[snareCount % snareWalls.length];
 					const u = (snareCount * 0.618034 + 0.5) % 1;
 					snareCount++;
-					const strength = clamp(0.45 + 0.55 * f.snareEnv) * p.intensity;
+					const strength = clamp(0.45 + 0.5 * f.snareEnv) * (0.45 + p.intensity * 0.7);
 					const c = sample(palette, SLOT.accent + ctx.hueShift, strength);
 					stampOnStrip(out, g.count, wall, u * (wall.count - 1), sigma * 0.7, c);
 				}

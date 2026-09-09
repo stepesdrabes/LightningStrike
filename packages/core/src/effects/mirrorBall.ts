@@ -26,7 +26,8 @@ export const mirrorBall: EffectDef = {
 		minBars: 4,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 4.12,
+		activity: 0.3,
+		quiet: 2.82,
 		// Isolated glints over black.
 		carries: false
 	},
@@ -82,21 +83,22 @@ export const mirrorBall: EffectDef = {
 				sample(palette, SLOT.white + hueShift, 1, rgb);
 
 				for (let k = 0; k < count; k++) {
-					// Fifth power of the raised cosine: sharp flare, long dark. A glint is a
-					// specular event, not a pulse.
+					// Fourth power of the raised cosine: sharp flare, long dark. A glint is a
+					// specular event, not a pulse; at the fifth power on a pixel and a half it
+					// was a hot point winking, which sat among the busiest accents in the corpus.
 					const c = 0.5 + 0.5 * Math.cos(frac(tw * rate[k] + phase[k]) * Math.PI * 2);
-					const flare = c * c * c * c * c;
+					const flare = c * c * c * c;
 					if (flare < 0.01) continue;
-					const v = flare * gain;
+					const v = flare * gain * 0.8;
 					const u = frac(pos[k] + rot);
 					if (onBeam[k] === 1) {
 						// Windowed to die at the beam's ends, so the wrap never pops mid-flare.
 						const w = Math.sin(Math.PI * u) * v;
 						const at = u * beamRing.length;
-						stampGaussian(beamScratch, beamRing.length, at, 1.4, rgb[0] * w, rgb[1] * w, rgb[2] * w, false);
+						stampGaussian(beamScratch, beamRing.length, at, 2, rgb[0] * w, rgb[1] * w, rgb[2] * w, false);
 					} else {
 						const at = u * ring.length;
-						stampGaussian(ringScratch, ring.length, at, 1.4, rgb[0] * v, rgb[1] * v, rgb[2] * v, true);
+						stampGaussian(ringScratch, ring.length, at, 2, rgb[0] * v, rgb[1] * v, rgb[2] * v, true);
 					}
 				}
 

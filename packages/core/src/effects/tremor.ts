@@ -35,11 +35,12 @@ export const tremor: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
+		activity: 0.2,
 		carries: true,
-		// Measured over the cache's real quiet sections, 2026-08-28: mid-pack among accents,
-		// between harmonicRibbon (4.26) and ripple (4.03), which is where a fourth carrying
-		// accent has to land to be worth adding rather than to be the one never picked.
-		quiet: 4.11
+		// Measured over the cache's real quiet sections: mid-pack among the carrying accents,
+		// which is where a fourth one has to land to be worth adding rather than to be the one
+		// never picked.
+		quiet: 2.18
 	},
 	params: [INTENSITY, param('grain', 'Grain depth', 0.6)],
 	create(g) {
@@ -71,7 +72,7 @@ export const tremor: EffectDef = {
 				// The whole gesture: 4% of the level at rest, 16% on a hit. The mean is the same
 				// either way, because the grain is centred on zero.
 				const depth = (0.04 + 0.12 * hit) * p.grain;
-				const mean = (0.34 + loud * 0.28) * (0.5 + p.intensity * 0.7);
+				const mean = (0.34 + loud * 0.28) * (0.5 + p.intensity * 0.6);
 
 				for (let i = 0; i < g.count; i++) {
 					const level = mean * (1 + depth * grain[i] * 2);

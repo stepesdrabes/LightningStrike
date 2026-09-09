@@ -19,7 +19,8 @@ export const pixelRain: EffectDef = {
 		sections: ['intro', 'groove', 'breakdown', 'build', 'drop'],
 		minBars: 2,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.3
 	},
 	params: [
 		INTENSITY,
@@ -41,7 +42,9 @@ export const pixelRain: EffectDef = {
 
 		const onFall = (drop: WallDrop, u: number, pos: number, wall: StripSpec): void => {
 			sample(palette, drop.tint + hueShift, gain * (0.5 + 0.5 * u), rgb);
-			stampOnStrip(dst, g.count, wall, pos, 1.1, rgb);
+			// A droplet two pixels of sigma wide: a one-pixel drop at full level was a hot
+			// point sliding down the wall, and a wall of hot points is grain.
+			stampOnStrip(dst, g.count, wall, pos, 2.2, rgb);
 		};
 		const onLand = (drop: WallDrop): void => {
 			landGlow[drop.wall].fire(0.8);
@@ -59,9 +62,12 @@ export const pixelRain: EffectDef = {
 				dst = out;
 				palette = ctx.palette;
 				hueShift = ctx.hueShift;
-				fadeToBlack(out, f.dt, beatRelease(f.beatPeriod, 0.3));
+				fadeToBlack(out, f.dt, beatRelease(f.beatPeriod, 0.2));
 
-				gain = 0.6 + p.intensity * 1.4;
+				// Low, because a droplet two pixels wide carries twice the light of the hot
+				// point it replaced: measured, the old rain delivered 42 bytes over a drop, more
+				// than any bed, from a look that is supposed to be a few drops on a wall.
+				gain = 0.15 + p.intensity * 0.22;
 				const spawned = rain.spawn(f, p.perBeat);
 				if (spawned) {
 					// Where the arrangement is sitting chooses the droplet's colour, so a bass

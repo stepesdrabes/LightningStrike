@@ -29,7 +29,8 @@ export const phraseArc: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 3.68
+		activity: 0,
+		quiet: 2.09
 	},
 	params: [INTENSITY, param('bars', 'Bar lift', 0.45), param('sweep', 'How far it travels', 0.6)],
 	create(g) {
@@ -53,7 +54,7 @@ export const phraseArc: EffectDef = {
 				const barLift = smoothstep(0, 0.3, f.barPhase) * (1 - smoothstep(0.5, 1, f.barPhase));
 				const swell = clamp(0.45 + arc * 0.5 + barLift * p.bars * 0.35);
 				const heard = level.update(f.energy, f.dt);
-				const gain = (0.5 + p.intensity * 0.85) * clamp(0.45 + heard * 0.55);
+				const gain = (0.42 + p.intensity * 0.6) * clamp(0.45 + heard * 0.55);
 				// The whole field slides around the room across the phrase, so a long passage is
 				// never twice in the same place even though nothing in it is fast. Quantised to
 				// whole periods of the lobe below, which repeats every half turn: `phrasePhase`

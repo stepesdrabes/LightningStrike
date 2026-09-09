@@ -19,12 +19,13 @@ export const shockwave: EffectDef = {
 		minBars: 1,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.5,
 		kit: 'kick'
 	},
 	params: [
 		INTENSITY,
 		param('speed', 'Metres/sec', 6, 1, 20, 0.5),
-		param('thickness', 'Shell thickness', 0.35, 0.05, 1.2)
+		param('thickness', 'Shell thickness', 0.4, 0.05, 1.2)
 	],
 	create(g) {
 		const originX = new Float32Array(MAX_SHELLS);
@@ -77,12 +78,12 @@ export const shockwave: EffectDef = {
 					if (born[s] < 0) continue;
 					const age = f.t - born[s];
 					const radius = age * speed;
-					const fade = Math.exp(-age * 3.2);
+					const fade = Math.exp(-age * 3.0);
 					if (fade < 0.01 || radius > g.extent * 1.6) {
 						born[s] = -1;
 						continue;
 					}
-					const amp = power[s] * fade * p.intensity;
+					const amp = power[s] * fade * (0.07 + p.intensity * 0.2);
 					const ox = originX[s];
 					const oy = originY[s];
 					const oz = originZ[s];

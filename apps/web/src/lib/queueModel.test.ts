@@ -10,7 +10,6 @@ import {
 	nextItem,
 	patchItem,
 	playNext,
-	pruneHistory,
 	removeItem,
 	signatureOf,
 	titleKeyOf,
@@ -237,36 +236,6 @@ describe('videoIdOf', () => {
 	it('rejects anything that is not a video id', () => {
 		expect(videoIdOf('https://www.youtube.com/watch?v=PLnotanid')).toBeNull();
 		expect(videoIdOf('https://example.test/')).toBeNull();
-	});
-});
-
-describe('pruneHistory', () => {
-	it('drops what has played beyond the tail it is told to keep', () => {
-		let state = seed('a', 'b', 'c', 'd', 'e');
-		state = jumpTo(state, 'k4');
-		const pruned = pruneHistory(state, 2);
-		expect(pruned.items.map((i) => i.title)).toEqual(['c', 'd', 'e']);
-		expect(pruned.currentKey).toBe('k4');
-	});
-
-	it('never drops what is playing, nor anything queued behind it', () => {
-		let state = seed('a', 'b', 'c', 'd', 'e');
-		state = jumpTo(state, 'k2');
-		const pruned = pruneHistory(state, 0);
-		expect(pruned.items.map((i) => i.title)).toEqual(['c', 'd', 'e']);
-		expect(currentItem(pruned)?.title).toBe('c');
-	});
-
-	it('returns the same object when there is nothing to drop, so a commit can short-circuit', () => {
-		let state = seed('a', 'b', 'c');
-		state = jumpTo(state, 'k1');
-		expect(pruneHistory(state, 30)).toBe(state);
-		expect(pruneHistory(EMPTY_QUEUE, 0)).toBe(EMPTY_QUEUE);
-	});
-
-	it('does nothing while nothing has played, so a queued-up set is not eaten', () => {
-		const state = { ...seed('a', 'b', 'c'), currentKey: null };
-		expect(pruneHistory(state, 0)).toBe(state);
 	});
 });
 

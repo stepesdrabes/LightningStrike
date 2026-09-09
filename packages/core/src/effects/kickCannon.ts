@@ -25,6 +25,7 @@ export const kickCannon: EffectDef = {
 		minBars: 1,
 		maxBars: 16,
 		peakReserved: false,
+		activity: 0.8,
 		// Bursts with darkness between them, however loud the burst.
 		carries: false,
 		character: 'impact',
@@ -73,14 +74,15 @@ export const kickCannon: EffectDef = {
 					const core = sample(
 						palette,
 						lerp(SLOT.glow, SLOT.white, power) + hueShift,
-						power * (0.5 + p.intensity * 1.3)
+						power * (0.4 + p.intensity * 0.7)
 					);
 					for (let i = 0; i < g.count; i++) {
 						const u = ringU(g, i);
 						const raw = Math.abs(u - from[s]);
 						const dist = Math.min(raw, 1 - raw);
-						// A hard leading edge and a short tail: a blow, not a glow.
-						const band = clamp(1 - Math.abs(dist - radius[s]) / 0.045);
+						// A leading edge half a metre wide and a short tail: a blow, not a glow,
+						// and not a tracer either.
+						const band = clamp(1 - Math.abs(dist - radius[s]) / 0.085);
 						if (band <= 0) continue;
 						const v = band * band;
 						addPixel(out, i, core[0] * v, core[1] * v, core[2] * v);

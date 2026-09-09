@@ -34,6 +34,7 @@ export const emberBump: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.1,
 		// The whole gesture answers the kick, so a passage the producer pulled it out of would
 		// leave this sitting at rest saturation saying nothing.
 		kit: 'kick'
@@ -72,7 +73,7 @@ export const emberBump: EffectDef = {
 				// Where the room's weight sits, from what is playing rather than how loud it is.
 				// This is a POSITION, so it may follow the music freely.
 				const centre = tilt.update(clamp(0.5 + spectralTilt(f) * 0.5), f.dt);
-				const level = 0.5 + p.intensity * 0.42;
+				const level = 0.16 + p.intensity * 0.17;
 
 				for (let i = 0; i < g.count; i++) {
 					// The back of the room re-saturates a few tens of milliseconds after the

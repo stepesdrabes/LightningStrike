@@ -25,11 +25,12 @@ export const confetti: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
-		quiet: 3.65,
+		activity: 0.4,
+		quiet: 2.33,
 		// Bursts of particles, and nothing at all between them.
 		carries: false
 	},
-	params: [INTENSITY, param('perPop', 'Dots per pop', 7, 2, 16, 1)],
+	params: [INTENSITY, param('perPop', 'Dots per pop', 14, 2, 24, 1)],
 	create(g) {
 		let popCount = 0;
 		let lastBeat = Number.NaN;
@@ -41,7 +42,7 @@ export const confetti: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift } = ctx;
-				fadeToBlack(out, f.dt, beatRelease(f.beatPeriod, 0.45));
+				fadeToBlack(out, f.dt, beatRelease(f.beatPeriod, 0.7));
 
 				const popNow = sectionBase(f.section) === 'drop' ? f.beat : f.downbeat;
 				if (!popNow || f.beatIndex === lastBeat) return;
@@ -49,14 +50,16 @@ export const confetti: EffectDef = {
 				popCount++;
 
 				const n = Math.round(p.perPop);
-				const gain = 0.6 + p.intensity * 1.2;
+				const gain = 0.7 + p.intensity * 1.2;
 				for (let k = 0; k < n; k++) {
-					const seq = popCount * 16 + k;
+					const seq = popCount * 32 + k;
 					const pos = frac(seq * 0.381966) * g.count;
 					const strip = g.strips[g.strip[Math.min(g.count - 1, Math.floor(pos))]];
 					const slot = SLOTS[seq % SLOTS.length];
 					const c = sample(palette, slot + hueShift, gain * (0.6 + hash01(seq) * 0.4));
-					stampOnStrip(out, g.count, strip, pos - strip.offset, 1, c);
+					// Two and a half pixels of sigma: a one-pixel dot is under what reads as lit
+					// from the floor, and a hard two-pixel one at full level is a hot point.
+					stampOnStrip(out, g.count, strip, pos - strip.offset, 2.4, c);
 				}
 			}
 		};

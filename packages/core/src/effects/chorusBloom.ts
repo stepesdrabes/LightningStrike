@@ -35,7 +35,8 @@ export const chorusBloom: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
-		quiet: 4.8
+		activity: 0.05,
+		quiet: 2.08
 	},
 	params: [INTENSITY],
 	create(g) {
@@ -84,8 +85,8 @@ export const chorusBloom: EffectDef = {
 				let target = clamp(0.12 + f.energy * 0.5);
 				if (sectionBase(f.section) === 'drop') {
 					const phrases = Math.floor(f.timeSinceDrop / Math.max(0.1, f.beatPeriod * 32));
-					const lift = Math.min(0.3, Number.isFinite(phrases) ? phrases * 0.15 : 0.3);
-					target = clamp(0.45 + f.sectionProgress * 0.4 + lift);
+					const lift = Math.min(0.2, Number.isFinite(phrases) ? phrases * 0.1 : 0.2);
+					target = clamp(0.4 + f.sectionProgress * 0.25 + lift, 0, 0.8);
 				}
 				bloom = envelope(bloom, target, f.dt, 0.6, 1.4);
 
@@ -95,7 +96,10 @@ export const chorusBloom: EffectDef = {
 				const punch = kit.update(clamp(f.kickEnv * 0.8 + f.snareEnv * 0.5), f.dt);
 				const open = clamp(bloom + punch * 0.3);
 
-				const gain = (0.5 + p.intensity * 1.1) * (0.55 + bloom * 0.75) * (1 + punch * 0.22);
+				// The climb is capped well under white: over a real 32-bar chorus the old gain
+				// reached 2.0 by the last phrase, which made this the brightest bed in every
+				// stack it joined and left the room nowhere to go on the hits.
+				const gain = (0.5 + p.intensity * 1.0) * (0.55 + bloom * 0.45) * (1 + punch * 0.15);
 
 				// Which petal is open is the arrangement's business, not a fixed pattern's. Each
 				// voice follows its own slice of the spectrum at the rate that slice actually

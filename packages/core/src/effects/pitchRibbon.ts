@@ -28,7 +28,8 @@ export const pitchRibbon: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 3.91,
+		activity: 0.1,
+		quiet: 2.33,
 		carries: false
 	},
 	params: [INTENSITY, param('width', 'Ribbon width', 0.3)],
@@ -72,7 +73,7 @@ export const pitchRibbon: EffectDef = {
 
 				const centre = at * (home.length - 1);
 				const sigma = (0.05 + p.width * 0.12) * home.length;
-				const gain = (0.35 + p.intensity * 0.6) * (0.25 + amp * 0.75);
+				const gain = (0.6 + p.intensity * 1.0) * (0.25 + amp * 0.75);
 
 				for (let k = 0; k < home.length; k++) {
 					const d = (k - centre) / sigma;

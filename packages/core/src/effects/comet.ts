@@ -15,12 +15,13 @@ export const comet: EffectDef = {
 		sections: ['intro', 'groove', 'breakdown', 'build', 'drop'],
 		minBars: 4,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.3
 	},
 	params: [
 		INTENSITY,
 		param('bars', 'Bars per lap', 4, 1, 16, 0.5),
-		param('tail', 'Tail length', 0.22, 0.05, 0.6),
+		param('tail', 'Tail length', 0.3, 0.05, 0.6),
 		param('kickSwell', 'Kick swell', 0.5)
 	],
 	create(g) {
@@ -47,7 +48,7 @@ export const comet: EffectDef = {
 					const w = Math.exp(-k / tailPx);
 					if (w < 0.004) break;
 					const slot = lerp(SLOT.accent, SLOT.white, w * w);
-					addSample(scratch, i, palette, slot + ctx.hueShift, w * p.intensity);
+					addSample(scratch, i, palette, slot + ctx.hueShift, w * (0.37 + p.intensity * 0.66));
 				}
 
 				out.fill(0);

@@ -27,7 +27,8 @@ export const barFill: EffectDef = {
 		sections: ['build'],
 		minBars: 2,
 		maxBars: 16,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.3
 	},
 	params: [INTENSITY],
 	create(g) {
@@ -65,7 +66,7 @@ export const barFill: EffectDef = {
 				// per-band normalisation puts a quiet passage's bass near full and jitters by
 				// several bytes a frame, which is what the room reads as blinking.
 				const tilt = spectralTilt(f);
-				const gain = 0.45 + p.intensity * 1.2;
+				const gain = 0.7 + p.intensity * 1.5;
 
 				for (let s = 0; s < strips; s++) {
 					// Each bar opens at its own point in the build and is full by the end of it.

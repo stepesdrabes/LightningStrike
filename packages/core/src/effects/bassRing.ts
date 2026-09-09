@@ -32,7 +32,8 @@ export const bassRing: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 3.88,
+		activity: 0.1,
+		quiet: 2.17,
 		// The dark ceiling beam is the whole point of the look, and it is also why this cannot
 		// be the only thing in a cue: one of the room's five strips is off at all times.
 		carries: false
@@ -90,7 +91,7 @@ export const bassRing: EffectDef = {
 					Math.max(0.03, f.beatPeriod * 0.1),
 					Math.max(0.18, f.beatPeriod * 0.9)
 				);
-				const bright = env * (0.4 + p.intensity * 0.9);
+				const bright = env * (0.35 + p.intensity * 0.7);
 				const harmonics = grit.update(
 					clamp(bandBetween(f, 0.14, BASS_TOP) * 1.4 - bottom * 0.5),
 					f.dt

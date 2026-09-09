@@ -24,7 +24,8 @@ export const iridescence: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 3.13,
+		activity: 0.1,
+		quiet: 2.43,
 		// A thin film reads as a sheen on a lit surface rather than as the light itself.
 		carries: false
 	},
@@ -56,7 +57,7 @@ export const iridescence: EffectDef = {
 				// of a number under one is how an intro reached byte zero.
 				const passageLevel = passage.update(f.energy, f.dt);
 				level = envelope(level, clamp(0.55 + passageLevel * 0.45), f.dt, 0.15, 0.9);
-				const bright = level * (0.52 + p.intensity * 0.95);
+				const bright = level * (0.7 + p.intensity * 1.2);
 				const scale = 1.5 + p.scale * 5;
 				const t = clock;
 

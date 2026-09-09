@@ -23,6 +23,11 @@ Restraint
 - Strong colour is a budget. Decide which section owns it and do not spend it earlier.
 - Brightness is non-renewable: eyes adapt. Going maximum early wastes it.
 - Leaving a layer out is a choice. Some sections should get out of the way.
+- One hit layer over a stable base. The catalog marks what hits: HARD is a whole-room strike
+  on every hit, STRIKE a wall or a wave per hit. A cue holds one HARD effect and nothing else
+  that strikes, or two STRIKEs; a verse or groove never holds a HARD one, and a breakdown
+  holds a slow moving look over its bed and nothing that strikes at all. Stacked strikes were
+  heard as "everything is flickering" and the linter warns about them.
 
 Timing
 - Change on 8 or 16 bars, never on every kick. Section changes land on the 4-bar grid.
@@ -44,7 +49,7 @@ Colour
 
 Safety, non-negotiable
 - Perceived strobe at or below 3 Hz, and the raw rate never in the 10-25 Hz band.
-- No strobe over 2 bars. Strobes and blackouts share one per-track allowance, set by genre
+- No strobe over a bar, and the engine itself writes half of one. Strobes and blackouts share one per-track allowance, set by genre
   and how hard the track goes; the task prompt gives this track's number and the linter
   enforces it.
 - A blinder is a downbeat at the biggest moment, rarely otherwise. Nothing big in bars 0-15.

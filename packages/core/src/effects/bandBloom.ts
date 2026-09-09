@@ -31,11 +31,14 @@ export const bandBloom: EffectDef = {
 	blurb: 'Low, middle and top of the mix as three overlapping fields across the room.',
 	taste: {
 		energy: 2,
-		sections: ['intro', 'groove', 'breakdown', 'build', 'drop', 'outro'],
+		// The quiet passages only: this is a sustained field written to carry a two-layer
+		// cue, and over a drop stack it was a fifth of the room's light with nothing to say.
+		sections: ['intro', 'groove', 'breakdown', 'outro'],
 		minBars: 2,
 		maxBars: 48,
 		peakReserved: false,
-		quiet: 5.04
+		activity: 0.1,
+		quiet: 2.36
 	},
 	params: [INTENSITY, param('spread', 'Lobe width', 0.5), param('turn', 'How fast it turns', 0.4)],
 	create(g) {
@@ -83,7 +86,7 @@ export const bandBloom: EffectDef = {
 				// proportionate to it: at a flat gain this lit an intro brighter than the drop,
 				// which is the contrast collapse a filling layer always risks.
 				const weight = body.update(f.energy, f.dt);
-				const gain = (0.32 + p.intensity * 0.7) * clamp(0.16 + weight * 0.84);
+				const gain = (0.28 + p.intensity * 0.6) * clamp(0.16 + weight * 0.84);
 				// How far the music is allowed to move anything, from the cue's own motion.
 				const lively = clamp(0.25 + motion * 0.75);
 				// Wide enough that the three overlap everywhere: the room should read as one lit

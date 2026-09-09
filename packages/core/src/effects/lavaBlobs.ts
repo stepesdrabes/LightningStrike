@@ -28,7 +28,8 @@ export const lavaBlobs: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 3.09,
+		activity: 0.05,
+		quiet: 1.82,
 		// Blobs, by construction: 37% of its light in a tenth of the pixels, and where the
 		// blobs are not is unlit room.
 		carries: false
@@ -57,7 +58,7 @@ export const lavaBlobs: EffectDef = {
 				// of a number under one is how an intro reached byte zero.
 				const passageLevel = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
 				level = envelope(level, clamp(0.55 + passageLevel * 0.45), f.dt, 0.2, 1.1);
-				const gain = level * (0.4 + p.intensity * 0.8);
+				const gain = level * (0.42 + p.intensity * 0.8);
 				const clock = (f.barIndex + f.barPhase) * 0.03 * motion;
 				const sigma = 0.03 + p.size * 0.05;
 				const inv = 1 / (2 * sigma * sigma);
@@ -91,7 +92,8 @@ export const lavaBlobs: EffectDef = {
 						continue;
 					}
 					const slot = lerp(SLOT.deep, hot, clamp(m * 0.7));
-					setSample(buf, i, palette, slot + hueShift, Math.min(m, 1.4) * gain);
+					// Capped near one: two blobs fusing should read hotter in colour, not pin to white.
+					setSample(buf, i, palette, slot + hueShift, Math.min(m, 1.1) * gain);
 				}
 
 				nblend(out, buf, alphaFor(f.dt, 0.12));

@@ -17,7 +17,8 @@ export const sweep: EffectDef = {
 		sections: ['groove', 'breakdown', 'build', 'drop'],
 		minBars: 2,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.2
 	},
 	params: [
 		INTENSITY,
@@ -63,7 +64,7 @@ export const sweep: EffectDef = {
 					d -= Math.floor(d + 0.5);
 					const front = Math.exp(-(d * d) / (2 * w * w));
 					const slot = lerp(body, SLOT.white, front * front);
-					setSample(out, i, palette, slot + ctx.hueShift, front * p.intensity);
+					setSample(out, i, palette, slot + ctx.hueShift, front * (0.18 + p.intensity * 0.5));
 				}
 			}
 		};

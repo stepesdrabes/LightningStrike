@@ -33,6 +33,7 @@ export const ricochet: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.5,
 		kit: 'kick'
 	},
 	params: [INTENSITY, param('speed', 'Shot speed', 0.5), param('loss', 'Bounce loss', 0.45)],
@@ -122,20 +123,24 @@ export const ricochet: EffectDef = {
 					}
 				}
 
-				const gain = 0.5 + p.intensity * 1.1;
+				const gain = 0.45 + p.intensity * 0.9;
 				for (let i = 0; i < g.count; i++) {
 					const u = g.perim[i];
 					if (u < 0) continue;
 					for (const s of shots) {
 						if (!s.alive) continue;
 						const d = Math.min(Math.abs(u - s.pos), 1 - Math.abs(u - s.pos));
-						// A hard head and a short tail BEHIND the direction of travel.
+						// A soft head some eight pixels wide and a short tail BEHIND the direction of
+						// travel: a one-pixel head was invisible from under the frame, and a hard
+						// five-pixel one at pure white was a tracer round. Only a full-power shot
+						// reaches white; the rest stay in the bright read of the room's own colour.
 						const behind = s.vel > 0 ? (s.pos - u + 1) % 1 : (u - s.pos + 1) % 1;
-						if (d < 0.006) {
-							addSample(out, i, palette, SLOT.white + hueShift, s.power * gain);
-						} else if (behind < 0.03 && behind > 0) {
-							const v = 1 - behind / 0.03;
-							addSample(out, i, palette, lerp(SLOT.glow, SLOT.base, v) + hueShift, v * v * s.power * gain * 0.6);
+						if (d < 0.013) {
+							const head = 1 - d / 0.013;
+							addSample(out, i, palette, lerp(SLOT.glow, SLOT.white, s.power) + hueShift, head * head * s.power * gain);
+						} else if (behind < 0.05 && behind > 0) {
+							const v = 1 - behind / 0.05;
+							addSample(out, i, palette, lerp(SLOT.glow, SLOT.base, v) + hueShift, v * v * s.power * gain * 0.7);
 						}
 					}
 				}

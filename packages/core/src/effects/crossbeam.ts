@@ -10,12 +10,12 @@ import { INTENSITY, param } from './helpers.ts';
 /**
  * The share of the perimeter's LIGHT that crosses to the beam at a full hit.
  *
- * Swept against `bench/punchprobe.ts` for the band the calm kick effects occupy: 0.16 lands at
- * a median of 28, 0.20 at 32, and this at 37, beside emberBump's 37 and counterweight's 43.
- * It reads larger than it looks because the beam is a fifth of the pixels, so a quarter of the
- * ring's light arriving there is well over double what that strip was carrying.
+ * It reads larger than it looks because the beam is a fifth of the pixels, so half of the
+ * ring's light arriving there is several times what that strip was carrying. Raised from a
+ * quarter when the floor came down: the trade is the whole gesture, and at a low floor a
+ * quarter of it was a flicker.
  */
-const TRADE_SHARE = 0.26;
+const TRADE_SHARE = 0.7;
 
 /**
  * The room's weight trades between the perimeter and the beam on every kick, at constant
@@ -44,6 +44,7 @@ export const crossbeam: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.3,
 		kit: 'kick'
 	},
 	params: [INTENSITY, param('trade', 'How much moves', 0.6)],
@@ -89,7 +90,9 @@ export const crossbeam: EffectDef = {
 				const reach = weight.update(clamp(bandBetween(f, 0, 0.12) * 1.8), f.dt);
 				const v = hit.decay(f.dt, f.beatPeriod, 0.9 / Math.max(0.05, motion)) * reach;
 
-				const floor = 0.34 + p.intensity * 0.42;
+				// A transient's resting level, not a bed's: at 0.63 this was the brightest
+				// constant thing in any stack it joined, 112 bytes of flat light over the bed.
+				const floor = 0.07 + p.intensity * 0.09;
 				// The share of the ring's LIGHT that crosses the room at a full hit.
 				const give = TRADE_SHARE * p.trade * v;
 

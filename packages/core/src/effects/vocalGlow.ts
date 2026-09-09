@@ -27,7 +27,8 @@ export const vocalGlow: EffectDef = {
 		minBars: 4,
 		maxBars: 32,
 		peakReserved: false,
-		quiet: 5.14,
+		activity: 0,
+		quiet: 2.30,
 		// A spotlight on the front wall by design: 28% of the room lit and nearly half its
 		// output in the brightest tenth of the pixels. Beautiful over a bed, and the reason a
 		// quiet cue carrying it and nothing else showed as one lit wall in a dark room.
@@ -42,12 +43,15 @@ export const vocalGlow: EffectDef = {
 		const level = new BeatHold(0.6);
 		const lean = new BeatHold(0.7);
 		const spread = new BeatHold(0.3);
+		// The passage's loudness, latched like everything else read off `f.energy`.
+		const passage = new BeatHold(0.5);
 
 		return {
 			reset() {
 				level.reset();
 				lean.reset();
 				spread.reset();
+				passage.reset();
 			},
 			render(out, ctx) {
 				const { f, g, p, palette, hueShift, motion } = ctx;
@@ -69,7 +73,11 @@ export const vocalGlow: EffectDef = {
 				// One voice is a spot, a whole arrangement is a wash.
 				const focus = spread.update(1 - spectrumFocus(f), f.beat, f.dt, f.beatPeriod);
 				const width = 0.12 + p.width * 0.28 + focus * 0.14;
-				const gain = (1 + p.intensity * 2.3) * clamp(0.12 + lvl * 0.88);
+				// A spotlight yields to a loud band: this is a quiet-passage device, and as the
+				// calm accent of a drop it added a steady 30 bytes where the striker it replaced
+				// added eight between events, which read as the room jumping between cues.
+				const loud = passage.update(clamp(f.energy), f.beat, f.dt, f.beatPeriod);
+				const gain = (0.6 + p.intensity * 1.3) * clamp(0.12 + lvl * 0.88) * (1 - 0.35 * loud);
 
 				for (let i = 0; i < g.count; i++) {
 					// The beam's centre catches the edge of the glow too.

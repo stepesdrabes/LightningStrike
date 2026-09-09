@@ -118,6 +118,42 @@ describe('Layer handover', () => {
 	});
 });
 
+describe('the hit floor', () => {
+	// `frame` is read after `compose`, before the output chain, so the numbers are the scale
+	// arithmetic and nothing else: master opacity 1, blend add, headroom 1.4.
+	const composed = (intensity: number, dim = 1): number => {
+		const m = mixerAt(intensity);
+		m.dim = dim;
+		m.layers.master.setEffect(A, g);
+		m.compose(createShowFrame());
+		return m.frame[0];
+	};
+
+	it('renders a hit under a dimmed cue at the level a build would give it', () => {
+		// The breath before a drop dims its cue to 0.31; the strobe inside it is a hit and
+		// takes the floor's level instead.
+		expect(composed(0.31)).toBeCloseTo(0.8 * 0.68 * 1.4, 5);
+		expect(composed(0.31)).toBeCloseTo(composed(0.68), 5);
+	});
+
+	it('leaves a hit over a louder cue exactly where it was', () => {
+		expect(composed(0.92)).toBeCloseTo(0.8 * 0.92 * 1.4, 5);
+	});
+
+	it('never floors a hit out of a blackout', () => {
+		expect(composed(0.31, 0.02)).toBeCloseTo(0.8 * 0.68 * 1.4 * 0.02, 5);
+	});
+
+	it('keeps the other layers on the cue, not on the floor', () => {
+		const m = mixerAt(0.31);
+		const bed: EffectDef = { ...A, id: 'bed', role: 'bed' };
+		m.layers.bed.setEffect(bed, g);
+		m.layers.bed.opacity = 1;
+		m.compose(createShowFrame());
+		expect(m.frame[0]).toBeCloseTo(0.8 * 0.31 * 1.4, 5);
+	});
+});
+
 describe('Mixer.finish', () => {
 	it('freezes auto-exposure when it is told the room is not being measured', () => {
 		const dim = flat('dim', 0.08);

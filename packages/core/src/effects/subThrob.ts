@@ -24,7 +24,8 @@ export const subThrob: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 3.95,
+		activity: 0.15,
+		quiet: 1.93,
 		// Driven entirely by the sub band, so a passage with no bass renders nothing.
 		carries: false
 	},
@@ -66,7 +67,7 @@ export const subThrob: EffectDef = {
 					Math.max(0.03, f.beatPeriod * 0.1),
 					Math.max(0.5, f.beatPeriod * 1.4)
 				);
-				const gain = env * (0.45 + p.intensity * 0.9);
+				const gain = env * (0.3 + p.intensity * 0.6);
 				const harmonics = grit.update(clamp(bandBetween(f, 0.12, 0.32) * 1.5 - bottom * 0.4), f.dt);
 
 				for (let i = 0; i < g.count; i++) {

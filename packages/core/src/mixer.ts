@@ -28,6 +28,20 @@ const DEFAULT_BLEND: Record<LayerRole, BlendMode> = {
 	master: 'add'
 };
 
+/**
+ * The least cue intensity a hit is rendered at.
+ *
+ * A strobe or a slam is punctuation on the timeline, not part of the look it lands over, and
+ * the planner puts the strobe that announces a drop inside the "breath" bar it has just
+ * dimmed to six tenths of the passage: rendered at the breath's 0.31 to 0.47, Rock That
+ * Body's first strobe reached byte 22 and the owner heard the strobes as "sometimes kinda
+ * dim". The floor is a build cue's level (0.62 plus energy), where the same flashes were
+ * judged right in the room, so a hit fired out of a hollow or a dimming build arrives at
+ * the level a build would have given it and a hit fired out of anything louder is exactly
+ * what it was. Measured over the corpus: 28 of 108 strobes sat under it, all in a breath.
+ */
+export const HIT_INTENSITY_FLOOR = 0.68;
+
 // Opacity budget per role. Without it the four additive layers reliably sum past white
 // and the palette stops being readable at exactly the loudest moment.
 export const DEFAULT_OPACITY: Record<LayerRole, number> = {
@@ -159,6 +173,12 @@ export class Mixer {
 	motion = 1;
 	/** Cue-level ceiling, 0..1. */
 	intensity = 1;
+	/**
+	 * A cut over everything, 0..1: the blackout hit. Kept apart from `intensity` because the
+	 * master layer is floored against the cue's level below, and a cut is the one thing a hit
+	 * may never be floored out of.
+	 */
+	dim = 1;
 	/** User master fader, 0..1. */
 	brightness = 1;
 	/**
@@ -225,9 +245,15 @@ export class Mixer {
 
 		this.frame.fill(0);
 
+		const master = this.layers.master;
+		// The additive master joins after the cue's dimmer, floored: a hit is not part of the
+		// look it lands over. Any other blend mode on the master is a look and takes the cue's
+		// level with the rest.
+		const hitLast = master.blendMode === 'add';
 		for (const role of LAYER_ROLES) {
 			const layer = this.layers[role];
 			if (!layer.enabled || !layer.busy) continue;
+			if (role === 'master' && hitLast) continue;
 			ctx.palette = this.palette;
 			const out = layer.render(ctx, this.layerScratch);
 			blend(this.frame, out, layer.blendMode, layer.opacity);
@@ -236,8 +262,15 @@ export class Mixer {
 		// Exposure headroom above 1.0 on purpose: the 3D preview tone-maps HDR values into
 		// a blown-out core with coloured fringes, which is what a camera sees looking at an
 		// LED. Clipping here instead would make them read as flat stickers.
-		const scale = this.intensity * this.brightness * 1.4;
+		const scale = this.intensity * this.dim * this.brightness * 1.4;
 		if (scale !== 1) for (let i = 0; i < this.frame.length; i++) this.frame[i] *= scale;
+
+		if (hitLast && master.enabled && master.busy) {
+			ctx.palette = this.palette;
+			const out = master.render(ctx, this.layerScratch);
+			const level = Math.max(this.intensity, HIT_INTENSITY_FLOOR) * this.dim * this.brightness * 1.4;
+			blend(this.frame, out, 'add', master.opacity * level);
+		}
 
 		if (this.floor > 0) {
 			// The room's own home colour, so the floor reads as the show being lit rather than as
@@ -276,6 +309,7 @@ export class Mixer {
 		for (const role of LAYER_ROLES) this.layers[role].reset();
 		this.frame.fill(0);
 		this.bytes.fill(0);
+		this.dim = 1;
 		this.meanLevel.reset();
 		this.slew.reset();
 	}

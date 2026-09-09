@@ -23,7 +23,8 @@ export const flexStrobe: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
-		quiet: 4.03,
+		activity: 0.4,
+		quiet: 1.85,
 		// A flash is an event, not a level: it is dark most of the time.
 		carries: false,
 		character: 'flash'
@@ -66,13 +67,13 @@ export const flexStrobe: EffectDef = {
 				// Under two cycles per beat. At a fixed 22 turns per second it ran past 25 Hz,
 				// which at 60 fps is aliasing rather than a shimmer.
 				shimmer += (f.dt / f.beatPeriod) * 1.5 * motion;
-				const gain = (1.2 + p.intensity * 1.8) * v;
+				const gain = (0.85 + p.intensity * 1.25) * v;
 				for (let k = 0; k < spotIdx.length; k++) {
 					const tw = 0.45 + 0.55 * sinewave(twPhase[k] + shimmer * twRate[k]);
 					// In the royal and velvet palette families the accent slot IS the gold.
 					const c = sample(palette, SLOT.accent + hueShift, tw * gain);
 					const strip = g.strips[stripOf[k]];
-					stampOnStrip(out, g.count, strip, spotIdx[k] - strip.offset, 0.7, c);
+					stampOnStrip(out, g.count, strip, spotIdx[k] - strip.offset, 1.6, c);
 				}
 			}
 		};

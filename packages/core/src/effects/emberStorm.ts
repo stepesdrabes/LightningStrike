@@ -28,11 +28,12 @@ export const emberStorm: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
-		quiet: 15.61,
+		activity: 0.4,
+		quiet: 9.65,
 		// Sparks. 19% of the room, three quarters of its light in a tenth of the pixels.
 		carries: false
 	},
-	params: [INTENSITY, param('count', 'Ember count', 0.5)],
+	params: [INTENSITY, param('count', 'Ember count', 0.35)],
 	create(g) {
 		const ring = ringsFor(g).perimeter;
 		const scratch = new Float32Array(ring.length * 3);
@@ -68,18 +69,19 @@ export const emberStorm: EffectDef = {
 				const tension = clamp(
 					Math.max(f.buildProgress, passage.update(f.energy, f.beat, f.dt, f.beatPeriod) * 0.5)
 				);
-				// From a lazy drift at 16 bars per lap to a gale at 2. Never wrapped: each ember's
+				// From a lazy drift at 16 bars per lap to a gale at 4. Never wrapped: each ember's
 				// place is `windPos` times its own drift, so subtracting a whole lap here would
 				// teleport the whole flock.
-				const barsPerLap = 16 - tension * 14;
+				const barsPerLap = 16 - tension * 12;
 				windPos += (f.dt / Math.max(0.4, barsPerLap * 4 * f.beatPeriod)) * motion;
-				// Two to six flickers per beat. Taken off the wind position it ran near 25 Hz,
-				// which at 60 fps is aliasing rather than an ember.
-				flickPos += (f.dt / f.beatPeriod) * (2 + tension * 4) * motion;
+				// One and a half to four flickers per beat. Taken off the wind position it ran
+				// near 25 Hz, which at 60 fps is aliasing rather than an ember; at six per beat
+				// a drop's flock was a field of blinking points.
+				flickPos += (f.dt / f.beatPeriod) * (1.5 + tension * 2.5) * motion;
 
 				const at = tint.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const count = Math.floor(MAX_EMBERS * (0.4 + p.count * 0.6));
-				const gain = (0.55 + p.intensity * 1.2) * clamp(0.3 + tension * 0.7);
+				const gain = (0.16 + p.intensity * 0.34) * clamp(0.3 + tension * 0.7);
 				// One hue family at a time, walked by where the mix is sitting. Two slots from
 				// opposite ends of the palette drifting over each other's trails sum to a colour
 				// the show never declared, which is what put a quarter of this off palette.
@@ -90,7 +92,7 @@ export const emberStorm: EffectDef = {
 					const u = frac(home[e] + windPos * drift[e]);
 					const flick = 0.7 + 0.3 * sinewave(flickPhase[e] + flickPos);
 					const c = sample(palette, (hot[e] === 0 ? coal : glowing) + hueShift, flick * gain);
-					stampGaussian(scratch, ring.length, u * ring.length, 2.1, c[0], c[1], c[2], true);
+					stampGaussian(scratch, ring.length, u * ring.length, 2.6, c[0], c[1], c[2], true);
 				}
 
 				out.fill(0);

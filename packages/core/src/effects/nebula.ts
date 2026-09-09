@@ -23,7 +23,8 @@ export const nebula: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 2.85
+		activity: 0.05,
+		quiet: 2.13
 	},
 	params: [INTENSITY, param('scale', 'Scale', 0.4), param('surge', 'Bass surge', 0.6)],
 	create(g) {
@@ -56,7 +57,7 @@ export const nebula: EffectDef = {
 				// of a number under one is how an intro reached byte zero.
 				const heard = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
 				level = envelope(level, clamp(0.55 + heard * 0.45), f.dt, 0.12, 0.7);
-				const bright = level * (0.5 + p.intensity * 1.05);
+				const bright = level * (0.6 + p.intensity * 1.1);
 				const scale = 1.2 + p.scale * 6;
 				const t = clock;
 
@@ -76,7 +77,7 @@ export const nebula: EffectDef = {
 							: field < 0.85
 								? lerp(SLOT.base, SLOT.third, (field - 0.55) / 0.3)
 								: lerp(SLOT.third, SLOT.glow, (field - 0.85) / 0.15);
-					setSample(buf, i, palette, slot + hueShift, (0.2 + 0.8 * field * field) * bright);
+					setSample(buf, i, palette, slot + hueShift, (0.35 + 0.65 * field * field) * bright);
 				}
 
 				nblend(out, buf, alphaFor(f.dt, 0.07));

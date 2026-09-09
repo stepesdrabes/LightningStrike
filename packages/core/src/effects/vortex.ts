@@ -11,23 +11,29 @@ import { INTENSITY, param } from './helpers.ts';
  * A spiral field in (theta, dist) space. The ceiling beam sits near the room's axis, so
  * it naturally becomes the vortex's bright eye. The kick surge is integrated, which gives
  * the swirl inertia instead of a twitch.
+ *
+ * Arms, direction, twist and speed are all params the planner draws per cue, because this
+ * was in 64 of 65 shows as the same two-armed spiral turning the same way.
  */
 export const vortex: EffectDef = {
 	id: 'vortex',
 	name: 'Vortex',
 	role: 'rhythm',
-	blurb: 'A full-spectrum spiral swirling around the room, kicked forward by the kick.',
+	blurb: 'A palette spiral swirling around the room, kicked forward by the kick; arms and direction vary.',
 	taste: {
 		energy: 4,
 		sections: ['groove', 'breakdown', 'build', 'drop'],
 		minBars: 2,
 		maxBars: 16,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.2
 	},
 	params: [
 		INTENSITY,
 		param('barsPerRev', 'Bars per revolution', 2, 0.5, 8, 0.5),
-		param('twist', 'Spiral twist', 0.5)
+		param('twist', 'Spiral twist', 0.5),
+		param('arms', 'Arms', 2, 1, 3, 1),
+		param('dir', 'Direction', 1, -1, 1, 2)
 	],
 	create(g) {
 		const buf = new Float32Array(g.count * 3);
@@ -49,30 +55,27 @@ export const vortex: EffectDef = {
 
 				surge += f.kickEnv * f.dt * 1.8 * motion;
 				surge *= Math.exp(-f.dt / Math.max(0.1, f.beatPeriod * 3));
-				// Motion scales the revolution rate rather than an integrated phase, so the swirl
-				// stays a function of the bar clock and a seek lands on the same frame.
-				// ctx.motion deliberately does NOT scale this. The phase is read off the absolute
-				// bar clock so a seek reproduces the frame exactly, and multiplying a growing
-				// counter by a value the player cross-fades between cues moves the pattern by the
-				// whole elapsed length: at bar 120 a routine 1.0 to 1.25 is 7.5 revolutions in one
-				// frame. A grid-locked phase takes its speed from the grid, and that is the point
-				// of it.
-				const spin = (f.barIndex + f.barPhase) / Math.max(0.5, p.barsPerRev) + surge;
+				// The phase is read off the absolute bar clock so a seek reproduces the frame
+				// exactly; ctx.motion deliberately does not scale it, because multiplying a
+				// growing counter by a value the player cross-fades between cues moves the
+				// pattern by the whole elapsed length.
+				const dir = p.dir < 0 ? -1 : 1;
+				const spin = dir * ((f.barIndex + f.barPhase) / Math.max(0.5, p.barsPerRev) + surge);
 				const twist = 1 + p.twist * 3;
+				const arms = Math.max(1, Math.round(p.arms));
 				const held = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
-				const gain = (0.45 + p.intensity * 1.1) * clamp(0.45 + held * 0.55);
+				// The arms are the picture and the dark between them is what makes it turn: held
+				// under full so the swirl is contrast rather than a bright field with a pattern on it.
+				const gain = (0.27 + p.intensity * 0.5) * clamp(0.7 + held * 0.3);
 
 				for (let i = 0; i < g.count; i++) {
 					const s = frac(g.theta[i] + g.dist[i] * twist * 0.4 - spin);
-					// Two arms: brightness peaks twice per revolution, squared for shade.
-					const w = Math.pow(sinewave(s * 2), 2);
-					// Near the axis, brightness lifts toward white-hot: the eye of the vortex.
+					const w = Math.pow(sinewave(s * arms), 2);
+					// Near the axis, brightness lifts toward white: the eye of the vortex.
 					const eye = Math.max(0, 1 - g.r[i] * 3.2);
-					// The eye reads toward white by moving up the palette rather than by desaturating,
-					// which is the same gesture without leaving the show's colours.
 					const arc = paletteArc(s + hueShift);
-					const u = eye > 0 ? lerp(arc, SLOT.white, eye * 0.7) : arc;
-					sample(palette, u, (0.2 + 0.8 * w + eye * 0.6) * gain, rgb);
+					const u = eye > 0 ? lerp(arc, SLOT.white, eye * 0.6) : arc;
+					sample(palette, u, (0.12 + 0.7 * w + eye * 0.4) * gain, rgb);
 					setPixel(buf, i, rgb[0], rgb[1], rgb[2]);
 				}
 

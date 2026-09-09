@@ -22,7 +22,8 @@ export const hueCarousel: EffectDef = {
 		sections: ['groove', 'breakdown', 'build', 'drop'],
 		minBars: 4,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.2
 	},
 	params: [INTENSITY, param('barsPerRev', 'Bars per revolution', 8, 2, 16, 2)],
 	create(g) {
@@ -35,7 +36,7 @@ export const hueCarousel: EffectDef = {
 				const steps = Math.max(2, p.barsPerRev) * 8;
 				const stepIdx = Math.floor((f.barIndex + f.barPhase) * 8);
 				const spin = (((stepIdx % steps) + steps) % steps) / steps;
-				const gain = (0.4 + p.intensity) * clamp(0.3 + f.energy * 0.9);
+				const gain = (0.14 + p.intensity * 0.32) * clamp(0.3 + f.energy * 0.9);
 
 				for (let i = 0; i < g.count; i++) {
 					const u = g.perim[i] >= 0 ? g.perim[i] : g.theta[i];

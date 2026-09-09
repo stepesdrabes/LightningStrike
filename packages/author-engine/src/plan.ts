@@ -16,10 +16,12 @@ import type {
 import {
 	BUILT_IN_EFFECTS,
 	HIT_RULES,
+	LAYER_ROLES,
 	PHRASE_BARS,
 	SHOW_VERSION,
 	Rng,
 	gridTrust,
+	hash01,
 	hitSeconds,
 	lerpHue,
 	sectionBase,
@@ -69,6 +71,22 @@ const SETTLE_BARS = 16;
  * meaning one thing is how they come to disagree.
  */
 const POUNDING_KICK = 0.8;
+/**
+ * Kicks per beat from which a loud passage is the kick's: the kit answer is picked before
+ * the accent and gets the hit budget. Under it the phrase gesture leads.
+ */
+const KIT_LEADS = 0.6;
+/**
+ * A strobe into a drop, in beats, and the longest it may run in seconds at any tempo.
+ *
+ * Half a bar, a whole one into the peak. Two bars was the passage rather than the announcement:
+ * heard in the room as "the strobe is too long", and at a bar the flashes still say what they
+ * are for before the downbeat says it louder. The linter's own cap in `HIT_RULES` stays wider,
+ * for an agent that wants the whole bar an ordinary drop is allowed.
+ */
+const STROBE_BEATS = 2;
+const PEAK_STROBE_BEATS = 4;
+const STROBE_MAX_S = 1.5;
 
 interface Slot {
 	bar: number;
@@ -113,8 +131,14 @@ interface Slot {
  */
 export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): Show {
 	const effects = opts.effects ?? BUILT_IN_EFFECTS;
+	const byId = new Map(effects.map((e) => [e.id, e]));
+	const activityOf = (spec: LayerSpec | undefined) =>
+		spec ? (byId.get(spec.effect)?.taste.activity ?? 0) : 0;
 	const seed = opts.seed ?? seedFrom(analysis.hash);
 	const rng = new Rng(seed);
+	// A seed-stable draw per cue for the params that vary a look, kept off the picker's own
+	// stream so a variety choice never reshuffles which effect wins the cue after it.
+	const draw = (bar: number, k: number) => hash01((seed ^ Math.imul(bar * 8 + k + 1, 0x9e3779b1)) >>> 0);
 	const profile = profileFor(opts.context, analysis);
 	// The allowance governs the effects as well as the hits: a family that has earned no
 	// flashes does not get blinder slams by the accent door instead.
@@ -231,14 +255,19 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		// never counted as spent twice.
 		const choose = (role: LayerRole, req: Parameters<EffectPicker['pick']>[0]) =>
 			holds(role) ? null : picker.pick(req);
+		// What the cue already holds, in `taste.activity`, so each layer picked after another
+		// may only add what the budget leaves: one hard hitter a cue.
+		let busy = 0;
 		const add = (role: LayerRole, def: EffectDef | null) => {
 			if (holds(role)) {
 				layers[role] = { ...heldLook![role]! };
+				busy += activityOf(layers[role]);
 				return;
 			}
 			if (!def) return;
-			const params = paramsFor(def, slot, analysis);
+			const params = paramsFor(def, slot, analysis, (k) => draw(slot.bar, k));
 			layers[role] = params ? { effect: def.id, params } : { effect: def.id };
+			busy += def.taste.activity ?? 0;
 		};
 
 		const length = slot.endBar - slot.bar;
@@ -257,6 +286,14 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 			profile.peak !== 'swell' &&
 			sectionBase(slot.section) === 'drop' &&
 			drums.kick >= POUNDING_KICK;
+		// Every cue of the peak section, not only its opener: the burst cue borrows the
+		// second cue's look, and the whole passage is the one the picker must not soften.
+		const inPeak = slot.span === peakSpan;
+		// The master's activity counts only where its own picks stay under it: the burst that
+		// took the whole section. Otherwise the burst borrows the next cue's layers
+		// (`carryThePeak`), and charging a two-bar moment to the phrase that outlives it
+		// starved the peak - a soft transient in 42 of 74 peaks.
+		if (peakMaster && slot.peak && slot.of === 1) busy += peakMaster.taste.activity ?? 0;
 		// The bed a repeat shares is the one its FIRST cue opened with; interior cues pick freely,
 		// or a long section would hold one look for its whole length again by another route.
 		const bedEnergy = Math.min(slot.energy, 0.75);
@@ -291,8 +328,9 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 			(slot.section === 'outro' || continued) && last ? last.layers.bed : undefined;
 		if (inheritedBed) {
 			layers.bed = { ...inheritedBed };
+			busy += activityOf(inheritedBed);
 		} else {
-			add('bed', choose('bed', { drums, role: 'bed', section: slot.section, lengthBars: length, energy: bedEnergy, pounding, mustCarry: carrier, bare, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
+			add('bed', choose('bed', { drums, busy, role: 'bed', section: slot.section, lengthBars: length, energy: bedEnergy, pounding, peak: inPeak, mustCarry: carrier, bare, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
 		}
 		switch (sectionBase(slot.section)) {
 			case 'void':
@@ -317,10 +355,23 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 				) {
 					break;
 				}
-				add('accent', choose('accent', { drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
+				add('accent', choose('accent', { drums, busy, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
 				break;
 
 			case 'breakdown':
+				// A slow look over the bed, always. A breakdown lit by a bed and one still field
+				// measured a shimmer of 0.9 bytes over the corpus against a groove's 4.0 and an
+				// intro's 0.7, which the owner heard as "almost zero effects energy". The budget
+				// for a breakdown is half a groove's, so what fits here is a roll, a sweep or a
+				// slow chase and never a striker: the layer that still moves when the drums are
+				// out. Inherited through a run of breakdown cues with the bed, for the same
+				// reason the bed is.
+				if (continued && last?.layers.rhythm) {
+					layers.rhythm = { ...last.layers.rhythm };
+					busy += activityOf(layers.rhythm);
+				} else {
+					add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
+				}
 				// A texture on top of the bed, always. This used to be a coin toss, on the grounds
 				// that a breakdown which keeps everything running is not a breakdown - but what it
 				// actually produced was a passage lit by one slow bed and nothing else, half the
@@ -335,31 +386,31 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 					break;
 				}
 				breakdownHeld = false;
-				add('accent', choose('accent', { drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
+				add('accent', choose('accent', { drums, busy, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
 				// The kit, where the passage still has one. A breakdown with a beat under it is
 				// common in this repertoire and the room should be answering it; a genuinely
 				// stripped one has no onsets to answer and gets nothing, which is the difference
 				// the coin toss was reaching for and could not see.
 				if (profile.transientEvery > 0 && kickDensity(analysis, slot) > 0.25) {
-					add('transient', choose('transient', { drums, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+					add('transient', choose('transient', { drums, busy, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
 				}
 				break;
 
 			case 'build':
-				add('rhythm', choose('rhythm', { drums, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+				add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
 				// A build is the one place an accent belongs before the drop rather than in it, and
 				// without one the two effects written for exactly this moment were unreachable.
-				add('accent', choose('accent', { drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+				add('accent', choose('accent', { drums, busy, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
 				break;
 
 			case 'groove':
-				add('rhythm', choose('rhythm', { drums, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+				add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
 				// The drum layer runs at the genre's cadence, never in every cue. Firing a light
 				// at every hit is the documented failure of audio-to-light mapping: it reads as
 				// mechanical however well timed it is, and leaving it out is what makes it land
 				// on return. A ballad leaves it out entirely; punk and funk barely rest it.
 				if (profile.transientEvery > 0 && grooveIndex % profile.transientEvery === profile.transientEvery - 1) {
-					add('transient', choose('transient', { drums, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+					add('transient', choose('transient', { drums, busy, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
 				}
 				grooveIndex++;
 				break;
@@ -369,16 +420,34 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 				// chorus whose VISIBLE layers look nothing like the first says the room is not
 				// listening, and without the group the novelty penalty actively pushes the
 				// repeat away from what the first one used.
-				add('rhythm', choose('rhythm', { drums, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
-				if (profile.transientEvery > 0) {
-					add('transient', choose('transient', { drums, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
-				}
+				add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
 				// The first appearance of material that returns holds its accent back, so the
 				// return ADDS something: escalation by vocabulary rather than by brightness,
 				// which prompt.ts warns is the cliche. The peak section and material that never
 				// returns get the full stack from the start.
-				if (!(slot.dropIndex === 0 && !slot.finalOfGroup && slot.span !== peakSpan)) {
-					add('accent', choose('accent', { drums, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, prefer: signatures, avoid, exclude }));
+				//
+				// The transient and the accent share the activity budget, so whichever is picked
+				// first gets to be the hit layer and the other calms down. The floor decides: a
+				// passage the kick drives (four-on-the-floor and near it) leads with the kit
+				// answer and takes a bloom or a texture over it; a sung passage on a lighter
+				// beat leads with the phrase gesture - the blinder on the downbeat, the bloom on
+				// the backbeat - and takes a gentle kit answer. Fixed either way round, one of
+				// the two pools collapsed onto its one calm member across the whole corpus.
+				const accentDue = !(slot.dropIndex === 0 && !slot.finalOfGroup && slot.span !== peakSpan);
+				const addAccent = () => {
+					if (!accentDue) return;
+					add('accent', choose('accent', { drums, busy, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
+				};
+				const addTransient = () => {
+					if (profile.transientEvery <= 0) return;
+					add('transient', choose('transient', { drums, busy, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
+				};
+				if (drums.kick >= KIT_LEADS) {
+					addTransient();
+					addAccent();
+				} else {
+					addAccent();
+					addTransient();
 				}
 				break;
 		}
@@ -417,7 +486,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 	carryThePeak(cues, peakCue);
 	stripBuilds(cues);
 	shapeApproaches(cues, profile);
-	plantWildcard(cues, slots, picker, analysis, exclude);
+	plantWildcard(cues, slots, picker, analysis, byId, exclude);
 	inheritWhereEmpty(cues);
 	trackTheLeaving(cues, analysis);
 
@@ -555,7 +624,16 @@ function buildSlots(
 			// that is the grid the audience counts on, and on a track whose phase shifts
 			// mid-song it is the only phrase grid that exists at all.
 			const burst = isPeak && index === 0 && peakMasterBars > 0;
-			let take = burst ? Math.min(peakMasterBars, remaining) : cueBars(remaining, barSeconds);
+			// The burst takes the whole section when what would be left is under the two bars
+			// every bed and rhythm needs: a one-bar stub can hold nothing but a transient and an
+			// accent, and the burst then borrows that stub's look for the biggest moment of the
+			// night. A master held a bar longer than it asked for is a held look; a peak lit by
+			// two layers is a fault.
+			let take = burst
+				? remaining - peakMasterBars < 2
+					? remaining
+					: peakMasterBars
+				: cueBars(remaining, barSeconds);
 			// The burst cue is deliberately shorter than a phrase and must not be re-rounded;
 			// everything after it re-lands on the section's own grid.
 			if (take < remaining && !burst) {
@@ -635,8 +713,11 @@ function clamp01(v: number): number {
 function intensityFor(slot: Slot, spread = 0, profile?: GenreProfile): number {
 	const base: Record<SectionKind, number> = {
 		intro: 0.46,
-		groove: 0.68,
-		verse: 0.64,
+		// A step above where they sat: with the catalog's levels brought onto one ladder a
+		// groove measured a median of 46 bytes against an intro's 28 and a drop's 84, and a
+		// groove should read as the room playing, clearly above the room waking up.
+		groove: 0.72,
+		verse: 0.68,
 		// Not 0.42, for the reason the outro is not 0.32: gamma 2.2 leaves very little room
 		// under byte 10 to say anything in, and movement is delivered in bytes, so a passage
 		// held down there cannot react however reactive its layers are. A breakdown also sits
@@ -821,6 +902,25 @@ function paletteFor(
 }
 
 /**
+ * Which of an effect's params a cue may draw differently, and from what. Repeated entries
+ * weight a choice; the effect's own default is what an undrawn instance still shows.
+ *
+ * Only the looks that read as the same look at every setting are listed: the point is that
+ * a rotating spiral with one arm the other way is still the spiral, not a different effect.
+ */
+const VARIETY: Record<string, Record<string, readonly number[]>> = {
+	vortex: { barsPerRev: [1, 2, 2, 4], arms: [1, 2, 2, 3], dir: [1, 1, -1], twist: [0.15, 0.4, 0.7, 0.95] },
+	chase: { segments: [6, 8, 8, 12], tail: [0.35, 0.5, 0.7] },
+	impulseSpin: { lobes: [2, 3, 3, 4], drag: [0.3, 0.45, 0.6] },
+	sweep: { bars: [1, 2, 2, 4], turn: [1, 1, 0] },
+	hueCarousel: { barsPerRev: [4, 8, 8] },
+	pixelRain: { fallBeats: [3, 4, 6] },
+	pump: { sweep: [0.3, 0.5, 0.8] },
+	blockChase: { order: [0, 1, 2], half: [0, 0, 1] },
+	snapSplit: { hold: [0.3, 0.5, 0.7] }
+};
+
+/**
  * Parameters an effect cannot pick for itself, because they depend on what the track is doing
  * rather than on what the effect is.
  *
@@ -831,7 +931,8 @@ function paletteFor(
 function paramsFor(
 	def: EffectDef,
 	slot: Slot,
-	analysis: TrackAnalysis
+	analysis: TrackAnalysis,
+	draw: (k: number) => number
 ): Record<string, number> | undefined {
 	const params: Record<string, number> = {};
 	const clampTo = (key: string, wanted: number) => {
@@ -839,6 +940,17 @@ function paramsFor(
 		if (spec) params[key] = Math.max(spec.min, Math.min(spec.max, wanted));
 		return !!spec;
 	};
+
+	// The look's own variety, drawn per cue so the fourth vortex of a night is not the first
+	// one again. A key an effect does not declare is skipped, so the table can name a param
+	// before the effect grows it.
+	const variety = VARIETY[def.id];
+	if (variety) {
+		let k = 0;
+		for (const [key, options] of Object.entries(variety)) {
+			clampTo(key, options[Math.min(options.length - 1, Math.floor(draw(k++) * options.length))]);
+		}
+	}
 
 	// Hats carry the subdivision a track is actually played at, so a flicker locked to them
 	// lands where the producer put it rather than on a guess about the genre.
@@ -865,6 +977,9 @@ function paramsFor(
 	// lap length mid-song.
 	const barSeconds = (60 / Math.max(1, analysis.tempo.bpm)) * analysis.tempo.beatsPerBar;
 	clampTo('lapBars', barSeconds >= 2.2 ? 1 : 2);
+	// The felt strike rate, the same way: a wall struck on every beat is a chase at 120 bpm
+	// and a 3 Hz flicker at 174, so past 150 bpm the blocks strike on the half bar.
+	if (barSeconds / Math.max(1, analysis.tempo.beatsPerBar) < 0.4) clampTo('half', 1);
 
 	return Object.keys(params).length > 0 ? params : undefined;
 }
@@ -1017,7 +1132,14 @@ function shapeApproaches(cues: Cue[], profile: GenreProfile): void {
  * opacity-bounded, and planting it mid-passage keeps it away from every structural moment
  * the show is already spending real cards on.
  */
-function plantWildcard(cues: Cue[], slots: Slot[], picker: EffectPicker, analysis: TrackAnalysis, exclude: readonly string[] = []): void {
+function plantWildcard(
+	cues: Cue[],
+	slots: Slot[],
+	picker: EffectPicker,
+	analysis: TrackAnalysis,
+	byId: Map<string, EffectDef>,
+	exclude: readonly string[] = []
+): void {
 	const steady = slots.filter(
 		(s) => sectionBase(s.section) === 'groove' && s.of >= 3 && !s.peak && s.index > 0
 	);
@@ -1029,6 +1151,15 @@ function plantWildcard(cues: Cue[], slots: Slot[], picker: EffectPicker, analysi
 		else if (s.span.lengthBars === host.span.lengthBars && s.index === Math.floor(s.of / 2)) host = s;
 	}
 
+	const cue = cues.find((c) => c.bar === host.bar);
+	if (!cue) return;
+	// The stranger joins a stack that is already moving and pays into the same budget.
+	let busy = 0;
+	for (const role of LAYER_ROLES) {
+		const spec = cue.layers[role];
+		if (role !== 'accent' && spec) busy += byId.get(spec.effect)?.taste.activity ?? 0;
+	}
+
 	// The wildcard's freedom is from the SECTION vocabulary and nothing else. It still may
 	// not be a flash or a blow - a strobe as the one surprise in a rap verse reads as a
 	// fault, not a stranger - and it still may not answer a kit stream the passage does not
@@ -1038,6 +1169,7 @@ function plantWildcard(cues: Cue[], slots: Slot[], picker: EffectPicker, analysi
 		section: host.section,
 		lengthBars: host.endBar - host.bar,
 		energy: host.energy,
+		busy,
 		anySection: true,
 		noCharacter: true,
 		// Foreign every night, so a stranger too: the family's hard exclusions hold here.
@@ -1045,8 +1177,6 @@ function plantWildcard(cues: Cue[], slots: Slot[], picker: EffectPicker, analysi
 		drums: drumDensity(analysis, host.bar, host.endBar)
 	});
 	if (!def) return;
-	const cue = cues.find((c) => c.bar === host.bar);
-	if (!cue) return;
 	cue.layers.accent = { effect: def.id };
 	cue.note = `${cue.note}; one stranger, once`;
 }
@@ -1095,7 +1225,7 @@ function planHits(
 	const beatsPerBar = tempo.beatsPerBar;
 	// Sized at the bar it will FIRE on, not off the track median. On a track that changes
 	// tempo the median describes nothing anybody plays: SICKO MODE's median says 5.2 Hz is
-	// safe while its fast movement runs the same gesture at 9.2, past the 8 Hz ceiling.
+	// safe while its fast movement runs the same gesture at 9.2, past the ceiling.
 	const perBeatAt = (bar: number) => strobePerBeat({ bpm: bpmAt(tempo, bar) });
 
 	// Every gesture below is counted in whole bars, so each one starts on a downbeat and ends on
@@ -1106,19 +1236,6 @@ function planHits(
 	// smear, and so nothing is planned where a bigger card will mask it.
 	const clear = (from: number, to: number) =>
 		!hits.some((h) => from - 2 < h.bar + h.beats / beatsPerBar && h.bar < to + 2);
-	// A strobe is lit for exactly as long as it is held, so its length is capped in seconds as
-	// well as in bars. Whole bars only, and none at all where one bar already runs too long:
-	// a tempo that cannot fit a bar of strobe inside the cap should not be strobing.
-	// Measured over the span the hit will OCCUPY, using the same function the linter checks it
-	// with. Sizing it against one bar and placing it at another is how a show came back failing
-	// its own linter on a track whose tempo drifts by a per cent, and a rejected show is a dark
-	// room rather than a slightly long strobe.
-	const strobeBars = (endBar: number, want: number) => {
-		const cap = HIT_RULES.strobe.maxSeconds ?? Infinity;
-		let bars = Math.min(want, HIT_RULES.strobe.maxBars);
-		while (bars > 0 && hitSeconds(tempo, endBar - bars, 0, bars * beatsPerBar) > cap) bars--;
-		return bars;
-	};
 	// Black is counted in beats rather than bars, because a bar of it is four beats and at the
 	// tempos this repertoire sits at that is three seconds of nothing. Whole beats still, so it
 	// lands on the grid, and never more than the rule allows in either unit.
@@ -1134,6 +1251,20 @@ function planHits(
 		const bar = endBar - barsBack;
 		const beat = barsBack * beatsPerBar - beats;
 		return beat > 0 ? { bar, beat } : { bar };
+	};
+	// A strobe is lit for exactly as long as it is held, so it is counted in beats and capped in
+	// seconds: half a bar into an ordinary drop, a bar into the peak, and never past the cap at
+	// any tempo. Measured over the span the hit will OCCUPY, ending on the drop's downbeat, with
+	// the same function the linter checks it with: sizing it against one bar and placing it at
+	// another is how a show came back failing its own linter on a drifting grid.
+	const strobeBeats = (endBar: number, want: number) => {
+		let beats = Math.min(want, HIT_RULES.strobe.maxBars * beatsPerBar);
+		while (beats > 0) {
+			const { bar, beat } = endingAt(endBar, beats);
+			if (hitSeconds(tempo, bar, beat ?? 0, beats) <= STROBE_MAX_S) break;
+			beats--;
+		}
+		return beats;
 	};
 	/**
 	 * Strobes and blackouts share one allowance for the whole show, scaled by genre and by
@@ -1244,16 +1375,19 @@ function planHits(
 		// malfunction however well placed. Those families keep the held-breath blackout only -
 		// unless the peak itself pounds hard enough to have earned the slam treatment, which
 		// brings the strobe into IT with it.
-		const room = before.endBar - before.bar - 1;
-		const runFor = strobeBars(slot.bar, Math.min(slot.peak ? 2 : 1, room));
+		// A bar of the preceding section stays clear, so the strobe reads as the end of a
+		// passage rather than as the passage.
+		const room = (before.endBar - before.bar - 1) * beatsPerBar;
+		const runFor = strobeBeats(slot.bar, Math.min(slot.peak ? PEAK_STROBE_BEATS : STROBE_BEATS, room));
+		const start = endingAt(slot.bar, runFor);
 		// The bar it actually starts on, which on a track that changes tempo is the only bar
 		// whose beat length says what this will look like in the room.
-		const perBeat = perBeatAt(slot.bar - runFor);
+		const perBeat = perBeatAt(start.bar);
 		if (perBeat > 0 && runFor > 0 && treatFor(slot) === 'slam') {
 			spendFlash({
-				bar: slot.bar - runFor,
+				...start,
 				kind: 'strobe',
-				beats: bars(runFor),
+				beats: runFor,
 				params: { perBeat },
 				note: slot.peak ? 'strobing into the one that matters' : 'strobing out of the build'
 			});

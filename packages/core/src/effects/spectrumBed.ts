@@ -34,7 +34,7 @@ import { INTENSITY, param } from './helpers.ts';
  * 1.4 and 14.9 at 1.5, and an intro two bytes lower is one that crosses into being reported dark
  * while it fades. What the depth buys is contrast, which is not what this pass was for.
  */
-const RELIEF = 1.3;
+const RELIEF = 1.1;
 /**
  * Release, seconds. Deliberately longer than the attack and slightly longer than a sixteenth at
  * this repertoire's tempos, so a chord rings out of the room rather than snapping off it.
@@ -52,7 +52,8 @@ export const spectrumBed: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 5.95
+		activity: 0.1,
+		quiet: 3.04
 	},
 	params: [INTENSITY, param('spread', 'Octaves across the room', 0.7), param('depth', 'Colour travel', 0.6)],
 	create(g) {
@@ -87,8 +88,9 @@ export const spectrumBed: EffectDef = {
 				// drop from arriving in the same colour a breakdown was already sitting in.
 				const sparse = focus.update(spectrumFocus(f), f.dt);
 
-				// Level comes from the cue, not from the music. A bed is a room being lit.
-				const gain = 0.55 + p.intensity * 0.75;
+				// Level comes from the cue, not from the music. A bed is a room being lit - and a
+				// bed, not a highlight: at 1.07 the relief's crests pinned white in every drop.
+				const gain = 0.4 + p.intensity * 0.5;
 				const depth = clamp(p.depth);
 
 				for (let i = 0; i < g.count; i++) {

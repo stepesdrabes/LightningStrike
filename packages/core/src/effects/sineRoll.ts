@@ -27,7 +27,8 @@ export const sineRoll: EffectDef = {
 		sections: ['intro', 'groove', 'breakdown', 'build', 'drop', 'outro'],
 		minBars: 4,
 		maxBars: 64,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.1
 	},
 	params: [
 		INTENSITY,
@@ -66,7 +67,7 @@ export const sineRoll: EffectDef = {
 				const waves = Math.max(1, Math.round(p.waves));
 				const passageLevel = passage.update(f.energy, f.dt);
 				const tilt = lean.update(spectralTilt(f), f.dt);
-				const gain = (0.4 + p.intensity) * clamp(0.3 + passageLevel * 0.9);
+				const gain = (0.14 + p.intensity * 0.35) * clamp(0.3 + passageLevel * 0.9);
 
 				for (let i = 0; i < g.count; i++) {
 					const u = ringU(g, i);

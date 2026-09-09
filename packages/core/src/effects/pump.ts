@@ -27,12 +27,13 @@ export const pump: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.3,
 		kit: 'kick'
 	},
 	params: [
 		INTENSITY,
 		param('duck', 'Duck mode', 1, 0, 1, 1),
-		param('depth', 'Depth', 0.65),
+		param('depth', 'Depth', 0.78),
 		param('decay', 'Decay beats', 0.5, 0.1, 2),
 		param('sweep', 'How far the duck lags across the room', 0.5)
 	],
@@ -74,7 +75,9 @@ export const pump: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette, motion } = ctx;
-				base = envelope(base, clamp(0.4 + 0.6 * passage.update(f.energy, f.dt)), f.dt, 0.06, 0.4);
+				// The sustain sits at half of full: the duck is the gesture, and a room that is
+				// white between kicks has nowhere to duck from that the eye can see.
+				base = envelope(base, clamp(0.55 + 0.3 * passage.update(f.energy, f.dt)), f.dt, 0.06, 0.4);
 				drive = envelope(drive, clamp(f.kickEnv * 1.4), f.dt, 0.01, f.beatPeriod * 3);
 
 				// How far behind the near wall the far one is, as a fraction of the ducking
@@ -88,7 +91,9 @@ export const pump: EffectDef = {
 				const bright = bandBetween(f, 0.45, 1);
 				const colour = tone.update(clamp(spectralTilt(f) * 0.7 + bright * 0.6), f.dt);
 
-				const gain = p.intensity;
+				// Low on purpose: this is a wall of colour under three other layers, and the mixer
+				// adds them before gamma. Alone it is dim; in a stack it is a fifth of the sum.
+				const gain = p.intensity * 0.45;
 				const decayed =
 					p.duck > 0.5 ? 0 : env.decay(f.dt, f.beatPeriod, p.decay / Math.max(0.05, motion));
 				if (p.duck <= 0.5 && f.downbeat) env.fire(1);

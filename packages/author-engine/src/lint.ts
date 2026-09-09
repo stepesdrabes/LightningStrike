@@ -1,6 +1,7 @@
 import type { EffectDef, Hit, LayerRole, Show, TrackAnalysis, TrackContext } from '@mv/core';
 import { allowedFlashes } from './genre.ts';
 import { peakSection as enginePeakSection } from './plan.ts';
+import { activityBudget } from './select.ts';
 import {
 	HIT_RULES,
 	LAYER_ROLES,
@@ -47,7 +48,7 @@ export interface LintContext {
  *
  * How LONG a gesture holds the room is capped in `HIT_RULES`, and how FAST it flashes in
  * `strobePerBeat`. Both are taste rather than safety: a strobe that outlasts the phrase it
- * points at has stopped being punctuation, and one past ~8 Hz has fused into a texture -
+ * points at has stopped being punctuation, and one past ~6 Hz has fused into a texture -
  * heard in the room as "the strobe is just noise now", not as a longer list of events.
  */
 const SETTLE_BARS = 16;
@@ -194,6 +195,33 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 		while (to + 1 < cues.length && cues[to + 1].layers[role]?.effect === id) to++;
 		return cueEnd(to) - cues[from].bar;
 	};
+
+	// One hit layer over a stable base. The engine spends `activityBudget` while it picks;
+	// an authored show is held to the same sum, without its master, which is a moment rather
+	// than a look. The cues the owner heard as "everything is flickering" were three layers
+	// striking on the same kick, each defensible alone. The slack is what the engine's own
+	// fallback may add: a pool with nothing under budget still lights its calmest member.
+	const SLACK = 0.3;
+	for (const cue of cues) {
+		const span = analysis.sections.find((s) => cue.bar >= s.startBar && cue.bar < s.endBar);
+		const budget = activityBudget((span?.meanEnergy ?? 70) / 100, cue.section);
+		let busy = 0;
+		const strikers: string[] = [];
+		for (const role of LAYER_ROLES) {
+			if (role === 'master') continue;
+			const def = cue.layers[role] ? effects.get(cue.layers[role]!.effect) : undefined;
+			const activity = def?.taste.activity ?? 0;
+			busy += activity;
+			if (def && activity >= 0.5) strikers.push(def.id);
+		}
+		if (busy > budget + SLACK) {
+			warn(
+				'busy-stack',
+				`cue at bar ${cue.bar} stacks ${strikers.join(', ')} (activity ${busy.toFixed(1)} against ${budget.toFixed(1)} for a ${cue.section}); one hit layer over a stable base, or the room flickers`,
+				cue.bar
+			);
+		}
+	}
 
 	for (let i = 0; i < cues.length; i++) {
 		const cue = cues[i];

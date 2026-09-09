@@ -108,7 +108,7 @@ packages/transport    DDP and sACN over UDP       -> core
 packages/author-ai    Agent SDK, tools, backends  -> core, analysis, author-engine
 packages/author-engine  deterministic show generation + the linter  -> core
 packages/analysis     ffmpeg -> PCM -> SuperFlux -> beat grid -> bars -> sections  -> core
-packages/core         contracts, geometry, colour, DSL, 94 effects, mixer, player, director
+packages/core         contracts, geometry, colour, DSL, 91 effects, mixer, player, director
 ```
 
 The layering is enforced by separate `package.json` files rather than by convention: `core`
@@ -176,8 +176,11 @@ rather than a second agent loop, and it costs roughly two orders of magnitude le
 ## Effects
 
 One effect per file in `packages/core/src/effects/`. Each declares taste metadata (energy
-1-5, allowed sections, min/max bars, whether it is reserved for one moment per show) so
-restraint is structural rather than something the author has to remember.
+1-5, allowed sections, min/max bars, whether it is reserved for one moment per show, and how
+hard it hits) so restraint is structural rather than something the author has to remember.
+The last of those is spent as a budget per cue: one hit layer over a stable base, the rule
+every console programmer works to, so a drop holds one whole-room striker and a moving look
+rather than three layers all answering the same kick, and a verse holds none.
 
 Some effects are a genre's signature - the techno shutter-cut, the drum & bass roller whose
 pulses arrive front-centre exactly on the downbeat, the disco mirror ball, the blinder wall a
@@ -206,9 +209,9 @@ arrangement. The grid-locked slammers keep their timing from the grid but take t
 to strike from a `Presence` of the hit envelope, so when the producer pulls the kick out for
 eight bars the room rests with it and comes back when it does. The same honesty governs
 punctuation: a drop whose arrival bar carries no kick gets its slam demoted to a colour flood,
-and the strobe keeps musical subdivisions but never exceeds 8 Hz - past that the flashes fuse
+and the strobe keeps musical subdivisions but never exceeds 6 Hz - past that the flashes fuse
 into a texture, measured in this room at 9.4 Hz on a 140 bpm track where the same gesture at
-half the rate still reads as events.
+half the rate still reads as events, and heard again at 8 as "way too quick".
 
 Colour is spent the same way. The palette slots are one ramp - deep, base, glow, white, third,
 accent - and its three spans are not alike. Measured over 24 hues through the real ramp, deep to

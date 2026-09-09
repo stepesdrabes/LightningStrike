@@ -28,7 +28,8 @@ export const anthemWash: EffectDef = {
 		sections: ['chorus'],
 		minBars: 2,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.05
 	},
 	params: [INTENSITY],
 	create(g) {
@@ -61,7 +62,7 @@ export const anthemWash: EffectDef = {
 				// chorus is standing, not something chasing the mix.
 				crest += (f.dt * ctx.motion) / Math.max(0.1, f.beatPeriod * 32);
 
-				const gain = (0.5 + p.intensity * 1.1) * (0.5 + level * 0.55 + lift * 0.25);
+				const gain = (0.34 + p.intensity * 0.75) * (0.5 + level * 0.55 + lift * 0.25);
 
 				for (let i = 0; i < g.count; i++) {
 					const u = ringU(g, i);

@@ -46,6 +46,15 @@ describe('gridTrust', () => {
 		).toBe(true);
 	});
 
+	it('lets a fast honest arrangement through', () => {
+		// cool (Grey256): 16 sections in 180 s at 160 bpm, 5.33 a minute, 4/4 at meter
+		// confidence 1.00. The rate is counted in wall-clock minutes and a fast track cuts
+		// more bars into one, which is not fragmentation.
+		expect(
+			gridTrust(sketch({ duration: 180, sections: 16, meterConfidence: 1, bpm: 160 })).trusted
+		).toBe(true);
+	});
+
 	it('does not read low meter confidence alone as failure', () => {
 		// Whip: clean structure at meter confidence 0.55 - confidence only ever tightens the
 		// fragmentation test, it never trips on its own.

@@ -40,7 +40,8 @@ export const hearth: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 3.38
+		activity: 0.05,
+		quiet: 2.03
 	},
 	params: [INTENSITY, param('flicker', 'Flicker', 0.5), param('settle', 'How still it sits', 0.5)],
 	create(g) {
@@ -71,7 +72,7 @@ export const hearth: EffectDef = {
 				const flicker = 0.2 + p.flicker * 0.55;
 				// A settled fire wanders slowly and sits in fewer places; a young one roams.
 				const roam = 1.35 - clamp(p.settle) * 0.75;
-				const gain = (0.62 + p.intensity * 0.7) * (0.86 + heard * 0.3);
+				const gain = (0.48 + p.intensity * 0.5) * (0.86 + heard * 0.3);
 
 				for (let i = 0; i < g.count; i++) {
 					const u = ringU(g, i);

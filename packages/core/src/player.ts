@@ -672,6 +672,7 @@ export class ShowPlayer {
 
 	private applyHits(t: number): void {
 		const master = this.mixer.layers.master;
+		this.mixer.dim = 1;
 
 		let live: CompiledHit | null = null;
 		for (const h of this.hits) {
@@ -691,7 +692,11 @@ export class ShowPlayer {
 		}
 
 		if (live.kind === 'blackout') {
-			this.mixer.intensity *= 0.02;
+			// A cut over everything, the master included: `dim` rather than the cue's
+			// intensity, because the mixer floors a hit against the intensity and a strobe
+			// still installed from the overlapping hit would otherwise keep flashing through
+			// the held breath.
+			this.mixer.dim = 0.02;
 			// The floor goes with it, or the room would sit at its resting level through the one
 			// move whose whole point is that the room does not.
 			this.mixer.floor = 0;

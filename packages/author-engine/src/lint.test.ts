@@ -269,7 +269,7 @@ describe('effect rules', () => {
 
 describe('safety rules', () => {
 	it('caps the flash rate at the tempo ceiling, and at nothing else', () => {
-		// The ceiling is taste, not a public-space limiter: past ~8 Hz the flashes fuse into
+		// The ceiling is taste, not a public-space limiter: past ~6 Hz the flashes fuse into
 		// a texture and stop reading as events. There is still no minimum gap and no per-show
 		// strobe count beyond the flash budget - a linter that refuses the biggest card in
 		// the deck is a linter people route around.
@@ -289,13 +289,14 @@ describe('safety rules', () => {
 	});
 
 	it('holds the planner and the linter to one subdivision table', () => {
-		// 120 bpm is the last tempo whose sixteenth fits under 8 Hz; everything faster
-		// strobes in eighths, and only an absurd grid falls to quarters.
-		expect(strobePerBeat({ bpm: 100 })).toBe(4);
-		expect(strobePerBeat({ bpm: 120 })).toBe(4);
-		expect(strobePerBeat({ bpm: 121 })).toBe(2);
+		// 90 bpm is the last tempo whose sixteenth fits under 6 Hz; everything faster
+		// strobes in eighths up to 180, and only a fast grid falls to quarters.
+		expect(strobePerBeat({ bpm: 90 })).toBe(4);
+		expect(strobePerBeat({ bpm: 100 })).toBe(2);
+		expect(strobePerBeat({ bpm: 120 })).toBe(2);
 		expect(strobePerBeat({ bpm: 140 })).toBe(2);
 		expect(strobePerBeat({ bpm: 175 })).toBe(2);
+		expect(strobePerBeat({ bpm: 181 })).toBe(1);
 		expect(strobePerBeat({ bpm: 250 })).toBe(1);
 	});
 

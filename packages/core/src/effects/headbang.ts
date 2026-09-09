@@ -20,6 +20,7 @@ export const headbang: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.5,
 		// 'kick', not 'any': the nod follows the floor, and a clap backbeat with the kick
 		// out is a passage to sway through, not to nod to.
 		kit: 'kick'
@@ -59,7 +60,7 @@ export const headbang: EffectDef = {
 				const v = env.decay(f.dt, f.beatPeriod, (everyBeat ? 1.35 : 3.3) / Math.max(0.05, motion));
 
 				const passageLevel = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
-				const level = clamp(0.3 + passageLevel * 0.7) * (0.4 + p.intensity);
+				const level = clamp(0.3 + passageLevel * 0.7) * (0.35 + p.intensity * 0.58);
 				const front = 1 - v;
 
 				for (let i = 0; i < g.count; i++) {
@@ -67,8 +68,8 @@ export const headbang: EffectDef = {
 					const d = (g.ny[i] - lo) / span - front;
 					// Steep leading edge, soft wake.
 					const wave = d > 0 ? Math.exp(-d * d * 30) : Math.exp(-d * d * 8);
-					const slot = lerp(SLOT.deep, SLOT.base, clamp(0.3 + wave * v));
-					setSample(out, i, palette, slot + hueShift, (0.25 + 0.75 * wave * v) * level);
+					const slot = lerp(SLOT.deep, SLOT.glow, clamp(0.3 + wave * v));
+					setSample(out, i, palette, slot + hueShift, (0.3 + 0.9 * wave * v) * level);
 				}
 			}
 		};

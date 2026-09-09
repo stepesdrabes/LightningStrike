@@ -25,11 +25,14 @@ export const harmonicRibbon: EffectDef = {
 	blurb: 'A soft band tracking the brightest voice in the mix, tightening as it stands alone.',
 	taste: {
 		energy: 2,
-		sections: ['intro', 'groove', 'breakdown', 'build', 'drop', 'outro'],
+		// The quiet passages only, for the same reason as bandBloom: a carrying field is a
+		// floor, and a drop already has one.
+		sections: ['intro', 'groove', 'breakdown', 'outro'],
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
-		quiet: 4.54
+		activity: 0.1,
+		quiet: 2.19
 	},
 	params: [INTENSITY, param('travel', 'How far it walks', 0.7), param('width', 'Band width', 0.5)],
 	create(g) {
@@ -67,7 +70,7 @@ export const harmonicRibbon: EffectDef = {
 				const played = clamp((voice.update(spectrumPeak(f), f.dt) - heard * 0.55) * 2);
 
 				// Level from the passage, with the articulation riding on top.
-				const gain = (0.25 + p.intensity * 0.7) * clamp(0.15 + heard * 0.85) * (1 + played * 0.5);
+				const gain = (0.22 + p.intensity * 0.6) * clamp(0.15 + heard * 0.85) * (1 + played * 0.5);
 				// One voice is a line, a whole arrangement is a wash. The width is the measurement.
 				// Wide enough at its narrowest that the band is a region of the room rather than a
 				// stripe on one wall: as the only texture over a quiet bed, a stripe reads as a fault.

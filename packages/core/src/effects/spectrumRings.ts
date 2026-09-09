@@ -29,7 +29,8 @@ export const spectrumRings: EffectDef = {
 		sections: ['intro', 'groove', 'breakdown', 'build', 'drop', 'outro'],
 		minBars: 2,
 		maxBars: 48,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.2
 	},
 	params: [INTENSITY, param('turn', 'Rotation', 0.5), param('bands', 'Slices', 0.6)],
 	create(g) {
@@ -64,7 +65,7 @@ export const spectrumRings: EffectDef = {
 				// the track. Silence is still allowed to take the room out, so a void reads as one.
 				const loud = loudness.update(spectrumPeak(f), f.beat, f.dt, f.beatPeriod);
 				const gain =
-					(0.4 + p.intensity * 0.85) * clamp(0.5 + loud * 0.5) * smoothstep(0.01, 0.08, loud);
+					(0.09 + p.intensity * 0.21) * clamp(0.5 + loud * 0.5) * smoothstep(0.01, 0.08, loud);
 
 				for (let i = 0; i < g.count; i++) {
 					const u = ringU(g, i) + turn;

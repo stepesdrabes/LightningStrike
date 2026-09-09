@@ -148,7 +148,6 @@ class IngestRunner {
 				// an inbound request, so a flag left on cannot wake the machine at four in the
 				// morning with nobody in the room.
 				more = await autopilot.topUp(Date.now());
-				await queue.prune();
 			}
 		} finally {
 			this.busy = false;

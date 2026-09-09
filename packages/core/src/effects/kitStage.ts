@@ -24,6 +24,7 @@ export const kitStage: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.4,
 		kit: 'any'
 	},
 	params: [INTENSITY, param('spotSize', 'Spot size', 0.4)],
@@ -85,8 +86,8 @@ export const kitStage: EffectDef = {
 				const snare = snareHome.update(f.snareEnv, f.dt, f.beatPeriod);
 				const hat = hatHome.update(f.hatEnv, f.dt, f.beatPeriod);
 
-				const size = 4 + p.spotSize * 14;
-				const gain = 0.5 + p.intensity * 0.9;
+				const size = 12 + p.spotSize * 24;
+				const gain = 0.55 + p.intensity * 0.85;
 
 				// The kick is the band's weight: all four corners breathe with it in the base
 				// hue, brightest on the hit itself.

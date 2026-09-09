@@ -24,6 +24,7 @@ export const stopTime: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.2,
 		kit: 'any'
 	},
 	params: [INTENSITY, param('stride', 'Stride', 0.4)],
@@ -62,7 +63,7 @@ export const stopTime: EffectDef = {
 				// Frozen: the same picture at half light. Playing: full weight, plus the
 				// re-entry flash riding on top for a beat.
 				const dim = live ? 1 : 0.45;
-				const gain = (0.4 + p.intensity * 0.7) * dim;
+				const gain = (0.31 + p.intensity * 0.54) * dim;
 
 				for (let i = 0; i < g.count; i++) {
 					const u = frac(ringU(g, i) - phase);

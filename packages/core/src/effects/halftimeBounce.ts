@@ -20,7 +20,8 @@ export const halftimeBounce: EffectDef = {
 		sections: ['groove', 'verse', 'drop', 'chorus'],
 		minBars: 2,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.2
 	},
 	params: [INTENSITY, param('width', 'Lobe width', 0.3, 0.15, 0.6)],
 	create(g) {
@@ -56,7 +57,7 @@ export const halftimeBounce: EffectDef = {
 				// The backbeat widens and brightens the lobe rather than moving it: the snare is
 				// an emphasis on the nod, not a second nod.
 				const width = p.width + snare * 0.15;
-				const gain = (0.35 + p.intensity) * clamp(0.35 + level * 0.65) * (0.75 + snare * 0.5);
+				const gain = (0.14 + p.intensity * 0.43) * clamp(0.35 + level * 0.65) * (0.75 + snare * 0.5);
 
 				for (let i = 0; i < g.count; i++) {
 					const d = (g.ny[i] - lo) / span - seat;

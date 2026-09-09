@@ -6,23 +6,30 @@ import { BeatHold, PulseEnv } from '../dsl/env.ts';
 import { spectralTilt } from '../dsl/spectrum.ts';
 import { INTENSITY, param } from './helpers.ts';
 
+/**
+ * The ratchet: a segment of the ring snaps to white on each step, its opposite number
+ * half as hard, and both cool while the next step lands one segment on. Hard steps and no
+ * glide, because a chase that eases between positions is a sweep. The beam answers the
+ * downbeat in the accent, and the direction flips every phrase.
+ */
 export const chase: EffectDef = {
 	id: 'chase',
 	name: 'Chase',
 	role: 'rhythm',
-	blurb: 'Ring segments firing on the grid; direction flips every phrase, beam answers the downbeat.',
+	blurb: 'Ring segments snapping on in turn, the opposite one answering; direction flips every phrase.',
 	taste: {
 		energy: 3,
 		sections: ['groove', 'breakdown', 'build', 'drop'],
 		minBars: 2,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.5
 	},
 	params: [
 		INTENSITY,
 		param('segments', 'Segments', 8, 4, 24, 1),
 		param('perBeat', 'Steps per beat', 1, 0.25, 4, 0.25),
-		param('tail', 'Tail', 0.5, 0.1, 1.5)
+		param('tail', 'Tail', 0.7, 0.1, 1.5)
 	],
 	create(g) {
 		let lastStep = -1;
@@ -31,8 +38,6 @@ export const chase: EffectDef = {
 		// the eye's integration window, so its apparent brightness depended on where the frame
 		// boundary fell.
 		const beam = new PulseEnv();
-		// The passage's own level, latched on the beat: `f.energy` is beat-resolution data the
-		// player interpolates per frame, so a brightness multiplied by it slides continuously.
 		const passage = new BeatHold(0.45);
 		// The spectrum picks the head's colour, never its level, so an opening arrangement whitens
 		// the chase rather than brightening it.
@@ -58,31 +63,46 @@ export const chase: EffectDef = {
 					lastStep = step;
 					const seg = (((step * dir) % segments) + segments) % segments;
 					level[seg] = 1;
+					const opposite = (seg + (segments >> 1)) % segments;
+					if (level[opposite] < 0.55) level[opposite] = 0.55;
 				}
 				if (f.downbeat) beam.fire(1);
 
-				const decay = 1 - Math.exp(-f.dt / ((p.tail * f.beatPeriod) / Math.max(0.05, motion)));
+				// Half the tail as the time constant, so a segment is dark again before its turn
+				// comes back round.
+				const decay = 1 - Math.exp(-f.dt / ((p.tail * f.beatPeriod * 0.5) / Math.max(0.05, motion)));
 				for (let s = 0; s < segments; s++) level[s] -= level[s] * decay;
 
 				const beamV = beam.decay(f.dt, f.beatPeriod, 0.8 / Math.max(0.05, motion));
 				const passageLevel = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
-				const gain = p.intensity * clamp(0.4 + passageLevel * 0.6);
-				// Kept inside the base hue's own family, glow through white: the palette walks its
-				// hue between families, so a head sliding toward the third would spend the trip on
-				// oranges the show never declared.
+				const gain = (0.55 + p.intensity * 0.8) * clamp(0.7 + passageLevel * 0.3);
 				const lean = tilt.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const head = lerp(SLOT.glow, SLOT.white, lean);
+				const rest = 0.12 * gain;
+				// A few pixels of crossfade at every seam. The steps stay hard in TIME, which is
+				// what makes this a chase; a hard edge in SPACE is a row of switched fixtures,
+				// and from under the frame the seam itself flickered as the segments traded.
+				const feather = 4 / (g.perimeterLength / g.pitch / segments);
 
 				for (let i = 0; i < g.count; i++) {
 					const along = g.perim[i];
 					if (along < 0) {
-						setSample(out, i, palette, SLOT.accent + hueShift, beamV * gain * 0.6);
+						setSample(out, i, palette, SLOT.accent + hueShift, beamV * gain * 0.7);
 						continue;
 					}
-					const seg = Math.min(Math.floor(along * segments), segments - 1);
-					const v = level[seg];
+					const pos = along * segments;
+					const seg = Math.min(Math.floor(pos), segments - 1);
+					const t = pos - seg;
+					let v = level[seg];
+					if (t < feather) {
+						const w = 0.5 + (0.5 * t) / feather;
+						v = v * w + level[(seg - 1 + segments) % segments] * (1 - w);
+					} else if (t > 1 - feather) {
+						const w = 0.5 + (0.5 * (1 - t)) / feather;
+						v = v * w + level[(seg + 1) % segments] * (1 - w);
+					}
 					const slot = lerp(SLOT.base, head, v * v);
-					setSample(out, i, palette, slot + hueShift, v * gain);
+					setSample(out, i, palette, slot + hueShift, rest + v * gain);
 				}
 			}
 		};

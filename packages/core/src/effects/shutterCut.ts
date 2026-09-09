@@ -2,7 +2,7 @@ import type { EffectDef } from '../contracts/effect.ts';
 import { sectionBase } from '../contracts/frame.ts';
 import { SLOT } from '../contracts/palette.ts';
 import { sample } from '../color/palette.ts';
-import { clamp, lerp } from '../dsl/math.ts';
+import { clamp } from '../dsl/math.ts';
 import { fillSolid } from '../dsl/buffer.ts';
 import { Edge, INTENSITY, param } from './helpers.ts';
 
@@ -22,6 +22,7 @@ export const shutterCut: EffectDef = {
 		minBars: 0,
 		maxBars: 2,
 		peakReserved: false,
+		activity: 1,
 		character: 'flash',
 		// Redundant with the bloom-excludes-flash veto today, declared so the exclusion
 		// survives anyone refactoring that veto away.
@@ -80,11 +81,11 @@ export const shutterCut: EffectDef = {
 				}
 
 				// The cuts are grid-locked; the release afterwards is the one speed motion scales.
+				// White fading in place: a release that walked to the base was a colour change.
 				const decayT = (eighth * 4) / Math.max(0.05, motion);
 				const u = clamp((age - eighth * 4) / decayT);
 				const v = (1 - u) * (1 - u);
-				const slot = lerp(SLOT.base, SLOT.white, v);
-				fillSolid(out, g.count, sample(palette, slot + hueShift, lerp(0.14, white, v)));
+				fillSolid(out, g.count, sample(palette, SLOT.white + hueShift, white * v));
 			}
 		};
 	}

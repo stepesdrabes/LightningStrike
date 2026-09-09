@@ -22,7 +22,8 @@ export const feedbackSwell: EffectDef = {
 		sections: ['build'],
 		minBars: 2,
 		maxBars: 16,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.3
 	},
 	params: [INTENSITY],
 	create(g) {
@@ -57,7 +58,7 @@ export const feedbackSwell: EffectDef = {
 				// Cycles per beat rather than per second: a scream that arrives on the one is the
 				// whole gesture, and at a fixed rate it arrives wherever the tempo leaves it.
 				shimmer += perBeat * (0.7 + fill * fill * 10) * motion;
-				const gain = (0.4 + p.intensity) * (0.25 + fill * 0.75);
+				const gain = (0.6 + p.intensity * 1.2) * (0.25 + fill * 0.75);
 				// A single sustained note ripples in a tight band; a full arrangement spreads it
 				// around the room.
 				const waves = 3 + bright * 8;

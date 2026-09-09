@@ -22,7 +22,8 @@ export const cascade: EffectDef = {
 		sections: ['groove', 'breakdown', 'build', 'drop'],
 		minBars: 2,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.5
 	},
 	params: [INTENSITY],
 	create(g) {
@@ -60,7 +61,7 @@ export const cascade: EffectDef = {
 
 				const tail = Math.exp(-f.dt / beatRelease(f.beatPeriod, 0.9));
 				const held = level.update(f.energy, f.beat, f.dt, f.beatPeriod);
-				const gain = (0.5 + p.intensity * 1.2) * clamp(0.45 + held * 0.55);
+				const gain = (0.4 + p.intensity * 0.8) * clamp(0.45 + held * 0.55);
 				const warm = tilt.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				// Where the arrangement sits picks the walls' colour, so the same chase reads
 				// as body under a bass passage and as texture when the top opens up.

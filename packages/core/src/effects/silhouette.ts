@@ -30,6 +30,7 @@ export const silhouette: EffectDef = {
 		// peak's opening cue takes this length, so the inversion owns the phrase.
 		maxBars: 8,
 		peakReserved: true,
+		activity: 0.5,
 		// The rap-climax look serves the impact treatment; an anthem chorus that arrives
 		// as light wants its centre lit, not withheld.
 		peakStyle: 'slam'
@@ -61,9 +62,16 @@ export const silhouette: EffectDef = {
 				// Edge: a saturated hold that each kick pushes toward white, cooling back the
 				// way a filament does. Centre: near-black, and the kick deepens it - the
 				// inversion pulse. Contrast moves, the field never does.
-				const edgeSlot = lerp(SLOT.accent, SLOT.white, v * 0.85);
-				const edgeLevel = clamp(0.5 + 0.42 * level + 0.25 * v) * (0.45 + p.intensity);
-				const coreLevel = 0.09 * (1 - p.depth * 0.85) + 0.05 * (1 - v);
+				//
+				// The hold sits well under full on purpose. At the peak's intensity the master
+				// budget is the whole range, and a hold that already reaches white leaves the
+				// push nowhere to go: measured, the ring sat at a mean of 141 bytes for eight
+				// bars and the kicks were invisible on it.
+				// A touch of white on the push, not a walk to it: the hold is one colour and the
+				// kick moves its level, or every beat reads as the room changing colour.
+				const edgeSlot = lerp(SLOT.accent, SLOT.white, v * 0.3);
+				const edgeLevel = clamp(0.3 + 0.16 * level + 0.5 * v) * (0.5 + p.intensity * 0.4);
+				const coreLevel = 0.05 * (1 - p.depth * 0.85) + 0.03 * (1 - v);
 
 				for (let i = 0; i < g.count; i++) {
 					if (g.perim[i] >= 0) {

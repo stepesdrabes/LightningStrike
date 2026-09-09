@@ -75,11 +75,10 @@ describe('darkness is reported where it is not asked for', () => {
 });
 
 describe('frame rate', () => {
-	// Halving the rate is not the same picture, and the difference is exactly where the room is
-	// moving fastest: every envelope and the whole output chain integrate per frame, so a cue
-	// that flickers renders dimmer at 30. A still cue has nothing to sample differently, so it
-	// has to agree - and if it stopped agreeing, the measurement would be reading the frame rate
-	// rather than the show.
+	// Every envelope and the whole output chain integrate per frame, so a flash shorter than a
+	// frame renders dimmer at 30 fps than at 60, and where it lands depends on where the frame
+	// boundary fell. A still cue has nothing to sample differently, so it has to agree - and if
+	// it stopped agreeing, the measurement would be reading the frame rate rather than the show.
 	const half = measureShow(show, analysis, effects, geometry, { fps: 30 });
 
 	it('agrees with the wire rate wherever the room is not flickering', () => {
@@ -90,11 +89,16 @@ describe('frame rate', () => {
 		for (const { c, half: b } of still) expect(Math.abs(b.level - c.level)).toBeLessThan(1);
 	});
 
-	it('reads a flickering cue dimmer, which is why the wire rate is the default', () => {
+	it('reads a flickering cue within two bytes at half the wire rate', () => {
+		// Every strike in the catalog holds past a frame and leaves the way a lamp does, so a
+		// hit's brightness no longer depends on the frame boundary. It used to: a flash under
+		// a frame read dimmer at 30 fps, which is the reason the wire rate became the default.
+		// The default stays the wire's; this pins that nothing has gone back to flashing
+		// under a frame.
 		const flickering = reading.cues
 			.map((c, i) => ({ c, half: half.cues[i] }))
 			.filter(({ c }) => c.ripple > 8);
 		expect(flickering.length).toBeGreaterThan(0);
-		expect(Math.min(...flickering.map(({ c, half: b }) => b.level - c.level))).toBeLessThan(-1);
+		for (const { c, half: b } of flickering) expect(Math.abs(b.level - c.level)).toBeLessThan(2);
 	});
 });

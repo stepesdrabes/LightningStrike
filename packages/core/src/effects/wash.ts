@@ -19,7 +19,8 @@ export const wash: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 3.45
+		activity: 0,
+		quiet: 3.86
 	},
 	params: [INTENSITY, param('breath', 'Breath', 0.45), param('drift', 'Drift', 0.06, 0, 0.4)],
 	create() {
@@ -42,7 +43,7 @@ export const wash: EffectDef = {
 				// of a number under one is how an intro reached byte zero. Raised from 0.55 with
 				// GAMMA, so it emits the light it was chosen for rather than the number.
 				const heard = passage.update(f.energy, f.dt);
-				const target = clamp(0.59 + 0.41 * heard) * p.intensity;
+				const target = clamp(0.59 + 0.41 * heard) * (0.36 + p.intensity * 0.85);
 				level = envelope(level, target, f.dt, 0.08, 0.5);
 
 				const bright = level * lerp(1 - p.breath, 1, breathe);

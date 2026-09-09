@@ -142,7 +142,7 @@ function tieToEarlier(bars: number): number {
  * anybody plays: SICKO MODE reports 77.67 while its first movement runs at 138 and its
  * second at 77. Every decision taken from the median is then taken for a track that does
  * not exist - the strobe rate sized off it ran at 9.2 Hz in the fast movement, past the
- * 8 Hz ceiling, and the linter agreed with the planner because both read the same
+ * strobe ceiling, and the linter agreed with the planner because both read the same
  * median. The bar table has known the truth all along.
  */
 export function beatPeriodAt(tempo: TempoGrid, bar: number): number {

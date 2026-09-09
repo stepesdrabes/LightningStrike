@@ -23,7 +23,8 @@ export const embers: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 2.96,
+		activity: 0.2,
+		quiet: 2.53,
 		// A twinkle field: 22% of the room is lit at any instant and the rest is dark.
 		carries: false
 	},
@@ -64,12 +65,12 @@ export const embers: EffectDef = {
 				const focus = spread.update(spectrumFocus(f), f.beat, f.dt, f.beatPeriod);
 				const split = 0.4 + lean.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod) * 0.35;
 				const duty = (0.1 + p.pool * 0.3) * (0.5 + 0.5 * level) * (0.8 + focus * 0.6);
-				const gain = 0.4 + p.intensity;
+				const gain = 0.6 + p.intensity * 1.1;
 				// Clock in bars, so the twinkle tempo breathes with the track.
 				const clock = (f.barIndex + f.barPhase) * 0.5 * motion;
 				// A dim floor under the sparks so the gaps are not pure black. It does not hold a
 				// room on its own, which is what `carries: false` above says out loud.
-				const bed = 0.22 * (0.55 + 0.45 * level);
+				const bed = 0.38 * (0.55 + 0.45 * level);
 
 				for (let i = 0; i < g.count; i++) {
 					const speed = 0.35 + h1[i] * 0.65;

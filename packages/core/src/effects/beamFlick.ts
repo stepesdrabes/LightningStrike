@@ -34,6 +34,7 @@ export const beamFlick: EffectDef = {
 		minBars: 1,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.3,
 		kit: 'any'
 	},
 	params: [
@@ -58,7 +59,7 @@ export const beamFlick: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
-				fadeToBlack(out, f.dt, beatRelease(f.beatPeriod, 0.6));
+				fadeToBlack(out, f.dt, beatRelease(f.beatPeriod, 0.45));
 
 				const refractory = Math.max(0.05, f.beatPeriod * 0.4);
 				if ((f.kick || f.snare) && f.t - lastHit > refractory) {
@@ -74,7 +75,9 @@ export const beamFlick: EffectDef = {
 				// Floored divisor: at motion near zero the streak should cross the beam slowly
 				// rather than stall on it forever.
 				const travel = Math.max(0.1, p.travelBeats * f.beatPeriod) / Math.max(0.2, motion);
-				const gain = 0.6 + p.intensity * 1.4;
+				// A fifth of a strip carrying a transient's whole budget: at the old gain the beam
+				// averaged nearly a hundred bytes under a groove while the walls sat at twenty.
+				const gain = 0.2 + p.intensity * 0.3;
 				const half = beam.count / 2;
 				// Only as far as the mix is actually wide: a mono passage stays centred.
 				const lean = f.pan * f.panWidth * p.panLean * half;
@@ -90,8 +93,10 @@ export const beamFlick: EffectDef = {
 					const posA = (fl.outward ? half + dist : dist) + lean;
 					const posB = (fl.outward ? half - dist : beam.count - 1 - dist) + lean;
 					const c = sample(palette, fl.slot + hueShift, gain * (1 - u * 0.6));
-					stampOnStrip(out, g.count, beam, posA, 1.3, c);
-					stampOnStrip(out, g.count, beam, posB, 1.3, c);
+					// Two and a half pixels of sigma: a head one pixel wide is a hot point, and
+					// from under the frame a point does not read as a streak.
+					stampOnStrip(out, g.count, beam, posA, 2.4, c);
+					stampOnStrip(out, g.count, beam, posB, 2.4, c);
 				}
 			}
 		};

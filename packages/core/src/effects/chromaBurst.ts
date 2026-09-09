@@ -1,37 +1,42 @@
 import type { EffectDef } from '../contracts/effect.ts';
 import { sectionBase } from '../contracts/frame.ts';
+import { SLOT } from '../contracts/palette.ts';
 import { sample } from '../color/palette.ts';
 import { paletteArc } from '../dsl/math.ts';
 import { setPixel } from '../dsl/buffer.ts';
 import { Edge, INTENSITY, param } from './helpers.ts';
 
+/** How long the impact frame holds the whole room at white before the shells take over. */
+const IMPACT_HOLD = 0.08;
+
 /**
- * The rationed special: three concentric shells carrying a slice of the palette by radius,
- * two beats of glory, then gone.
+ * The rationed special: the whole room struck white on the arrival, and out of that frame
+ * three concentric shells carrying a slice of the palette by radius, two beats of glory,
+ * then gone.
  *
  * This is the effect the picker hands the peak of nearly every track, which is exactly why it
  * may not have colours of its own: the biggest moment of a show is the last place the room
- * should stop being the colour it has been all night.
+ * should stop being the colour it has been all night. It is also why the shells are thick and
+ * the arrival is a blow: three thin rings crossing an unlit room measured as a mean of one
+ * byte over the passage it was reserved for.
  */
 export const chromaBurst: EffectDef = {
 	id: 'chromaBurst',
 	name: 'Chroma Burst',
 	role: 'master',
-	blurb: 'One-shot rainbow shockwave rings on the drop and its phrase starts.',
+	blurb: 'The room struck white on the drop, then three thick palette shells rolling out of the centre.',
 	taste: {
 		energy: 5,
 		sections: ['drop'],
 		minBars: 0,
 		maxBars: 2,
-		peakReserved: true
+		peakReserved: true,
+		activity: 0.7
 	},
 	params: [INTENSITY, param('trigger', 'Trigger', 0, 0, 1, 1)],
 	create(g) {
 		// Every LED on this fixture is coplanar, so `g.dist` starts at the beam's middle and
-		// never reaches 0: swept against the raw figure the shells spend the first half of
-		// their two beats on empty space and arrive with a quarter of their gain left. The
-		// room measured 0.000 fill against silhouette's 0.833. Re-based on the room's own
-		// range, the way kickTunnel and subSwell already are.
+		// never reaches 0. Re-based on the room's own range, the way kickTunnel and subSwell are.
 		const depth = new Float32Array(g.count);
 		let near = Infinity;
 		let far = 0;
@@ -75,20 +80,28 @@ export const chromaBurst: EffectDef = {
 				}
 
 				const u = age / life;
-				const gain = (0.7 + p.intensity * 1.3) * (1 - u) * (1 - u);
+				const gain = (0.8 + p.intensity * 1.0) * (1 - u) * (1 - u);
+				// The blow: white through the hold, then gone inside half a beat.
+				const flash =
+					age < IMPACT_HOLD ? 1 : Math.exp(-(age - IMPACT_HOLD) / Math.max(0.05, f.beatPeriod * 0.16));
+				const white = sample(palette, SLOT.white + hueShift, flash * (0.7 + p.intensity * 0.5), rgb);
+				const wr = white[0];
+				const wg = white[1];
+				const wb = white[2];
 				const maxR = 4.2;
 
 				for (let i = 0; i < g.count; i++) {
-					let r = 0;
-					let gr = 0;
-					let b = 0;
-					// Three shells at staggered radii, each a spectrum slice by radius.
+					let r = wr;
+					let gr = wg;
+					let b = wb;
+					// Three shells at staggered radii, each a spectrum slice by radius, thick
+					// enough that a shell is a band of the room rather than a line across it.
 					for (let s = 0; s < 3; s++) {
 						const radius = (u * (1 + s * 0.18) - s * 0.06) * maxR;
 						if (radius < 0) continue;
 						const d = Math.abs(depth[i] * maxR - radius);
-						if (d > 0.28) continue;
-						const v = Math.pow(1 - d / 0.28, 2);
+						if (d > 0.55) continue;
+						const v = Math.pow(1 - d / 0.55, 2);
 						sample(palette, paletteArc(depth[i] * 0.8 + s * 0.33 + hueShift), v * gain, rgb);
 						r += rgb[0];
 						gr += rgb[1];

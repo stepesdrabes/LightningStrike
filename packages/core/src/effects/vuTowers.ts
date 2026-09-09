@@ -34,7 +34,8 @@ export const vuTowers: EffectDef = {
 		sections: ['groove', 'breakdown', 'build', 'drop'],
 		minBars: 2,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.4
 	},
 	params: [INTENSITY, param('gravity', 'Peak fall', 0.4), param('span', 'Spectrum across the room', 1)],
 	create(g) {
@@ -72,7 +73,7 @@ export const vuTowers: EffectDef = {
 				const rel = beatRelease(f.beatPeriod, 0.55);
 				const gravity = (0.8 + p.gravity * 6) * Math.max(0.2, motion);
 				// Where intensity goes now: how brightly the measurement is drawn.
-				const body = 0.35 + p.intensity * 0.62;
+				const body = 0.13 + p.intensity * 0.25;
 
 				for (let s = 0; s < n; s++) {
 					const strip = g.strips[s];
@@ -113,12 +114,14 @@ export const vuTowers: EffectDef = {
 						addSample(out, strip.offset + k, palette, slot + hueShift, edge * body);
 					}
 
+					// The peak dots are a pixel and a half of sigma: a single-pixel dot at white is
+					// a hot point that reads as a fault rather than as a meter's ballistics.
 					const pk = peak[s] * mid;
-					const c = sample(palette, SLOT.white + hueShift, 0.8);
+					const c = sample(palette, SLOT.white + hueShift, 0.5);
 					const lo = strip.offset;
 					const hi = strip.offset + strip.count;
-					stampGaussian(out, g.count, lo + mid + pk, 0.8, c[0], c[1], c[2], false, lo, hi);
-					stampGaussian(out, g.count, lo + mid - pk, 0.8, c[0], c[1], c[2], false, lo, hi);
+					stampGaussian(out, g.count, lo + mid + pk, 1.4, c[0], c[1], c[2], false, lo, hi);
+					stampGaussian(out, g.count, lo + mid - pk, 1.4, c[0], c[1], c[2], false, lo, hi);
 				}
 			}
 		};

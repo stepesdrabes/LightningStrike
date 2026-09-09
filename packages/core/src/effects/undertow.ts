@@ -28,7 +28,8 @@ export const undertow: EffectDef = {
 		sections: ['groove', 'drop'],
 		minBars: 2,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.1
 	},
 	params: [INTENSITY],
 	create(g) {
@@ -61,7 +62,7 @@ export const undertow: EffectDef = {
 				swellA += (f.dt * ctx.motion * (0.7 + weight * 0.6)) / lap;
 				swellB -= (f.dt * ctx.motion * (0.55 + weight * 0.5)) / lap;
 
-				const gain = (0.5 + p.intensity * 1.1) * (0.42 + weight * 0.6);
+				const gain = (0.36 + p.intensity * 0.76) * (0.42 + weight * 0.6);
 
 				for (let i = 0; i < g.count; i++) {
 					const u = ringU(g, i);

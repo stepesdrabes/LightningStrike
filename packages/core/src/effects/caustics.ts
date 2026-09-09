@@ -30,7 +30,8 @@ export const caustics: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 3.57
+		activity: 0.1,
+		quiet: 2.51
 	},
 	params: [INTENSITY, param('flow', 'Flow', 0.45), param('listen', 'How much it hears', 0.4)],
 	create(g) {

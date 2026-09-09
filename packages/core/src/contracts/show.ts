@@ -2,7 +2,7 @@ import type { SectionKind } from './frame.ts';
 import type { LayerRole, ParamSpec, Params } from './effect.ts';
 import type { ShowPalette } from './palette.ts';
 
-export const SHOW_VERSION = 25;
+export const SHOW_VERSION = 28;
 
 export interface LayerSpec {
 	effect: string;
@@ -79,7 +79,9 @@ export const HIT_RULES: Record<Hit['kind'], HitRule> = {
 	// failure. A whole bar is four beats, which at the tempos this repertoire actually sits at
 	// is three seconds of nothing: long enough to read as a fault rather than as a breath.
 	blackout: { maxBars: 2, maxSeconds: 2.2 },
-	strobe: { maxBars: 2, maxSeconds: 3 },
+	// A bar at most: heard in the room, two bars of strobe into a drop had stopped being the
+	// announcement and become the passage. The planner itself writes half of this.
+	strobe: { maxBars: 1, maxSeconds: 2 },
 	// Both decay inside a beat or two whatever window they are given, so the bar count here is
 	// how long the slot is reserved rather than how long the room is lit.
 	slam: { maxBars: 1 },
@@ -91,11 +93,13 @@ export const HIT_RULES: Record<Hit['kind'], HitRule> = {
  *
  * Taste, not safety: past this the flashes fuse into a texture and stop reading as events -
  * measured in the room at 9.4 Hz on a 140 bpm track, where the same gesture at 4.7 Hz still
- * punctuates. Eight keeps the sixteenth-note strobe up to 120 bpm, which is where the genres
- * that actually strobe in sixteenths sit, and drops everything faster to eighths. The strobe
- * effect alternates wall pairs, so any one wall runs at half this.
+ * punctuates, and at a ceiling of 8 the owner's word was "way too quick". Six keeps the
+ * sixteenth-note strobe to 90 bpm and eighths to 180, so house strobes near 4 Hz and drum and
+ * bass under 6, and it stays under the 8 to 10 Hz band where the eye's flicker sensitivity
+ * peaks and a flashing room reads brightest. The strobe effect alternates wall pairs, so any
+ * one wall runs at half this.
  */
-export const STROBE_MAX_HZ = 8;
+export const STROBE_MAX_HZ = 6;
 
 /**
  * The fastest musical subdivision that fits under `STROBE_MAX_HZ` at this track's tempo.

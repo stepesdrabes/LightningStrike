@@ -30,7 +30,8 @@ export const dusk: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 3.64
+		activity: 0,
+		quiet: 1.78
 	},
 	params: [INTENSITY, param('turn', 'How fast it turns', 0.4), param('depth', 'Depth', 0.5)],
 	create(g) {
@@ -64,7 +65,7 @@ export const dusk: EffectDef = {
 				// How far the far side falls. Shallow by default: a room where one wall is lit and
 				// the opposite one is out is a spotlight, not a sky.
 				const depth = 0.24 + clamp(p.depth) * 0.26;
-				const gain = (0.72 + p.intensity * 0.62) * (0.88 + heard * 0.26);
+				const gain = (0.5 + p.intensity * 0.42) * (0.88 + heard * 0.26);
 
 				for (let i = 0; i < g.count; i++) {
 					// Widened past a plain cosine so the glow covers rather more than half the room and

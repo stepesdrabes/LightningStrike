@@ -49,7 +49,8 @@ export const meterBuild: EffectDef = {
 		sections: ['build'],
 		minBars: 2,
 		maxBars: 16,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.3
 	},
 	params: [INTENSITY],
 	create(g) {
@@ -77,7 +78,7 @@ export const meterBuild: EffectDef = {
 				if (fill < 0.01) return;
 
 				const warm = tilt.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
-				const gain = 0.45 + p.intensity * 1.2;
+				const gain = 0.7 + p.intensity * 1.5;
 				// The fill itself may bleach toward white - that is the build arriving, and it is the
 				// point of the effect. The spectral term may not: it only walks base..glow, because a
 				// walk crossing white turns the spectrum into a brightness control.

@@ -8,13 +8,14 @@ export const strobe: EffectDef = {
 	id: 'strobe',
 	name: 'Strobe',
 	role: 'master',
-	blurb: 'Eighth-note burst alternating wall pairs, which halves the full-field flash rate.',
+	blurb: 'Flashes on the beat grid, alternating wall pairs so each wall flashes at half the rate.',
 	taste: {
 		energy: 5,
 		sections: ['groove', 'breakdown', 'build', 'drop'],
 		minBars: 0,
 		maxBars: 2,
 		peakReserved: false,
+		activity: 0,
 		hitOnly: true,
 		character: 'flash'
 	},
@@ -26,7 +27,7 @@ export const strobe: EffectDef = {
 	create(g) {
 		// Alternating pairs rather than the whole room: perceived flash rate at any point in
 		// the room is half the strobe rate, so a 2-per-beat burst at club tempos sits near
-		// 2 Hz locally against the room's own `STROBE_MAX_HZ` of 8.
+		// 2 Hz locally against the room's own `STROBE_MAX_HZ` of 6. The owner's word.
 		const groupA = new Set<number>();
 		for (const s of g.strips) if (s.inPerimeter && stripAxis(s) === 'x') groupA.add(s.id);
 
@@ -43,19 +44,19 @@ export const strobe: EffectDef = {
 				const beats = f.beatIndex + f.beatPhase;
 				const step = Math.floor(beats * rate);
 				const onA = step % 2 === 0;
-				// Each flash detonates and DECAYS instead of holding a square: the same number
-				// of events reads sharper at the attack and calmer in the tail, which is the
-				// difference between a strobe and a fault. The train also front-loads the
-				// beat - the downbeat flash owns it, the off-flashes sit a step behind - so
-				// the burst keeps the grid's hierarchy instead of flattening it.
+				// Each flash detonates and DECAYS from its first frame instead of holding a
+				// square: the same number of events reads sharper at the attack and calmer in
+				// the tail. A held, full-white version was judged too aggressive in the room;
+				// this is the shape the owner liked, a step brighter. The train front-loads the
+				// beat so the burst keeps the grid's hierarchy instead of flattening it.
 				const flashPhase = beats * rate - step;
-				const v = Math.pow(Math.max(0, 1 - flashPhase / 0.55), 1.6);
+				const v = Math.pow(Math.max(0, 1 - flashPhase / 0.6), 1.4);
 				const train = 1 - 0.35 * f.beatPhase;
+				const level = (0.5 + p.intensity * 0.5) * v * train;
 
 				for (let i = 0; i < g.count; i++) {
 					const inA = groupA.has(g.strip[i]);
-					const level = inA === onA ? p.intensity * v * train : 0;
-					setSample(out, i, palette, SLOT.white + ctx.hueShift, level);
+					setSample(out, i, palette, SLOT.white + ctx.hueShift, inA === onA ? level : 0);
 				}
 			}
 		};

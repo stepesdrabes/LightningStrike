@@ -26,7 +26,8 @@ export const aurora: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 5.24,
+		activity: 0.05,
+		quiet: 2.78,
 		// Curtains with dark between them: 36% of its light in a tenth of the pixels. Lovely
 		// under something, and a quiet cue lit by this alone shows as bands with gaps.
 		carries: false
@@ -65,7 +66,7 @@ export const aurora: EffectDef = {
 				// The floor is high because the cue's own intensity already says the passage is
 				// quiet. A bed that dims itself as well is dimmed twice, and two multiplications
 				// of a number under one is how an intro reached byte zero.
-				const gain = (0.3 + p.intensity * 0.8) * clamp(0.6 + heard * 0.4);
+				const gain = (0.3 + p.intensity * 0.6) * clamp(0.6 + heard * 0.4);
 				const scale = 1.5 + p.waves * 3.5;
 				// Busy top end lowers the bar for a highlight, so dense passages shimmer.
 				const threshold = 0.62 - air.update(f.bands[Band.Air], f.beat, f.dt, f.beatPeriod) * 0.2;
@@ -95,7 +96,7 @@ export const aurora: EffectDef = {
 						lum += wave * gains[l];
 					}
 					if (lum > threshold) {
-						const w = sample(palette, SLOT.white + hueShift, (lum - threshold) * 1.8 * gain);
+						const w = sample(palette, SLOT.white + hueShift, (lum - threshold) * 1.0 * gain);
 						r += w[0];
 						gr += w[1];
 						b += w[2];

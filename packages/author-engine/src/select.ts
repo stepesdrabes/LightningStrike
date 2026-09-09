@@ -69,6 +69,22 @@ export interface PickRequest {
 	 * dead layer or a grid pulse lying about the arrangement. Absent skips the veto.
 	 */
 	drums?: { kick: number; snare: number; hat: number };
+	/**
+	 * This cue is inside the peak section.
+	 *
+	 * The peak draws only from the band it asks for and the one under it, and pays half the
+	 * usual price for a repeat. Measured over the corpus, 24 of 65 peaks were lit by a
+	 * pixel-scale transient and a third by a rhythm two bands soft, because by the last
+	 * statement of the loudest material every top look had been spent once and the novelty
+	 * penalty handed the biggest passage of the night to whatever was left.
+	 */
+	peak?: boolean;
+	/**
+	 * Frame-scale activity the cue already holds: the sum of `taste.activity` over the layers
+	 * picked before this one, and the master where one sits over them. With it, this pick
+	 * may only add what `activityBudget` leaves; absent skips the budget.
+	 */
+	busy?: number;
 }
 
 /**
@@ -120,6 +136,43 @@ function kitSilent(e: EffectDef, drums: PickRequest['drums']): boolean {
  */
 const QUIET_WEIGHT = 4;
 
+/**
+ * How much frame-scale activity one cue may hold, summed over its layers' `taste.activity`.
+ *
+ * One hard hitter, and only where the music has arrived. A whole-room striker rates 1, so at
+ * 1.4 a drop-class cue (or a build, which climbs into one) holds one of those and a moving
+ * rhythm, or two partial strikers (a wall per beat, a wave per kick), and the accent then
+ * holds or blooms. A groove or a verse tops out at 0.9: no whole-room striker at all, one
+ * partial one over a moving look, which is what a designer runs under a verse so that the
+ * chorus has somewhere to go. Scaled by the cue's energy from the floor at 0.3 to the top
+ * at 0.75, where the band ladder reaches the loud looks anyway. A breakdown has its own
+ * flat budget below.
+ *
+ * The owner's fallback if one hitter reads too polite: ACTIVITY_LOUD_TOP 2.4 lets two
+ * whole-room strikers share a loud cue, never three; ACTIVITY_GROOVE_TOP 1.4 lets a groove
+ * take one. A filter with a fallback rather than a price, because a price loses to novelty
+ * by the third loud cue the way the peak band's did; where the budget would empty a pool the
+ * calmest candidates stay, never the whole pool.
+ */
+const ACTIVITY_FLOOR = 0.8;
+const ACTIVITY_LOUD_TOP = 1.4;
+const ACTIVITY_GROOVE_TOP = 0.9;
+/**
+ * A breakdown holds half of what a groove may: a slow look over the bed and a soft kit
+ * answer where the kit still plays, never a striker. Flat rather than scaled by energy,
+ * because how hard the room may move in a breakdown is a decision about what a breakdown
+ * is, not about how loud this one happens to be.
+ */
+const ACTIVITY_BREAKDOWN = 0.5;
+
+export function activityBudget(energy: number, section: SectionKind): number {
+	if (section === 'breakdown') return ACTIVITY_BREAKDOWN;
+	const base = sectionBase(section);
+	const top = base === 'drop' || base === 'build' ? ACTIVITY_LOUD_TOP : ACTIVITY_GROOVE_TOP;
+	const u = Math.max(0, Math.min(1, (energy - 0.3) / 0.45));
+	return ACTIVITY_FLOOR + (top - ACTIVITY_FLOOR) * u;
+}
+
 export interface PickerOptions {
 	/**
 	 * Refuse every effect that declares a `character`, however it scores.
@@ -156,6 +209,8 @@ export class EffectPicker {
 		const band = 1 + Math.round(Math.max(0, Math.min(1, req.energy)) * 4);
 		const target = Math.min(5, band + (req.pounding ? 1 : 0));
 		const previous = this.lastInRole.get(req.role);
+		const room = req.busy === undefined ? Infinity : activityBudget(req.energy, req.section) - req.busy;
+		const withinBudget = (e: EffectDef) => (e.taste.activity ?? 0) <= room + 1e-9;
 
 		const groupKey = req.group !== undefined && req.group >= 0 ? `${req.role}:${req.group}` : null;
 		if (groupKey) {
@@ -168,7 +223,8 @@ export class EffectPicker {
 				def &&
 				req.lengthBars >= def.taste.minBars &&
 				req.lengthBars <= def.taste.maxBars &&
-				!kitSilent(def, req.drums)
+				!kitSilent(def, req.drums) &&
+				withinBudget(def)
 			) {
 				this.used.set(def.id, (this.used.get(def.id) ?? 0) + 1);
 				this.lastInRole.set(req.role, def.id);
@@ -208,6 +264,25 @@ export class EffectPicker {
 		if (eligible.length === 0) eligible = this.effects.filter((e) => fits(e, false, false));
 		if (eligible.length === 0) return null;
 
+		// The activity budget: what the cue already holds decides how hard this layer may hit.
+		// Ahead of the peak's band floor on purpose: the top-band accents are all strikers,
+		// and a peak already striking twice under its master gets a calm one.
+		if (room < Infinity) {
+			const calm = eligible.filter(withinBudget);
+			if (calm.length > 0) eligible = calm;
+			else {
+				const least = Math.min(...eligible.map((e) => e.taste.activity ?? 0));
+				eligible = eligible.filter((e) => (e.taste.activity ?? 0) === least);
+			}
+		}
+
+		// The peak keeps to the top of the catalog. A filter with a fallback rather than a
+		// price: the price was 2.6 a band and it still lost to novelty by the third loud cue.
+		if (req.peak) {
+			const strong = eligible.filter((e) => e.taste.energy >= target - 1);
+			if (strong.length > 0) eligible = strong;
+		}
+
 		// The quiet preference as a rank within THIS pool, not a position on an absolute
 		// scale. The absolute map had two failure modes the shows actually exhibited: a
 		// probe outlier saturated the whole bonus and won its section in 98% of seeds, and
@@ -237,7 +312,8 @@ export class EffectPicker {
 			const score =
 				-1.6 * above -
 				(loud ? 2.6 : 1.6) * below -
-				2.2 * seen -
+				// The peak may reach for its best look again: a repeat there costs half.
+				(req.peak ? 1.1 : 2.2) * seen -
 				(e.id === previous ? 6 : 0) +
 				// A tie-breaker, deliberately under one energy band and half a use of novelty.
 				// At 3 it was a mandate: within a family, every show reached for the same

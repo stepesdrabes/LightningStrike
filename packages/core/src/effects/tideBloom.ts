@@ -27,6 +27,7 @@ export const tideBloom: EffectDef = {
 		minBars: 0,
 		maxBars: 2,
 		peakReserved: false,
+		activity: 0.2,
 		// A tide is a lift by definition; on a slam peak it reads as the punch going
 		// missing - the A/B round's one regression was exactly this draw.
 		peakStyle: 'bloom'
@@ -104,9 +105,11 @@ export const tideBloom: EffectDef = {
 				const relaxT = (p.sustain * period * 4) / Math.max(0.05, motion);
 				const relax = smoothstep(0, 1, (age - floodDone) / relaxT);
 
-				const gain = 0.4 + p.intensity * 0.9;
+				// The crest is the event and the body is a room lit behind it: held under full so
+				// the crest reads as white against it rather than as white on white.
+				const gain = 0.35 + p.intensity * 0.7;
 				const bodySlot = lerp(SLOT.glow, SLOT.base, relax);
-				const body = lerp(0.9, 0.45, relax) * gain;
+				const body = lerp(0.6, 0.34, relax) * gain;
 
 				for (let i = 0; i < g.count; i++) {
 					const lead = w - reach[i];
@@ -115,7 +118,7 @@ export const tideBloom: EffectDef = {
 					const lit = smoothstep(0, 0.02, lead);
 					const crest = Math.exp((-lead * lead) / (2 * CREST * CREST));
 					const slot = lerp(bodySlot, SLOT.white, crest);
-					setSample(out, i, palette, slot + hueShift, lit * (body + crest * gain * 0.45));
+					setSample(out, i, palette, slot + hueShift, lit * (body + crest * gain * 0.7));
 				}
 			}
 		};

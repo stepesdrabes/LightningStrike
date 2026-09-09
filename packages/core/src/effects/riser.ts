@@ -25,7 +25,8 @@ export const riser: EffectDef = {
 		sections: ['build'],
 		minBars: 2,
 		maxBars: 16,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.2
 	},
 	params: [INTENSITY, param('ticks', 'Segment ticks', 8, 0, 16, 1), param('bleach', 'Bleach', 0.8)],
 	create(g) {
@@ -53,7 +54,7 @@ export const riser: EffectDef = {
 				const ticks = Math.round(p.ticks);
 				const warm = tilt.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const slot = lerp(SLOT.base, SLOT.white, clamp(bleach + warm * 0.3)) + ctx.hueShift;
-				const level = p.intensity * (0.5 + 0.5 * progress);
+				const level = (0.5 + p.intensity * 0.9) * (0.5 + 0.5 * progress);
 
 				for (let i = 0; i < g.count; i++) {
 					// Mirrored around each run's own start, so the two fronts meet at the back wall

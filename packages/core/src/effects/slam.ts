@@ -1,57 +1,63 @@
 import type { EffectDef } from '../contracts/effect.ts';
 import { SLOT } from '../contracts/palette.ts';
-import { setSample } from '../color/palette.ts';
-import { lerp } from '../dsl/math.ts';
-import { PulseEnv } from '../dsl/env.ts';
+import { sample } from '../color/palette.ts';
+import { fillSolid } from '../dsl/buffer.ts';
 import { Edge, INTENSITY, param } from './helpers.ts';
 
 /**
  * Masters are driven by the show's `hits`, not by the music: the player sets `trigger`
  * while a hit is live. That keeps punctuation on the timeline where the linter can audit
  * it, instead of firing off whatever the audio happens to do.
+ *
+ * A short hold at white, then an exponential tail, in one colour. The hold is what makes
+ * it a blow rather than a blip. The owner's verdict, twice: a slam must not cycle between
+ * colours - not white to accent, not accent to base. Only its level moves; the cue's own
+ * layers are the colour the room comes back to.
  */
+const HOLD_SECONDS = 0.06;
+
 export const slam: EffectDef = {
 	id: 'slam',
 	name: 'Slam',
 	role: 'master',
-	blurb: 'One full-room white frame, decaying through the accent. The blinder hit.',
+	blurb: 'One full-room white blow, held a breath, fading in place. The blinder hit.',
 	taste: {
 		energy: 5,
 		sections: ['groove', 'breakdown', 'build', 'drop'],
 		minBars: 0,
 		maxBars: 1,
 		peakReserved: false,
+		activity: 0,
 		hitOnly: true,
 		character: 'impact'
 	},
 	params: [
 		INTENSITY,
 		param('trigger', 'Trigger', 0, 0, 1, 1),
-		param('beats', 'Decay beats', 1, 0.25, 4)
+		param('beats', 'Decay beats', 1.4, 0.25, 4, 0.1)
 	],
-	create() {
-		const env = new PulseEnv();
+	create(g) {
 		const edge = new Edge();
+		let age = Infinity;
+
 		return {
 			reset() {
-				env.reset();
 				edge.reset();
+				age = Infinity;
 			},
 			render(out, ctx) {
-				const { f, g, p, palette } = ctx;
-				if (edge.update(p.trigger > 0.5)) env.fire(1);
-				const v = env.decay(f.dt, f.beatPeriod, p.beats);
+				const { f, p, palette, hueShift } = ctx;
+				if (edge.update(p.trigger > 0.5)) age = 0;
+				else age += f.dt;
 
-				if (v <= 0) {
+				// Time constant a third of the decay length, so the blow is gone by then.
+				const tau = Math.max(0.02, (p.beats * f.beatPeriod) / 3);
+				const v = age <= HOLD_SECONDS ? 1 : Math.exp(-(age - HOLD_SECONDS) / tau);
+				if (v < 0.004) {
 					out.fill(0);
 					return;
 				}
-				// Cools white to accent as it decays, the way a tungsten blinder actually does.
-				const slot = lerp(SLOT.accent, SLOT.white, v);
-				const bright = v * p.intensity;
-				for (let i = 0; i < g.count; i++) {
-					setSample(out, i, palette, slot + ctx.hueShift, bright);
-				}
+				fillSolid(out, g.count, sample(palette, SLOT.white + hueShift, v * (0.5 + p.intensity * 0.75)));
 			}
 		};
 	}

@@ -26,8 +26,17 @@ export interface GridTrust {
  * half-time grid - so it only ever tightens the fragmentation test, never trips on its own.
  * A 2/4 verdict is treated the same way: real 2/4 barely exists in this repertoire, so on a
  * fragmented track it is evidence of a meter failure rather than of a polka.
+ *
+ * The line sits at the top of the gap rather than its middle because the rate is counted in
+ * wall-clock minutes and sections are cut at bar lines: a normal arrangement at 160 bpm
+ * makes more sections a minute than the same one at 100. cool (Grey256) is 16 sections in
+ * 180 s at 160 bpm, 4/4 at meter confidence 1.00 with every boundary on the 4-bar grid, and
+ * the owner read its map as correct; at 5.2 it ran in lounge on 5.33. Nothing else in the
+ * library sits between the two lines. A rate scaled by the analysed tempo was considered
+ * and refused: a wrong-level grid reports a wrong tempo, so scaling by it hides exactly the
+ * wreck this gate exists to catch.
  */
-const FRAGMENTED = 5.2;
+const FRAGMENTED = 5.4;
 const SUSPECT = 4.5;
 const SHAKY_METER = 0.55;
 /**

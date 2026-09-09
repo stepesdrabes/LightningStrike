@@ -25,11 +25,12 @@ export const rollerChase: EffectDef = {
 		sections: ['groove', 'build', 'drop'],
 		minBars: 2,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.4
 	},
 	params: [
 		INTENSITY,
-		param('tail', 'Tail length', 0.16, 0.04, 0.4),
+		param('tail', 'Tail length', 0.22, 0.04, 0.4),
 		param('swell', 'Kick swell', 0.6),
 		// The felt orbit, not the musical one: one bar is 1.4 s at 174 bpm and reads as a
 		// blur at 140, so the planner stretches the lap to whole bars until it runs at least
@@ -68,7 +69,7 @@ export const rollerChase: EffectDef = {
 				const headB = Math.round(frac(frontPerim - lap) * n);
 
 				const bright = 1 - p.swell + p.swell * f.kickEnv;
-				const gain = (0.5 + p.intensity) * bright;
+				const gain = (0.53 + p.intensity * 0.83) * bright;
 				const tailPx = n * p.tail * (0.35 + 0.65 * Math.max(0.05, motion));
 
 				// Tails trail against each pulse's own direction of travel; where the two heads

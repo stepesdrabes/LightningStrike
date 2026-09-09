@@ -37,6 +37,7 @@ export const lean: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.1,
 		kit: 'kick'
 	},
 	params: [INTENSITY, param('travel', 'How far it leans', 0.7)],
@@ -98,7 +99,7 @@ export const lean: EffectDef = {
 				const centre = pos;
 
 				const tone = tilt.update(clamp(0.5 + spectralTilt(f) * 0.5), f.dt);
-				const level = 0.42 + p.intensity * 0.5;
+				const level = 0.2 + p.intensity * 0.24;
 
 				for (let i = 0; i < g.count; i++) {
 					const onBeam = g.perim[i] < 0;

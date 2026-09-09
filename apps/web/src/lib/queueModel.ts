@@ -240,23 +240,6 @@ export function clearQueue(state: QueueState, keepCurrent: boolean): QueueState 
 	};
 }
 
-/**
- * Drop rows that have already played, keeping a recent tail.
- *
- * Not about disk: the audio stays in the cache either way. Every commit re-serialises the
- * whole array and pushes it to every connected phone, several times per track, so a queue
- * left running all night becomes a large payload on a small radio. Returns the same object
- * when nothing is dropped, so the store's identity check can still short-circuit.
- */
-export function pruneHistory(state: QueueState, keep: number): QueueState {
-	const at = indexOfKey(state, state.currentKey);
-	// Nothing has played yet, so nothing is history.
-	if (at === -1) return state;
-	const drop = at - Math.max(0, keep);
-	if (drop <= 0) return state;
-	return { ...state, items: state.items.slice(drop), revision: state.revision + 1 };
-}
-
 /** Move a row to an absolute index, clamped. Reordering never changes what is playing. */
 export function moveItem(state: QueueState, key: string, to: number): QueueState {
 	const from = indexOfKey(state, key);

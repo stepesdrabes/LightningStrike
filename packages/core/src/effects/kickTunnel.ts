@@ -32,6 +32,11 @@ export const kickTunnel: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		// Nearly a whole-room striker: a ring converging on the centre crosses every strip at
+		// the same depth at the same moment, so each kick lights the whole frame at once,
+		// softened only by the ring's width. Rated a partial strike it paired with a rotation
+		// and a popping accent into the busiest cue of the corpus.
+		activity: 0.85,
 		kit: 'kick'
 	},
 	params: [INTENSITY, param('speed', 'Converge speed', 0.5), param('width', 'Ring width', 0.3)],
@@ -66,6 +71,8 @@ export const kickTunnel: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
+				// Short on purpose: the rings are added into this buffer every frame, so a longer
+				// trail integrates into a brighter, busier room rather than a softer one.
 				fadeToBlack(out, f.dt, 0.045);
 
 				if (f.kick && f.t - lastSpawn > Math.max(0.05, f.beatPeriod * 0.3)) {
@@ -84,8 +91,8 @@ export const kickTunnel: EffectDef = {
 				// freeze immortal at the walls.
 				const life =
 					Math.max(0.15, f.beatPeriod * (0.9 - p.speed * 0.5)) / Math.max(0.2, motion);
-				const width = (0.06 + p.width * 0.2) * 1.2;
-				const gain = 0.5 + p.intensity * 1.6;
+				const width = (0.06 + p.width * 0.2) * 1.5;
+				const gain = 0.2 + p.intensity * 0.58;
 
 				for (const r of rings) {
 					if (!r.alive) continue;
@@ -113,7 +120,7 @@ export const kickTunnel: EffectDef = {
 					for (let i = 0; i < g.count; i++) {
 						if (depth[i] > 0.22) continue;
 						const v = (1 - depth[i] / 0.22) * cv;
-						addSample(out, i, palette, SLOT.white + hueShift, v * gain * 0.7);
+						addSample(out, i, palette, SLOT.white + hueShift, v * gain * 0.5);
 					}
 				}
 			}

@@ -16,10 +16,14 @@ export function renderCatalog(effects: readonly EffectDef[] = BUILT_IN_EFFECTS):
 				.filter((p) => p.key !== 'intensity')
 				.map((p) => p.key)
 				.join(',');
+			// How hard it hits, so the model can keep to one hitter a cue: the same rating the
+			// engine budgets with.
+			const activity = e.taste.activity ?? 0;
+			const hits = activity >= 0.8 ? '  HARD' : activity >= 0.5 ? '  STRIKE' : '';
 			lines.push(
 				`  ${e.id} (e${e.taste.energy}) ${e.blurb}${params ? `  [${params}]` : ''}${
 					e.taste.peakReserved ? '  ONCE' : ''
-				}`
+				}${hits}`
 			);
 		}
 	}

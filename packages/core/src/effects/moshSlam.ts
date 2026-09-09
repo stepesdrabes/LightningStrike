@@ -21,6 +21,7 @@ export const moshSlam: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 1,
 		character: 'impact',
 		// 'kick', not 'any': a clap backbeat with the kick out is exactly the passage this
 		// used to pound through, and a unison white slam is a kick gesture, not a snare one.
@@ -56,15 +57,20 @@ export const moshSlam: EffectDef = {
 					lastStep = step;
 					if (playing > 0.08) env.fire(playing);
 				}
-				const v = env.decay(f.dt, f.beatPeriod, 1.05 / Math.max(0.05, motion));
+				const v = env.decay(f.dt, f.beatPeriod, 1.5 / Math.max(0.05, motion));
 
 				const passageLevel = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
-				const gain = (0.5 + p.intensity * 1.3) * clamp(0.35 + passageLevel);
-				const floor = 0.05 * gain;
+				const gain = (0.5 + p.intensity * 1.05) * clamp(0.5 + passageLevel * 0.7);
+				const floor = 0.06 * gain;
 
 				for (let i = 0; i < g.count; i++) {
-					const slot = v > 0.55 ? SLOT.white : lerp(SLOT.deep, SLOT.base, clamp(v * 1.6));
-					setSample(out, i, palette, slot + hueShift, Math.max(floor, v * v * gain * tex[i]));
+					// One ramp from the room's colour up to white, so the slam cools in one
+					// family; a cut from white to the base at a threshold was a second flash,
+					// in colour, on the way down from every punch.
+					const slot = lerp(SLOT.base, SLOT.white, clamp(v * 1.4 - 0.2));
+					// A punch with a little weight behind it: v^1.5 keeps the hard front and
+					// leaves the slam in the room for a third of a beat rather than a frame.
+					setSample(out, i, palette, slot + hueShift, Math.max(floor, Math.pow(v, 1.5) * gain * tex[i]));
 				}
 			}
 		};

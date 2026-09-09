@@ -7,6 +7,9 @@ import { Edge, INTENSITY, param } from './helpers.ts';
 /**
  * Every real desk keeps a colour bump under a finger for the moments timecode cannot
  * predict. Floods the room in the accent hue and decays over a beat and a half.
+ *
+ * No hold and no hard edge on purpose: it is a flood, not a flash, and the version with a
+ * hold read as a second slam. This is the shape the room was judged on.
  */
 export const colorBump: EffectDef = {
 	id: 'colorBump',
@@ -19,6 +22,7 @@ export const colorBump: EffectDef = {
 		minBars: 0,
 		maxBars: 1,
 		peakReserved: false,
+		activity: 0,
 		hitOnly: true
 	},
 	params: [INTENSITY, param('trigger', 'Trigger', 0, 0, 1, 1)],

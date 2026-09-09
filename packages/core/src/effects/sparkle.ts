@@ -20,13 +20,14 @@ export const sparkle: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 4.35,
+		activity: 0.4,
+		quiet: 3.30,
 		// Isolated points on black; between them the room is unlit.
 		carries: false
 	},
 	params: [
 		INTENSITY,
-		param('rate', 'Sparks/sec', 180, 5, 400, 5),
+		param('rate', 'Sparks/sec', 120, 5, 400, 5),
 		param('decay', 'Decay', 0.18, 0.02, 0.6),
 		param('white', 'White share', 0.6)
 	],
@@ -71,7 +72,7 @@ export const sparkle: EffectDef = {
 				const n = Math.floor(carry);
 				carry -= n;
 
-				const gain = 0.7 + p.intensity * 1.3;
+				const gain = 0.6 + p.intensity * 1.0;
 				for (let k = 0; k < n; k++) {
 					const pos = frac(centre + (rng.float() - 0.5) * band) * g.count;
 					const i = Math.min(g.count - 1, Math.floor(pos));
@@ -79,8 +80,9 @@ export const sparkle: EffectDef = {
 					const slot = rng.float() < p.white ? SLOT.white : paletteArc(hue);
 					const c = sample(palette, slot + hueShift, gain * rng.range(0.55, 1));
 					// A spark one LED wide is below the threshold at which a pixel reads as lit
-					// in a dark room at all, which is how this measured as a layer in name only.
-					stampOnStrip(out, g.count, strip, pos - strip.offset, 1, c);
+					// in a dark room at all, which is how this measured as a layer in name only;
+					// a pixel and a half of sigma is a glint rather than a hot point.
+					stampOnStrip(out, g.count, strip, pos - strip.offset, 1.5, c);
 				}
 			}
 		};

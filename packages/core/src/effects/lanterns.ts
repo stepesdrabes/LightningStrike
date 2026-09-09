@@ -33,7 +33,8 @@ export const lanterns: EffectDef = {
 		minBars: 4,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 5.16,
+		activity: 0.1,
+		quiet: 2.22,
 		carries: false
 	},
 	params: [
@@ -79,7 +80,7 @@ export const lanterns: EffectDef = {
 				phase += f.dt * motion;
 				const roam = 0.02 + clamp(p.drift) * 0.06;
 				const sigma = 0.035 + clamp(p.width) * 0.075;
-				const gain = 0.4 + p.intensity * 0.75;
+				const gain = 0.25 + p.intensity * 0.5;
 				const listen = clamp(p.listen);
 
 				let mean = 0;

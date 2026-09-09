@@ -23,7 +23,8 @@ export const subSwell: EffectDef = {
 		sections: ['groove', 'breakdown', 'build', 'drop'],
 		minBars: 2,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.1
 	},
 	params: [INTENSITY, param('reach', 'Max reach', 0.6)],
 	create(g) {
@@ -72,7 +73,7 @@ export const subSwell: EffectDef = {
 					f.dt,
 					f.beatPeriod
 				);
-				const gain = (0.4 + p.intensity) * level01;
+				const gain = (0.3 + p.intensity * 0.8) * level01;
 
 				for (let i = 0; i < g.count; i++) {
 					const d = depth[i];

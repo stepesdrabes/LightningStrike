@@ -35,7 +35,8 @@ export const auroraBorealis: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 3.4,
+		activity: 0.1,
+		quiet: 2.10,
 		// Curtains over black. Between them the room is unlit by construction.
 		carries: false
 	},

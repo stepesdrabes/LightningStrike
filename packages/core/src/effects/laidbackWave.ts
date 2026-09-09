@@ -21,7 +21,8 @@ export const laidbackWave: EffectDef = {
 		sections: ['intro', 'groove', 'breakdown', 'build', 'drop', 'outro'],
 		minBars: 4,
 		maxBars: 32,
-		peakReserved: false
+		peakReserved: false,
+		activity: 0.1
 	},
 	params: [INTENSITY, param('barsPerWave', 'Bars per wave', 2, 1, 4, 1)],
 	create(g) {
@@ -60,7 +61,7 @@ export const laidbackWave: EffectDef = {
 				const front = sinewave(phase);
 				const passageLevel = passage.update(f.energy, f.dt);
 				const tilt = lean.update(spectralTilt(f), f.dt);
-				const level = clamp(0.3 + passageLevel * 0.7) * (0.4 + p.intensity);
+				const level = clamp(0.3 + passageLevel * 0.7) * (0.12 + p.intensity * 0.3);
 
 				for (let i = 0; i < g.count; i++) {
 					const d = (g.ny[i] - lo) / span - front;

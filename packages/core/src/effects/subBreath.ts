@@ -31,16 +31,16 @@ export const subBreath: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
+		activity: 0,
 		// Fills the room at an even floor whatever the bass is doing, which is the whole
 		// difference between this and subThrob or bassRing: both of those go dark between
 		// notes and both declare they cannot hold a cue.
 		carries: true,
-		// Measured over the cache's real quiet sections, 2026-08-28. Low for a bed, and
-		// correctly so: the column ranks how much a look MOVES in a quiet passage and this one
-		// holds its mean flat on purpose, so it should lose those coin tosses to spectrumBed
-		// (5.63) and chorusBloom (4.55). Its own passages are the groove and the drop, where
-		// the quiet rank is not consulted at all.
-		quiet: 2.38
+		// Measured over the cache's real quiet sections. Low for a bed, and correctly so: the
+		// column ranks how much a look MOVES in a quiet passage and this one holds its mean
+		// flat on purpose, so it should lose those coin tosses to spectrumBed and wash. Its
+		// own passages are the groove and the drop, where the quiet rank is not consulted.
+		quiet: 1.94
 	},
 	params: [INTENSITY, param('depth', 'Breath depth', 0.62)],
 	create(g) {
@@ -76,7 +76,7 @@ export const subBreath: EffectDef = {
 				// over a passage without any of it being visible as movement.
 				drift += (f.dt * motion) / Math.max(1, 128 * f.beatPeriod);
 				const mean = 0.62;
-				const gain = 0.45 + p.intensity * 0.75;
+				const gain = 0.55 + p.intensity * 0.9;
 
 				for (let i = 0; i < g.count; i++) {
 					const onBeam = g.perim[i] < 0;

@@ -44,3 +44,67 @@ describe('the pounding band raise', () => {
 		}
 	});
 });
+
+describe('the activity budget', () => {
+	const pick = (
+		req: Partial<Parameters<EffectPicker['pick']>[0]> & { busy: number },
+		seed = 7
+	) =>
+		new EffectPicker(BUILT_IN_EFFECTS, new Rng(seed)).pick({
+			role: 'transient',
+			section: 'drop',
+			lengthBars: 8,
+			energy: 1,
+			...req
+		});
+	const activity = (id: string | undefined) =>
+		BUILT_IN_EFFECTS.find((e) => e.id === id)?.taste.activity ?? 0;
+
+	it('lets one whole-room striker into a drop and nothing hard beside it', () => {
+		for (let seed = 1; seed <= 12; seed++) {
+			const alone = pick({ busy: 0.2 }, seed);
+			expect(activity(alone?.id)).toBeLessThanOrEqual(1);
+			// A unison slam already in the cue: the kit's answer has to be a gentle one.
+			const beside = pick({ busy: 1.0 }, seed);
+			expect(activity(beside?.id)).toBeLessThanOrEqual(0.4 + 1e-9);
+		}
+	});
+
+	it('keeps whole-room strikers out of grooves and verses', () => {
+		for (let seed = 1; seed <= 12; seed++) {
+			expect(activity(pick({ section: 'groove', energy: 0.9, busy: 0 }, seed)?.id)).toBeLessThan(1);
+			expect(activity(pick({ section: 'verse', energy: 0.9, busy: 0 }, seed)?.id)).toBeLessThan(1);
+		}
+	});
+
+	it('keeps a breakdown to a slow look and a soft kit answer', () => {
+		for (let seed = 1; seed <= 12; seed++) {
+			// Over a bed: the moving layer may be a roll or a sweep, never a chase that strikes.
+			const look = pick({ role: 'rhythm', section: 'breakdown', energy: 0.45, busy: 0.05 }, seed);
+			expect(activity(look?.id)).toBeLessThanOrEqual(0.45 + 1e-9);
+			// With the look and the field already in the cue, the kit's answer is a bloom.
+			const answer = pick({ section: 'breakdown', energy: 0.45, busy: 0.35 }, seed);
+			expect(activity(answer?.id)).toBeLessThanOrEqual(0.15 + 1e-9);
+		}
+	});
+
+	it('keeps the calmest candidates rather than the whole pool when the budget is spent', () => {
+		// Nothing left at all: the one transient that is a bloom rather than a strike.
+		expect(pick({ busy: 1.4 })?.id).toBe('subSwell');
+	});
+
+	it('skips the budget when the caller passes none', () => {
+		// The same pool that a spent budget narrows to its one bloom is open without one.
+		let struck = false;
+		for (let seed = 1; seed <= 12; seed++) {
+			const def = new EffectPicker(BUILT_IN_EFFECTS, new Rng(seed)).pick({
+				role: 'transient',
+				section: 'drop',
+				lengthBars: 8,
+				energy: 1
+			});
+			if (activity(def?.id) > 0.1) struck = true;
+		}
+		expect(struck).toBe(true);
+	});
+});

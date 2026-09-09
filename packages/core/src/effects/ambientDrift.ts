@@ -35,7 +35,8 @@ export const ambientDrift: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 2.89
+		activity: 0,
+		quiet: 2.07
 	},
 	params: [INTENSITY, param('period', 'Period', 0.5), param('listen', 'How much it hears', 0.45)],
 	create(g) {
@@ -62,7 +63,7 @@ export const ambientDrift: EffectDef = {
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
 				phase += (f.dt / (30 + p.period * 30)) * motion;
-				const gain = 0.32 + p.intensity * 0.5;
+				const gain = 0.5 + p.intensity * 0.6;
 
 				// Latched on the beat, then eased over a couple of bars on top. Where the music
 				// sits and how narrow it is are questions about the passage rather than about the

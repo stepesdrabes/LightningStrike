@@ -3,84 +3,123 @@ import { STROBE_MAX_HZ } from '../contracts/show.ts';
 import { SLOT } from '../contracts/palette.ts';
 import { sample } from '../color/palette.ts';
 import { clamp, lerp } from '../dsl/math.ts';
-import { fillSolid } from '../dsl/buffer.ts';
-import { BeatHold, PulseEnv } from '../dsl/env.ts';
-import { bandBetween } from '../dsl/spectrum.ts';
 import { INTENSITY } from './helpers.ts';
 
+/** A flash: full for this long, then a short tail. Under a frame it reads as a dim blip. */
+const HOLD = 0.04;
+const RELEASE = 0.06;
+
 /**
- * A build is not a smooth Hz ramp, it is a musical one: half notes, then quarters, then
- * 8ths, then 16ths, so the light plays the snare roll. Held below full brightness so the
- * drop still owns the brightest frame of the show.
+ * The snare roll, in light: half notes, then quarters, eighths and sixteenths into the drop,
+ * the flashes rising in brightness and spreading through the room as the rung climbs. The
+ * long walls rock first, then opposite pairs alternate, the beam joins, and the last rung is
+ * the whole frame. Only the back half of the build, which is the owner's standing verdict: the
+ * front half belongs to the layers that climb.
+ *
+ * Hard and short on purpose. The old version decayed each flash over half a beat, so at the
+ * fast rungs the flashes overlapped into a shimmer under byte 40; a strobe that is not dark
+ * between its flashes is a flicker.
  */
 export const buildStrobe: EffectDef = {
 	id: 'buildStrobe',
 	name: 'Build Strobe',
 	role: 'accent',
-	blurb: 'Flashes on a grid that doubles: 1/2 -> 1/4 -> 1/8 -> 1/16 into the drop.',
+	blurb: 'White flashes on a grid that doubles into the drop, spreading from the long walls to the whole frame.',
 	taste: {
 		energy: 4,
 		sections: ['build'],
 		minBars: 2,
 		maxBars: 16,
 		peakReserved: false,
-		// A strobe cannot be the thing a room is lit by; it is what happens to a lit room.
+		activity: 1,
 		carries: false,
 		character: 'flash'
 	},
 	params: [INTENSITY],
 	create(g) {
-		const env = new PulseEnv();
-		// How much top end the riser has, latched on the beat and spent entirely on colour.
-		// Driving the flash level from it would put the build's brightness on band data that
-		// is normalised across the whole track.
-		const air = new BeatHold(0.15);
+		// Bit per block: the four walls in ring order, then the beam.
+		const block = new Uint8Array(g.count);
+		let bit = 0;
+		for (const s of g.strips) {
+			if (!s.inPerimeter) continue;
+			for (let k = 0; k < s.count; k++) block[s.offset + k] = bit;
+			bit++;
+		}
+		const beamBit = bit;
+		for (const s of g.strips) {
+			if (s.inPerimeter) continue;
+			for (let k = 0; k < s.count; k++) block[s.offset + k] = beamBit;
+		}
+		const LONG = 0b00101;
+		const SHORT = 0b01010;
+		const BEAM = 1 << beamBit;
+		const ALL = LONG | SHORT | BEAM;
+
 		let lastStep = -1;
+		let level = 0;
+		let held = 0;
+		let mask = 0;
 
 		return {
 			reset() {
-				env.reset();
-				air.reset();
 				lastStep = -1;
+				level = 0;
+				held = 0;
+				mask = 0;
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift } = ctx;
 
-				// Only the back half of the build. Firing from the first bar meant a sixteen-bar
-				// riser flashed for half a minute, which two listening notes called out on two
-				// different tracks: the roll is the END of a build, and the front half belongs
-				// to the layers that climb. The ladder is remapped onto the firing span so it
-				// still enters at half notes and doubles all the way in.
-				const progress = clamp((f.buildProgress - 0.45) / 0.55);
-				const top = air.update(bandBetween(f, 0.65, 1), f.beat, f.dt, f.beatPeriod);
-				const v = env.decay(f.dt, f.beatPeriod, 0.54);
-				if (progress <= 0 && v < 0.01) {
-					out.fill(0);
-					return;
-				}
+				if (held > 0) held -= f.dt;
+				else level *= Math.exp(-f.dt / RELEASE);
+				if (level < 0.01) level = 0;
 
+				const progress = clamp((f.buildProgress - 0.45) / 0.55);
 				if (progress > 0) {
-					let per = progress < 0.3 ? 2 : progress < 0.6 ? 1 : progress < 0.85 ? 0.5 : 0.25;
+					const rung = progress < 0.3 ? 0 : progress < 0.6 ? 1 : progress < 0.85 ? 2 : 3;
+					let per = [2, 1, 0.5, 0.25][rung];
 					// The ladder stops doubling where the next rung would cross the strobe
-					// ceiling: at 140 bpm the sixteenth rung is 9.3 Hz, which has fused into a
-					// texture, so the roll tops out at eighths and the drop still owns the step up.
+					// ceiling: past it the flashes fuse into a texture and the drop loses its step
+					// up. The rung still climbs, so the last one spreads to the whole frame even
+					// where its rate could not.
 					const floor = 1 / (STROBE_MAX_HZ * Math.max(0.05, f.beatPeriod));
 					while (per < floor && per < 2) per *= 2;
 					const step = Math.floor((f.beatIndex + f.beatPhase) / per);
 					if (step !== lastStep) {
 						lastStep = step;
-						env.fire(1);
+						level = 1;
+						held = HOLD;
+						mask =
+							rung === 0
+								? LONG
+								: rung === 1
+									? step % 2 === 0
+										? LONG
+										: SHORT
+									: rung === 2
+										? step % 2 === 0
+											? LONG | BEAM
+											: SHORT | BEAM
+										: ALL;
 					}
 				}
 
-				const gain = env.value * (0.25 + 0.5 * progress) * (0.5 + p.intensity);
-				if (gain < 0.005) {
+				if (level === 0) {
 					out.fill(0);
 					return;
 				}
-				// Tinted toward the room's own colour while the riser is still low and bleached
-				// as it opens up, so the flash answers the arrangement without changing level.
-				fillSolid(out, g.count, sample(palette, lerp(SLOT.glow, SLOT.white, top) + hueShift, gain));
+				// Emitted well past one, because an accent carries a 0.55 opacity budget and a
+				// build sits under 0.8 intensity: this is what it takes for the last flashes to
+				// arrive white. Tinted toward the room's own colour while the roll is still low.
+				const emit = (1.6 + 1.0 * progress) * (0.55 + p.intensity * 0.65) * level;
+				const c = sample(palette, lerp(SLOT.glow, SLOT.white, 0.4 + 0.6 * progress) + hueShift, emit);
+				for (let i = 0; i < g.count; i++) {
+					const o = i * 3;
+					const lit = mask & (1 << block[i]);
+					out[o] = lit ? c[0] : 0;
+					out[o + 1] = lit ? c[1] : 0;
+					out[o + 2] = lit ? c[2] : 0;
+				}
 			}
 		};
 	}

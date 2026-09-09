@@ -131,6 +131,26 @@ export interface EffectTaste {
 	 * catalog already had the answer; nothing was choosing it.
 	 */
 	quiet?: number;
+	/**
+	 * How much of the room's light moves at frame scale while this plays, 0 to 1.
+	 *
+	 * 1 is a whole-room strike on every hit with darkness between (moshSlam, stageBlinders,
+	 * a strobe); 0.6 to 0.7 a partial strike, one wall or one wave per hit; 0.4 to 0.5 a
+	 * twinkle or a hard-edged pattern; 0.2 to 0.3 smooth motion; a field that holds or
+	 * breathes is 0. Absent means 0.
+	 *
+	 * The picker spends a budget of this per cue (`activityBudget` in select.ts), which is
+	 * what keeps three layers from all striking on the same kick. Measured over the corpus,
+	 * the cues the owner heard as "way too flickery" were exactly those: a unison slam under a
+	 * half-room gatling under a snare bloom, each defensible alone. Every console source says
+	 * the same thing structurally - one hit layer over a stable base - and the eye agrees:
+	 * modulation from independent layers adds, and the sum lands in the 8 to 10 Hz band where
+	 * a flashing room reads brightest and busiest.
+	 *
+	 * Rated by hand from the gesture, not measured: a per-pixel movement metric cannot tell a
+	 * chase from a flicker, and a chase is what a rhythm layer is for.
+	 */
+	activity?: number;
 }
 
 export interface EffectDef {

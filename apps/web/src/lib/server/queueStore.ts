@@ -10,7 +10,6 @@ import {
 	moveItem,
 	patchItem,
 	playNext,
-	pruneHistory,
 	removeItem,
 	step,
 	type NewItem,
@@ -20,9 +19,6 @@ import {
 
 const QUEUE_FILE = join(CACHE_DIR, 'queue.json');
 
-/** Rows of already-played history worth keeping, which is enough to step back through a set. */
-const HISTORY_ROWS = 30;
-
 type Listener = (state: QueueState) => void;
 
 /**
@@ -30,6 +26,11 @@ type Listener = (state: QueueState) => void;
  * from their phones. That makes the server the only place that can hold one list, and it
  * makes `currentKey` server state: the browser watches it and plays what it is told, so a
  * skip from any device works without the desktop tab being involved in the decision.
+ *
+ * Nothing in here forgets a row on its own. The queue is the owner's set list: a corpus of
+ * sixty-five tracks is played through and judged over days, and a history cap that trimmed
+ * rows played more than thirty ago (kept for the size of the payload pushed to phones) took
+ * the head of that list away. Only a person removes a row.
  */
 class QueueStore {
 	private state: QueueState = EMPTY_QUEUE;
@@ -150,18 +151,6 @@ class QueueStore {
 	async clear(keepCurrent: boolean): Promise<QueueState> {
 		await this.ready();
 		return this.commit(clearQueue(this.state, keepCurrent));
-	}
-
-	/**
-	 * Forget rows that played a while ago.
-	 *
-	 * The whole array is re-serialised and pushed to every connected phone on every commit,
-	 * several times per track, so a set that runs all night becomes a large payload on a small
-	 * radio. A no-op returns the same object, so the commit short-circuits.
-	 */
-	async prune(): Promise<QueueState> {
-		await this.ready();
-		return this.commit(pruneHistory(this.state, HISTORY_ROWS));
 	}
 
 	/** Used by the ingest runner to report progress against a row. */

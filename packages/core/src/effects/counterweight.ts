@@ -23,6 +23,7 @@ export const counterweight: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.3,
 		kit: 'kick'
 	},
 	params: [INTENSITY, param('weight', 'Weight', 0.5)],
@@ -56,7 +57,7 @@ export const counterweight: EffectDef = {
 				sag += vel * dt;
 				const depth = clamp(sag);
 
-				const gain = 0.4 + p.intensity * 0.7;
+				const gain = 0.5 + p.intensity * 0.9;
 				const n = home.length;
 				for (let k = 0; k < n; k++) {
 					// 0 at the centre, 1 at either end.
@@ -64,7 +65,7 @@ export const counterweight: EffectDef = {
 					// The resting beam is a quiet even line; under load the centre dims and
 					// the ends catch the displaced light, conservation the eye believes.
 					const dip = depth * Math.pow(1 - x, 1.6);
-					const tip = depth * Math.pow(x, 2.2) * 1.4;
+					const tip = depth * Math.pow(x, 2.2) * 2;
 					const level = clamp(0.3 - dip * 0.28 + tip);
 					const slot = lerp(SLOT.base, SLOT.glow, clamp(tip * 1.2));
 					setSample(out, home[k], palette, slot + hueShift, level * gain * (0.4 + 0.6 * permission));

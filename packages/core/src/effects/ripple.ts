@@ -32,7 +32,8 @@ export const ripple: EffectDef = {
 		minBars: 4,
 		maxBars: 64,
 		peakReserved: false,
-		quiet: 4.33,
+		activity: 0.1,
+		quiet: 2.99,
 		carries: false
 	},
 	params: [
@@ -88,7 +89,7 @@ export const ripple: EffectDef = {
 				const fade = clamp(1 - front / reach);
 				if (fade <= 0) return;
 
-				const gain = (0.45 + p.intensity * 0.85) * fade * fade;
+				const gain = (0.7 + p.intensity * 1.2) * fade * fade;
 				const width = 0.34 + front * 0.09;
 				const twoSigmaSq = 2 * width * width;
 

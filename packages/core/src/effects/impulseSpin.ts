@@ -24,6 +24,7 @@ export const impulseSpin: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		activity: 0.3,
 		kit: 'kick'
 	},
 	params: [
@@ -55,15 +56,18 @@ export const impulseSpin: EffectDef = {
 				phase = frac(phase + velocity * f.dt * Math.max(0.05, motion));
 
 				const lobes = Math.max(2, Math.round(p.lobes));
-				const gain = (0.35 + p.intensity * 0.65) * (0.4 + 0.6 * permission);
+				const gain = (0.28 + p.intensity * 0.52) * (0.4 + 0.6 * permission);
 				const spin = velocity / 0.35;
 
 				for (let i = 0; i < g.count; i++) {
 					const u = frac((ringU(g, i) - phase + 2) * lobes);
 					// A soft cosine lobe, its crest heated by how fast the wheel is actually
 					// turning: speed becomes brightness contrast, so coasting visibly relaxes.
+					// The crest never sharpens past a third power: at the fourth a full-speed
+					// wheel was three narrow blades, and a narrow blade turning fast is what a
+					// per-pixel shimmer reads as at the frame rate.
 					const lobe = 0.5 - 0.5 * Math.cos(u * Math.PI * 2);
-					const crest = Math.pow(lobe, 2 + clamp(spin) * 2);
+					const crest = Math.pow(lobe, 2 + clamp(spin) * 1.2);
 					const slot = lerp(SLOT.deep, lerp(SLOT.base, SLOT.glow, clamp(spin)), crest);
 					setSample(out, i, palette, slot + hueShift, (0.12 + crest * 0.88) * gain);
 				}

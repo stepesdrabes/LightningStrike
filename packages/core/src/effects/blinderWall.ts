@@ -23,6 +23,7 @@ export const blinderWall: EffectDef = {
 		minBars: 0,
 		maxBars: 2,
 		peakReserved: false,
+		activity: 0.8,
 		character: 'impact',
 		peakStyle: 'slam'
 	},
@@ -74,10 +75,12 @@ export const blinderWall: EffectDef = {
 				const v = age < hold ? 1 : Math.max(0, 1 - (age - hold) / decay) ** 2;
 
 				// Leaned toward glow rather than pure white: a blinder is tungsten, not a strobe.
+				// One colour throughout: the afterglow fades in place rather than settling into
+				// the base, because a hit that changes hue as it leaves reads as the room
+				// changing colour, not as a blow (the owner's verdict on the slam).
 				const warmWhite = lerp(SLOT.white, SLOT.glow, p.warmth);
-				const slot = lerp(SLOT.base, warmWhite, v);
-				const bright = lerp(0.16, 1, v) * (0.4 + p.intensity * 0.9);
-				fillSolid(out, g.count, sample(palette, slot + hueShift, bright));
+				const bright = v * (0.4 + p.intensity * 0.9);
+				fillSolid(out, g.count, sample(palette, warmWhite + hueShift, bright));
 			}
 		};
 	}

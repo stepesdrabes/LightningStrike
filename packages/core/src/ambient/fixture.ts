@@ -140,7 +140,9 @@ export function fixtureShow(analysis: TrackAnalysis): Show {
 		brief: 'fixture',
 		authoredBy: 'engine',
 		palette: { base: 200, accent: 30, third: 240, sat: 0.94, shade: 0.08 },
-		defaults: { intensity: 0.8, motion: 1, fadeBeats: 2 },
+		// A wash and one sweep is a thin show; at 0.8 it sat under the resting scenes once the
+		// catalog's levels came onto one ladder, and the handover test needs a show to hand over.
+		defaults: { intensity: 1, motion: 1, fadeBeats: 2 },
 		generatedEffects: [],
 		cues: analysis.sections.map((s) => ({
 			bar: s.startBar,
