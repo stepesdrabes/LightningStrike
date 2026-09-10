@@ -1689,6 +1689,7 @@ dependencies = [
 name = "lightningstrike"
 version = "0.1.0"
 dependencies = [
+ "dunce",
  "objc2",
  "objc2-foundation",
  "serde",

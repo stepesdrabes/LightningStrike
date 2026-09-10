@@ -17,7 +17,7 @@ a stale server:
 
 ```sh
 npm run bundle -w @mv/desktop   # build the server, fetch Node, assemble the runtime
-npm run build -w @mv/desktop    # LightningStrike.app
+npm run build -w @mv/desktop    # LightningStrike.app, or the Windows installers
 ```
 
 Needs `ffmpeg`, `ffprobe` and `yt-dlp` on PATH, and Node 22+. Keep `check` and `test` green

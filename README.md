@@ -431,13 +431,13 @@ beside it as a sidecar on a port chosen at launch.
 ```sh
 cd apps/desktop
 npm run bundle      # builds the server and assembles the runtime beside it
-npm run build       # produces LightningStrike.app
+npm run build       # produces LightningStrike.app, or an .msi and a setup .exe on Windows
 ```
 
 `ffmpeg`, `ffprobe` and `yt-dlp` are expected on PATH rather than bundled: a bundled yt-dlp
 goes stale the next time YouTube changes, and the app names whatever is missing at startup.
-macOS only so far, and unsigned, so Gatekeeper will refuse it on any machine but the one that
-built it.
+macOS and Windows, and unsigned on both, so Gatekeeper will refuse it on any machine but the
+one that built it and SmartScreen will want telling twice.
 
 ## The queue is server state
 

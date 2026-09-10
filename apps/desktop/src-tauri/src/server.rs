@@ -65,9 +65,11 @@ pub fn spawn(app: &AppHandle, path: &str) -> Result<Server, String> {
 	let cache = match std::env::var_os("MV_CACHE_DIR") {
 		Some(dir) => PathBuf::from(dir),
 		None => {
+			// Local rather than roaming: the same directory on macOS, and on Windows the one
+			// that is not synced to a domain profile. A library is gigabytes of cached audio.
 			let data = app
 				.path()
-				.app_data_dir()
+				.app_local_data_dir()
 				.map_err(|e| format!("no data directory: {e}"))?;
 			match bundle_suffix() {
 				Some(name) => data.join(format!("cache-{name}")),
@@ -177,5 +179,20 @@ fn resource(app: &AppHandle, rel: &str) -> Result<std::path::PathBuf, String> {
 	if !Path::new(&path).exists() {
 		return Err(format!("missing bundled {rel} at {path:?}"));
 	}
-	Ok(path)
+	Ok(simplified(path))
+}
+
+/// Windows' verbatim `\\?\C:\...` form, back to the plain one.
+///
+/// Tauri resolves a resource through `canonicalize`, which on Windows always answers verbatim,
+/// and Node cannot run a main module from one: it reads the prefix as a UNC share and ends up
+/// calling lstat on `C:` alone. Nothing resolved here is near the length that needs the prefix.
+#[cfg(windows)]
+fn simplified(path: PathBuf) -> PathBuf {
+	dunce::simplified(&path).to_path_buf()
+}
+
+#[cfg(not(windows))]
+fn simplified(path: PathBuf) -> PathBuf {
+	path
 }

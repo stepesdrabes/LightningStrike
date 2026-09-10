@@ -80,8 +80,3 @@ unsafe fn responds(object: *mut AnyObject, selector: Sel) -> bool {
 	let answers: Bool = unsafe { msg_send![object, respondsToSelector: selector] };
 	answers.as_bool()
 }
-
-#[cfg(not(target_os = "macos"))]
-pub fn unlock(_webview: *mut std::ffi::c_void) -> bool {
-	false
-}

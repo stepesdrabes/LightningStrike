@@ -27,7 +27,8 @@ function mintToken(): string {
  * A machine reports several: virtual interfaces from VPNs and container bridges answer the
  * same query as the WiFi card, and a QR pointing at one of those is unreachable from a phone.
  * Preferring the interface the default route would use is not available here without probing,
- * so this ranks by name instead: en0 is the WiFi on every Mac.
+ * so this ranks by name instead: en0 is the WiFi on every Mac, and Windows reports the two
+ * real cards under names a person would recognise.
  */
 export function lanAddress(): string | null {
 	const candidates: { name: string; address: string }[] = [];
@@ -40,11 +41,13 @@ export function lanAddress(): string | null {
 	if (candidates.length === 0) return null;
 
 	const rank = (name: string) => {
-		if (/^en0$/.test(name)) return 0;
+		if (/^en0$/.test(name) || /^Wi-Fi/i.test(name)) return 0;
 		if (/^en\d+$/.test(name)) return 1;
 		if (/^(wl|wlan|wlp)/.test(name)) return 1;
+		if (/^Ethernet/i.test(name)) return 1;
 		// Bridges, VPN tunnels and container networks answer but cannot be reached from a phone.
-		if (/^(bridge|utun|feth|vmenet|docker|veth|tun|tap)/.test(name)) return 9;
+		// Case-insensitively, so `veth` also catches Hyper-V's `vEthernet (WSL)`.
+		if (/^(bridge|utun|feth|vmenet|docker|veth|tun|tap)/i.test(name)) return 9;
 		return 5;
 	};
 

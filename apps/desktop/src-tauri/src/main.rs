@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod env;
+#[cfg(target_os = "macos")]
 mod framerate;
 mod server;
 
@@ -46,6 +47,8 @@ fn main() {
 
 			// The splash, not the server: a window the user can see comes first, and the sidecar
 			// is navigated to when it answers.
+			// Only the macOS block below reassigns it.
+			#[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
 			let mut builder =
 				WebviewWindowBuilder::new(&handle, "main", WebviewUrl::App("index.html".into()))
 					.title("LightningStrike")
@@ -88,11 +91,16 @@ fn main() {
 			}
 
 			// Before anything is drawn in it, so the first frame is already at the display's rate.
-			let _ = window.with_webview(|webview| {
-				if !framerate::unlock(webview.inner()) {
-					eprintln!("[shell] the webview's 60 fps cap could not be lifted");
-				}
-			});
+			// WKWebView is the only one that needs asking; `PlatformWebview::inner` is its own
+			// accessor and does not exist elsewhere.
+			#[cfg(target_os = "macos")]
+			{
+				let _ = window.with_webview(|webview| {
+					if !framerate::unlock(webview.inner()) {
+						eprintln!("[shell] the webview's 60 fps cap could not be lifted");
+					}
+				});
+			}
 
 			window.show().inspect_err(|_| server::stop(&handle))?;
 

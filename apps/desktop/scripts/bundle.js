@@ -7,8 +7,17 @@
 // is checked in, and on a dirty tree the build used to ship whatever `apps/web/build` happened to
 // hold. Still runnable by hand as `npm run bundle`, which is what `tauri dev` needs. Idempotent.
 
-import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { execFileSync, execSync } from 'node:child_process';
+import {
+	cpSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	readdirSync,
+	renameSync,
+	rmSync,
+	statSync
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -84,10 +93,26 @@ function officialNode(triple) {
 	const name = `node-${version}-${platform}-${arch}`;
 
 	const cache = join(binaries, '.cache');
+	mkdirSync(cache, { recursive: true });
+
+	// Windows is the one platform nodejs.org publishes the executable on its own for, so there
+	// is nothing to unpack. The archive it also offers is a .zip, which `tar -xzf` cannot read.
+	if (platform === 'win') {
+		const binary = join(cache, `${name}.exe`);
+		if (existsSync(binary)) return binary;
+		const url = `https://nodejs.org/dist/${version}/win-${arch}/node.exe`;
+		console.log(`fetching    ${url}`);
+		// Written beside and renamed: there is no archive to fail to unpack here, so a curl
+		// that dies halfway would otherwise leave a truncated node every later run accepts.
+		const partial = `${binary}.part`;
+		execFileSync('curl', ['-fsSL', '-o', partial, url], { stdio: 'inherit' });
+		renameSync(partial, binary);
+		return binary;
+	}
+
 	const binary = join(cache, name, 'bin/node');
 	if (existsSync(binary)) return binary;
 
-	mkdirSync(cache, { recursive: true });
 	const url = `https://nodejs.org/dist/${version}/${name}.tar.gz`;
 	console.log(`fetching    ${url}`);
 	const tarball = join(cache, `${name}.tar.gz`);
@@ -192,7 +217,9 @@ console.log(`bundling for ${triple}`);
 // Built here rather than assumed, because a stale build/ is invisible: the app starts, serves
 // an older UI, and answers new routes with the page fallback rather than an error.
 console.log('building the server');
-execFileSync('npm', ['run', 'build', '-w', '@mv/web'], { cwd: root, stdio: 'inherit' });
+// Through a shell, because npm is a .cmd on Windows and Node has refused to execute one
+// directly since 20.12. The command is a literal, so there is nothing here to reinterpret.
+execSync('npm run build -w @mv/web', { cwd: root, stdio: 'inherit' });
 
 const build = join(root, 'apps/web/build');
 if (!existsSync(build)) throw new Error('the web build produced no apps/web/build');
@@ -222,7 +249,9 @@ console.log('building the ingest worker');
 
 mkdirSync(binaries, { recursive: true });
 const node = officialNode(triple);
-cpSync(node, join(binaries, `node-${triple}`), { dereference: true });
+// Tauri finds a sidecar by exact filename, and on Windows that includes the .exe.
+const exe = triple.includes('windows') ? '.exe' : '';
+cpSync(node, join(binaries, `node-${triple}${exe}`), { dereference: true });
 console.log(`node        ${mb(sizeOf(node))}  ${node}`);
 
 // The packages the build left external, and everything they need in turn.

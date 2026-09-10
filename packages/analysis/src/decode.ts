@@ -172,9 +172,11 @@ function ytdlpAgeDays(): Promise<number | null> {
  * is, and those keep their retries.
  */
 function staleBinaryNote(days: number): string {
+	const upgrade =
+		process.platform === 'win32' ? 'winget upgrade yt-dlp.yt-dlp' : 'brew upgrade yt-dlp';
 	return (
 		`yt-dlp is ${days} days out of date and YouTube is refusing every track it asks for. ` +
-		'Run: brew upgrade yt-dlp'
+		`Run: ${upgrade}`
 	);
 }
 

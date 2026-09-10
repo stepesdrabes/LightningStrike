@@ -1,5 +1,8 @@
+#[cfg(not(windows))]
 use std::io::Read;
+#[cfg(not(windows))]
 use std::process::{Command, Stdio};
+#[cfg(not(windows))]
 use std::time::{Duration, Instant};
 
 /// How long the login shell gets to answer.
@@ -9,10 +12,24 @@ use std::time::{Duration, Instant};
 /// occasionally seconds, and if it prompts or blocks on a network mount it never returns at all -
 /// so this waits with a deadline and falls back to the standard directories rather than trusting
 /// somebody else's shell configuration with the app's startup.
+#[cfg(not(windows))]
 const SHELL_TIMEOUT: Duration = Duration::from_millis(1500);
 
 /// Where Homebrew puts things, on both architectures, plus the standard system directories.
+#[cfg(not(windows))]
 const FALLBACKS: &[&str] = &["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"];
+
+/// What separates one directory from the next in a PATH.
+#[cfg(windows)]
+const SEPARATOR: char = ';';
+#[cfg(not(windows))]
+const SEPARATOR: char = ':';
+
+/// What a runnable name on PATH may end in. Windows keeps the extension; Unix has none.
+#[cfg(windows)]
+const EXTENSIONS: &[&str] = &[".exe", ".cmd", ".bat", ".com"];
+#[cfg(not(windows))]
+const EXTENSIONS: &[&str] = &[""];
 
 /// The tools the analysis pipeline shells out to. Missing ones are named at startup rather
 /// than surfacing later as a failed ingest with a message about a missing binary.
@@ -24,6 +41,7 @@ pub const REQUIRED_TOOLS: &[&str] = &["ffmpeg", "ffprobe", "yt-dlp"];
 /// directory, so `ffmpeg` and `yt-dlp` are invisible to it however carefully they were
 /// installed. Asking the user's login shell is the only way to get the PATH they actually
 /// have; the fallbacks cover the case where that fails or the shell is not configured.
+#[cfg(not(windows))]
 pub fn resolve_path() -> String {
 	let mut parts: Vec<String> = login_shell_path()
 		.map(|p| p.split(':').map(str::to_owned).collect())
@@ -38,7 +56,16 @@ pub fn resolve_path() -> String {
 	parts.join(":")
 }
 
+/// Windows hands a GUI app the user's own PATH already, so there is nothing to recover.
+#[cfg(windows)]
+pub fn resolve_path() -> String {
+	std::env::var_os("PATH")
+		.map(|p| p.to_string_lossy().into_owned())
+		.unwrap_or_default()
+}
+
 /// `-ilc` so login and rc files both run, which is where a PATH edit usually lives.
+#[cfg(not(windows))]
 fn login_shell_path() -> Option<String> {
 	let shell = std::env::var("SHELL").ok()?;
 	let mut child = Command::new(shell)
@@ -84,11 +111,11 @@ pub fn missing_tools(path: &str) -> Vec<&'static str> {
 }
 
 fn on_path(path: &str, tool: &str) -> bool {
-	path.split(':').filter(|d| !d.is_empty()).any(|dir| {
-		let candidate = std::path::Path::new(dir).join(tool);
+	path.split(SEPARATOR).filter(|d| !d.is_empty()).any(|dir| {
+		let dir = std::path::Path::new(dir);
 		// Existence rather than the executable bit: a file of that name on PATH that cannot be
 		// run is a broken install, and saying "not found" about it would send the user looking
 		// in the wrong place.
-		candidate.is_file()
+		EXTENSIONS.iter().any(|ext| dir.join(format!("{tool}{ext}")).is_file())
 	})
 }

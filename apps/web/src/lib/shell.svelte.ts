@@ -34,10 +34,23 @@ export function readShell(): ShellHints {
 	};
 }
 
+/**
+ * What each tool is packaged as, which is not always its own name: ffprobe ships inside
+ * ffmpeg, and a bare name leaves winget asking which of several matches was meant.
+ */
+const WINGET: Record<string, string> = {
+	ffmpeg: 'Gyan.FFmpeg',
+	ffprobe: 'Gyan.FFmpeg',
+	'yt-dlp': 'yt-dlp.yt-dlp'
+};
+
 /** How to install what is missing, on the platform it is missing from. */
 export function installHint(platform: string, tools: string[]): string {
 	const list = tools.join(' ');
 	if (platform === 'macos') return `brew install ${list}`;
-	if (platform === 'windows') return `winget install ${list}`;
+	if (platform === 'windows') {
+		const ids = [...new Set(tools.map((tool) => WINGET[tool] ?? tool))];
+		return `winget install ${ids.join(' ')}`;
+	}
 	return `Install ${list} with your package manager.`;
 }
