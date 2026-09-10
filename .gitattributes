@@ -1,0 +1,3 @@
+# Committed content is LF. Set here rather than left to each machine, so a checkout on
+# Windows cannot commit a whole file back as CRLF.
+* text=auto eol=lf
