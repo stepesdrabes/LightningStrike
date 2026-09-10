@@ -122,6 +122,12 @@ export class RoomDirector {
 	 * turning one down to fix the other is how a room ends up flat. `lampBrightness` is its own
 	 * number because the lamp is a different fixture in a different corner at a different distance.
 	 *
+	 * `lampBrightness` is the one that does not keep the promise: the lamp's white knee is a
+	 * threshold on the byte this dims, so under about 0.6 the hits stop reaching it and the lamp
+	 * goes quietly back to being a coloured glow. Turning it down is a way to calm that corner, not
+	 * only to dim it. Nothing here can fix that - the knee lives on the board, which is never told
+	 * this number.
+	 *
 	 * **Only the server sets these.** The browser leaves them at unity, so the preview keeps
 	 * showing the show rather than the room's dimmer: a screen has its own brightness, and dimming
 	 * the picture to match a patio only makes the picture harder to read.

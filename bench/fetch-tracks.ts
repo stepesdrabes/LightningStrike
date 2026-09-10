@@ -2,57 +2,41 @@ import { spawn } from 'node:child_process';
 import { ingest } from '@mv/analysis';
 
 /**
- * Download and analyse the tuning corpus: a spread across the four genre families the room
- * actually plays, plus edge cases and one reported repro (NOTION - The Days, whose first drop
- * is labelled groove and lands a bar late).
+ * Download and analyse a corpus into `MV_CACHE_DIR`. Every entry names its YouTube id
+ * outright where one is known, so the track ingested is the one that was listened to and
+ * chosen, not whatever a search ranks first on the day; a `query` is resolved with yt-dlp
+ * for the rest. The list below is the 2026-09-09 addition to review corpus 3, the owner's
+ * last analysis corpus: current hits across the families they judge, plus the structures
+ * the sixty-five did not hold (a 6/8 ballad, a three-part song with tempo changes, garage's
+ * swing, hard techno at 155, jump-up at 174, a drum-and-bass verse under a rock chorus).
+ * The original tuning corpus this bench fetched in 2026-08 lives in git history.
  *
  * Serial on purpose: the beat tracker is an ONNX graph that takes every core it is offered,
  * so two at once is slower than the same two in sequence.
  */
-const TRACKS: { query: string; note?: string }[] = [
-	// EDM / house / techno / DnB
-	{ query: 'NOTION The Days', note: 'repro: first drop labelled groove, ~a bar late' },
-	{ query: 'Fred again Skrillex Flowdan Rumble' },
-	{ query: 'FISHER Losing It' },
-	{ query: 'Charlotte de Witte Doppler' },
-	{ query: 'Boris Brejcha Purple Noise' },
-	{ query: 'Swedish House Mafia Don\'t You Worry Child' },
-	{ query: 'Martin Garrix Animals' },
-	{ query: 'Eric Prydz Opus' },
-	{ query: 'deadmau5 Strobe', note: 'edge: ten minutes, ambient intro' },
-	{ query: 'Skrillex Scary Monsters and Nice Sprites' },
-	{ query: 'Wilkinson Afterglow' },
-	{ query: 'Sub Focus Dimension Desire' },
-	// Pop
-	{ query: 'The Weeknd Blinding Lights' },
-	{ query: 'Dua Lipa Don\'t Start Now' },
-	{ query: 'Taylor Swift Cruel Summer' },
-	{ query: 'Harry Styles As It Was' },
-	{ query: 'Billie Eilish bad guy' },
-	{ query: 'Adele Someone Like You', note: 'edge: ballad, no drop anywhere' },
-	{ query: 'Calin je mi fajn' },
-	{ query: 'Mirai Když nemůžeš tak přidej' },
-	// Hip-hop / trap / RnB
-	{ query: 'Kendrick Lamar HUMBLE' },
-	{ query: 'Travis Scott SICKO MODE', note: 'edge: beat switches mid-track' },
-	{ query: 'Drake God\'s Plan' },
-	{ query: 'Eminem Lose Yourself' },
-	{ query: 'Doja Cat Paint The Town Red' },
-	{ query: 'SZA Kill Bill' },
-	{ query: 'Viktor Sheen Návykový' },
-	{ query: 'Ektor Fenomén' },
-	// Rock / metal
-	{ query: 'AC/DC Thunderstruck' },
-	{ query: 'Nirvana Smells Like Teen Spirit' },
-	{ query: 'Metallica Enter Sandman' },
-	{ query: 'System of a Down Chop Suey' },
-	{ query: 'Foo Fighters Everlong' },
-	{ query: 'Linkin Park In the End' },
-	{ query: 'Bring Me The Horizon Can You Feel My Heart' },
-	{ query: 'Arctic Monkeys Do I Wanna Know' },
-	// Edge cases
-	{ query: 'Queen Bohemian Rhapsody', note: 'edge: multi-part, tempo changes' },
-	{ query: 'Daft Punk One More Time', note: 'edge: filtered breakdown at groove loudness' }
+const TRACKS: { id?: string; query?: string; note?: string }[] = [
+	// Current hits, September 2026
+	{ id: 'v1t4MTqdfyI', note: 'Ariana Grande, hate that i made you love me: the most streamed song of summer 2026' },
+	{ id: 'hLOheGDwD_0', note: 'Ella Langley, Choosin Texas: 21 weeks at Hot 100 number one, the first country track in the corpus' },
+	{ id: 'X9CsK_nuqdE', note: 'Shakira and Burna Boy, Dai Dai: the 2026 World Cup song, latin over afrobeats' },
+	{ id: 'yynqCKDI7kQ', note: 'Yung Miami, Spend Dat: the summer\'s viral rap dance' },
+	{ id: 'h5u4dKq8C2w', note: 'Drake, Janice STFU: 2026 Drake' },
+	{ id: '3triLkS0nq4', note: 'Sam Fender and Olivia Dean, Rein Me In: 75 days at UK number one, five and a half minutes' },
+	{ id: 'k7JitOG5wVo', note: 'BLACKPINK, GO: 2026 K-pop, the section-dense form' },
+	{ id: 'SOJpE1KMUbo', note: 'Dave and Tems, Raindance: afrobeats under UK rap' },
+	{ id: '9OBPTq-NgL0', note: 'Saul and Hasan with Yzomandias, Nejsem sam: Czech rap, 2026' },
+	{ id: 'jojRxf2qvqs', note: 'Yzomandias, Melanz: the owner queued it themselves on 2026-09-09' },
+	// Club
+	{ id: 'rjXMBZJo-VA', note: 'Green Velvet and MEDUZA, La La Land: 2026 tech house' },
+	{ id: 'tkFceKEWnqg', note: 'Sammy Virji and Issey Cross, Nostalgia: UK garage, the swung two-step the corpus never had' },
+	{ id: 'j8VRLPa1za4', note: 'Sara Landry and Alt8, Hands Up: hard techno at 155, June 2026' },
+	{ id: 'mbWOIqlrqFU', note: 'Hedex, MHITR: jump-up drum and bass at 174 that still owns 2026 sets' },
+	// Rock and metal
+	{ id: 'MEb49Q9ZRGo', note: 'Lamb of God, Sepsis: 2026 metal' },
+	{ id: 'JxlnKVj2IWA', note: 'Poppy, Unravel: drum-and-bass verses under rock choruses, a double-time switch' },
+	// Structures the corpus did not hold
+	{ id: 'iKzRIweSBLA', note: 'Ed Sheeran, Perfect: a 6/8 ballad whose kit arrives late' },
+	{ id: 'Lt8AfIeJOxw', note: 'Radiohead, Paranoid Android: three parts, tempo and meter changes' }
 ];
 
 function resolveId(query: string): Promise<string | null> {
@@ -79,21 +63,22 @@ function resolveId(query: string): Promise<string | null> {
 let done = 0;
 for (const track of TRACKS) {
 	const at = `[${++done}/${TRACKS.length}]`;
+	const label = track.note ?? track.query ?? track.id ?? '?';
 	try {
-		const id = await resolveId(track.query);
+		const id = track.id ?? (track.query ? await resolveId(track.query) : null);
 		if (!id) {
-			console.log(`${at} ${track.query}: search failed`);
+			console.log(`${at} ${label}: search failed`);
 			continue;
 		}
 		const result = await ingest(`https://www.youtube.com/watch?v=${id}`, {
-			onProgress: (stage) => console.log(`${at} ${track.query}: ${stage}`)
+			onProgress: (stage) => console.log(`${at} ${label}: ${stage}`)
 		});
 		console.log(
-			`${at} ${track.query} -> ${result.id} ${result.fromCache ? '(cached)' : ''} ` +
+			`${at} ${label} -> ${result.id} ${result.fromCache ? '(cached)' : ''} ` +
 				`${result.analysis.tempo.bpm} bpm, ${result.analysis.sections.length} sections`
 		);
 	} catch (e) {
-		console.log(`${at} ${track.query}: ${(e as Error).message.split('\n')[0]}`);
+		console.log(`${at} ${label}: ${(e as Error).message.split('\n')[0]}`);
 	}
 }
 console.log('corpus fetch complete');

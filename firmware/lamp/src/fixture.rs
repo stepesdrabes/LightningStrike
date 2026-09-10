@@ -17,9 +17,12 @@ pub const KIND: &str = "lamp";
 /// strip's own drivers; wire values are 16-bit, shifted down at the last step.
 const MAX_DUTY: u32 = (1 << 13) - 1;
 
-/// Per-channel scale, 256 unity. White starts at a quarter because the strip's two phosphor
+/// Per-channel scale, 256 unity. White sits at a quarter because the strip's two phosphor
 /// emitters outrun the three colour dies several times over; the selftest's last two steps show
 /// the real ratio. Err low, and pull this channel down first if the supply is short.
+///
+/// This is the STANDALONE trim. A wash asks for a colour and must get that colour, so its white
+/// is held down to where adding it cannot pale the mix.
 const TRIM: [u32; 4] = [256, 256, 256, 64];
 
 /// The Bounce Lamp on its own brain: one pixel on an analog RGBW strip, four low-side MOSFET
@@ -105,19 +108,28 @@ impl Fixture {
 
 	/// Off by default, so the boot look is the engine's fade into the remembered state and a
 	/// power cut is not announced to the room. `--features selftest` plays R, G, B, then R+G+B and
-	/// W alone, half a second each: the first three say which gate is which, and the last two are
-	/// the [`TRIM`] measurement at raw duty, so a wrong trim cannot hide a wiring fault.
+	/// W alone, two seconds each with a dark beat between: the first three say which gate is which,
+	/// and the last two are the [`TRIM`] measurement at raw duty, so a wrong trim cannot hide a
+	/// wiring fault. It runs before the radio, so it delays the join by its own length.
 	pub async fn selftest(&mut self) {
 		#[cfg(feature = "selftest")]
 		{
+			/// Long enough to name a colour and write it down. At half a second the five steps
+			/// were past before you could tell which one you were looking at, which is the job.
+			const STEP_MS: u64 = 2000;
+			/// A dark beat between steps, so the two whites at the end read as two events rather
+			/// than one long one. Short, because those two are meant to be compared by eye.
+			const GAP_MS: u64 = 300;
 			const ON: u16 = u16::MAX;
+
 			for (r, g, b, w) in
 				[(ON, 0, 0, 0), (0, ON, 0, 0), (0, 0, ON, 0), (ON, ON, ON, 0), (0, 0, 0, ON)]
 			{
 				self.write_raw(r, g, b, w);
-				Timer::after_millis(500).await;
+				Timer::after_millis(STEP_MS).await;
+				self.write_raw(0, 0, 0, 0);
+				Timer::after_millis(GAP_MS).await;
 			}
-			self.write_raw(0, 0, 0, 0);
 		}
 	}
 
@@ -135,19 +147,25 @@ impl Fixture {
 		);
 	}
 
-	/// White is the achromatic part added to the colour, not moved out of it: subtracting only
-	/// holds when the white emitter shares a white point with the RGB mix, and a warm phosphor
-	/// does not. Adding cannot shift a hue.
+	/// The show's one pixel, on the three colour dies alone. **The white gate stays dark.**
+	///
+	/// It was driven for an evening, from the achromatic part of the wire, and the phosphors are
+	/// simply the wrong emitter for this job: they outnumber the dies here, so any share of them
+	/// large enough to see is large enough to pale the accent, and their weight against a hue
+	/// depends on which die that hue is - one gate against one die. `bounce.ts` sends a saturated
+	/// pixel now and the level carries everything.
+	///
+	/// The standalone wash still uses all four through [`TRIM`]: a light asked for warm white must
+	/// be able to make warm white. This is only what a show gets.
 	pub async fn present(&mut self, pixels: &[u8]) {
 		let Some(px) = pixels.get(..3) else {
 			return;
 		};
-		let white = px[0].min(px[1]).min(px[2]);
 		self.write(
 			trim16(widen(px[0]), TRIM[0]),
 			trim16(widen(px[1]), TRIM[1]),
 			trim16(widen(px[2]), TRIM[2]),
-			trim16(widen(white), TRIM[3]),
+			0,
 		);
 	}
 

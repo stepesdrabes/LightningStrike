@@ -233,9 +233,10 @@ meant to sit at. How bright the room is lives in three constants in
 engine decodes through the same 2.45 so a wash and a show agree about what a colour means.
 
 The lamp's one party pixel is derived host-side in `packages/core/src/bounce.ts`, where the
-show's own `kickEnv` is visible; the board only puts it on four gates. The reduction used to
-run on the board and moved out for good reason: a percentile over the room barely moves per
-beat, and the host knows the beat exactly.
+show's own `kickEnv` is visible. The reduction used to run on the board and moved out for good
+reason: a percentile over the room barely moves per beat, and the host knows the beat exactly.
+What the board still owns is which of its four emitters spend that level, which is a fact about
+the strip and belongs beside the trim.
 
 ## The Frame, on three lines
 
@@ -286,11 +287,15 @@ them means anything:
   the fixture. This reel's white is dimmer than its three colour dies together, so the shipped
   quarter is conservative.
 
-**The white emitter stays dark during a show.** The host sends RGB24 and `rgbww::unpack` puts
-nothing on the fourth emitter: deriving white from the achromatic part was tried and washes the
-room out, because the mixer already leaves most pixels part-desaturated. The palette was
+**The Frame's white emitter stays dark during a show.** The host sends RGB24 and `rgbww::unpack`
+puts nothing on the fourth emitter: deriving white from the achromatic part was tried and washes
+the room out, because the mixer already leaves most pixels part-desaturated. The palette was
 designed against three dies. Standalone mode is different - the engine derives white on
 purpose there, additively, and the same `TRIM[3]` keeps it honest.
+
+The Bounce Lamp goes the other way, and the two are not in conflict. Washing out 720 emitters
+loses a picture; there is no picture in one emitter to lose, and the reason that lamp is bright at
+all is the phosphors. Its own section has the rule.
 
 A colour-shifted tail is never a data problem: the ICs keep clocking well below the voltage at
 which the dies fall out of regulation, so a far end gone off-colour is starved, and the answer
@@ -343,8 +348,8 @@ that peaks at 350 mA. Check for a pull-down from each gate to ground and fit 10k
 none, or the
 day a wire falls off is the day the lamp decides for itself.
 
-**`--features selftest` plays R, G, B, then R+G+B, then W**, half a second each, before the radio
-comes up. The first three answer the question the firmware cannot - which gate is which - and the
+**`--features selftest` plays R, G, B, then R+G+B, then W**, two seconds each with a dark beat
+between, before the radio comes up. The first three answer the question the firmware cannot - which gate is which - and the
 last two are the white-trim measurement at raw duty, so a wrong trim cannot hide a wiring fault.
 Off by default, so the boot look is the engine's fade into the remembered state, the same as the
 frame; a lamp that announces every power cut to the room is a fault light, not a feature.
@@ -358,6 +363,26 @@ White is added, not subtracted (a warm phosphor shares no white point with the R
 and adding cannot shift a hue), and `TRIM[3]` in `lamp/src/fixture.rs` ships at a quarter
 because the phosphor pair outruns the colour dies several times over. Full white is also the
 strip's peak draw, so that is the channel to pull down if the supply is short.
+
+**During a show only the three colour dies light; the white gate is held at zero.** `bounce.ts`
+sends a saturated pixel and the strongest channel is the light this fixture is asked for, 0..1
+exactly. The lamp rests where the section puts it and screens to full scale on every kick, so a hit
+is the same gesture whatever the passage was doing.
+
+The phosphors were tried for a whole evening and are worth recording, because the reasons they lost
+are structural. They outnumber the dies here, so any share of them large enough to see is large
+enough to pale the accent; and their weight against a hue depends on which die that hue is - one
+gate against one die - so a white that reads as an edge on a green accent reads as a flash on a
+blue one. Three successive attempts to spend them a little all ended up spending them a lot. Part
+of what drove that chase was a lamp that could not make red, which turned out to be a solder bridge
+between the R and G gate stubs rather than anything about the emitters.
+
+What this costs is worth knowing: a hue is one die, so how bright the lamp gets depends on which
+one. A green accent has roughly three times the luminance of a red one and four times a blue one at
+the same drive, and nothing in software can lift that - the dies already reach full scale on a hit.
+The standalone wash is unaffected and still uses all four gates through `TRIM`, because a light
+asked for warm white has to be able to make warm white. `node bench/lampprobe.ts` reads all
+of it against the cached tracks, without a board.
 
 LEDC gives the lamp 13-bit duty at about 1.9 kHz - above flicker, far from the frame rate, and
 32 times finer than the strip's own drivers, which is what keeps the always-visible power-on

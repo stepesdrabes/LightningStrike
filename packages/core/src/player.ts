@@ -85,13 +85,20 @@ const SECTION_FLOOR: Record<SectionKind, number> = {
 };
 
 /**
- * How far ahead of the playhead a drum hit is read, as a fraction of the beat, and its ceiling.
+ * How far ahead of the playhead a drum hit is read, as a fraction of the beat, with a floor and
+ * a ceiling in seconds.
  *
  * The one number to turn if the room feels early or late against the real strips: DDP and WLED add
  * their own transport delay, which this cannot know and which pushes in the opposite direction.
  * Raising it makes the room anticipate; zero restores the old behaviour exactly.
+ *
+ * The floor is there because the transport delay does not shrink with the tempo: at six
+ * hundredths of a beat alone the lead was 40 ms on a 90 bpm rap track and 26 ms on a 138 bpm
+ * trance track, and the owner heard the kicks on the fast records as "very slightly delayed"
+ * while the slow ones were fine. Forty is still under half a sixteenth at 174 bpm.
  */
 const HIT_LEAD_BEATS = 0.06;
+const HIT_LEAD_FLOOR = 0.04;
 const HIT_LEAD_CAP = 0.045;
 
 
@@ -542,9 +549,10 @@ export class ShowPlayer {
 		// its apparent timing (temporal ventriloquism); and a listener's own sense of "on the
 		// beat" already runs 20-80 ms early. Spend the uncertainty on the early side.
 		//
-		// Derived from the beat period so it stays a musical fraction, and capped well inside a
-		// sixteenth at every tempo: 30 ms at 120 bpm, 21 ms at 174 bpm.
-		const lead = Math.min(HIT_LEAD_CAP, HIT_LEAD_BEATS * f.beatPeriod);
+		// Derived from the beat period so it stays a musical fraction, floored so a fast record
+		// is not read later than a slow one, and capped well inside a sixteenth at every tempo:
+		// 40 ms from 90 to 160 bpm, 45 ms below that.
+		const lead = Math.min(HIT_LEAD_CAP, Math.max(HIT_LEAD_FLOOR, HIT_LEAD_BEATS * f.beatPeriod));
 		const at = t + lead;
 		// Fired at the hit's own strength, floored so the quietest ghost note still registers as
 		// an event. Firing every hit at 1.0 made `kickEnv` exactly 1.0 on every kick frame in the

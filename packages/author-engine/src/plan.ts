@@ -917,7 +917,7 @@ const VARIETY: Record<string, Record<string, readonly number[]>> = {
 	pixelRain: { fallBeats: [3, 4, 6] },
 	pump: { sweep: [0.3, 0.5, 0.8] },
 	blockChase: { order: [0, 1, 2], half: [0, 0, 1] },
-	snapSplit: { hold: [0.3, 0.5, 0.7] }
+	snapSplit: { hold: [0.6, 0.75, 0.9] }
 };
 
 /**

@@ -39,7 +39,10 @@ export const snareBlade: EffectDef = {
 		activity: 0.5,
 		kit: 'snare'
 	},
-	params: [INTENSITY, param('sweepBeats', 'Sweep length', 0.4, 0.2, 0.8, 0.05)],
+	// A third of a beat for the cut: the bright head is the event, and a slower stroke put it
+	// mid-wall a tenth of a second after the snare, which the owner heard as the blade
+	// arriving late.
+	params: [INTENSITY, param('sweepBeats', 'Sweep length', 0.32, 0.2, 0.8, 0.05)],
 	create(g) {
 		const walls = g.strips.filter((s) => s.inPerimeter);
 		const blades: Blade[] = [];
@@ -75,9 +78,13 @@ export const snareBlade: EffectDef = {
 				}
 
 				const sweep = Math.max(0.08, (p.sweepBeats * f.beatPeriod) / Math.max(0.2, motion));
-				// The stroke lives a beat and a quarter: a third of it cutting, the rest as the
+				// The stroke lives a beat and a half: a quarter of it cutting, the rest as the
 				// trail fading, long enough to leave the way a lamp does rather than a shutter.
-				const life = Math.max(0.15, f.beatPeriod * 1.25) / Math.max(0.2, motion);
+				const life = Math.max(0.15, f.beatPeriod * 1.5) / Math.max(0.2, motion);
+				// The wall under the stroke pops on the snare itself and settles within a fifth
+				// of a beat to the lit floor the stroke runs over: the hit is felt where the
+				// snare is, and the blade draws the line out of it.
+				const pop = Math.max(0.03, f.beatPeriod * 0.18) / Math.max(0.2, motion);
 				const gain = 0.55 + p.intensity * 0.9;
 
 				for (const b of blades) {
@@ -92,6 +99,7 @@ export const snareBlade: EffectDef = {
 					const u = Math.min(1, age / sweep);
 					const head = 1 - Math.pow(1 - u, 2);
 					const fade = 1 - age / life;
+					const struck = 0.3 * Math.exp(-age / pop);
 					// The stroke and its mirror on the opposite wall, drawn the other way: one
 					// wall alone is a sixth of the room for a third of a beat, and a backbeat
 					// wants to be seen from every seat.
@@ -109,8 +117,8 @@ export const snareBlade: EffectDef = {
 							// blade itself stops short of a hard white: a stroke is a line of light
 							// drawn across a wall, not a flash on it.
 							const blade = u < 1 ? Math.exp(-(at * at) / 30) : 0;
-							const trail = behind > 0 ? Math.exp(-behind * 3) * 0.7 : 0;
-							const v = (blade * 1.0 + trail * fade + 0.4 * fade) * b.power * gain;
+							const trail = behind > 0 ? Math.exp(-behind * 3) * 0.8 : 0;
+							const v = (blade * 1.1 + trail * fade + (0.4 * fade + struck)) * b.power * gain;
 							if (v < 0.01) continue;
 							addSample(out, wall.offset + k, palette, lerp(SLOT.glow, SLOT.white, clamp(blade)) + hueShift, v);
 						}

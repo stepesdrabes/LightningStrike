@@ -3,33 +3,32 @@ import { Follower } from './dsl/env.ts';
 import { GAMMA, LEVEL_BINS, MASTER, perceivedLevel, quantize } from './output.ts';
 
 /**
- * Level this fixture holds while a show is running, as a fraction of the light it can make.
+ * Where the colour dies sit in the quietest lit passage, before any hit.
  *
- * The one thing that makes a light distracting is going fully dark and coming back: a fixture
- * breathing between a fifth and full reads as alive, and the same fixture between nothing and
- * full reads as a fault. It matters more here than on the frame, because a lamp standing in a
- * corner sits in peripheral vision whenever the room is what is being looked at, and the
- * periphery is markedly more flicker-sensitive than the fovea.
+ * Low, because this is a punch budget: everything the bed holds is range the kick cannot swing
+ * through, and the dies are the only thing swinging. It was 0.6 for one round, to make the colour
+ * bright, and that left a groove's kick a 1.3:1 move - the colour was bright and the lamp did
+ * nothing. A saturated hue at a fifth of its die is still plainly that hue; a hue with no headroom
+ * above it is not a fixture that answers a kit.
  *
- * It costs range, and that is why it is not higher. Against the measured section table it turns
- * a room running 0.28 at an intro and 0.90 at a drop into a lamp running 0.37 and 0.91, so the
- * show's 3.2:1 between them arrives as 2.5:1.
+ * A genuinely black room still takes the lamp to black, so a blackout in the show is a blackout
+ * in the corner. This is the floor of a lit room, not of a dark one.
  *
- * **In light, not in the authoring domain**, which is where the number was measured: the board it
- * came from wrote PWM duty directly. Set as an authoring value it would go through `quantize` a
- * second time and land at 1% of the light it names, which is a lamp that reads as off.
+ * **In light, not in the authoring domain**, which is where every constant in this file was
+ * measured: the board it came from wrote PWM duty directly. Set as an authoring value it would go
+ * through `quantize` a second time and land at a fraction of the light it names.
  */
-const FLOOR = 0.12;
+const FLOOR = 0.18;
 
 /**
- * Share of the range above the floor that answers this beat rather than this passage.
+ * How much of the range above the floor the passage may hold between hits.
  *
- * A fixture asked to be both the beat and the room tone is good at neither. Splitting the two
- * and giving the beat a modest share is what lets it stay responsive without being the thing
- * that keeps catching your eye: the hit reads as a shimmer over a steady wash instead of the
- * whole lamp blinking.
+ * The rest is left for the kick, which screens over it and always reaches full scale. Kept under a
+ * half so a drop - where the passage is already near the top - still has somewhere to punch to;
+ * at 1.0 a loud section would pin the dies high and the hits would vanish exactly where they are
+ * most wanted.
  */
-const BEAT_DEPTH = 0.42;
+const BED = 0.35;
 
 /** Snares carry the backbeat but should not rival the kick, which is what the lamp is for. */
 const SNARE_SHARE = 0.55;
@@ -42,21 +41,6 @@ const BEAT_RELEASE = 0.1;
  * not pin the lamp high for the next two seconds.
  */
 const PASSAGE_TAU = 2;
-
-/**
- * How far the lamp is lifted above the light the room is actually making.
- *
- * Matching the room's light one for one is what the level maths above computes, and it reads too
- * dim in the corner: the frame is 720 emitters across a wall and the lamp is one small diffuse
- * source seen in the periphery, so equal light is not equal presence. Applied as a root rather
- * than a gain so the top of the range is untouched and nothing clips - it lifts the ordinary
- * passages, where the lamp spends its life, and leaves a drop where it already was.
- *
- * It costs contrast, which is the thing to watch: against the measured section table an intro at
- * 0.37 and a drop at 0.91 become 0.58 and 0.95, so 2.5:1 arrives as 1.6:1. Set it to 1 to get
- * the untouched room level back.
- */
-const LIFT = 1.8;
 
 /**
  * The Bounce Lamp: the show's accent hue, pulsed on the kit.
@@ -77,6 +61,23 @@ const LIFT = 1.8;
  * Everything about the level happens in **light** rather than in the authoring domain, because
  * that is the domain every constant here was measured in and the domain the eye reads. The one
  * conversion back sits on the last line.
+ *
+ * **The three colour dies do all of it, and the white phosphors are not used at all.** The pixel
+ * is the accent hue at its own saturation, and the level - the strongest channel, 0..1 - carries
+ * both the passage and the kit: it rests where the section puts it and screens to full on every
+ * hit. `lamp/src/fixture.rs` holds its fourth gate at zero for the whole show.
+ *
+ * The phosphors were tried for a full evening and are worth writing down. They outnumber the dies
+ * on this reel, so they make a much brighter lamp - and a much whiter one, and their share of a
+ * flare depends on the accent hue, one gate against one die, so a white that reads as an edge on
+ * green reads as a flash on blue. Every attempt to spend them a little ended up spending them a
+ * lot. There is also less to gain than there looked: the round that chased them was working around
+ * a lamp that could not make red, which turned out to be a solder bridge between two gate stubs.
+ *
+ * What that costs is honest and worth knowing: a hue is one die, so how bright this lamp gets now
+ * depends on which one. A green accent has about three times the luminance of a red one and four
+ * times a blue one, at the same drive, and nothing here can lift that - the dies already reach
+ * full scale on a hit.
  */
 export class BounceLamp {
 	/** Authoring domain, one pixel. Gamma is applied on the way out, as it is for the room. */
@@ -105,15 +106,26 @@ export class BounceLamp {
 		const passage = this.passage.update(lit, dt);
 		const hit = this.beat.update(Math.max(f.kickEnv, f.snareEnv * SNARE_SHARE), dt);
 
-		const mix = passage * (1 - BEAT_DEPTH) + hit * BEAT_DEPTH;
+		// The bed is what the section holds; the hit screens over it and always reaches full scale,
+		// so a kick is the same gesture whatever the passage was doing. Sharing one range between
+		// them instead is what made a kick's answer depend on how loud the passage already was.
+		const peak = Math.max(tint[0], tint[1], tint[2]);
 		// A genuinely black room still goes black, so a blackout in the show is a blackout in the
 		// corner. Without this the floor would outlive the show it belongs to.
-		const level = lit > 0 ? FLOOR + (1 - FLOOR) * mix : 0;
+		const bed = lit > 0 ? FLOOR + (1 - FLOOR) * passage * BED : 0;
+		const level = bed + (1 - bed) * hit;
+		if (peak <= 0 || bed <= 0) {
+			this.frame.fill(0);
+			quantize(this.frame, out, GAMMA, master);
+			return;
+		}
 
-		// Back across the boundary: `quantize` raises what it is given by gamma, so scaling the
-		// light by `level` means scaling the authoring value by its root. Multiplying `level`
-		// straight into the tint would darken the lamp by its own gamma a second time.
-		const scale = Math.pow(Math.pow(level, 1 / LIFT), 1 / GAMMA);
+		// Normalised by the tint's own strongest channel, uniformly, so the hue arrives exact and
+		// the level is the level whatever the hue is: the colour ramp trades peak channel for
+		// roughly constant flux around the wheel, which a wall of 720 emitters needs and one lamp
+		// only pays for. The root is `quantize`'s gamma, crossed back so asking for `level` of the
+		// light does not cost it that exponent a second time.
+		const scale = Math.pow(level, 1 / GAMMA) / peak;
 		this.frame[0] = tint[0] * scale;
 		this.frame[1] = tint[1] * scale;
 		this.frame[2] = tint[2] * scale;

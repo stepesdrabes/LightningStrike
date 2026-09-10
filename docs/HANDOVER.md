@@ -7,14 +7,15 @@ change. `README.md` says what the product is; `CLAUDE.md` holds the house rules.
 round records that used to sit beside this file were removed on 2026-09-07 and live in git
 history.
 
-Versions: **ANALYSIS 30 / SHOW 28 / CONTEXT 3.** The 2026-09-08 round is committed (the
+Versions: **ANALYSIS 30 / SHOW 30 / CONTEXT 3.** The 2026-09-08 round is committed (the
 evening-of-09-07 round at `0266ffc`, this one in the three commits after it). The three
 effects rounds of 2026-09-09 (the level round at SHOW 26, the taste round at SHOW 27 and the
 polish round at SHOW 28, all below), the hit floor, the trust line and the queue fix are one
 commit on top of the owner's `25fd255`, made at the owner's word after they judged the SHOW
 27 build side by side in the room ("definitely better") and heard the polish round. The
-installed app is that commit, on the corpus-3 queue re-initialised from `corpus.json` the
-same evening.
+installed app is that commit plus the snapSplit step, the kick-and-snare landing pass and
+the onset lead floor below (SHOW 30, uncommitted with the corpus additions), on the corpus-3
+queue re-initialised from `corpus.json` the same evening.
 
 ## What the system is
 
@@ -35,7 +36,9 @@ That judgement is the ground truth everything below is measured against.
   The bundle name decides the cache; a plain name reads the plain `cache`.
 - **The live cache is review corpus 3, the owner's final corpus**: 65 tracks from the archive
   that no map has covered, listed with reasons in `bench/judged/round-2026-09-08b/corpus.json`,
-  pre-analysed clean at v30 with no map adopted and an empty `judge` folder. The owner asked
+  pre-analysed clean at v30 with no map adopted and an empty `judge` folder, **plus 18 added
+  on 2026-09-09 for the last analysis pass** (the owner: "a lot of variety", "new hot songs,
+  and everything you think would fit"), 83 in all. The owner asked
   for sixty to seventy unique songs in the genres they judge (rap and EDM first), not the whole
   library: 26 rap (Czech and US), 22 club (house, edm, bass, trance, the two techno tracks Xtal
   and Doppler), 14 pop, rock, metal and rnb, and three disco and latin. Thirty were picked for what
@@ -45,7 +48,17 @@ That judgement is the ground truth everything below is measured against.
   Doppler is the one track with a map (`round-2026-09-07/`), kept because techno is three
   tracks in the whole library. Take Me (To The Moon) runs in lounge under the fragmentation
   gate (17 sections in 159 s at 175 bpm); the queue's override plays the authored show if the
-  owner wants to judge it anyway. **The autopilot trap**: launched on a corpus queue the app
+  owner wants to judge it anyway. The 18 additions (`bench/fetch-tracks.ts` names each with
+  its reason, and ingested them into the live cache by id): the hits of summer 2026 (Ariana
+  Grande, Ella Langley's country number one, Shakira and Burna Boy's World Cup song, Yung
+  Miami, Drake, Sam Fender and Olivia Dean, BLACKPINK, Dave and Tems), two Czech rap tracks
+  (Saul and Hasan with Yzomandias; Melanz, the owner's own queue add), 2026 tech house, UK
+  garage, hard techno at 155, jump-up drum and bass at 174, Lamb of God, and three structures
+  the sixty-five never held: Poppy's Unravel (drum-and-bass verses under rock choruses, read
+  at 56 bpm and meter confidence 0.44, a wrong level to judge), Ed Sheeran's Perfect (6/8,
+  read as 4/4 at 63) and Paranoid Android (three parts, two movements detected). Sepsis was
+  handed four movements by the detector and Melanz three; all 18 pass the trust gate, and
+  none had a published tempo. **The autopilot trap**: launched on a corpus queue the app
   pulled two unrelated tracks into it (Vandr, a Skibidi remix) and dropped four items within
   ten minutes; the queue was reconciled to the cache afterwards, and the first thing to check
   after a launch is that `queue.json` still lists exactly the corpus. Half of that trap was
@@ -521,6 +534,37 @@ What shipped:
   verdict is stored in the meta at ingest, so a gate change needs `bench/reanalyse.ts` to
   refresh it (it did, for cool) and the queue row follows on the next launch.
 
+- **snapSplit's corners, a step stronger** (the owner, on the installed build, pointing at a
+  cue of undertow, snapSplit and clapAlong: the kicks "that light up the corners of the
+  frame feel a bit too quick and a bit too subtle, they should be JUST A BIT more strong").
+  The slide back is 0.65 beat by default and the planner draws 0.5, 0.65 or 0.8 (it drew 0.3
+  to 0.7; past 0.8 the corners are still lit when the next four-to-the-floor kick lands and
+  the snap turns into a pulse); a soft kick snaps to 0.55 plus half its envelope rather than
+  0.5; the corner term is 0.42 of the gain and the flare reaches white at 1.3 x corner x
+  snap. Alone in a drop the corner pixel's move on a kick went 64 -> 129 bytes and the
+  room's brightest moment 23 -> 43, about a third brighter to the eye at the corner; the
+  Habibi stack it sits in moved 124 -> 126 mean bytes. The first setting (0.5 corner term,
+  0.6 floor, white at 1.4) measured 168 and 55, half again as bright, and was dialled back.
+  `SHOW_VERSION` 29 so the cached shows draw the new hold values.
+- **The kick and the snare land, and land on time** (the owner, on SHOW 29: the corner kicks
+  "sometimes don't answer to all kicks", then "the main thing is that the kicks are too
+  quick and they are perceived SLIGHTLY delayed (only VERY slightly). The same with
+  snareBlade"). Measured first: the drum model is not the cause (isolated two-beat holes in
+  steady one-beat kick runs are 0% across the club families), and snapSplit answers every
+  onset it is handed (Windows98 160 of 160 kicks, Desire 96 of 98, the two misses a double
+  kick and a kick under a resting presence). Three things shipped. snapSplit holds its
+  corners at the peak for 60 ms (`HOLD`) before the slide back, and the slide is 0.75 beat
+  by default with the planner drawing 0.6, 0.75 or 0.9: a flash already leaving on its
+  second frame reads dimmer and LATER than one held past the eye's integration window
+  (corner punch 129 -> 169 bytes with the per-frame peak unchanged). snareBlade's wall pops
+  on the snare itself (`struck`, 0.3 settling within a fifth of a beat), the cut takes
+  0.32 beat instead of 0.4 so the bright head is mid-wall a twentieth of a second sooner,
+  and the stroke lives a beat and a half. And the player's onset lead has a floor of 40 ms
+  (`HIT_LEAD_FLOOR`): at six hundredths of a beat alone it was 40 ms on a 90 bpm rap track
+  and 26 ms at 138 bpm, so the fast records the owner judges most were read 14 ms later
+  than the slow ones, against a transport delay that does not shrink with the tempo.
+  `SHOW_VERSION` 30.
+
 Result over the 78-track cache (`effectusage --measure`, before -> after): drop shimmer median
 10.7 -> 9.7, p90 16.2 -> 15.1; grooves 4.0 -> 3.4, p90 8.1 -> 7.3; builds 4.1 -> 3.5;
 breakdowns 0.9 -> 1.6 (p90 1.8 -> 3.4), still under half a groove; the busiest cue 25.9 ->
@@ -600,6 +644,7 @@ the first statement of a returning chorus holds its accent back on purpose.
 | a transient blinds on every kick | its peak: scale the strike by the kick envelope so a soft kick stops in `glow` and only an accented one reaches `white`; cool in one colour family, never a threshold cut to the base |
 | a breakdown looks dead | `ACTIVITY_BREAKDOWN` in `select.ts` (0.5, half a groove) and the rhythm pick in the breakdown case of `plan.ts` |
 | a strobe or slam reads dim in one place and right in another | where it sits: a hit inside the breath bar or a dimming build was scaled by that cue's intensity; `HIT_INTENSITY_FLOOR` in `mixer.ts` (0.68, a build's level) is the least a master renders at, and nothing above it moves |
+| a kit answer reads late, or quick, or both | measure the onsets first (holes in steady runs) and the effect's per-kick rise (the probe in the polish round); then the shape: a held peak of 50 to 60 ms reads brighter and earlier than a decaying one, and the sweep or ring that carries the event should reach the eye inside a fifth of a beat; the timing itself is `HIT_LEAD_FLOOR` / `HIT_LEAD_CAP` in `player.ts` (40 to 45 ms), which moves every kit-driven effect and nothing else |
 
 **Verdicts that stand** (the owner's, in the room): strobe pairs alternate; the strobe decays
 per flash, at the old level plus a step; **a hit is one colour and only its level moves** (the
@@ -662,10 +707,10 @@ analysis code once per process and run the variants inside it, so an edit to
 that runs two of them in sequence loads the code again for the second, and an edit between the
 two contaminates it. Land edits between runs.
 
-1. `npm test`: **967 green, no known failures** (the effects calibration test passes again
+1. `npm test`: **963 green, no known failures** (the effects calibration test passes again
    since the 2026-09-09 rounds; the picker's budget has five tests of its own, the fifth for
    the breakdown cap; the mixer's hit floor has four; the trust gate's fast-track case has
-   one). Two tests (`measure.test.ts`'s void bars and
+   one; the queue model's four pruning tests went with the pruning). Two tests (`measure.test.ts`'s void bars and
    `ambient.test.ts`'s scenes) time out at 60 s only when several benches share the machine;
    run the suite on a quiet one. `npm run check` clean.
 2. `MV_CACHE_DIR=<corpus-2 cache> node bench/mapsweep.ts --maps=bench/judged/round-2026-09-08 --variant=current`:
@@ -693,9 +738,9 @@ two contaminates it. Land edits between runs.
    cover's real tempo change); Harmonix Five Magics only, four splits; Raveform 0 of 60; the
    library (`--set=app` on the archive) **4 of 4 with no false seam**, six tracks given a
    movement. Unchanged by this round.
-6. `node bench/lintsweep.ts [cacheDir]`: **0 rejected** (78 clean on the live cache, which
-   has grown past corpus 3's 65; 24 buttons placed, no `busy-stack` warnings on the engine's
-   own shows). The app fails dark on a lint error.
+6. `node bench/lintsweep.ts [cacheDir]`: **0 rejected** (100 clean on the live cache, which
+   holds corpus 3's 83 and the strays the owner has played; 34 buttons placed, no
+   `busy-stack` warnings on the engine's own shows). The app fails dark on a lint error.
 7. Versions: any analyser change bumps `ANALYSIS_VERSION`, any composition change bumps
    `SHOW_VERSION`, in the same change.
 8. Build: `npm run bundle -w @mv/desktop`, then `npx tauri build --bundles app` from
