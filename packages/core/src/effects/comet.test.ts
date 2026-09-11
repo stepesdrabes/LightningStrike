@@ -44,8 +44,8 @@ describe('comet note articulation', () => {
 		const at = 77;
 		const sum = (frame: Float32Array) => frame.reduce((total, value) => total + value, 0);
 		const gain = sum(played[at]) / sum(steady[at]);
-		expect(gain).toBeGreaterThan(1.25);
-		expect(gain).toBeLessThan(1.5);
+		expect(gain).toBeGreaterThan(1.5);
+		expect(gain).toBeLessThan(1.9);
 		for (let i = 0; i < steady[at].length; i++) {
 			expect(played[at][i]).toBeCloseTo(steady[at][i] * gain, 5);
 		}

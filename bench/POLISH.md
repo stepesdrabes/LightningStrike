@@ -15,7 +15,8 @@ analyses, shows or user settings. Cache selection defaults to the desktop cache;
   ranking metadata.
 - `node bench/showreview.ts ID --out bench/reports/review.html` exports audio with actual ceiling
   and bounce-lamp output. `--analysis FILE` and `--show FILE` select diagnostic inputs. The HTML
-  is self-contained, with opening/chorus selection, seeking and optional snare clicks.
+  is self-contained, with opening/chorus/breakdown selection, seeking and optional snare clicks.
+  Use `--bars 0,62 --seconds 24` to inspect exact passages reported from the app.
 
 `showreview` renders at 60 Hz and stores 30 Hz display samples. For comparisons, supply
 `--before-shows FILE` from `compositionprobe` and `--before-core DIR` pointing to the baseline
@@ -26,3 +27,6 @@ analysis timestamps; visual envelopes retain the renderer's transport anticipati
 Room kick contrast compares a 133 ms approach window with the next 167 ms around each
 anticipated kick. It complements visible shape, timing and listening judgement; a brighter
 bed can increase absolute light while reducing perceived punch.
+The report also separates kick dips from positive lifts and records the larger absolute
+onset swing. A ducking effect can articulate kicks through darkness; that metric alone
+does not establish whether its feel suits the passage.

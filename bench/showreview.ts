@@ -1,6 +1,6 @@
 // Export synchronized audio and the actual room/lamp bytes for visual review.
 // node bench/showreview.ts <track-id> [--cache DIR] [--out FILE]
-// Optional: --before-core DIR --before-shows FILE --analysis FILE --show FILE
+// Optional: --before-core DIR --before-shows FILE --analysis FILE --show FILE --bars 0,62
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -69,31 +69,50 @@ function capture(a: TrackAnalysis, s: Show, at: number, seconds: number, Directo
 	const mean = (values: number[]) => values.reduce((sum, x) => sum + x, 0) / Math.max(1, values.length);
 	const jumps: number[] = [];
 	const ratios: number[] = [];
-	for (const time of analysis.onsets.kick.times) {
+	const dips: number[] = [];
+	const swings: number[] = [];
+	for (const time of a.onsets.kick.times) {
 		const index = Math.floor((time - 0.04 - at) * fps);
 		if (index < 4 || index + 5 >= count) continue;
 		const resting = mean(levels.slice(index - 4, index));
 		const peak = Math.max(...levels.slice(index, index + 5));
+		const trough = Math.min(...levels.slice(index, index + 5));
 		jumps.push(peak - resting);
 		ratios.push(peak / Math.max(1, resting));
+		dips.push(Math.max(0, resting - trough));
+		swings.push(Math.max(Math.abs(peak - resting), Math.abs(trough - resting)));
 	}
 	const median = (values: number[]) => values.sort((a, b) => a - b)[values.length >> 1] ?? 0;
-	return { bytes: bytes.toString('base64'), marks, levels, lamp, motion: motion / Math.max(1, count - 1) / g.count / 3, mean: mean(levels), kickJump: median(jumps), kickRatio: median(ratios), cues: s.cues };
+	return { bytes: bytes.toString('base64'), marks, levels, lamp, motion: motion / Math.max(1, count - 1) / g.count / 3, mean: mean(levels), kickJump: median(jumps), kickRatio: median(ratios), kickDip: median(dips), kickSwing: median(swings), cues: s.cues };
 }
 
 const peak = analysis.sections.find((s) => sectionBase(s.kind) === 'drop');
-const starts = [
+const breakdown = analysis.sections.find((s) => s.kind === 'breakdown');
+const requestedBars = flag('bars');
+const clipLength = Number(flag('seconds') ?? 24);
+if (!Number.isFinite(clipLength) || clipLength <= 0 || clipLength > 60) {
+	throw new Error('--seconds must be between 0 and 60.');
+}
+const starts = requestedBars ? requestedBars.split(',').map((value) => {
+	const bar = Number(value);
+	const row = analysis.bars[bar];
+	if (!Number.isInteger(bar) || bar < 0 || !row) throw new Error(`Invalid bar: ${value}`);
+	const span = analysis.sections.find((s) => row.t >= s.startTime && row.t < s.endTime);
+	return { name: `Bar ${bar} · ${row.section}`, at: row.t, end: span?.endTime ?? analysis.duration };
+}) : [
 	{ name: 'Opening', at: 0, end: analysis.sections[0]?.endTime ?? 24 },
-	...(peak ? [{ name: 'First chorus / drop', at: peak.startTime, end: peak.endTime }] : [])
+	...(peak ? [{ name: 'First chorus / drop', at: peak.startTime, end: peak.endTime }] : []),
+	...(breakdown ? [{ name: 'First breakdown', at: breakdown.startTime, end: breakdown.endTime }] : [])
 ];
 const clips = starts.map(({ name, at, end }) => {
-	const seconds = Math.min(24, end - at, analysis.duration - at);
+	const seconds = Math.min(clipLength, end - at, analysis.duration - at);
 	const audio = spawnSync('ffmpeg', ['-v', 'error', '-ss', String(at), '-i', join(cache, audioFile), '-t', String(seconds), '-vn', '-f', 'mp3', '-b:a', '128k', 'pipe:1'], { maxBuffer: 8 * 1024 * 1024, windowsHide: true });
 	if (audio.status !== 0) throw new Error(audio.stderr.toString());
 	const after = capture(analysis, show, at, seconds);
 	const before = beforeShow ? capture(original, beforeShow, at, seconds, BeforeDirector) : null;
 	console.log(`${meta.title} ${name} @${at.toFixed(2)}: mean ${before?.mean.toFixed(1) ?? '?'} -> ${after.mean.toFixed(1)}, frame movement ${before?.motion.toFixed(2) ?? '?'} -> ${after.motion.toFixed(2)}`);
 	console.log(`  Kick room lift ${before?.kickJump.toFixed(1) ?? '?'} -> ${after.kickJump.toFixed(1)} bytes; contrast ${before?.kickRatio.toFixed(2) ?? '?'} -> ${after.kickRatio.toFixed(2)}`);
+	console.log(`  Kick room dip ${before?.kickDip.toFixed(1) ?? '?'} -> ${after.kickDip.toFixed(1)} bytes; absolute swing ${before?.kickSwing.toFixed(1) ?? '?'} -> ${after.kickSwing.toFixed(1)}`);
 	const snares = analysis.onsets.snare.times.flatMap((t, i) =>
 		t >= at && t < at + seconds ? [[t - at, analysis.onsets.snare.levels[i] ?? 1]] : []);
 	return { name, at, seconds, audio: audio.stdout.toString('base64'), snares, before, after };

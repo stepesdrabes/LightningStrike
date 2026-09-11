@@ -19,6 +19,7 @@ export const ambientDrift: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
+		noteReactive: true,
 		activity: 0.05,
 		quiet: 5.39
 	},

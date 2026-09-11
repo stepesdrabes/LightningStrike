@@ -77,6 +77,8 @@ interface EffectTaste {
 	 * Effects that only season a continuing look with drums leave this absent.
 	 */
 	kit?: 'kick' | 'snare' | 'hat' | 'any';
+	/** Continuously articulates notes from the high-rate spectrum without drum hits or beat events. */
+	noteReactive?: boolean;
 	/**
 	 * Quiet-passage movement in output bytes, measured against a 0.5 s low-pass on real
 	 * cached tracks by bench/quietprobe.ts. Absent means unmeasured.

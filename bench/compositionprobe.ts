@@ -56,7 +56,7 @@ for (const file of readdirSync(cache).filter((name) => name.endsWith('.analysis.
 		}
 		if (cue.section === 'intro') {
 			introCount++;
-			if (cue.layers.rhythm) movingIntros++;
+			if (cue.layers.rhythm || effects.get(cue.layers.accent?.effect ?? '')?.taste.noteReactive) movingIntros++;
 		}
 		cues++;
 	}

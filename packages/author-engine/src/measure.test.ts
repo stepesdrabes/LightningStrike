@@ -6,6 +6,26 @@ import { composeShow } from './plan.ts';
 import { measureShow } from './measure.ts';
 
 const analysis = fixture();
+// The planner fixture contains bar summaries only. Playback needs the same kit and energy
+// at event resolution; otherwise a valid kit-led show is measured against silent streams.
+for (const bar of analysis.bars) {
+	const duration = analysis.tempo.barTimes[bar.bar + 1] - bar.t;
+	for (let beat = 0; beat < analysis.tempo.beatsPerBar; beat++) {
+		analysis.beats.push(bar.t + beat * duration / analysis.tempo.beatsPerBar);
+		analysis.envelopes.energy.push(bar.energy);
+		analysis.envelopes.bands.push(bar.sub, bar.low, bar.mid, bar.air);
+	}
+	for (const [kit, count, strength, offset] of [
+		['kick', bar.kicks, 0.9, 0],
+		['snare', bar.snares, 0.8, 0.5],
+		['hat', bar.hats, 0.5, 0]
+	] as const) {
+		for (let hit = 0; hit < count; hit++) {
+			analysis.onsets[kit].times.push(bar.t + (hit + offset) * duration / count);
+			analysis.onsets[kit].levels.push(strength);
+		}
+	}
+}
 const geometry = buildGeometry(DEFAULT_ROOM);
 const effects = new Map(BUILT_IN_EFFECTS.map((e) => [e.id, e]));
 const show = composeShow(analysis);

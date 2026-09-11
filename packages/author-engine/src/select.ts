@@ -15,6 +15,8 @@ interface PickRequest {
 	mustCarry?: boolean;
 	/** The layer must show the music with little else running. */
 	bare?: boolean;
+	/** A continuous spectral voice that can react while the kit and beat events rest. */
+	noteVoice?: boolean;
 	/** SectionSpan.group identity: reuse the opening effect when the material returns. */
 	group?: number;
 	/**
@@ -42,7 +44,7 @@ interface PickRequest {
  * Hits/beat silence threshold, below 0.25 so one kick per bar still counts as a playing
  * stream.
  */
-const KIT_FLOOR = 0.2;
+export const KIT_FLOOR = 0.2;
 
 export function kitSilent(e: EffectDef, drums: PickRequest['drums']): boolean {
 	const kit = e.taste.kit;
@@ -119,6 +121,7 @@ export class EffectPicker {
 			if (exclusive && req.exclude?.includes(e.id)) return false;
 			if ((this.vetoCharacter || req.noCharacter) && e.taste.character) return false;
 			if (req.mustCarry && e.taste.carries === false) return false;
+			if (req.noteVoice && !e.taste.noteReactive) return false;
 			if (kitSilent(e, req.drums)) return false;
 			// Either vocabulary: an effect written for choruses says 'chorus'; the rest of the
 			// catalog speaks the club kinds and serves a chorus as the drop-class passage it is.
@@ -136,16 +139,6 @@ export class EffectPicker {
 			}
 			return true;
 		};
-		const groupKey = req.group !== undefined && req.group >= 0 ? `${req.role}:${req.group}` : null;
-		if (groupKey) {
-			const held = this.byGroup.get(groupKey);
-			const def = held ? this.effects.find((e) => e.id === held) : undefined;
-			if (def && fits(def) && withinBudget(def)) {
-				this.used.set(def.id, (this.used.get(def.id) ?? 0) + 1);
-				this.lastInRole.set(req.role, def.id);
-				return def;
-			}
-		}
 		let eligible = this.effects.filter((e) => fits(e));
 		// Only the carrying bed may relax exclusions to avoid an unlit room.
 		if (eligible.length === 0 && req.role === 'bed') {
@@ -165,11 +158,26 @@ export class EffectPicker {
 			} else return null;
 		}
 
-		// The peak keeps to the top of the catalog. A filter with a fallback rather than a
-		// price: the price was 2.6 a band and it still lost to novelty by the third loud cue.
-		if (req.peak) {
+		// Novelty cannot drain the main rhythm of a pounding chorus later in a long show.
+		// Fall back only within the already safe instrument, character and activity pool.
+		const drivingRhythm = req.pounding && req.role === 'rhythm' && sectionBase(req.section) === 'drop';
+		if (req.peak || drivingRhythm) {
 			const strong = eligible.filter((e) => e.taste.energy >= target - 1);
 			if (strong.length > 0) eligible = strong;
+		}
+		if (drivingRhythm) {
+			const kit = eligible.filter((e) => e.taste.kit === 'kick' || e.taste.kit === 'any');
+			if (kit.length > 0) eligible = kit;
+		}
+		const groupKey = req.group !== undefined && req.group >= 0 ? `${req.role}:${req.group}` : null;
+		if (groupKey) {
+			const held = this.byGroup.get(groupKey);
+			const def = held ? eligible.find((e) => e.id === held) : undefined;
+			if (def && withinBudget(def)) {
+				this.used.set(def.id, (this.used.get(def.id) ?? 0) + 1);
+				this.lastInRole.set(req.role, def.id);
+				return def;
+			}
 		}
 
 		// Rank preserves quiet-response ordering despite stale magnitudes; capped steps keep
@@ -177,9 +185,10 @@ export class EffectPicker {
 		const quietRank = new Map<string, number>();
 		let quietStep = 0;
 		if (req.bare) {
-			const ranked = [...eligible].sort((a, b) => (a.taste.quiet ?? 0) - (b.taste.quiet ?? 0));
-			ranked.forEach((e, i) => quietRank.set(e.id, i));
-			quietStep = Math.min(1.1, QUIET_WEIGHT / Math.max(1, eligible.length - 1));
+			const values = [...new Set(eligible.map((e) => e.taste.quiet ?? 0))].sort((a, b) => a - b);
+			// Equal measurements, including an unmeasured pool, must not acquire a catalog-order bonus.
+			for (const e of eligible) quietRank.set(e.id, values.indexOf(e.taste.quiet ?? 0));
+			quietStep = Math.min(1.1, QUIET_WEIGHT / Math.max(1, values.length - 1));
 		}
 
 		// In loud passages, underpowered effects cost more than repeats of the right energy band.
@@ -189,11 +198,13 @@ export class EffectPicker {
 			const above = Math.max(0, e.taste.energy - target);
 			const below = Math.max(0, target - e.taste.energy);
 			const seen = this.used.get(e.id) ?? 0;
+			// Long shows may repeat fitting chorus vocabulary before crossing genre boundaries.
+			const novelty = drivingRhythm ? Math.min(1, seen) : seen;
 			const score =
 				-1.6 * above -
 				(loud ? 2.6 : 1.6) * below -
 				// The peak may reach for its best look again: a repeat there costs half.
-				(req.peak ? 1.1 : 2.2) * seen -
+				(req.peak ? 1.1 : 2.2) * novelty -
 				(e.id === previous ? 6 : 0) +
 				// A tie-breaker, deliberately under one energy band and half a use of novelty.
 				// At 3 it was a mandate: within a family, every show reached for the same

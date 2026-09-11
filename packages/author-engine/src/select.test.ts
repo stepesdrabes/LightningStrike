@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_EFFECTS, Rng } from '@mv/core';
+import { BUILT_IN_EFFECTS, Rng, type EffectDef } from '@mv/core';
 import { EffectPicker } from './select.ts';
 
 describe('the pounding band raise', () => {
@@ -26,11 +26,9 @@ describe('the pounding band raise', () => {
 	});
 
 	it('cannot push past the top of the catalog', () => {
-		// The loudest passages already target band 5, so pounding asks for nothing further:
-		// same target, same seed, same pick. An uncapped raise would aim at a band no effect
-		// declares, where the fit is flat and every candidate scores alike.
 		for (const seed of [1, 2, 3, 4, 5]) {
-			expect(pick(1, true, seed)?.id).toBe(pick(1, false, seed)?.id);
+			expect(bandOf(1, true, seed)).toBeGreaterThanOrEqual(4);
+			expect(bandOf(1, true, seed)).toBeLessThanOrEqual(5);
 		}
 	});
 
@@ -105,7 +103,83 @@ describe('the activity budget', () => {
 	});
 });
 
+describe('sustained chorus drive', () => {
+	const template = BUILT_IN_EFFECTS.find((effect) => effect.role === 'rhythm')!;
+	const effect = (id: string, taste: Partial<EffectDef['taste']>): EffectDef => ({
+		...template, id,
+		taste: { energy: 3, sections: ['chorus', 'drop'], minBars: 2, maxBars: 32,
+			peakReserved: false, activity: 0.1, ...taste }
+	});
+	const subtle = effect('subtle', { energy: 2 });
+	const driver = effect('driver', { energy: 4, activity: 0.6, kit: 'kick' });
+	const request = {
+		role: 'rhythm' as const, section: 'chorus' as const, lengthBars: 8,
+		energy: 0.84, pounding: true, drums: { kick: 1, snare: 0, hat: 2 }, busy: 0.1
+	};
+
+	it('keeps a strong rhythm after repeated earlier uses have spent its novelty', () => {
+		const picker = new EffectPicker([subtle, driver], new Rng(7));
+		for (let i = 0; i < 16; i++) picker.reserve(driver.id);
+		for (let chorus = 0; chorus < 8; chorus++) expect(picker.pick(request)?.id).toBe(driver.id);
+	});
+
+	it('reuses fitting rhythms before importing an avoided genre gesture late in a show', () => {
+		const second = effect('second-driver', { energy: 4, activity: 0.4, kit: 'kick' });
+		const foreign = effect('foreign-driver', { energy: 4, activity: 0.4, kit: 'kick' });
+		const picker = new EffectPicker([subtle, driver, second, foreign], new Rng(7));
+		for (let i = 0; i < 16; i++) { picker.reserve(driver.id); picker.reserve(second.id); }
+		const choices = Array.from({ length: 8 }, () => picker.pick({ ...request, avoid: [foreign.id] })?.id);
+		expect(choices).not.toContain(foreign.id);
+		expect(new Set(choices).size).toBe(2);
+	});
+
+	it('raises a returning group when its formerly quiet rhythm no longer matches the drums', () => {
+		const picker = new EffectPicker([subtle, driver], new Rng(7));
+		expect(picker.pick({ ...request, group: 2, pounding: false, energy: 0.25 })?.id).toBe(subtle.id);
+		expect(picker.pick({ ...request, group: 2 })?.id).toBe(driver.id);
+	});
+
+	it('gives the pounding lead to the detected kit instead of an autonomous high-energy pattern', () => {
+		const orbit = effect('orbit', { energy: 4, activity: 0.2 });
+		const picker = new EffectPicker([orbit, driver], new Rng(7));
+		picker.reserve(driver.id);
+		expect(picker.pick(request)?.id).toBe(driver.id);
+		expect(picker.pick({ ...request, drums: { kick: 0, snare: 0, hat: 0 } })?.id).toBe(orbit.id);
+	});
+
+	it('falls back inside the activity, instrument and character constraints', () => {
+		const snare = effect('absent-snare', { energy: 5, kit: 'snare' });
+		const flash = effect('forbidden-flash', { energy: 5, character: 'flash' });
+		const picker = new EffectPicker([subtle, driver, snare, flash], new Rng(7), { vetoCharacter: true });
+		expect(picker.pick({ ...request, busy: 1.2 })?.id).toBe(subtle.id);
+		expect(picker.pick({ ...request, busy: 1.4 })).toBeNull();
+	});
+
+	it('does not bring back an excluded strong rhythm to satisfy the floor', () => {
+		const picker = new EffectPicker([subtle, driver], new Rng(7));
+		expect(picker.pick({ ...request, exclude: [driver.id] })?.id).toBe(subtle.id);
+	});
+});
+
 describe('musical space', () => {
+	it.each([undefined, 4.5])('does not invent a quiet preference when all measurements are %s', (quiet) => {
+		const template = BUILT_IN_EFFECTS.find((effect) => effect.role === 'rhythm')!;
+		const pool = ['first', 'middle', 'last'].map((id): EffectDef => ({
+			...template, id,
+			taste: { energy: 2, sections: ['intro'], minBars: 2, maxBars: 32, peakReserved: false, quiet }
+		}));
+		const request = { role: 'rhythm' as const, section: 'intro' as const, lengthBars: 8, energy: 0.25 };
+		const chosen = new Set<string>();
+		for (let sample = 1; sample <= 32; sample++) {
+			const seed = Math.imul(sample, 0x9e3779b9);
+			const ordinary = new EffectPicker(pool, new Rng(seed)).pick(request)!;
+			const bare = new EffectPicker(pool, new Rng(seed)).pick({ ...request, bare: true })!;
+			expect(bare.id).toBe(ordinary.id);
+			chosen.add(bare.id);
+		}
+		expect(chosen.size).toBe(pool.length);
+	});
+
 	it('leaves the drum layer out when its entire pool requires an absent instrument', () => {
 		const snares = BUILT_IN_EFFECTS.filter((effect) => effect.role === 'transient' && effect.taste.kit === 'snare');
 		const picker = new EffectPicker(snares, new Rng(7));

@@ -15,6 +15,7 @@ import type {
 } from '@mv/core';
 import {
 	BUILT_IN_EFFECTS,
+	DEFAULT_OPACITY,
 	HIT_RULES,
 	LAYER_ROLES,
 	PHRASE_BARS,
@@ -31,7 +32,7 @@ import {
 } from '@mv/core';
 import { KICK_BURSTS, allowedFlashes, profileFor, type GenreProfile } from './genre.ts';
 import { choosePalette } from './palette.ts';
-import { EffectPicker, activityBudget, kitSilent } from './select.ts';
+import { EffectPicker, KIT_FLOOR, activityBudget, kitSilent } from './select.ts';
 
 interface EngineOptions {
 	/** Built-ins by default; pass a superset to let generated effects be chosen too. */
@@ -208,7 +209,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		// What the cue already holds, in `taste.activity`, so each layer picked after another
 		// may only add what the budget leaves: one hard hitter a cue.
 		const add = (role: LayerRole, def: EffectDef | null) => {
-			if (holds(role)) {
+			if (!def && holds(role)) {
 				layers[role] = { ...heldLook![role]! };
 				busy += activityOf(layers[role]);
 				return;
@@ -220,6 +221,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		};
 
 		const length = slot.endBar - slot.bar;
+		const kitRests = Math.max(drums.kick, drums.snare) < KIT_FLOOR;
 		// Kick density can raise the effect energy band when heavy limiting hides intensity
 		// differences.
 		const pounding =
@@ -235,7 +237,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		// The bed a repeat shares is the one its FIRST cue opened with; interior cues pick freely,
 		// or a long section would hold one look for its whole length again by another route.
 		const bedEnergy = Math.min(slot.energy, 0.75);
-		// With only a bed and texture, each quiet-section layer must be able to carry the room.
+		// Quiet sections need a carrying bed beneath their moving voice.
 		const bare =
 			slot.section === 'intro' || slot.section === 'outro' || slot.section === 'breakdown';
 		// Drop beds must carry the room through the darkness between transient hits.
@@ -252,11 +254,23 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		} else {
 			add('bed', choose('bed', { drums, busy, role: 'bed', section: slot.section, lengthBars: length, energy: bedEnergy, pounding, peak: inPeak, mustCarry: carrier, bare, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
 		}
+		const addNoteVoice = () => {
+			const bed = layers.bed ? byId.get(layers.bed.effect) : undefined;
+			if (!kitRests || !bed || bed.taste.carries === false || bed.taste.noteReactive) return false;
+			for (const role of ['rhythm', 'accent'] as const) {
+				const voice = picker.pick({ drums, busy, role, section: slot.section, lengthBars: length, energy: Math.min(slot.energy, 0.45), noCharacter: true, noteVoice: true, bare, prefer: signatures, avoid, exclude });
+				if (!voice) continue;
+				add(role, voice);
+				return true;
+			}
+			return false;
+		};
 		switch (sectionBase(slot.section)) {
 			case 'void':
 				break;
 
 			case 'intro':
+				if (addNoteVoice()) break;
 				add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: Math.min(slot.energy, 0.45), noCharacter: true, prefer: signatures, avoid, exclude }));
 				if (!layers.rhythm) {
 					add('accent', choose('accent', { drums, busy, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, noCharacter: true, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
@@ -276,6 +290,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 				break;
 
 			case 'breakdown':
+				if (addNoteVoice()) break;
 				// Breakdowns retain slow motion under their smaller activity budget, including while the
 				// kit is absent.
 				if (continued && last?.layers.rhythm && canKeep(last.layers.rhythm)) {
@@ -338,6 +353,15 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 					addTransient();
 				}
 				break;
+		}
+
+		if (layers.bed) {
+			delete layers.bed.opacity;
+			const lead = byId.get(layers.rhythm?.effect ?? '')?.taste.kit;
+			if (pounding && (lead === 'kick' || lead === 'any') && layers.transient && layers.accent) {
+				// Four additive voices need room for the kit above the sustained bed.
+				layers.bed.opacity = DEFAULT_OPACITY.bed * 0.8;
+			}
 		}
 
 		if (slot.peak && peakMaster) {

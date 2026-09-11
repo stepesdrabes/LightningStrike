@@ -18,7 +18,8 @@ export const comet: EffectDef = {
 		minBars: 4,
 		maxBars: 32,
 		peakReserved: false,
-		activity: 0.3
+		activity: 0.3,
+		noteReactive: true
 	},
 	params: [
 		INTENSITY,
@@ -53,7 +54,7 @@ export const comet: EffectDef = {
 				const held = passage.update(heard, beats);
 				// Articulate notes through brightness so the orbit and colour remain steady.
 				const listen = f.section === 'intro' || f.section === 'breakdown';
-				const noteGain = listen ? clamp(0.9 + heard * 0.2 + (heard - held) * 1.2, 0.75, 1.35) : 1;
+				const noteGain = listen ? clamp(0.86 + heard * 0.2 + (heard - held) * 2.8, 0.65, 1.55) : 1;
 
 				const tailPx = ring.length * p.tail * (1 + f.kickEnv * p.kickSwell);
 				scratch.fill(0);

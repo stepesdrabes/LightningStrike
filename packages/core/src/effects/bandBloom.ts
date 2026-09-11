@@ -22,6 +22,7 @@ export const bandBloom: EffectDef = {
 		maxBars: 48,
 		peakReserved: false,
 		activity: 0.1,
+		noteReactive: true,
 		quiet: 6.04
 	},
 	params: [INTENSITY, param('spread', 'Lobe width', 0.5), param('turn', 'How fast it turns', 0.4)],

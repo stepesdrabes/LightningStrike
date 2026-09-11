@@ -20,6 +20,7 @@ export const chorusBloom: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
+		noteReactive: true,
 		activity: 0.1,
 		quiet: 5.30
 	},

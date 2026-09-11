@@ -3,11 +3,11 @@ import { SLOT } from '../contracts/palette.ts';
 import { addSample } from '../color/palette.ts';
 import { clamp, lerp } from '../dsl/math.ts';
 import { ringU } from '../dsl/space.ts';
-import { spectralTilt, spectrumFocus, spectrumPeak } from '../dsl/spectrum.ts';
+import { bandBetween, spectralTilt, spectrumFocus } from '../dsl/spectrum.ts';
 import { Follower } from '../dsl/env.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-/** Centroid sets ribbon position and spectral focus its width; a floor lets it carry quiet cues. */
+/** A broad coloured ribbon follows note level above the room's carrying bed. */
 export const harmonicRibbon: EffectDef = {
 	id: 'harmonicRibbon',
 	name: 'Harmonic Ribbon',
@@ -21,7 +21,10 @@ export const harmonicRibbon: EffectDef = {
 		maxBars: 32,
 		peakReserved: false,
 		activity: 0.1,
-		quiet: 5.05
+		noteReactive: true,
+		// A gentle note voice still needs the bed to provide room-wide visible light.
+		carries: false,
+		quiet: 5.33
 	},
 	params: [INTENSITY, param('travel', 'How far it walks', 0.7), param('width', 'Band width', 0.5)],
 	create(g) {
@@ -29,10 +32,10 @@ export const harmonicRibbon: EffectDef = {
 		const level = new Follower(0.1, 0.7);
 		// Smooth position and width more slowly than level to avoid jumps while retaining
 		// between-beat motion.
-		const centroid = new Follower(0.1, 0.35);
-		const width = new Follower(0.09, 0.3);
-		// The one fast read: what is playing right now, which is what the ribbon is a picture of.
-		const voice = new Follower(0.02, 0.13);
+		const centroid = new Follower(0.35, 0.75);
+		const width = new Follower(0.28, 0.6);
+		const voice = new Follower(0.035, 0.18);
+		const baseline = new Follower(0.75, 1.2);
 
 		return {
 			reset() {
@@ -40,6 +43,7 @@ export const harmonicRibbon: EffectDef = {
 				centroid.reset();
 				width.reset();
 				voice.reset();
+				baseline.reset();
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
@@ -50,15 +54,21 @@ export const harmonicRibbon: EffectDef = {
 				const at = centroid.update(spectralTilt(f), f.dt);
 				const spread = width.update(1 - spectrumFocus(f), f.dt);
 				const heard = level.update(f.energy, f.dt);
-				// Peak above a slow floor captures articulation. Add it to gain so sustained
-				// chords remain lit.
-				const played = clamp((voice.update(spectrumPeak(f), f.dt) - heard * 0.55) * 2);
+				const note = Math.max(
+					bandBetween(f, 0.15, 0.42),
+					bandBetween(f, 0.42, 0.67),
+					bandBetween(f, 0.67, 0.85)
+				);
+				const sounding = voice.update(note, f.dt);
+				// Both followers measure the same spectrum range; passage energy has a different scale.
+				const played = clamp((sounding - baseline.update(note, f.dt)) * 5);
 
-				// Level from the passage, with the articulation riding on top.
-				const gain = (0.22 + p.intensity * 0.6) * clamp(0.15 + heard * 0.85) * (1 + played * 0.5);
-				// Minimum width must cover a region, not a stripe, when carrying a quiet cue.
+				// Let the sounding note carry quiet music, with short articulation above it.
+				const gain = (0.24 + p.intensity * 0.58)
+					* (0.4 + sounding * 0.45 + played * 0.4) * (0.75 + heard * 0.25);
+				// The note should cover a region rather than a narrow stripe.
 				const sigma = 0.07 + spread * 0.1 + p.width * 0.08;
-				const slot = lerp(SLOT.glow, SLOT.accent, at);
+				const slot = lerp(SLOT.base, SLOT.glow, at);
 				// Move around the perimeter so the melody crosses the room; cue motion sets the
 				// travel range.
 				const centre = 0.5 + (at - 0.5) * (0.4 + p.travel * 1.2) * clamp(0.25 + motion * 0.75);
@@ -67,7 +77,7 @@ export const harmonicRibbon: EffectDef = {
 					const d = Math.abs(ringU(g, i) - centre);
 					const wrapped = Math.min(d, 1 - d);
 					const v = Math.exp(-(wrapped * wrapped) / (2 * sigma * sigma));
-					// A floor under the ribbon lets it carry a quiet cue.
+					// Keep a faint continuation under the brightest part of the ribbon.
 					addSample(out, i, palette, slot + hueShift, (0.28 + v * 0.72) * gain);
 				}
 			}

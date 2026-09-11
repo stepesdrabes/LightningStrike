@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { TrackAnalysis } from '@mv/core';
+import type { GenreFamily, TrackAnalysis } from '@mv/core';
 import { BUILT_IN_EFFECTS, HIT_RULES, LAYER_ROLES, PHRASE_BARS, barDurationAt, emptyContext } from '@mv/core';
 import { fixture } from './fixture.ts';
 import { composeShow } from './plan.ts';
@@ -15,6 +15,45 @@ const stackOf = (cue: (typeof show.cues)[number]) =>
 	LAYER_ROLES.filter((r) => cue.layers[r])
 		.map((r) => `${r}:${cue.layers[r]!.effect}`)
 		.join(' ');
+
+describe('chorus drive through a long medley', () => {
+	const families: GenreFamily[] = ['hiphop', 'pop', 'rock', 'metal', 'edm'];
+	for (const family of families) {
+		it(`keeps the rhythm strong after the early peak in ${family}`, () => {
+			const track = fixture();
+			track.sections = Array.from({ length: 16 }, (_, i) => ({
+				index: i, kind: i === 0 ? 'intro' as const : 'chorus' as const,
+				startBar: i * 8, endBar: (i + 1) * 8,
+				startTime: track.tempo.barTimes[i * 8], endTime: track.tempo.barTimes[(i + 1) * 8],
+				lengthBars: 8, meanEnergy: i === 0 ? 20 : 88, peakEnergy: i === 2 ? 100 : 92,
+				energyRank: i === 2 ? 1 : 2, group: i, repeatOf: null, movement: Math.floor(i / 6)
+			}));
+			for (const row of track.bars) {
+				row.section = row.bar < 8 ? 'intro' : 'chorus';
+				row.kicks = row.bar < 8 ? 0 : 4;
+				row.energy = row.bar < 8 ? 20 : 88;
+			}
+			track.movements = [0, 48, 96].map((startBar, i, starts) => {
+				const endBar = starts[i + 1] ?? 128;
+				return { startBar, endBar, startTime: track.tempo.barTimes[startBar],
+					endTime: track.tempo.barTimes[endBar], bpm: 128, key: track.key, source: 'auto' as const, note: '' };
+			});
+			for (const seed of [1, 7, 29]) {
+				const composed = composeShow(track, { seed, context: { ...emptyContext(), genreFamily: family } });
+				const late = composed.cues.filter((cue) => cue.section === 'chorus' && cue.bar >= 48);
+				expect(late.length).toBeGreaterThanOrEqual(8);
+				for (const cue of late) {
+					expect(effects.get(cue.layers.rhythm?.effect ?? '')?.taste.energy).toBeGreaterThanOrEqual(4);
+					expect(['kick', 'any']).toContain(effects.get(cue.layers.rhythm?.effect ?? '')?.taste.kit);
+					if (!cue.layers.master) {
+						const activity = Object.values(cue.layers).reduce((sum, spec) => sum + (effects.get(spec!.effect)?.taste.activity ?? 0), 0);
+						expect(activity).toBeLessThanOrEqual(activityBudget(0.88, 'chorus') + 1e-9);
+					}
+				}
+			}
+		});
+	}
+});
 
 describe('coverage', () => {
 	it('opens at bar 0 and runs in order', () => {
@@ -67,12 +106,88 @@ describe('the arrangement', () => {
 		}
 		for (const family of ['hiphop', 'house', 'ballad', 'ambient'] as const) {
 			const opening = composeShow(track, { context: { ...emptyContext(), genreFamily: family } }).cues[0];
-			expect(opening.layers.rhythm).toBeDefined();
-			expect(effects.get(opening.layers.rhythm!.effect)?.taste.kit).toBeUndefined();
+			const lead = opening.layers.accent ?? opening.layers.rhythm;
+			expect(lead).toBeDefined();
+			expect(effects.get(lead!.effect)?.taste.kit).toBeUndefined();
+			if (opening.layers.accent) expect(effects.get(lead!.effect)?.taste.noteReactive).toBe(true);
 			expect(Object.keys(opening.layers)).toHaveLength(2);
 			expect(opening.intensity).toBeGreaterThanOrEqual(0.47);
 			expect(opening.motion).toBeGreaterThanOrEqual(0.35);
 		}
+	});
+
+	it('lets a local note voice sit over a carrying bed while the kit rests', () => {
+		const track = fixture();
+		for (const row of track.bars) {
+			if (row.section !== 'intro' && row.section !== 'breakdown') continue;
+			row.kicks = row.snares = row.hats = 0;
+		}
+		const localVoice = { ...BUILT_IN_EFFECTS.find((effect) => effect.role === 'accent')!, id: 'local-note',
+			taste: { energy: 2 as const, sections: ['intro', 'breakdown'] as const, minBars: 1, maxBars: 64,
+				peakReserved: false, noteReactive: true, carries: false, activity: 0.1 } };
+		const pool = [...BUILT_IN_EFFECTS.filter((effect) => !effect.taste.noteReactive), localVoice];
+		const composed = composeShow(track, { effects: pool });
+		for (const cue of composed.cues.filter((cue) => cue.section === 'intro' || cue.section === 'breakdown')) {
+			expect(cue.layers.accent?.effect).toBe(localVoice.id);
+			expect(cue.layers.bed).toBeDefined();
+			expect(effects.get(cue.layers.bed!.effect)?.taste.carries).not.toBe(false);
+			expect(Object.keys(cue.layers)).toHaveLength(2);
+		}
+	});
+
+	it('keeps intro rhythm when the drums play or no continuous note voice is available', () => {
+		const track = fixture();
+		for (const row of track.bars.filter((row) => row.section === 'intro')) row.kicks = 4;
+		expect(composeShow(track).cues[0].layers.rhythm).toBeDefined();
+		for (const row of track.bars.filter((row) => row.section === 'intro')) row.kicks = row.snares = 0;
+		const fallback = composeShow(track, { effects: BUILT_IN_EFFECTS.filter((effect) => !effect.taste.noteReactive) }).cues[0];
+		expect(fallback.layers.rhythm).toBeDefined();
+		expect(fallback.layers.bed).toBeDefined();
+		expect(Object.keys(fallback.layers)).toHaveLength(2);
+	});
+
+	it('retains a moving rhythm when the carrying bed already articulates notes', () => {
+		const track = fixture();
+		for (const row of track.bars.filter((row) => row.section === 'intro')) row.kicks = row.snares = 0;
+		const pool = BUILT_IN_EFFECTS.map((effect) => effect.role === 'bed'
+			? { ...effect, taste: { ...effect.taste, noteReactive: true } } : effect);
+		const opening = composeShow(track, { effects: pool }).cues[0];
+		expect(opening.layers.rhythm).toBeDefined();
+		expect(opening.layers.accent).toBeUndefined();
+		expect(Object.keys(opening.layers)).toHaveLength(2);
+	});
+
+	it('prefers a continuous kinetic voice over an unresponsive bed before adding a note field', () => {
+		const track = fixture();
+		for (const row of track.bars.filter((row) => row.section === 'intro')) row.kicks = row.snares = 0;
+		const pool = BUILT_IN_EFFECTS.map((effect) => effect.role === 'bed'
+			? { ...effect, taste: { ...effect.taste, noteReactive: false } } : effect);
+		const opening = composeShow(track, { effects: pool }).cues[0];
+		expect(effects.get(opening.layers.rhythm?.effect ?? '')?.taste.noteReactive).toBe(true);
+		expect(opening.layers.accent).toBeUndefined();
+		expect(Object.keys(opening.layers)).toHaveLength(2);
+	});
+
+	it('leaves bed headroom for a kit lead with both transient and accent, preserving sparse cues', () => {
+		let reserved = 0;
+		let sparse = 0;
+		for (const family of ['hiphop', 'rock', 'house'] as const) {
+			for (const seed of [1, 7, 29]) {
+				const composed = composeShow(fixture(), { seed, context: { ...emptyContext(), genreFamily: family } });
+				for (const cue of composed.cues) {
+					const kit = effects.get(cue.layers.rhythm?.effect ?? '')?.taste.kit;
+					if (cue.section === 'drop' && (kit === 'kick' || kit === 'any') && cue.layers.transient && cue.layers.accent) {
+						expect(cue.layers.bed?.opacity).toBeCloseTo(0.36);
+						reserved++;
+					} else if (cue.section === 'intro' || !cue.layers.transient || !cue.layers.accent) {
+						expect(cue.layers.bed?.opacity).toBeUndefined();
+						sparse++;
+					}
+				}
+			}
+		}
+		expect(reserved).toBeGreaterThan(0);
+		expect(sparse).toBeGreaterThan(reserved);
 	});
 
 	it('keeps ordinary cue stacks inside their activity allowance across genre policies', () => {

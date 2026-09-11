@@ -30,6 +30,7 @@ export const spectrumBed: EffectDef = {
 		minBars: 2,
 		maxBars: 64,
 		peakReserved: false,
+		noteReactive: true,
 		activity: 0.1,
 		quiet: 5.74
 	},
