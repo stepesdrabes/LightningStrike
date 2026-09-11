@@ -1,24 +1,13 @@
-// The movement detector, measured: where does one file hold several songs?
-//
-//   node bench/movements.ts                       # the app cache (stored beats + downbeats)
-//   node bench/movements.ts --set=multisong       # the fetched multi-song corpus, scored
-//   node bench/movements.ts --set=harmonix        # 60 annotated single songs, cached beats
-//   node bench/movements.ts --set=raveform        # 60 annotated EDM tracks, cached beats
-//   node bench/movements.ts --only=NQbkGDoD7B0    # one track, every candidate printed
-//   node bench/movements.ts --no-material         # beat-stream witnesses only, no audio
-//
-// Runs the SHIPPED module (packages/analysis/src/movements.ts) end to end - grid repair,
-// seam proposals, material witnesses - and prints every candidate with the numbers the
-// verdict was made from, so a threshold is argued from the table and not from the two
-// tracks that motivated the work. The app set scores against the owner's marks or, where
-// a judge file has none, the frozen maps of 2026-09-01; the
-// multisong set against bench/corpus/multisong/expect.json, and the annotated corpora are
-// single songs where every accepted seam is a false positive.
-//
-// Every number lands in bench/reports/movements/<set>.json.
+// Measure the shipped movement detector and write candidate evidence to
+// bench/reports/movements/<set>.json.
+// node bench/movements.ts [--set=app|multisong|harmonix|raveform] [--only=<id>]
+// [--no-material]
+// App targets use owner marks/frozen maps; multisong uses expect.json. Every seam in a
+// single-song
+// annotated corpus is a false positive.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
 import { extractFeatures } from '../packages/analysis/src/features.ts';
 import { beatSynchronous } from '../packages/analysis/src/beatsync.ts';
@@ -40,18 +29,14 @@ const only = flag('only');
 const material = !argv.includes('--no-material');
 const verbose = argv.includes('--verbose') || !!only;
 
-const APP_CACHE =
-	process.env.MV_CACHE_DIR ?? join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const APP_CACHE = benchmarkCache();
 const CORPUS = join(import.meta.dirname, 'corpus');
 const BEATS = join(CORPUS, '.beats');
 const REPORTS = join(import.meta.dirname, 'reports', 'movements');
 mkdirSync(REPORTS, { recursive: true });
 
 const AUDIO = /\.(m4a|webm|opus|mp3|ogg|oga|aac|wav|flac|mp4|mka)$/i;
-/**
- * The owner's frozen maps of 2026-09-01 (bench/judged/round-2026-09-01): the bar the new
- * song starts on, to the frame. The judge files those tracks once carried are archived.
- */
+/** Frozen 2026-09-01 movement targets; their original judge files are archived. */
 const FROZEN_SEAMS: Record<string, number[]> = {
 	NQbkGDoD7B0: [60.38, 176.56],
 	jojRxf2qvqs: [169.64, 205.65]

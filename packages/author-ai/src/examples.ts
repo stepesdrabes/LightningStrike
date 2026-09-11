@@ -1,17 +1,8 @@
 /**
- * Two effects in the dialect a generated one is written in.
- *
- * The DSL reference is a list of signatures, which says what exists and nothing about how any of
- * it goes together. These are the two shapes almost every effect is one of - a field that writes
- * every pixel every frame, and a trail that decays its own buffer - and between them they carry
- * the rules that are easiest to get wrong: latch anything the music drives, keep a spectral term
- * inside base..glow, never clear a buffer you are decaying, pass lo/hi when stamping into the
- * global one.
- *
- * Both are compiled and measured by `examples.test.ts`, so an example that would be rejected by
- * the gate cannot be shipped to the model as one that would not.
+ * Field and trail examples teach buffer ownership and palette use; examples.test.ts gates
+ * both.
  */
-export interface WorkedExample {
+interface WorkedExample {
 	id: string;
 	role: 'bed' | 'rhythm' | 'transient' | 'accent' | 'master';
 	blurb: string;

@@ -1,13 +1,6 @@
 /**
- * Talking to one board.
- *
- * The board listens on two sockets and refuses a third, so requests are kept strictly single-file
- * and `busy` is what lets the poll stand aside for an edit. A slider drag coalesces into the
- * latest value rather than queueing behind every value it passed through, and a dropped request
- * is retried once - the usual cause is the board still closing the previous connection.
- *
- * Every POST answers with the state that resulted, so the board is the authority and the app
- * only ever holds a prediction between sending and hearing back.
+ * Serialize requests for the board's two sockets; coalesce slider edits and retry dropped
+ * requests once. POST replies are authoritative.
  */
 
 import type { Net } from './net.ts';
@@ -19,7 +12,7 @@ const RETRY_DELAY_MS = 250;
 
 export type Link = 'idle' | 'sending' | 'ok' | 'lost';
 
-export interface ClientEvents {
+interface ClientEvents {
 	/** The board's own answer. Always preferred over anything predicted locally. */
 	onState: (state: LightState) => void;
 	onLink: (link: Link) => void;
@@ -98,9 +91,7 @@ export class DeviceClient {
 				}
 
 				if (reply === null) {
-					// Give up on this patch rather than putting it back: a board that is off the
-					// network would otherwise be hammered in a loop that never drains. The next
-					// thing the user touches starts a fresh attempt, and the poll reconciles.
+					// Drop a failed patch to avoid retrying an offline board forever; polling reconciles state.
 					this.events.onLink('lost');
 					return;
 				}

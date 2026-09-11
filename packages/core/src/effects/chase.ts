@@ -6,12 +6,7 @@ import { BeatHold, PulseEnv } from '../dsl/env.ts';
 import { spectralTilt } from '../dsl/spectrum.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-/**
- * The ratchet: a segment of the ring snaps to white on each step, its opposite number
- * half as hard, and both cool while the next step lands one segment on. Hard steps and no
- * glide, because a chase that eases between positions is a sweep. The beam answers the
- * downbeat in the accent, and the direction flips every phrase.
- */
+/** Hard timed steps distinguish chase from sweep; alternate the direction each phrase. */
 export const chase: EffectDef = {
 	id: 'chase',
 	name: 'Chase',
@@ -34,9 +29,7 @@ export const chase: EffectDef = {
 	create(g) {
 		let lastStep = -1;
 		const level = new Float32Array(32);
-		// The beam's answer used to be `f.downbeat`, which is true for exactly one frame: below
-		// the eye's integration window, so its apparent brightness depended on where the frame
-		// boundary fell.
+		// Hold the beam's downbeat answer past the eye's integration window.
 		const beam = new PulseEnv();
 		const passage = new BeatHold(0.45);
 		// The spectrum picks the head's colour, never its level, so an opening arrangement whitens
@@ -79,9 +72,7 @@ export const chase: EffectDef = {
 				const lean = tilt.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const head = lerp(SLOT.glow, SLOT.white, lean);
 				const rest = 0.12 * gain;
-				// A few pixels of crossfade at every seam. The steps stay hard in TIME, which is
-				// what makes this a chase; a hard edge in SPACE is a row of switched fixtures,
-				// and from under the frame the seam itself flickered as the segments traded.
+				// Soften spatial seams while keeping timed steps hard.
 				const feather = 4 / (g.perimeterLength / g.pitch / segments);
 
 				for (let i = 0; i < g.count; i++) {

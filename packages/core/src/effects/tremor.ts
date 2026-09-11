@@ -8,21 +8,8 @@ import { spectralTilt } from '../dsl/spectrum.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
- * The room's GRAIN answers the kit while its level does not.
- *
- * Every pixel carries a fixed deterministic offset, and what the drums move is how deeply
- * that texture is cut: barely at rest, visibly on a hit, easing back over half a beat. The
- * mean is constant, so nothing brightens and nothing flashes - at 60 LED/m seen from under
- * the frame this reads as the room graining rather than as an event, because there is no
- * coherent edge for the eye to be pulled to. Abrupt onsets and luminance increments capture
- * gaze; a change in VARIANCE does not, while still being something peripheral vision tracks
- * well.
- *
- * `taste.kit` is deliberately absent. Over a passage with no drums at all this settles into a
- * still, even, fully-covering field, which is exactly what an intro wants - and it is why
- * this can carry a bare cue where a kick-declaring effect would be refused outright. The
- * carrying accent pool was three effects for intro, outro and breakdown alike, none of which
- * read the kit at all; this is the fourth, and the first that does.
+ * Move fixed-grain depth on hits while preserving mean level. No kit requirement: without
+ * drums it remains a still field that can carry a quiet cue.
  */
 export const tremor: EffectDef = {
 	id: 'tremor',
@@ -37,15 +24,12 @@ export const tremor: EffectDef = {
 		peakReserved: false,
 		activity: 0.2,
 		carries: true,
-		// Measured over the cache's real quiet sections: mid-pack among the carrying accents,
-		// which is where a fourth one has to land to be worth adding rather than to be the one
-		// never picked.
+		// Measured on the cache's quiet sections.
 		quiet: 2.18
 	},
 	params: [INTENSITY, param('grain', 'Grain depth', 0.6)],
 	create(g) {
-		// Rolled once, never re-rolled: the texture has to be the room's own fixed surface, or
-		// it reads as noise rather than as grain. Two fresh instances must agree bit for bit.
+		// Hash texture once so it remains a fixed surface and fresh instances agree.
 		const grain = new Float32Array(g.count);
 		for (let i = 0; i < g.count; i++) grain[i] = hash01(i * 2654435761) - 0.5;
 
@@ -69,16 +53,15 @@ export const tremor: EffectDef = {
 				const loud = body.update(clamp(f.energy), f.dt);
 				const tone = tilt.update(clamp(0.5 + spectralTilt(f) * 0.5), f.dt);
 
-				// The whole gesture: 4% of the level at rest, 16% on a hit. The mean is the same
-				// either way, because the grain is centred on zero.
+				// Zero-centred grain gives 4% depth at rest and 16% on hits without shifting
+				// the mean.
 				const depth = (0.04 + 0.12 * hit) * p.grain;
 				const mean = (0.34 + loud * 0.28) * (0.5 + p.intensity * 0.6);
 
 				for (let i = 0; i < g.count; i++) {
 					const level = mean * (1 + depth * grain[i] * 2);
-					// Colour by POSITION only, and only inside base..glow, which is the span that
-					// costs no light. The grain never touches the slot: a texture in hue would be
-					// a texture in brightness wearing a palette's clothes.
+					// Keep colour spatial and inside base..glow; grain must not modulate
+					// palette slots.
 					const slot = lerp(SLOT.base, SLOT.glow, clamp(grain[i] + 0.5) * tone * 0.6);
 					setSample(out, i, palette, slot + hueShift, clamp(level));
 				}

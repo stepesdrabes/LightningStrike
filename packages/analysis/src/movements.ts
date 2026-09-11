@@ -6,26 +6,13 @@ import { barLinesFrom, phaseSegments } from './downbeatPhase.ts';
 import { median } from './dsp/stats.ts';
 
 /**
- * Where one file holds several songs, and the grid repairs that make the question askable.
- *
- * A beat switch is found by witnesses that are independent of each other, because every
- * single one of them fires on ordinary tracks: a tempo step fires on a rock intro at half
- * speed, a downbeat break fires on a fill, and "nothing after this point recurs before it"
- * fires on any intro that never returns. What no ordinary track does is all of it at once -
- * change tempo or break its count, stop repeating itself across the seam, AND change key.
- * Measured over 245 single-song tracks and 330 candidate seams (bench/movements.ts), the
- * four real switches on file sit at chroma recurrence 0.57-0.67 against a control median of
- * 0.98, and at key distance 3.5-6.5 fifths against a control median of 0.
- *
- * The grid repair is the other half. Beat This changes metrical level mid-track (a 71 bpm
- * song read at 143 for thirty seconds, twice, on Melanz) and emits beats through a spoken
- * intro at 250 bpm; both used to reach the bar table as bars of half or a fifth the length
- * of their neighbours. The tempo regimes that find a switch also name those stretches, and
- * they are re-read at the song's own level or filled from its grid.
+ * Detect song switches from independent tempo/phase, material, and harmonic evidence; each
+ * alone also occurs within songs. Repair tracker level flips and beatless stretches first
+ * so malformed short bars cannot masquerade as new material.
  */
 
 /** A stretch of the beat stream at one tempo. */
-export interface TempoRegime {
+interface TempoRegime {
 	fromBeat: number;
 	toBeat: number;
 	bpm: number;
@@ -38,7 +25,7 @@ export interface TempoRegime {
 }
 
 /** A run of regimes that is one song counted at one level, flips folded in. */
-export interface SongRun {
+interface SongRun {
 	index: number;
 	fromBeat: number;
 	toBeat: number;
@@ -57,39 +44,20 @@ const MIN_STEP = Math.log(1.1);
 const HALF = 16;
 const GUARD = 2;
 const FLIP_RATIOS = [2, 3, 0.5, 1 / 3];
-/**
- * Ratios a tracker also produces by reading triplets or dotted notes of the same pulse. A
- * real 3:2 tempo change exists too (Paranoid Android's third part), so these fold only when
- * the new beats sit on the old grid walked at the new period: a flip keeps phase, a change
- * breaks it.
- */
+/** Triplet/dotted ratios fold only when phase continues on the old grid; real 3:2 tempo changes may not. */
 const TRIPLET_FLIP_RATIOS = [1.5, 4 / 3, 2 / 3, 0.75];
 /** How near the old grid a beat must land to count as on it: two frames of the model's 20 ms grid. */
 const ON_GRID_S = 0.04;
-/**
- * Under this a stretch has no tempo to speak of: speech, silence, a hallucinated intro.
- * Low on purpose - live drums with a swing sit near 0.6 and are music, not noise.
- */
+/** Low steadiness means speech/silence; the threshold must leave swung live drums intact. */
 const CHAOS = 0.4;
-/**
- * An interior stretch this long with no steady tempo is played music the tracker could not
- * follow, not a gap: it keeps its beats. Edges and short gaps are filled from their neighbour.
- */
+/** Long unsteady interiors may be played music and retain beats; only short gaps get filled. */
 const MAX_FILL_S = 20;
-/**
- * And an intro or outro this long with no steady tempo is a slow song the tracker lost, not
- * a spoken intro: the two on file are 30 s, Free Bird's first half is 500.
- */
+/** Long unsteady edges may be slow songs, not spoken intros. */
 const MAX_EDGE_FILL_S = 45;
 /** Fewest beats a stretch needs to be read at all rather than filled from its neighbour. */
 const MIN_RUN_BEATS = 6;
 
-/**
- * Change points in the log beat period: the median of the sixteen beats after a point
- * against the sixteen before, with a guard of two so the beat that carries the switch (a
- * dropped beat, a pickup) votes for neither. A step passes through the medians at once; a
- * ramp slides through them and never clears the threshold.
- */
+/** Compare 16-beat log-period medians across a two-beat guard. Abrupt steps survive; ramps do not. */
 function changePoints(lp: Float64Array): number[] {
 	const n = lp.length;
 	const jump = new Float64Array(n);
@@ -146,10 +114,7 @@ function regimeBpm(lp: Float64Array, from: number, to: number, level: number): n
 	return count > 0 ? 60 / (acc / count) : 60 / Math.exp(level);
 }
 
-/**
- * `breaks` are moments (seconds) the stream was written across - a filled pause - where no
- * phase survives, so a triplet ratio across one is a change and never a flip.
- */
+/** Written break times, seconds. No phase survives a filled pause, so triplet ratios across it are changes. */
 export function tempoRegimes(beats: ArrayLike<number>, breaks: readonly number[] = []): TempoRegime[] {
 	const n = beats.length - 1;
 	if (n < 4) return n >= 1 ? [{ fromBeat: 0, toBeat: n, bpm: 60 / Math.max(1e-3, (beats[n] - beats[0]) / n), steady: 1, song: 0 }] : [];
@@ -168,9 +133,8 @@ export function tempoRegimes(beats: ArrayLike<number>, breaks: readonly number[]
 		regimes.push({ fromBeat: from, toBeat: to, bpm: regimeBpm(lp, from, to, level), steady: ok / (to - from), song: 0 });
 	}
 
-	// Songs: runs of regimes related by a tracker flip or by no change at all. The anchor is
-	// the longest unflipped regime of the run, so a song that flips twice is still one song.
-	// A chaotic regime is never the same song as anything: it has no tempo to agree with.
+	// Group unchanged/flipped regimes as songs, anchored on their longest unflipped run.
+	// Chaotic regimes have no tempo agreement and stay separate.
 	let song = 0;
 	let anchor: TempoRegime | null = regimes[0].steady < CHAOS ? null : regimes[0];
 	const seconds = (r: TempoRegime) => beats[r.toBeat] - beats[r.fromBeat];
@@ -186,9 +150,7 @@ export function tempoRegimes(beats: ArrayLike<number>, breaks: readonly number[]
 		const songBpm = anchor.bpm;
 		const anchorStart = beats[anchor.fromBeat];
 		const ratio = r.bpm / songBpm;
-		// Up to the regime's first eight beats, because the cut lands a beat or two before the
-		// stretch it names, and a pickup written at the incoming period is in phase with the
-		// outgoing bar line by construction.
+		// Inspect eight entering beats because regime cuts can precede the actual change by a pickup.
 		const broken = breaks.some((t) => t > anchorStart && t <= beats[Math.min(r.toBeat - 1, r.fromBeat + 8)] + 1e-6);
 		const flip =
 			FLIP_RATIOS.find((f) => Math.abs(ratio / f - 1) < 0.05) ??
@@ -213,10 +175,8 @@ export function tempoRegimes(beats: ArrayLike<number>, breaks: readonly number[]
 }
 
 /**
- * A short passage at half or double a song's tempo with that song on both sides of it is a
- * breakdown the tracker read at another level - an EDM drop, break, drop - and joins the
- * song. Looser than a flip's own tolerance because a break has few onsets to read a period
- * from, and 134 bpm came back as 73.9 rather than 67 on one annotated track.
+ * Join brief half/double-time breaks surrounded by one song. Sparse break onsets need looser
+ * period tolerance than clear tracker flips.
  */
 const BREAKDOWN_S = 60;
 const BREAKDOWN_RATIO_TOLERANCE = 0.12;
@@ -253,11 +213,7 @@ function foldBreakdowns(regimes: TempoRegime[], beats: ArrayLike<number>): void 
 	}
 }
 
-/**
- * Each song's level is the tempo with the most seconds behind it, and everything else in
- * the song is a flip of that. The greedy walk above anchors on whatever came first, which
- * on Melanz was a three-second blip at 120 in a song at 60.
- */
+/** The longest-held tempo determines a song's level; an opening blip must not anchor every later regime. */
 function settleLevels(regimes: TempoRegime[], beats: ArrayLike<number>): void {
 	const seconds = (r: TempoRegime) => beats[r.toBeat] - beats[r.fromBeat];
 	const bySong = new Map<number, TempoRegime[]>();
@@ -282,11 +238,7 @@ function settleLevels(regimes: TempoRegime[], beats: ArrayLike<number>): void {
 	}
 }
 
-/**
- * Whether a regime's first beats sit on the song's own grid walked at the flipped period.
- * The grid is anchored on the last beat before the regime, which is the song's whatever
- * came between.
- */
+/** Test flipped beats against a grid anchored on the last pre-regime song beat. */
 function phaseContinuous(beats: ArrayLike<number>, r: TempoRegime, songBpm: number, flip: number): boolean {
 	const period = 60 / songBpm / flip;
 	// Anchored on the previous song's own beats, two to four back from the cut: the cut may
@@ -336,23 +288,16 @@ export function songRuns(regimes: readonly TempoRegime[], beats: ArrayLike<numbe
 	return out;
 }
 
-export interface GridRepair {
+interface GridRepair {
 	beats: Float64Array;
 	downbeats: number[];
 	regimes: TempoRegime[];
 	songs: SongRun[];
-	/**
-	 * Stretches that held no steady beat - a pause, a pickup, a few stray beats, a spoken
-	 * intro - and whether each was written over at a neighbouring song's period. The seam's
-	 * pause witness reads these, since a filled stream no longer shows a gap and an unfilled
-	 * one is still a passage of nothing.
-	 */
+	/** Keep original unstable zones as pause evidence even after a repaired stream no longer exposes gaps. */
 	zones: { from: number; to: number; filled: boolean }[];
 	/**
-	 * Tempo seams the incoming song was walked back over: the tracker rode the outgoing
-	 * period through the new song's first bar before changing, so its first steady beat
-	 * lands a bar late. Where one incoming bar back from it is an outgoing bar line, that
-	 * line is the seam and the beats between are rewritten at the incoming period.
+	 * Handshake seams correct a tracker that follows the outgoing tempo through the new song's
+	 * first bar; rewrite that bar at the incoming period.
 	 */
 	handshakes: { seam: number; first: number }[];
 	/** Beats to the bar, from the model's downbeat spacing; 4 without downbeats. */
@@ -366,13 +311,8 @@ export interface GridRepair {
 }
 
 /**
- * The beat stream with the tracker's level flips undone and its beatless stretches filled.
- *
- * A flipped regime is resampled to the song's level, keeping the beats that continue the
- * neighbouring phase; a chaotic stretch (steady under `CHAOS`, or too short to read) beside
- * a song is replaced by that song's grid extrapolated across it, from the song's own first
- * beat backwards or last beat forwards. Downbeats survive only where the beat under them
- * does. A stream with nothing to repair comes back equal to the input.
+ * Resample flipped regimes at the song's level; extrapolate neighbouring grids across chaotic
+ * stretches. Keep downbeats only when their beat survives. Unchanged streams remain equal.
  */
 /** Beats to the bar from the commonest downbeat spacing, folded the way the meter reads it. */
 export function beatsPerBarOf(beats: ArrayLike<number>, downbeats: readonly number[]): number {
@@ -395,11 +335,7 @@ export function beatsPerBarOf(beats: ArrayLike<number>, downbeats: readonly numb
 	return bpb === 8 || bpb === 12 || bpb === 2 ? 4 : bpb === 6 ? 3 : bpb;
 }
 
-/**
- * Downbeats a flipped regime must carry before they may say which of its beats the fold
- * keeps, and by how much they must favour one parity: two on the other half against one on
- * the walk's own is a hedge, six against one is the record.
- */
+/** Require enough downbeats and a clear parity majority before changing which folded beats survive. */
 const FOLD_MIN_DOWNBEATS = 3;
 const FOLD_MAJORITY = 2;
 
@@ -436,11 +372,7 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 	/** The beat a fill has written up to, so the song after it starts at its own first steady beat. */
 	let fillEnd = 0;
 
-	/**
-	 * The song's regular bar lines, as beat indices: the model's downbeats on the residue
-	 * most of them share, so a stray downbeat on the last beat before a pause (Melanz puts
-	 * one two beats after the real bar line) does not pass for one.
-	 */
+	/** Use modal downbeat residues as regular bar lines so stray detections near pauses cannot anchor seams. */
 	const regularDownbeats = (s: SongRun): number[] => {
 		const own = [...downbeatIndex].filter((i) => i >= s.fromBeat && i < s.toBeat).sort((a, b) => a - b);
 		if (own.length < 3) return own;
@@ -461,14 +393,8 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 		for (let i = from; i < to; i++) out.push({ t: beats[i], heard: true });
 	};
 	/**
-	 * Which of a flipped regime's heard beats carry the model's downbeats, as the fraction of
-	 * the song's period past the walk's own grid from `anchor`: 0 when they sit on the beats
-	 * the walk keeps, 1/2 (or 1/3, 2/3) when they sit on the ones it drops. A regime heard at
-	 * double time has two halves the fold can keep, and continuing the phase before it is a
-	 * guess about the record: Pátky's chorus is heard at 140 over a 70 song, its downbeats fall
-	 * on the half the continuing fold dropped, and the owner's "the chorus starts EXACTLY here"
-	 * at 116.6 s sat half a beat off every bar line, unreachable in the editor. Zero when the
-	 * regime carries too few downbeats to say, or when they hedge both halves.
+	 * Fractional song-period offset of downbeats from anchor; selects which beats a folded regime
+	 * retains. Return zero when downbeats are too sparse or divided to establish phase.
 	 */
 	const foldOffset = (r: TempoRegime, anchor: number, period: number): number => {
 		const f = Math.round(r.flip ?? 1);
@@ -521,12 +447,8 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 	};
 
 	/**
-	 * The record's lead-in, up to the first beat from which the first steady song holds its
-	 * period for four bars. Where the beats before it are not at that period they are the
-	 * model hearing a pulse in a beatless intro - SICKO MODE's opens at a beat every 2.5 s -
-	 * and are written at the song's period instead, so the bar count into the song's first
-	 * downbeat is the song's. Sixteen beats, not the seam zone's three: an intro can hold a
-	 * pulse for two bars and lose it again.
+	 * Find the first 16-beat steady run and rewrite the lead-in at its song period. A shorter
+	 * intro pulse can lose time again and must not determine the bar count.
 	 */
 	let leadDone = false;
 	const writeLead = (s: SongRun): number | null => {
@@ -561,8 +483,7 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 			const next = runs.slice(k + 1).find((r) => !chaotic(r));
 			const from = beats[s.fromBeat];
 			const to = beats[s.toBeat];
-			// Filled from the song it leads into where there is one - a pause before a new
-			// song belongs to that song's count - otherwise from the one it follows.
+			// Fill pauses from the incoming song's period when available, otherwise the outgoing one.
 			const source = next ?? prev ?? null;
 			const interior = prev !== undefined && next !== undefined;
 			if (!source || to - from > (interior ? MAX_FILL_S : MAX_EDGE_FILL_S)) {
@@ -585,13 +506,8 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 			continue;
 		}
 
-		// The seam zone before this song. After a real pause (more than a beat and a half of
-		// the incoming period past the outgoing song's last steady beat) the outgoing song ends
-		// on its last complete bar - at that bar's end, or at the start of an incomplete one -
-		// and everything from there to the new song's first steady beat is written at the
-		// incoming period as its pickup. Without a pause the song ends where its beats do; a
-		// three-beat bar rushing into SICKO MODE's switch is the old song's, and the seam is
-		// the new downbeat.
+		// After a real pause, finish the outgoing song on a complete bar and fill to the incoming
+		// steady beat at its period. Without a pause, retain the outgoing song's own short final bar.
 		const prev = runs.slice(0, k).reverse().find((r) => !chaotic(r));
 		const first = steadyFrom(s);
 		const lead = writeLead(s);
@@ -611,8 +527,7 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 				}
 				// Longer than a pickup is a band drifting between two tempos, which is music.
 				if (zoneTo - seamTime > period * 1.5 && zoneTo - seamTime <= MAX_FILL_S) {
-					// Drop what the loop already pushed inside the zone - stray beats and any fill
-					// a chaotic run between the songs was given - then fill it as one.
+
 					while (out.length > 0 && out[out.length - 1].t > seamTime + 1e-6) out.pop();
 					while (zones.length > 0 && zones[zones.length - 1].to > seamTime + 1e-6) {
 						const z = zones.pop()!;
@@ -625,10 +540,8 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 					fillEnd = first;
 				}
 			} else if (Math.abs(Math.log(outPeriod / period)) >= MIN_STEP) {
-				// A tempo seam with no pause. One incoming bar back from the new song's first
-				// steady beat, on an outgoing bar line to within two frames, means the tracker
-				// rode the old period through the new song's first bar: the seam is that line
-				// and the bar is rewritten at the incoming period.
+				// A no-pause handshake needs one incoming bar backward to match an outgoing bar line within
+				// two frames; rewrite the intervening bar at the incoming period.
 				const seamTime = zoneTo - bpb * period;
 				const line = regularDownbeats(prev).find((i) => Math.abs(beats[i] - seamTime) <= ON_GRID_S);
 				if (line !== undefined) {
@@ -649,11 +562,8 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 				continue;
 			}
 			relevelled += beats[r.toBeat] - beats[r.fromBeat];
-			// Walk the song's period from the last kept beat through the flipped stretch, taking
-			// the heard beat nearest each step where one is close and writing one where not.
-			// The first step is shorter where the model's downbeats sit on the other half of the
-			// doubled beats: one short beat at the seam, and every bar line after it is where the
-			// model heard one, at the same count.
+			// Walk the song period through flips, preferring nearby heard beats. A supported alternate
+			// downbeat phase gets one short first beat, then retains the corrected bar count.
 			const anchor = out[out.length - 1]?.t ?? beats[r.fromBeat] - period;
 			const end = beats[Math.min(r.toBeat, beats.length - 1)];
 			const offset = foldOffset(r, anchor, period);
@@ -678,10 +588,8 @@ export function repairGrid(beatsIn: ArrayLike<number>, downbeatsIn: readonly num
 	const blipSeconds = repairBlips(out, runs, beats);
 	if (filledSeconds + relevelled + blipSeconds === 0) return { ...untouched(), zones, handshakes };
 
-	// A written beat that lands on a heard one is the same beat, and a beat under six tenths
-	// of its song's period from the one before is a leftover of the other level - the regime
-	// cut sits a beat or two off the true end of a flip - and goes. The one exception is the
-	// fold's own short beat, which is exactly that distance on purpose.
+	// Deduplicate written/heard beats and discard close leftovers from the old level; preserve
+	// the fold's intentional short seam beat.
 	const periodAt = (t: number) => {
 		const song = runs.find((r) => beats[r.fromBeat] <= t && t < beats[r.toBeat]) ?? runs[runs.length - 1];
 		return 60 / song.bpm;
@@ -719,13 +627,8 @@ const BLIP_TOLERANCE = 0.25;
 const MAX_BLIP_BARS = 4;
 
 /**
- * Short stretches inside a steady song where the tracker lost the count - a few beats at
- * double time in a quiet breakdown, a beat dropped or doubled - rewritten at the song's
- * period between the steady beats either side. HIGHEST IN THE ROOM has three, of nine, two
- * and two beats, and each one moved every bar line after it by a beat until the next undid
- * it. Below the regimes' sixteen-beat resolution, which is why they slipped through; and
- * never across a song's edge, where a written zone or the lead-in already holds.
- * Returns the seconds rewritten; the stream is edited in place.
+ * Repair brief count losses between steady beats below the regime detector's 16-beat resolution.
+ * Never cross song edges. Mutates the stream and returns rewritten time spans.
  */
 function repairBlips(out: { t: number; heard: boolean; fold?: boolean }[], runs: readonly SongRun[], beats: readonly number[]): number {
 	let rewritten = 0;
@@ -768,8 +671,6 @@ function repairBlips(out: { t: number; heard: boolean; fold?: boolean }[], runs:
 	return rewritten;
 }
 
-// --- seams --------------------------------------------------------------------------------
-
 /** A song shorter than this is a hesitation, not a song. */
 const MIN_SONG_S = 20;
 const MIN_STEADY = 0.7;
@@ -778,10 +679,8 @@ const EDGE_S = 15;
 /** And nothing this early: an opening shorter than this at its own tempo is the song's intro. */
 const START_EDGE_S = 45;
 /**
- * Two seams closer than this are one, and the stronger keeps it. Hard seams (a tempo step, a
- * long pause, an interlude edge) may sit eight seconds apart - family ties switches twice in
- * sixteen - where the soft class needs a song's worth of distance, or a coda whose count
- * wobbles reads as three switches.
+ * Cluster nearby seams, keeping the strongest. Hard tempo/pause seams may be closer than
+ * soft material seams, which need song-length separation.
  */
 const HARD_SEAM_GAP_S = 8;
 const SOFT_SEAM_GAP_S = 30;
@@ -809,17 +708,9 @@ export interface SeamCandidate {
 	pause?: number;
 	/** The written stretch itself, so the witnesses read the music either side of it. */
 	zone?: { from: number; to: number };
-	/**
-	 * The seam sits on a bar line the repair established - the outgoing song's last regular
-	 * bar line before a pause, or a handshake - and is cut exactly there rather than snapped
-	 * to the phase walk, which cannot count bars across a rewritten stretch.
-	 */
+	/** Repair-established seam bar lines are exact cuts; phase walks cannot count across rewritten pauses. */
 	exact?: boolean;
-	/**
-	 * This seam is an edge of a long beatless passage - an a cappella, a spoken interlude, an
-	 * ambient bridge - which becomes a movement of its own: 'start' where the beat stops,
-	 * 'end' where one returns. Seconds of the passage.
-	 */
+	/** Edge of a long beatless movement: start/end marks the beat leaving/returning. Duration is seconds. */
 	interlude?: { edge: 'start' | 'end'; seconds: number };
 	// Material witnesses, filled by `judgeSeams`.
 	chromaRatio?: number;
@@ -832,11 +723,7 @@ export interface SeamCandidate {
 	rightSeconds?: number;
 }
 
-/**
- * Step against ramp over the beats either side of a seam: two constants meeting at the seam
- * against one constant-acceleration curve, as a share of the curve's residual the step
- * removes. A band speeding up is explained by the curve; a switch only by the step.
- */
+/** Step evidence is the residual reduction from two constant periods versus one accelerating curve. */
 export function stepScore(beats: ArrayLike<number>, seamBeat: number): number {
 	// The transition may take a beat or four bars: a guard that hides it is tried at three
 	// widths and the clearest reading wins. A slow ramp reads as a curve at every width.
@@ -913,11 +800,7 @@ function nearestIndex(times: ArrayLike<number>, t: number): number {
 	return Math.abs(times[lo] - t) <= Math.abs(times[hi] - t) ? lo : hi;
 }
 
-/**
- * Seams worth judging: the boundary between two songs the regimes separate, and every place
- * the model's own downbeat count breaks while the phase walk restarts there. Both classes
- * fire on ordinary tracks; the material witnesses decide.
- */
+/** Propose regime seams and corroborated downbeat restarts; material witnesses reject within-song cases. */
 /** A pickup this long or shorter belongs to the incoming song; longer is a passage of the outgoing one. */
 const PICKUP_S = 12;
 /** A beatless stretch this long is a seam witness on its own. */
@@ -953,9 +836,7 @@ export function proposeSeams(repair: GridRepair, beatsPerBar: number, duration: 
 		const ratio = Math.max(a.bpm, b.bpm) / Math.min(a.bpm, b.bpm);
 		if (Math.log(ratio) < MIN_STEP) continue;
 		const incoming = 60 / b.bpm;
-		// Where the incoming song's own beats begin: past whatever the repair wrote before them.
-		// The regime cut can sit a beat or two before the zone it names, so a zone starting
-		// within a bar of the cut is this song's pickup.
+		// The incoming song begins after its repaired pickup; regime cuts may precede that zone by a few beats.
 		let first = b.fromBeat;
 		const zone = zones.find((f) => f.from < beats[b.fromBeat] + beatsPerBar * incoming && f.to > beats[b.fromBeat] - incoming);
 		if (zone) first = nearestIndex(beats, zone.to);
@@ -1021,7 +902,7 @@ export function proposeSeams(repair: GridRepair, beatsPerBar: number, duration: 
 		add({ t: beats[beat], beat, reset: false, pause: seconds, exact: true, zone: f });
 	}
 	const insideInterlude = (t: number) => interludes.some((f) => t > f.from + 1 && t < f.to - 1);
-	/** A pickup zone a tempo seam already owns: its end is that seam, not a second one. */
+
 	const ownedPickup = (t: number, period: number) => {
 		const z = zoneEndingAt(t, period);
 		return !!z && z.to - z.from <= PICKUP_S && out.some((c) => c.tempo && Math.abs(c.t - z.from) < 2.5);
@@ -1050,7 +931,7 @@ export function proposeSeams(repair: GridRepair, beatsPerBar: number, duration: 
 }
 
 /** What the material witnesses read: the walk-phased bar table and its similarities. */
-export interface SeamMaterial {
+interface SeamMaterial {
 	bars: BarFeatures;
 	sim: Float32Array;
 	chroma: Chromagram;
@@ -1077,9 +958,8 @@ function windowScore(sim: Float32Array, n: number, a: number, b: number, w: numb
 }
 
 /**
- * The strongest window-to-window match across the seam against the strongest either side
- * finds within itself, over the whole track: a bridge is unique material too, but the song
- * comes back after it, and a new song never does.
+ * Compare recurrence across the seam with each side's best internal match over the whole track;
+ * a unique bridge can still return to the same song.
  */
 function recurrence(sim: Float32Array, n: number, seamBar: number, fromBar: number, toBar: number, rightBar = seamBar) {
 	const w = WINDOW;
@@ -1140,22 +1020,13 @@ function keyDistance(a: { tonic: number; mode: string }, b: { tonic: number; mod
 }
 
 /**
- * The thresholds, from bench/movements.ts over the app cache, Harmonix, Raveform and the
- * multi-song corpus.
- *
- * A tempo seam stands on its own when the step is a step (or a pause stands in for one):
- * a record that changes tempo and holds it for twenty seconds either side is re-staged
- * whether or not the key moved - the key reading is a guess on most rap (confidence 0.2 to
- * 0.5) and multi-movement rock stays in related keys. A seam with no
- * tempo evidence needs a song's worth of material on both sides, material that does not
- * recur across it on timbre AND harmony, and either a pause or a confident key change.
+ * Thresholds measured by bench/movements.ts. A sustained tempo change or pause establishes a
+ * seam without key evidence. Without tempo evidence, require long spans, timbre and harmonic
+ * non-recurrence, plus either a pause or confident key change.
  */
 const TEMPO_STEP = 0.4;
 const TEMPO_PAUSE = 2;
-/**
- * A 3:2 or 4:3 ratio the phase test did not fold is still what a tracker produces reading
- * triplets, so it also needs the material to stop recurring or the key to move.
- */
+/** Unfolded 3:2/4:3 ratios also need non-recurrence or key change because trackers produce them too. */
 const TRIPLET_RATIOS = [1.5, 4 / 3];
 const TRIPLET_MATERIAL = 0.75;
 const MATERIAL_CHROMA = 0.7;
@@ -1168,10 +1039,7 @@ const SAME_TEMPO_RIGHT_S = 40;
 const SAME_TEMPO_KEY = 3;
 const SAME_TEMPO_KEY_CONF = 0.45;
 const SAME_TEMPO_PAUSE_S = 2;
-/**
- * A passage the beat stops for and then returns to the same material is a breakdown, not
- * a seam, whatever its length: an EDM break, a rock bridge.
- */
+/** A beatless span returning to the same material is a breakdown, regardless of length. */
 const BREAKDOWN_CHROMA = 0.85;
 const BREAKDOWN_TIMBRE = 0.95;
 
@@ -1181,16 +1049,13 @@ export interface Movement {
 	source: 'auto';
 	/** For the panel: what convinced the detector. */
 	note: string;
-	/** The seam is a bar line already; cut there, do not snap it to the walk. */
+
 	exact: boolean;
 }
 
 /**
- * The seams that are movements, judged from the material either side.
- *
- * `material` is the walk-phased bar table (`witnessBarLines`) with `similarityMatrix` over
- * it; the chroma is the track's chromagram. Fills the witness fields on every candidate for
- * the bench to read, and returns the accepted ones.
+ * Judge seams using the walk-phased witnessBarLines table, similarity matrix, and chromagram.
+ * Populate all candidate evidence for the bench; return accepted movements.
  */
 export function judgeSeams(
 	candidates: SeamCandidate[],
@@ -1213,11 +1078,8 @@ export function judgeSeams(
 	for (const c of candidates) {
 		if (c.t < START_EDGE_S || c.t > duration - EDGE_S) continue;
 		const s = barAt(c.t);
-		// The witnesses read the music either side of a written zone, not the zone: bars of
-		// silence resemble nothing, and counted as the incoming song they made every pause
-		// look like new material. Whether the zone is quiet says nothing - a real switch in
-		// hip-hop carries the hook a cappella through it, Jesus of Suburbia a drum fill - so
-		// no rule reads its level.
+		// Read material outside rewritten zones. Silence, a cappella, and fills inside a seam do not
+		// represent either song or establish novelty by their level.
 		let leftEnd = s;
 		let rightStart = s;
 		if (c.zone) {
@@ -1231,9 +1093,7 @@ export function judgeSeams(
 		if (!timbre || !harmony) continue;
 		c.timbreRatio = timbre.within > 0 ? timbre.cross / timbre.within : 1;
 		c.chromaRatio = (harmony.cross + 1) / (harmony.within + 1);
-		// An interlude is a fact of the beat stream: twenty seconds with no count between two
-		// songs that have one. Both its edges are movements, unless the song after it is the
-		// song before it, which makes the passage a breakdown.
+		// Beatless interludes form movements at both edges unless the same song resumes afterward.
 		if (c.interlude) {
 			if (c.chromaRatio >= BREAKDOWN_CHROMA || c.timbreRatio >= BREAKDOWN_TIMBRE) continue;
 			accepted.push({
@@ -1276,18 +1136,13 @@ export function judgeSeams(
 		} else {
 			const longEnough = c.leftSeconds >= SAME_TEMPO_LEFT_S && c.rightSeconds >= SAME_TEMPO_RIGHT_S;
 			const paused = pauseSeconds >= SAME_TEMPO_PAUSE_S;
-			// A long pause relaxes the material bar (Nights' second half reads 0.90 on timbre),
-			// but a beat returning into the same sound at the breakdown standard is a breakdown:
-			// "i'm waiting." rests for 16 s and comes back at 1.39, in the same key.
+			// Long pauses relax material similarity, but a return to the same sound still indicates a breakdown.
 			const newMaterial =
 				pauseSeconds >= LONG_PAUSE_S
 					? c.chromaRatio <= LONG_PAUSE_CHROMA && c.timbreRatio < BREAKDOWN_TIMBRE
 					: c.chromaRatio <= MATERIAL_CHROMA && c.timbreRatio <= MATERIAL_TIMBRE;
 			const keyed = c.keyDist >= SAME_TEMPO_KEY && c.keyConf >= SAME_TEMPO_KEY_CONF;
-			// The count broke: the walk restarted (its judgement over bars, at a cost of four)
-			// or the beat stopped. One odd bar's downbeat gap is not that - a single song
-			// modulating on an odd bar (Earthquake, C minor to A major) read as a new song on
-			// a gap of two alone.
+			// Require an actual phase-walk restart or stopped beat; one odd downbeat gap can occur within a song.
 			const broke = c.reset || paused;
 			if (longEnough && newMaterial && broke && (paused || keyed)) {
 				note = paused ? `a new beat after ${pauseSeconds.toFixed(0)} s of none, ${keys}` : `the count restarts, ${keys}`;

@@ -2,16 +2,8 @@ import { NUM_BANDS } from '@mv/core';
 import { quantile } from './dsp/stats.ts';
 
 /**
- * What a section looks like, as one vector per section.
- *
- * One definition, imported by both the analyser that ships and the bench that fits the weights.
- * That is the whole reason this file exists: a classifier is a set of coefficients against a
- * feature ORDER, so two implementations of "the same" vector produce a model that is silently
- * wrong rather than obviously broken. There is no way to notice that from the output.
- *
- * Everything is within-track. "The drums are full" means full for THIS track: a drum and bass
- * drop and a folk chorus are each at their own ceiling and reading one against the other says
- * nothing about either.
+ * Shared feature order for analysis and fitting; changing order silently changes the model.
+ * Normalise within track so kit fullness is relative to the recording.
  */
 
 /** The order the weights are indexed by. Appending is safe; reordering invalidates the model. */
@@ -52,14 +44,14 @@ export const SECTION_FEATURES = [
 
 export const SECTION_FEATURE_COUNT = SECTION_FEATURES.length;
 
-export interface FeatureSpan {
+interface FeatureSpan {
 	startBar: number;
 	endBar: number;
 	/** Which material this is; sections sharing an id are the same passage. */
 	group: number;
 }
 
-export interface SectionFeatureInput {
+interface SectionFeatureInput {
 	/** Per bar, 0..1 across the track. */
 	energy: Float32Array;
 	/** barCount * NUM_BANDS, each band 0..1 across the track. */

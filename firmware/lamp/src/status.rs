@@ -1,11 +1,5 @@
-//! The onboard WS2812 on GPIO10, which is the only thing this board can say without a console.
-//! Solid while it is still joining, a short blink once it is on the network - the two states the
-//! Pico shows on its radio LED, in colour because this one can.
-//!
-//! **Behind `--features status-led`, off by default.** The lamp stands in a room rather than a
-//! rack, and a second light beside the fixture reads as a fault rather than an instrument. Both
-//! builds keep the same type and task, so `net::join`, which needs a `Status` to show the joining
-//! state, does not know which one it is in.
+//! Optional GPIO10 WS2812 status: solid joining, blinking online. Disabled by default so it
+//! does not compete with the lamp. Both feature builds keep the same Status/task interface.
 
 #[cfg(feature = "status-led")]
 mod on {
@@ -23,8 +17,7 @@ mod on {
 	const T1H: u16 = 72;
 	const T1L: u16 = 28;
 
-	/// Dim on purpose: this sits beside the lamp it reports on, and a status light that competes
-	/// with the fixture is a distraction rather than an instrument.
+	/// Keep status dim enough not to compete with the fixture.
 	const JOINING: [u8; 3] = [18, 5, 0];
 	const UP: [u8; 3] = [0, 14, 4];
 	const DARK: [u8; 3] = [0, 0, 0];
@@ -89,15 +82,13 @@ mod off {
 	pub struct Status;
 
 	impl Status {
-		/// Takes the peripherals and drops them, so GPIO10 goes back to an input and the LED is
-		/// left holding whatever power-on gave it, which is dark.
+		/// Drop peripherals to leave GPIO10 as input and the LED at its dark power-on state.
 		pub fn new(_rmt: RMT<'static>, _pin: GPIO10<'static>) -> Self {
 			Self
 		}
 	}
 
-	/// Parked rather than left unspawned, so the signature above it does not change with the
-	/// feature. It costs one task slot and no wake-ups.
+	/// Park the disabled task to keep its interface stable; one slot, no wake-ups.
 	#[embassy_executor::task]
 	pub async fn status_task(_status: Status, _stack: Stack<'static>) -> ! {
 		loop {

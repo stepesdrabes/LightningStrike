@@ -9,13 +9,8 @@ import { spectralTilt } from '../dsl/spectrum.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
- * Three molten drops drifting around the ring. Where two overlap their light adds and
- * the palette slot climbs toward the glow, so touching blobs visibly fuse into something
- * hotter instead of just being brighter.
- *
- * How bright the room is remains the cue's business; what the mix gets to say is where the drops
- * sit and how hot they are, so a bass-heavy passage huddles them together in the room's own
- * colour and one that opens up spreads them out toward the third hue.
+ * Overlapping blobs fuse into hotter colour. The spectrum controls position and palette reach;
+ * cue intensity owns the level.
  */
 export const lavaBlobs: EffectDef = {
 	id: 'lavaBlobs',
@@ -30,16 +25,14 @@ export const lavaBlobs: EffectDef = {
 		peakReserved: false,
 		activity: 0.05,
 		quiet: 1.82,
-		// Blobs, by construction: 37% of its light in a tenth of the pixels, and where the
-		// blobs are not is unlit room.
+		// Blob gaps prevent this from carrying a quiet cue alone.
 		carries: false
 	},
 	params: [INTENSITY, param('size', 'Blob size', 0.5)],
 	create(g) {
 		const buf = new Float32Array(g.count * 3);
 		const passage = new BeatHold(0.45);
-		// A long glide, because this one moves the drops: a position has to arrive rather than
-		// step, and half a beat is short enough that it still arrives on the music.
+		// Glide positions over half a beat to avoid steps.
 		const lean = new BeatHold(0.5);
 		let level = 0;
 
@@ -53,9 +46,7 @@ export const lavaBlobs: EffectDef = {
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
 
-				// The floor is high because the cue's own intensity already says the passage is
-				// quiet. A bed that dims itself as well is dimmed twice, and two multiplications
-				// of a number under one is how an intro reached byte zero.
+				// Keep a high floor because cue intensity already dims quiet passages.
 				const passageLevel = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
 				level = envelope(level, clamp(0.55 + passageLevel * 0.45), f.dt, 0.2, 1.1);
 				const gain = level * (0.42 + p.intensity * 0.8);
@@ -65,11 +56,7 @@ export const lavaBlobs: EffectDef = {
 
 				const tilt = lean.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const spread = (tilt - 0.5) * 0.16;
-				// Hotter as the mix opens up, and never past a hue the show declared.
-				// A spectral term may only walk the slot inside base..glow. That span is safe because it
-				// is a SATURATION move at constant flux (measured x1.03 over 24 hues); crossing to
-				// white is x2.66, a spectrum driving BRIGHTNESS through the palette, which is the
-				// blinking the mixer already had to be rescued from once.
+				// Keep spectral colour modulation in the nearly constant-flux base..glow span.
 				const hot = lerp(SLOT.base, SLOT.glow, clamp(tilt * 1.3));
 
 				// Two incommensurate sines per centre: organic drift, still deterministic.

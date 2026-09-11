@@ -7,15 +7,8 @@ import { Follower, Presence, PulseEnv } from '../dsl/env.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
- * Figure/ground reversal, held: the ring blazes while the centre beam goes dark, so the
- * room's middle reads as a silhouette against its own edge. The documented rap-climax
- * look (Saint Pablo's figure against red fog, Stormzy's sculptural key light), and the
- * catalog's second "maximum by subtraction" after stopTime - that one withholds motion,
- * this one withholds the middle of the room.
- *
- * Deliberately static: the practice literature has the peak arriving as a discontinuity
- * in COVERAGE and COLOUR, never as acceleration. The only things that move are the
- * edge's level breathing with the record and a filament push toward white on each kick.
+ * Hold a bright ring around a dark beam. Peak contrast comes from coverage and colour,
+ * with only level and a kick filament moving.
  */
 export const silhouette: EffectDef = {
 	id: 'silhouette',
@@ -26,23 +19,19 @@ export const silhouette: EffectDef = {
 		energy: 5,
 		sections: ['drop'],
 		minBars: 0,
-		// Held, not burst: this is the whole point against chromaBurst's two bars. The
-		// peak's opening cue takes this length, so the inversion owns the phrase.
+		// Hold through the peak phrase instead of behaving as a short burst.
 		maxBars: 8,
 		peakReserved: true,
 		activity: 0.5,
-		// The rap-climax look serves the impact treatment; an anthem chorus that arrives
-		// as light wants its centre lit, not withheld.
+		// Reserve for impact peaks; bloom arrivals need the centre lit.
 		peakStyle: 'slam'
 	},
 	params: [INTENSITY, param('depth', 'Contrast depth', 0.85)],
 	create(g) {
-		// The edge breathes with the record: spectrum, not the beat envelope, because a
-		// held look whose level can only move per beat reads as a poster, not a room.
+		// Follow the spectrum so the held edge articulates inside the bar.
 		const breath = new Follower(0.5, 0.12);
 		const push = new PulseEnv();
-		// The push answers the kick and rests with it; the HOLD does not need the kit at
-		// all, which is why this declares no taste.kit - a beatless peak still holds.
+		// Only the kick push requires kit; a beatless peak must retain the hold.
 		const kit = new Presence();
 
 		return {
@@ -59,16 +48,9 @@ export const silhouette: EffectDef = {
 				if (f.beat && playing > 0.08) push.fire(playing);
 				const v = push.decay(f.dt, f.beatPeriod, 1.6);
 
-				// Edge: a saturated hold that each kick pushes toward white, cooling back the
-				// way a filament does. Centre: near-black, and the kick deepens it - the
-				// inversion pulse. Contrast moves, the field never does.
-				//
-				// The hold sits well under full on purpose. At the peak's intensity the master
-				// budget is the whole range, and a hold that already reaches white leaves the
-				// push nowhere to go: measured, the ring sat at a mean of 141 bytes for eight
-				// bars and the kicks were invisible on it.
-				// A touch of white on the push, not a walk to it: the hold is one colour and the
-				// kick moves its level, or every beat reads as the room changing colour.
+				// Keep the hold below full scale to leave headroom for kicks. Add only a touch
+				// of white
+				// so the push reads as level in one hue; the beam darkens for contrast.
 				const edgeSlot = lerp(SLOT.accent, SLOT.white, v * 0.3);
 				const edgeLevel = clamp(0.3 + 0.16 * level + 0.5 * v) * (0.5 + p.intensity * 0.4);
 				const coreLevel = 0.05 * (1 - p.depth * 0.85) + 0.03 * (1 - v);

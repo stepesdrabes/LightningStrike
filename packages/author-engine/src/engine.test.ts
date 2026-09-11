@@ -402,20 +402,11 @@ describe('punctuation', () => {
 	});
 });
 
-/**
- * The engine and the linter are the same codebase, so a show the engine writes and the linter
- * refuses is not a difference of opinion, it is a bug. It is also the worst kind: the app
- * discards a rejected show, so the room goes dark with nothing on screen to say why. This
- * happened for real on a 79 bpm track, because the planner sized a strobe against one bar and
- * placed it at another.
- */
+/** The engine's output must lint clean, or the app discards the show and the room goes dark. */
 describe('the engine never writes a show its own linter refuses', () => {
 	const effectMap = new Map(BUILT_IN_EFFECTS.map((e) => [e.id, e]));
 
-	// Slow tempos are where the seconds caps bite, and a drifting grid is where sizing a hit at
-	// the wrong bar shows up. 58 bpm with 2% drift is inside the range real tracks reach.
-	// 80 bpm puts one bar at exactly the 3 s strobe cap and 110 puts two bars there, which is
-	// where an off-by-one-bar measurement shows up at all.
+	// Slow and drifting grids straddle duration caps, exposing hits sized at the wrong bar.
 	for (const bpm of [58, 70, 80, 96, 110, 128, 175]) {
 		for (const drift of [0, 0.03]) {
 			it(`at ${bpm} bpm${drift ? ' on a drifting grid' : ''}`, () => {

@@ -5,7 +5,7 @@ import { clamp, lerp, smoothstep } from '../dsl/math.ts';
 import { Presence, PulseEnv } from '../dsl/env.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-feat()/** Seconds the corners hold their peak before sliding back: past the eye's integration window. */
+/** Seconds the corners hold their peak before sliding back: past the eye's integration window. */
 const HOLD = 0.06;
 
 /**

@@ -30,23 +30,14 @@ import { isLocal } from '$lib/server/access.ts';
 import type { RequestHandler } from './$types';
 
 /**
- * How long a sync may be missing before the room stops believing the music is playing.
- *
- * A browser posts one every 500 ms while it has the tab open. Closing the tab therefore looks
- * exactly like a track that never ends, and the room used to hold that last cue for as long as the
- * process lived. Two missed syncs is a tab that has gone, and a room that has gone with it should
- * rest rather than freeze.
+ * Browser syncs arrive every 500 ms; expire missing syncs so a closed tab eventually rests the
+ * room.
  */
 const SYNC_STALE_MS = 3000;
 
 /**
- * Hardware output runs its own copy of the show, server-side.
- *
- * The browser cannot open a UDP socket, and streaming 60 frames a second of pixels over a
- * socket to the server would be silly when the show is fully deterministic: given the same
- * analysis, the same show and the same position, this renders bit-identical bytes to the
- * preview. So the browser only reports where the audio actually is, and the room keeps
- * running even if the tab goes away.
+ * Render deterministic shows server-side for UDP output; the browser supplies only audio
+ * position.
  */
 class Output {
 	private geometry = buildGeometry(DEFAULT_ROOM);
@@ -99,13 +90,11 @@ class Output {
 		this.lounge = s.lounge;
 		this.rest = s.rest;
 		this.director.ambientSettings = s.ambient;
-		// Straight onto the director, which re-reads them every frame, so a slider moves the room
-		// under a running show rather than at the next track.
+		// Update the director directly so running output follows settings immediately.
 		this.director.brightness = s.outputBrightness;
 		this.director.contrast = s.outputContrast;
 		this.director.lampBrightness = s.outputLampBrightness;
-		// The interval is the clock, so a new rate means a new interval. Only when it has actually
-		// changed: re-arming on every settings write would drop a frame each time a slider moved.
+		// Restart the clock only when FPS changes; unrelated settings must not drop a frame.
 		if (s.outputFps !== this.fps) {
 			this.fps = s.outputFps;
 			if (this.running) this.arm();
@@ -121,12 +110,7 @@ class Output {
 		this.director.load(analysis, show);
 	}
 
-	/**
-	 * Forget the track without stopping the room.
-	 *
-	 * A board joined with nothing playing has no show to render, and a director with none takes
-	 * the ambient scenes immediately rather than waiting out the rest grace.
-	 */
+	/** Clear the track while retaining the loop; a showless director enters ambient immediately. */
 	clearShow(): void {
 		this.registry.clearGenerated();
 		this.director.clearShow();
@@ -134,11 +118,8 @@ class Output {
 	}
 
 	/**
-	 * `bounceHost` gets its own sink rather than a target on the first one.
-	 *
-	 * They are two devices: independent PUSH, independent sequence, and a lamp that keeps working
-	 * when the boards driving the frame are unplugged. It is always DDP - one pixel is not worth
-	 * a universe - and it is skipped entirely when no lamp is configured.
+	 * Bounce uses a separate one-pixel DDP sink with independent PUSH/sequence and frame-device
+	 * availability.
 	 */
 	async start(
 		targets: DdpTarget[],
@@ -165,12 +146,8 @@ class Output {
 	}
 
 	/**
-	 * (Re)start the render clock.
-	 *
-	 * This loop is the only clock, and it sends directly. A separate re-clocking sender on top
-	 * would double the per-frame work in one event loop and cost a third of the frame rate; the
-	 * keep-alive it exists to provide is already inherent here, because this loop runs whether or
-	 * not a browser is attached.
+	 * Send directly from the render clock; a second sender duplicates work and its keepalive is
+	 * unnecessary.
 	 */
 	private arm(): void {
 		if (this.timer) clearInterval(this.timer);
@@ -206,9 +183,8 @@ class Output {
 	}
 
 	/**
-	 * The trim rides along on the sync rather than needing the stream restarted, so it can be
-	 * dialled against the real strips while they are lit. Undefined leaves it alone: a sync that
-	 * does not mention it is not asking for zero.
+	 * Apply trim during sync without restarting output; an absent value preserves the current
+	 * trim.
 	 */
 	sync(position: number, playing: boolean, offsetMs?: number): void {
 		this.position = position;
@@ -233,16 +209,8 @@ class Output {
 const output = new Output();
 
 /**
- * Cut a region up between however many boards are driving it.
- *
- * Two kinds of cut meet here and neither is optional. A region can already be several runs of
- * the frame, because the perimeter is a ring and a corner can straddle its seam; and however
- * many runs that is, several boards split the total between them. So this walks the region's
- * pixels once and hands each board a contiguous stretch of its own buffer, which is why
- * `deviceFirstLed` is tracked per host rather than assumed to be zero.
- *
- * Several boards at all because WS2812 is 30 us per LED, so 1320 on one data line caps at
- * 25 Hz and 60 fps needs roughly one output per strip.
+ * Split all region spans across board shares, tracking contiguous device offsets even when a
+ * ring region crosses its seam.
  */
 function targetsFor(region: RoomRegion, hosts: string[]): DdpTarget[] {
 	const per = Math.ceil(region.count / hosts.length);
@@ -269,12 +237,8 @@ function targetsFor(region: RoomRegion, hosts: string[]): DdpTarget[] {
 }
 
 /**
- * Lay the same cut out as sACN universes.
- *
- * They run on across the whole fixture rather than restarting at each board, because a universe
- * is a global address once the packets go to a multicast group: two controllers both claiming
- * universe 1 is one room lit twice and the other half dark. 170 pixels each, so a pixel never
- * straddles the boundary.
+ * Use 170 pixels per universe so pixels never straddle boundaries. Universe IDs remain global
+ * across boards for multicast addressing.
  */
 function universesFor(targets: DdpTarget[]) {
 	const firstForHost = new Map<string, number>();
@@ -306,18 +270,11 @@ async function loadTrack(id: string): Promise<{ analysis: TrackAnalysis; show: S
 	}
 }
 
-/**
- * The hardware follows the queue on its own.
- *
- * The queue is server state and so is this, so there is no reason for a track change to have
- * to round-trip through a browser. It also means the room keeps up with a skip made from
- * somebody's phone even when no tab is open.
- */
+/** Follow the server queue directly so track changes need no browser relay. */
 queue.subscribe((state) => {
 	if (!output.running) return;
 	const item = currentItem(state);
-	// Before the track-change early-outs: the flag can change on the row that is already
-	// playing, which is exactly what the override button does.
+	// Refresh trust before same-track early returns so the host override applies immediately.
 	output.loungeOnly = item?.loungeOnly ?? false;
 	const id = item?.trackId ?? null;
 	if (!id || id === output.trackId) return;
@@ -330,13 +287,7 @@ queue.subscribe((state) => {
 	});
 });
 
-/**
- * Lounge and the resting colour reach the strips without a browser relaying them.
- *
- * They are settings rather than queue state, and settings are fetched once at mount, so a change
- * made in one tab would otherwise never arrive here at all - and with no tab open there would be
- * nothing to relay it.
- */
+/** Subscribe to settings directly so lounge and ambient changes reach output without a browser. */
 settings.subscribe((s) => output.apply(s));
 
 export const GET: RequestHandler = async () => json(output.status);
@@ -368,20 +319,15 @@ export const POST: RequestHandler = async (event) => {
 	if (!body.hosts?.length) error(400, 'at least one host required');
 
 	/*
-	 * A track is optional.
-	 *
-	 * Connecting a board is about the room, not about a song: somebody arriving before the music
-	 * has started should get the resting scenes on their strips rather than a 400 telling them to
-	 * queue something first. A named track that has no show cached is still an error, because that
-	 * one is a request the server cannot honour rather than a room with nothing playing.
+	 * Allow no track for pre-music ambient output; an explicitly requested missing show remains an
+	 * error.
 	 */
 	const id = body.trackId ?? null;
 	if (id !== null && !isValidId(id)) error(400, 'trackId is not a valid id');
 	const loaded = id === null ? null : await loadTrack(id);
 	if (id !== null && !loaded) error(404, 'no analysis or show cached for this track');
 
-	// The stream may be started long after the settings were last written, and the subscriptions
-	// above only ever hear changes. This is where it catches up with what is already stored.
+	// Load persisted settings at stream start; subscriptions report only subsequent changes.
 	output.apply(await settings.read());
 	output.loungeOnly = currentItem(await queue.ready())?.loungeOnly ?? false;
 	if (loaded && id !== null) {
@@ -400,8 +346,7 @@ export const POST: RequestHandler = async (event) => {
 		: (await settings.read()).outputProtocol;
 	const bounceHost = hardware.link('bounce').status.host;
 	await output.start(targetsFor(region, body.hosts), body.offsetMs ?? 0, protocol, bounceHost);
-	// The first host is the one The Frame's readout is about: a board only reports to whoever
-	// sends it DDP, so on a split fixture each would need its own listener and its own port.
+	// The Frame readout follows the first host in a split fixture.
 	hardware.link('frame').setHost(body.hosts[0]);
 	hardware.setStreaming(true);
 	return json(output.status);

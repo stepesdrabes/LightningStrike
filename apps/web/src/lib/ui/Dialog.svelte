@@ -12,12 +12,7 @@
 		open?: boolean;
 		onclose: () => void;
 		labelledBy?: string;
-		/**
-		 * How far the room behind is dimmed.
-		 *
-		 * `light` is for a dialog whose controls are about the room: a 60% scrim over the one thing
-		 * you are judging makes a colour decision impossible.
-		 */
+		/** Use a light scrim for room controls so dimming cannot distort colour decisions. */
 		veil?: 'full' | 'light';
 		width?: string;
 		children: Snippet;
@@ -25,11 +20,7 @@
 
 	let panel: HTMLDivElement | undefined = $state();
 
-	/**
-	 * Focus is trapped rather than merely moved: the dialog sits over a screen full of
-	 * tabbable controls, and tabbing out of a command palette into the cue table behind it
-	 * leaves the keyboard driving something the user cannot see.
-	 */
+	/** Trap focus so keyboard input cannot reach obscured controls behind the dialog. */
 	function onkeydown(e: KeyboardEvent) {
 		if (!open) return;
 		if (e.key === 'Escape') {
@@ -56,13 +47,7 @@
 
 <svelte:window on:keydown={onkeydown} />
 
-<!--
-	Render this at the page root, not inside a panel.
-
-	`position: fixed` is relative to the nearest ancestor with a filter, transform or
-	backdrop-filter, and every panel in this app blurs what is behind it. A dialog written
-	inside the queue rail centres itself on the rail and is clipped by it.
--->
+<!-- Mount at the page root: panel filters create containing blocks that clip fixed dialogs. -->
 {#if open}
 	<div class="backdrop" class:light={veil === 'light'} onclick={onclose} role="presentation"></div>
 	<div

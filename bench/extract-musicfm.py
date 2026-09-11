@@ -1,6 +1,4 @@
-# Dev-time embedding extraction for the learned section labeller (P6). Never shipped:
-# this produces training data for the temporal head; production inference is the ONNX
-# export once the head has proven itself on grouped cross-validation.
+# Development embedding extraction for the temporal section head; inference uses ONNX.
 #
 #   uv run --python 3.12 --with torch --with torchaudio --with transformers \
 #     --with einops python bench/extract-musicfm.py
@@ -34,11 +32,9 @@ model = MusicFM25Hz(
 )
 model = model.to(device).eval()
 
-# Layer 9 of the 13 hidden states (embeddings + 12 conformer layers): the 8-10 band is
-# where both our own probe and Sony's landed; 9 is the centre of it.
+# Layer 9 centres the 8-10 range favoured by the local and Sony probes.
 LAYER = 9
-# 30 s windows with 5 s overlap-discard on each side, so every frame is seen with real
-# context and the seams do not carry edge effects.
+# Discard 5 s padding around 30 s windows to avoid artificial edge effects at joins.
 WIN = 30 * 24000
 PAD = 5 * 24000
 
@@ -57,7 +53,6 @@ def decode(path: Path) -> np.ndarray:
 def embed(path: Path) -> np.ndarray:
     wav = torch.from_numpy(decode(path))
 
-    frames_per_win = None
     chunks = []
     at = 0
     while at < wav.shape[0]:
@@ -72,8 +67,6 @@ def embed(path: Path) -> np.ndarray:
         want_tokens = int(round(min(WIN, wav.shape[0] - at) / 24000 * 25))
         h = h[pad_tokens_lo : pad_tokens_lo + want_tokens]
         chunks.append(h)
-        if frames_per_win is None:
-            frames_per_win = h.shape[0]
         at += WIN
     seq = np.concatenate(chunks, axis=0)
     # Mean-pool by 3 to ~8.33 Hz: SongFormer's rate, and a third of the disk.

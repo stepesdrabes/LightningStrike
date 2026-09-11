@@ -17,10 +17,7 @@ import {
 } from '../packages/analysis/src/structure.ts';
 import { arrivalStrengths } from '../packages/analysis/src/structure.ts';
 
-/**
- * Show the segmenter's boundaries next to the per-bar arrival evidence, so a boundary that
- * misses a hit by a bar is visible as numbers rather than as a feeling in the room.
- */
+/** Print section boundaries beside per-bar arrival evidence to expose one-bar offsets. */
 const id = process.argv[2];
 if (!id) throw new Error('usage: node bench/boundlab.ts <trackId> [fromBar] [toBar]');
 const from = Number(process.argv[3] ?? 0);
@@ -72,10 +69,8 @@ const rawKicks = new Int32Array(bars.count);
 const sim = similarityMatrix(bars);
 const rough = segmentBars(sim, bars);
 const moves: BoundaryMove[] = [];
-// The floor the pipeline actually runs at. Left at the function's own default this printed
-// a different set of moves from the shipped analyser and read as a disagreement about the
-// music. No vocal column or hook list: the bench fetches no contexts, so the lyric evidence
-// analyze.ts passes here simply does not exist.
+// Match the shipped analyzer's floor. This corpus has no contexts, so lyric evidence is
+// absent.
 const refined = refineBoundaries(rough, bars, rawKicks, moves, DEFAULT_TUNING.refineFloor);
 
 console.log('rough bounds:  ', rough.join(' '));

@@ -84,10 +84,7 @@ it('addresses each target into its own device buffer', async () => {
 	expect(received.map((p) => p.readUInt16BE(8))).toEqual([900, 720]);
 });
 
-/**
- * A region that wraps the perimeter is two runs of the frame and one place in the room, so it
- * reaches one board as two targets. That board must still present once.
- */
+/** Two targets from a wrapping region still belong to one device and require one PUSH. */
 it('pushes once per device, however many targets it is cut into', async () => {
 	const sink = createDdpSink({
 		targets: [

@@ -13,16 +13,14 @@ use crate::irq::Irqs;
 
 pub const KIND: &str = "sk6812";
 
-/// Where the fixture is cut between the data lines, which is where the reels are cut too: A is
-/// north and east, B is south and west, C is the beam. An address is 40 us, so 720 on one line
-/// would be 28.8 ms; three lines written together cost the longest of them, 12.0 ms.
+/// A: north/east; B: south/west; C: beam. At 40 us/address, parallel lines take the longest
+/// line's 12 ms instead of 28.8 ms for all 720 addresses in series.
 const LINE_A: usize = 300;
 const LINE_B: usize = 300;
 const LINE_C: usize = 120;
 
-/// The five runs where `packages/core/src/geometry.ts` puts them, at `DEFAULT_ROOM`'s 60 LED/m,
-/// and what each takes in the selftest: N red, E green, S blue, W white, beam magenta. 96 is well
-/// under full scale, so the whole pass draws about a quarter of what the frame can.
+/// Runs match core geometry at 60 LED/m. Selftest colours: N red, E green, S blue, W white,
+/// beam magenta; duty 96 keeps draw well below full scale.
 #[cfg(feature = "selftest")]
 const RUNS: [(usize, usize, [u8; 4]); 5] = [
 	(0, 180, [96, 0, 0, 0]),
@@ -32,12 +30,8 @@ const RUNS: [(usize, usize, [u8; 4]); 5] = [
 	(600, 120, [96, 0, 96, 0]),
 ];
 
-/// The Frame: 3 x 2 m of SK6812 RGBWW at 60 LED/m, on GP2, GP3 and GP4 through the level shifter.
-///
-/// B and the beam are laid against the buffer. The perimeter is one loop cut in half, so its two
-/// halves start at opposite corners; running B back the other way, and the beam with it, puts the
-/// start of every line at the corner the board sits on. Reversed in copper and not here, the room
-/// shows its own mirror image.
+/// 3 x 2 m SK6812 RGBWW frame, 60 LED/m, GP2/3/4 through level shifters. B and beam run
+/// opposite the host buffer so each line begins at the board corner; software must reverse them.
 pub struct Fixture {
 	a: RgbwPioWs2812<'static, PIO1, 0, LINE_A, Rgbw>,
 	b: RgbwPioWs2812<'static, PIO1, 1, LINE_B, Rgbw>,
@@ -55,8 +49,7 @@ impl Fixture {
 	pub const BYTES: usize = Self::PIXELS * 3;
 	/// One write is 12 ms, so this is about as fast as the engine can run.
 	pub const ENGINE_PERIOD: Duration = Duration::from_millis(25);
-	/// Restore, because this fixture hangs there all year and a midnight power blip must not
-	/// relight it. Twinkle keeps the 0.1 out-of-box look.
+	/// Restore prevents power glitches relighting the room; Twinkle preserves the default boot look.
 	pub const DEFAULTS: LightState = LightState {
 		on: true,
 		colour: Colour::new(255, 180, 110),
@@ -66,8 +59,7 @@ impl Fixture {
 	};
 	pub const EFFECTS: &'static [EffectKind] = &EffectKind::ALL;
 
-	/// cyw43 holds PIO0 SM0 and DMA_CH0, so the lines take PIO1 and DMA_CH2 upward. The program
-	/// is loaded once and shared, so a fourth line costs a state machine and a DMA channel only.
+	/// cyw43 owns PIO0 SM0/DMA_CH0; strips use PIO1 and DMA_CH2+. Share one loaded PIO program.
 	pub fn claim(p: Peripherals) -> (Self, Board, Store) {
 		let mut pio = Pio::new(p.PIO1, Irqs);
 		let program = PioWs2812Program::new(&mut pio.common);
@@ -114,10 +106,8 @@ impl Fixture {
 		(fixture, board, Store { flash: p.FLASH, dma: p.DMA_CH1 })
 	}
 
-	/// Off by default the boot look is the engine's fade-in, which shows a line that is not
-	/// connected but not a run that is in the wrong place. `--features selftest` paints each of the
-	/// five runs its own colour for four seconds instead, which is the one look that shows a
-	/// swapped pair. The measured steps live in the `bench` build.
+	/// Optional selftest paints five runs for four seconds to reveal swapped wiring. Default boot
+	/// uses the remembered fade; detailed strip measurements belong to the bench build.
 	pub async fn selftest(&mut self) {
 		#[cfg(feature = "selftest")]
 		{
@@ -129,8 +119,7 @@ impl Fixture {
 		}
 	}
 
-	/// A range of the host's buffer, through the same flip `show` uses, so the pass tests the
-	/// firmware's mapping and the copper together rather than agreeing with itself.
+	/// Exercise the same reversal as show so selftest covers mapping and wiring together.
 	#[cfg(feature = "selftest")]
 	fn paint(&mut self, from: usize, count: usize, c: RGBW<u8>) {
 		for j in from..from + count {

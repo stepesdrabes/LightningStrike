@@ -14,10 +14,7 @@ export interface LedSinkStats {
 	lastError?: string;
 }
 
-/**
- * The 3D preview and the real strips are both sinks, fed the same bytes from the same
- * encode step. That is what makes "the sim matches the room" true by construction.
- */
+/** Preview and hardware consume the same encoded bytes. */
 export interface LedSink {
 	readonly kind: string;
 	open(): Promise<void>;

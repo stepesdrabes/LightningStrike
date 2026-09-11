@@ -19,10 +19,6 @@ function arrivals(count: number, quiet: number, peaks: Record<number, number> = 
 	return out;
 }
 
-/**
- * A similarity matrix from a material id per bar: alike bars resemble each other the way
- * a groove resembles itself, unalike bars the way a verse resembles a chorus.
- */
 function simFor(material: number[]): Float32Array {
 	const n = material.length;
 	const sim = new Float32Array(n * n);

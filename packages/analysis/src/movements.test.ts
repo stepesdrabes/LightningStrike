@@ -120,7 +120,7 @@ describe('repairGrid', () => {
 		const repaired = repairGrid(beats, downbeatsOf(truth));
 		expect(Array.from(repaired.beats).map((t) => Math.round(t * 1000))).toEqual(truth.map((t) => Math.round(t * 1000)));
 		const periods = Array.from(repaired.beats).slice(1).map((t, i) => t - repaired.beats[i]);
-		// Every interval is now one beat of the song, to the sample.
+
 		expect(Math.min(...periods)).toBeGreaterThan(period * 0.95);
 		expect(Math.max(...periods)).toBeLessThan(period * 1.05);
 		expect(repaired.repairedSeconds).toBeGreaterThan(30);
@@ -139,7 +139,7 @@ describe('repairGrid', () => {
 		const beats = [...noise, ...song];
 		const repaired = repairGrid(beats, downbeatsOf(song));
 		const before = Array.from(repaired.beats).filter((t) => t < songStart - 1e-6);
-		// The intro now walks the song's own period back to the top of the file.
+
 		for (let i = 1; i < before.length; i++) expect(before[i] - before[i - 1]).toBeCloseTo(0.5, 6);
 		expect(Array.from(repaired.beats).filter((t) => t >= songStart - 1e-6)).toEqual(song);
 		// No downbeat was invented in the filled stretch.
@@ -244,10 +244,6 @@ describe('proposeSeams', () => {
 	});
 });
 
-/**
- * A bar table for two songs that share nothing: each has its own timbre pattern and its own
- * pitch profile, and each repeats itself the way a song does.
- */
 function twoSongMaterial(barsA: number, barsB: number, sameHarmony = false) {
 	const dim = 64;
 	const count = barsA + barsB;
@@ -374,10 +370,8 @@ describe('judgeSeams', () => {
 
 describe('repairGrid: the fold and the model\'s downbeats', () => {
 	it('folds a doubled stretch onto the half the downbeats sit on', () => {
-		// Pátky: a 70 bpm song the tracker doubles for its last third, with every downbeat of
-		// the doubled stretch on the fast beats BETWEEN the slow ones. The fold that continues
-		// the previous phase drops exactly those beats, and the owner's chorus sat half a beat
-		// off every bar line.
+		// The doubled regime's downbeats lie between retained slow beats; folding must preserve
+		// that supported phase rather than blindly continuing the previous one.
 		const period = 60 / 70;
 		const truth = grid(0, 70, 120, 0);
 		const beats: number[] = [];

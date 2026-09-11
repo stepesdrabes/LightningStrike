@@ -1,12 +1,6 @@
 import type { ShowFrame } from '../contracts/frame.ts';
 
-/**
- * The spectrum, addressed by where a band sits rather than by its index.
- *
- * `u` runs 0 at the bottom of the analysed range to 1 at the top, interpolated between bands, so
- * an effect maps its own geometry onto the spectrum without knowing how many bands there are.
- * Mapping a strip's position straight onto `u` is the whole idiom.
- */
+/** Sample the spectrum at normalized frequency u (0..1), interpolating between bands. */
 export function bandAt(f: ShowFrame, u: number): number {
 	const s = f.spectrum;
 	const n = s.length;
@@ -36,14 +30,7 @@ export function spectrumPeak(f: ShowFrame): number {
 	return peak;
 }
 
-/**
- * Where the energy is sitting, 0 at the bottom of the range to 1 at the top.
- *
- * The spectral centroid, which is the one number that says "this passage is bright" without
- * saying how loud it is. Drive a hue walk or a position with it and the room follows the arrangement
- * opening up rather than following its level. Returns 0.5 on silence, because a centroid of
- * nothing has no meaning and snapping to an end of the range would read as a move.
- */
+/** Spectral centroid, 0..1. Silence returns 0.5 to avoid an artificial move to either edge. */
 export function spectralTilt(f: ShowFrame): number {
 	const s = f.spectrum;
 	const n = s.length;
@@ -57,12 +44,7 @@ export function spectralTilt(f: ShowFrame): number {
 	return total > 1e-6 ? weighted / total / (n - 1) : 0.5;
 }
 
-/**
- * How uneven the spectrum is, 0 when every band is level and 1 when one band has it all.
- *
- * What separates a single sustained note from a full arrangement at the same loudness, which is
- * most of what an intro needs to look like something rather than like a dimmer.
- */
+/** Spectral concentration: 0 for equal bands, 1 for all energy in one band. */
 export function spectrumFocus(f: ShowFrame): number {
 	const s = f.spectrum;
 	const n = s.length;

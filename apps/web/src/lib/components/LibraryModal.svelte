@@ -39,8 +39,7 @@
 	// Reading the disk is the ingest's job, so this reports what the ingest already recorded.
 	const hours = $derived(library.reduce((s, e) => s + (e.duration ?? 0), 0) / 3600);
 
-	// The dialog unmounts its contents but not this component, so the filter and any half-asked
-	// question would still be here on the way back in.
+	// Reset dialog-local state on reopen; only its contents unmount.
 	function close() {
 		query = '';
 		confirming = null;
@@ -107,8 +106,7 @@
 				{#if !entry.analysed}
 					<Badge variant="outline" title="Downloaded, not analysed">Raw</Badge>
 				{:else if !entry.current}
-					<!-- Worth saying here and nowhere else: it costs nothing but a wait, and only
-					     somebody looking at the whole cache would want to know before queueing it. -->
+
 					<Badge variant="warn" title="Cached against an older analysis; queueing it re-prepares">
 						Stale
 					</Badge>
@@ -118,8 +116,7 @@
 				{/if}
 
 				{#if confirming === entry.id}
-					<!-- In place rather than in a second dialog: the row being thrown away is the one
-					     thing the question is about, and it is already on screen. -->
+
 					<span class="ask">Delete the download and its analysis?</span>
 					<Button size="sm" variant="ghost" onclick={() => (confirming = null)}>Keep</Button>
 					<Button size="sm" variant="danger" onclick={() => remove(entry)}>
@@ -279,8 +276,7 @@
 		color: var(--muted-foreground);
 	}
 
-	/* Revealed on hover like the queue's row tools, so a list of forty is a list rather than a
-	   wall of buttons. Focus counts as hover, or the keyboard could never reach them. */
+	/* Show row tools on hover or focus so keyboard users can reach them. */
 	.tools {
 		display: flex;
 		gap: 2px;

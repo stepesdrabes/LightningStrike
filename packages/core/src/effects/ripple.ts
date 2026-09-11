@@ -12,14 +12,8 @@ const SPEED = 0.85;
 const CRESTS = 3;
 
 /**
- * One ring spreading from a point on the floor, every ten seconds or so.
- *
- * Computed in world space from each LED's real position rather than around the perimeter, so the
- * wavefront reaches the near wall before the far one and crosses the ceiling beam on its way -
- * which is the whole difference between a wave in a room and a chase around it.
- *
- * The origin is hashed from the ripple's own sequence number, so it never repeats and a seek lands
- * on exactly the ripple that belongs there. Sparse and mostly dark, hence `carries: false`.
+ * Compute waves in world space so walls and beam receive the front at physical distances.
+ * Hash each origin for deterministic seeks. Sparse output cannot carry a cue.
  */
 export const ripple: EffectDef = {
 	id: 'ripple',
@@ -56,7 +50,7 @@ export const ripple: EffectDef = {
 		let oy = 0;
 
 		const place = (n: number) => {
-			// Anywhere in the room, kept off the exact centre so the front is never symmetric.
+			// Keep origins off-centre to avoid symmetric wavefronts.
 			const a = hash01(n * 37 + 11) * Math.PI * 2;
 			const r = 0.25 + hash01(n * 91 + 7) * 0.7;
 			ox = Math.cos(a) * r * (g.extent * 0.35);

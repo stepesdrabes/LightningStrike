@@ -1,73 +1,28 @@
 /**
- * Where the bar count restarts, read from the model's own downbeat stream.
- *
- * One modal phase for a whole track is the assumption that nothing ever inserts or drops a
- * beat. Measured against Beat This's own downbeats, that assumption costs more than it looks:
- * the shipped uniform walk reproduces 39% of the model's downbeats on SICKO MODE, 40% on
- * Melanz, 52% on Safir and 32% on Cigo a kava - not because the model is confused about the
- * meter (85% of its downbeat gaps on SICKO MODE are exactly four beats) but because a single
- * four-beat walk cannot follow a reset, and every reset shifts everything after it.
- *
- * So the phase is chosen by dynamic programming: the state is each beat's position in the bar,
- * stepping on is free, and restarting the count costs a fixed price. That price is the whole
- * design. Too cheap and the walk chases every hesitation the model has; at the shipped cost 43
- * of 60 Harmonix tracks take NO reset at all, and every praised sentinel takes none - Le Freak,
- * EARFQUAKE, Pistacie, Vitej, Hannah Montana and Praha/Viden are all left exactly as they were.
- *
- * WHAT READS THIS. `analyze.ts` places a movement seam on the right beat with it, within a bar
- * of the mark or the detected seam, and since the 2026-09-08 round it also lets one song move
- * its bar line where the walk's runs pass `acceptedRestarts` below. Run UNRESTRICTED the walk
- * re-bars praised tracks: `bench/phasegrid.ts` scored it five worse, including a Killing In the
- * Name seam moved 0.64 s, because the raw walk chases every stretch where the model hedges the
- * half bar of a 2-bar loop. What the owner's second corpus showed is that the real changes
- * look nothing like the hedges - eight or more bars unanimous on a new residue, out of a run
- * that was unanimous on the old one, with no return - and the strictness that separates them
- * is what `acceptedRestarts` encodes: FE!N's first minute, Stíny's last chorus and bad guy's
- * coda are the model's own downbeats and the owner's marks to the beat; Higher's and
- * Immaterial's hedged stretches are left on the modal phase they were accepted on.
- *
- * It is at least the asymmetric voter the killed plateau detector's postmortem asked for: a
- * broadband onset vote is symmetric under a half-bar flip because a backbeat is, while a
- * downbeat head trained on annotated downbeats is not. On SICKO MODE its two restarts are the
- * owner's own two movement marks, and the first agrees with the kick/snare phase profile and
- * with the mark to within 0.02 s.
+ * Dynamic programming tracks bar phase: normal steps are free and restarts cost a fixed price.
+ * Unrestricted restarts can follow ambiguous two-bar loops, so callers use them near movement
+ * seams or through acceptedRestarts. Model downbeats supply asymmetric half-bar evidence
+ * that broadband onsets cannot.
  */
 
 /** One stretch of the beat stream that counts its bars from one place. */
-export interface PhaseSegment {
+interface PhaseSegment {
 	/** Index into the beat stream of this segment's first bar line. */
 	startBeat: number;
 	/** Which beat index mod `beatsPerBar` carries a downbeat inside this segment. */
 	phase: number;
 }
 
-/**
- * What restarting the count costs, in downbeats.
- *
- * Swept on 60 Harmonix, 19 judged and the two multi-song tracks: at 2 the walk takes four
- * resets on SICKO MODE where the room hears two, at 8 it gives up Melanz's; 4 is the middle
- * of a wide plateau and is the value the room has confirmed.
- */
+/** Restart cost in downbeats, tuned on Harmonix and judged tracks; four lies inside the stable plateau. */
 const PHASE_RESET_COST = 4;
 
-/**
- * What a bar line with no downbeat under it costs.
- *
- * Small on purpose: it only has to stop the walk inventing bar lines in a passage the model
- * said nothing about. Swept over 0, 0.15 and 0.35 the reset counts do not move.
- */
+/** A small missing-downbeat cost discourages invented bar lines without dominating restart evidence. */
 const EMPTY_BAR_LINE_COST = 0.15;
 
 /** Fewest downbeats worth running the walk over; below this the modal phase is all there is. */
 const MIN_DOWNBEATS = 8;
 
-/**
- * The phase of every beat, and where it restarts.
- *
- * `downbeats` are the model's, and are exactly a subset of `beats` (verified across the whole
- * cached corpus: 26197 of 26197 match to the sample), so they are matched by index rather than
- * by time and nothing here carries a tolerance.
- */
+/** Model downbeats are an exact subset of beats, so phase evidence uses indices without time tolerance. */
 export function phaseSegments(
 	beats: readonly number[] | Float64Array,
 	downbeats: readonly number[],
@@ -151,11 +106,7 @@ export interface PhaseRun {
 	share: number;
 }
 
-/**
- * The walk's segments as runs the caller can judge: how long each is and how unanimously the
- * model's downbeats back its phase. Residues are absolute (beat index mod `beatsPerBar`), so
- * two runs' phases compare directly.
- */
+/** Run support and duration, with absolute beat-index residues for direct phase comparison. */
 export function phaseRuns(
 	segments: readonly PhaseSegment[],
 	beats: readonly number[] | Float64Array,
@@ -188,43 +139,22 @@ export function phaseRuns(
 }
 
 /**
- * When a run is solid enough to say where the bar lines are on its own.
- *
- * Eight bars is two phrases, the length the downbeat literature asks a new residue to win
- * before a bar-pointer model may switch (Krebs, Böck), and the shortest stretch over which
- * the owner has ever confirmed a phase by ear; a run to the end of the record may be shorter,
- * because nothing after it can contradict it (Stíny's last chorus, half a bar off for its
- * eight bars). Unanimity at 85% with at least six downbeats: a house record's 2-bar loop has
- * the model hedging both halves at 50-60% for stretches (Higher, Immaterial), and that is
- * ambiguity, not a change.
+ * Require sustained agreement on a new residue: short or 50-60% runs can be two-bar-loop ambiguity.
+ * A terminal run may be shorter because no later run can contradict it.
  */
 const SOLID_SHARE = 0.85;
 const SOLID_MIN_DOWNBEATS = 6;
 const SOLID_MIN_BARS = 8;
 const SOLID_TAIL_BARS = 6;
-/**
- * And the model has to be SAYING something across the run: it emits a downbeat on nearly every
- * bar it is sure of, and a run where it skips a third of them is a quiet tail it is guessing
- * through. Safír's outro carried 11 downbeats over 16 bars on a new residue, and re-barring
- * it a beat later lost the owner's accepted outro to the DP for nothing audible.
- */
+/** Require downbeats on most bars; sparse tail detections cannot establish a new phase. */
 const SOLID_DENSITY = 0.7;
 /**
- * The run whose phase the track opens on needs only a majority, not unanimity: bad guy's
- * verses sit at 78% on one residue for 150 s and the rest is the loop's other half; an
- * opening under this is noise the first solid run reads for it (Higher's first minute at 55%).
- * The same majority over four phrases or more is a BODY, and a body may change the phase too:
- * Lose Yourself opens with fifteen bars of piano on one residue and spends its remaining
- * hundred at 83% on another, and holding the intro's phase over the song put every boundary
- * of the song a beat late.
+ * Opening phase needs a majority; a long body with the same majority may also override an intro.
+ * A weaker opening defers to the first solid run.
  */
 const OPENING_SHARE = 0.6;
 const BODY_BARS = 32;
-/**
- * A change of phase is a change only if the run before it did not already carry the new
- * residue: a reference with a quarter of its downbeats on the incoming phase was ambiguous,
- * and the incoming run is the model settling, not the record moving its bar line.
- */
+/** A residue already common in the reference is resolved ambiguity, not a new bar phase. */
 const AMBIGUOUS_SHARE = 0.25;
 
 function solid(run: PhaseRun, tail: boolean): boolean {
@@ -234,11 +164,8 @@ function solid(run: PhaseRun, tail: boolean): boolean {
 }
 
 /**
- * The run that says where the track's bars start: the first with a majority over at least
- * eight bars, else the first solid one. Null when nothing qualifies, and the modal phase is
- * all there is. FE!N opens with nine bars of downbeats on one residue and spends the rest of
- * the record on another; the modal phase put its first minute a beat off, and every one of
- * the owner's four off-grid marks there was the model's own downbeat.
+ * Opening phase: first majority run of at least eight bars, else first solid run, else null
+ * for the modal fallback.
  */
 export function openingRun(runs: readonly PhaseRun[]): PhaseRun | null {
 	const majority = runs.find((r) => r.share >= OPENING_SHARE && r.bars >= SOLID_MIN_BARS);
@@ -247,17 +174,9 @@ export function openingRun(runs: readonly PhaseRun[]): PhaseRun | null {
 }
 
 /**
- * The restarts that are the record moving its bar line, as beat indices where the count starts
- * again. Read from the opening run onward:
- *
- * - a run too short or too divided to be solid changes nothing: the count before it carries
- *   through (the intro of Killing In the Name wanders for thirteen bars);
- * - a solid run on a residue the reference run already carried a quarter of the time is the
- *   model settling an ambiguity, not a change;
- * - a solid run half a bar off that later returns to the reference's residue is the 2-bar
- *   loop heard from its other half (Immaterial's second minute, T.N.T.'s riff), unless the
- *   caller says a seam sits there, where the record really did restart;
- * - anything else solid is a change, and the run becomes the reference.
+ * Accepted restart beat indices. Ignore short/divided runs and residues already common in the
+ * reference. A half-bar shift that returns is loop ambiguity unless a seam corroborates it.
+ * Each accepted solid run becomes the reference.
  */
 export function acceptedRestarts(
 	runs: readonly PhaseRun[],
@@ -289,11 +208,7 @@ export function acceptedRestarts(
 	return out;
 }
 
-/**
- * Every bar line the segments imply, as beat indices.
- *
- * The walk between two restarts is uniform, so a segment is its own anchor plus a stride.
- */
+/** Bar-line beat indices: each phase segment walks uniformly from its own anchor. */
 export function barLinesFrom(
 	segments: readonly PhaseSegment[],
 	beatCount: number,

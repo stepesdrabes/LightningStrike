@@ -47,9 +47,7 @@ describe('gridTrust', () => {
 	});
 
 	it('lets a fast honest arrangement through', () => {
-		// cool (Grey256): 16 sections in 180 s at 160 bpm, 5.33 a minute, 4/4 at meter
-		// confidence 1.00. The rate is counted in wall-clock minutes and a fast track cuts
-		// more bars into one, which is not fragmentation.
+		// Fast, correctly metered tracks can exceed five sections/minute without fragmentation.
 		expect(
 			gridTrust(sketch({ duration: 180, sections: 16, meterConfidence: 1, bpm: 160 })).trusted
 		).toBe(true);
@@ -79,8 +77,7 @@ describe('gridTrust', () => {
 	});
 
 	it('trusts a fragmented grid the published tempo corroborates', () => {
-		// HUMBLE.: 16 sections in 177 s are its stop-time drops, at meter confidence 0.99 and
-		// 150 bpm against Deezer's 149.8. Without the catalogue it reads as a wreck.
+		// Published BPM corroborates this busy stop-time arrangement.
 		const humble = sketch({ duration: 177, sections: 16, meterConfidence: 0.99, bpm: 150 });
 		expect(gridTrust(humble).trusted).toBe(false);
 		expect(gridTrust(humble, 149.8).trusted).toBe(true);

@@ -1,17 +1,12 @@
-// The protocol instrument for the hand-labelling loop: score a labeller against the
-// owner's hand-drawn maps on the STRICT nine-kind vocabulary, in the time domain
-// (owner times are authoritative; a grid change cannot poison this), with the columns
-// the P6 postmortem demanded - per-kind F1, a confusion matrix, and a DEGENERACY row,
-// because single-label collapse is the failure corpus metrics missed. judgemap stays
-// the quick per-track readout; this is the one evaluations are declared against.
-//
-//   MV_CACHE_DIR=<cache> node bench/mapscore.ts
+// Score owner maps by authoritative time and strict nine-kind labels; report F1, confusion and
+// collapse.
+// MV_CACHE_DIR=<cache> node bench/mapscore.ts
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { SECTION_KINDS } from '@mv/core';
 
-const cache = process.env.MV_CACHE_DIR ?? join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache();
 const judgeDir = join(cache, 'judge');
 if (!existsSync(judgeDir)) throw new Error(`no judge dir at ${judgeDir}`);
 

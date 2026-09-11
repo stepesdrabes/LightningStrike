@@ -1,14 +1,11 @@
 import { RealFft } from './fft.ts';
 
 /**
- * The 16 kHz mel frontend for the Discogs-EffNet genre model, matching Essentia's
- * TensorflowInputMusiCNN chain exactly: librosa melspectrogram(sr=16000, n_fft=512,
- * hop_length=256, power=2.0, htk=False, norm='slaney', fmin=0, fmax=8000), then
- * log10(1 + 10000 x). The model graph does not contain this frontend, so every constant
- * here is part of the model contract rather than a tuning choice.
+ * Match Essentia TensorflowInputMusiCNN: 16 kHz, FFT 512, hop 256, power 2, Slaney mel
+ * 0-8000 Hz, then log10(1 + 10000*x). These constants are model contracts, not tuning.
  */
 
-export const MEL_RATE = 16000;
+const MEL_RATE = 16000;
 export const MEL_BANDS = 96;
 const N_FFT = 512;
 const HOP = 256;
@@ -47,12 +44,8 @@ function buildPolyphase(): Float32Array {
 }
 
 /**
- * Windowed-sinc resample from the analysis rate to 16 kHz.
- *
- * Linear interpolation is not good enough here: its high-frequency droop and aliasing land
- * directly in the mel bands a spectral model reads, and the log compression amplifies quiet
- * errors. A polyphase table makes the sinc evaluation a one-off, so the per-sample work is
- * 32 multiply-adds.
+ * Windowed-sinc resampling avoids aliasing and high-frequency droop in model mel bands.
+ * A polyphase table precomputes the 32-tap kernels.
  */
 export function resampleTo16k(mono22k: Float32Array): Float32Array {
 	polyphase ??= buildPolyphase();
@@ -100,11 +93,7 @@ interface MelBand {
 	coef: Float32Array;
 }
 
-/**
- * 96 Slaney-normalised triangles over 0..8000 Hz, stored as per-band bin ranges because the
- * triangles are narrow: iterating all 257 bins per band would spend 90% of the mel pass on
- * zeros.
- */
+/** 96 Slaney-normalised triangles, 0-8000 Hz. Store nonzero bin ranges to skip sparse weights. */
 function melBands96(): MelBand[] {
 	const bins = N_FFT / 2 + 1;
 	const melMax = hzToMel(MEL_RATE / 2);
@@ -136,11 +125,7 @@ function melBands96(): MelBand[] {
 	return bands;
 }
 
-/**
- * Symmetric Hann (scipy-style), which is what Essentia's Windowing applies. The periodic
- * variant in fft.ts is for overlapped resynthesis; this frontend must match the training
- * pipeline, not COLA.
- */
+/** Use Essentia's symmetric Hann; fft.ts uses a periodic window for COLA. */
 function symmetricHann(size: number): Float32Array {
 	const w = new Float32Array(size);
 	for (let i = 0; i < size; i++) w[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (size - 1)));
@@ -148,10 +133,8 @@ function symmetricHann(size: number): Float32Array {
 }
 
 /**
- * log10(1 + 10000 mel) power-mel spectrogram of 16 kHz mono, frames x 96 bands row-major.
- *
- * Frame f is centred on sample f*hop with zero padding past either end, not reflect: the
- * FrameCutter the model was trained behind pads with silence.
+ * 16 kHz mono to frame-major 96-band log10(1 + 10000 * mel power). Centre frames at f * hop
+ * with zero padding, matching the training FrameCutter.
  */
 export function melSpectrogram96(mono16k: Float32Array): { frames: number; data: Float32Array } {
 	const bands = melBands96();

@@ -10,12 +10,8 @@ export const STRIP_VERTEX = /* glsl */ `
 `;
 
 /**
- * Two readings of the same strip, crossfaded by camera distance the way focus is.
- *
- * Far away, the linear-filtered texture is the frosted diffuser the eye actually sees across a
- * room. Up close a real strip resolves into discrete emitters behind the frost, so the near
- * reading samples the LED's own texel and shades a dot around it, with the space between dots
- * carrying only bleed.
+ * Blend from discrete emitter texels up close to the linear-filtered diffuser at room
+ * distance.
  */
 export const STRIP_FRAGMENT = /* glsl */ `
 	uniform sampler2D uLed;

@@ -4,17 +4,12 @@ import type { LedFrame, LedSink, LedSinkStats } from '@mv/core';
 
 export const SACN_PORT = 5568;
 
-/**
- * E1.31 carries 512 channels per universe, but every pixel controller worth pointing this at
- * (Falcon, Advatek, WLED, xLights' own output) defaults to 170 RGB pixels and leaves the last
- * two channels unused, so a pixel never straddles a universe boundary. Packing all 512 is
- * legal and is how you get a fixture that is one LED out of step from universe two onward.
- */
+/** 170 RGB pixels fit 510 DMX channels; leave two unused so pixels never straddle universes. */
 export const SACN_PIXELS_PER_UNIVERSE = 170;
 
 /**
- * Root, framing and DMP layers, up to and including the start code at byte 125. The channels
- * begin at 126, and the start code is counted as the first property value rather than as data.
+ * Header through the start code at byte 125; channels start at 126 and exclude that property
+ * value.
  */
 const HEADER = 126;
 const ACN_ID = 'ASC-E1.17';
@@ -24,12 +19,8 @@ const VECTOR_DMP_SET_PROPERTY = 0x02;
 const ADDRESS_DATA_TYPE = 0xa1;
 const DEFAULT_PRIORITY = 100;
 
-export interface SacnTarget {
-	/**
-	 * Unicast address of the controller. Left out, the universe's own multicast group is used,
-	 * which is how sACN is usually deployed and the only form that reaches several controllers
-	 * without naming each one.
-	 */
+interface SacnTarget {
+	/** Unicast host, or the universe multicast group when omitted. */
 	host?: string;
 	port?: number;
 	/** Slice of the global frame this device owns. */
@@ -41,7 +32,7 @@ export interface SacnTarget {
 	universe: number;
 }
 
-export interface SacnOptions {
+interface SacnOptions {
 	targets: readonly SacnTarget[];
 	/** Shown in receivers' source lists. */
 	sourceName?: string;
@@ -65,12 +56,7 @@ interface Device {
 	pixels: number;
 }
 
-/**
- * The same `LedFrame` the DDP sink and the preview take, on the wire the pixel-controller
- * industry standardised on. DDP stays the default - three packets a frame against eight, and
- * no universe arithmetic to get wrong - but a controller that speaks only E1.31 is no longer
- * a reason the room cannot be lit.
- */
+
 export function createSacnSink(opts: SacnOptions): LedSink {
 	let socket: Socket | null = null;
 	const stats: LedSinkStats = { framesSent: 0, framesDropped: 0, bytesSent: 0 };
@@ -83,9 +69,8 @@ export function createSacnSink(opts: SacnOptions): LedSink {
 	sourceName.write((opts.sourceName ?? 'LightningStrike').slice(0, 63), 'utf8');
 
 	/**
-	 * A packet always starts at DMX channel 1, so a device's pixels have to be assembled into
-	 * its own buffer before they can be cut into universes: a slice landing mid-universe cannot
-	 * be sent on its own without blanking what shares it.
+	 * Assemble each device before splitting universes; a mid-universe slice alone would blank
+	 * neighboring pixels.
 	 */
 	const devices = new Map<string, Device>();
 	for (const t of opts.targets) {

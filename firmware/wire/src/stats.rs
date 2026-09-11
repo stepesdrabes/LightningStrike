@@ -4,8 +4,7 @@ use heapless::String;
 
 pub const LINE_CAP: usize = 192;
 
-/// Counters for one report interval. Integer arithmetic throughout, so the binary carries no
-/// soft-float and the receive loop never formats.
+/// Integer-only interval counters avoid soft-float; formatting stays outside receive handling.
 pub struct Stats {
 	pub packets: u32,
 	pub bytes: u32,
@@ -39,8 +38,7 @@ impl Stats {
 		}
 	}
 
-	/// `gap_us` is PUSH to PUSH, `asm_us` first packet to PUSH, `led_us` how long presenting took.
-	/// The last is the only part of the 16.7 ms budget the board itself spends.
+	/// Microseconds: gap is PUSH-to-PUSH, assembly first-packet-to-PUSH, LED is presentation cost.
 	pub fn on_frame(&mut self, gap_us: u32, asm_us: u32, led_us: u32) {
 		self.frames += 1;
 		self.gap_min_us = self.gap_min_us.min(gap_us);
@@ -112,8 +110,7 @@ fn tenths(n: u64, d: u64) -> Tenths {
 mod tests {
 	use super::*;
 
-	/// Pinned to the exact string `parseTelemetry` in apps/web reads, which is tested there
-	/// against the same text. The two sides of this contract are each other's spec.
+	/// Pinned to the parseTelemetry fixture in apps/web; both sides share the wire contract.
 	#[test]
 	fn formats_the_line_the_app_parses() {
 		let mut s = Stats::new();

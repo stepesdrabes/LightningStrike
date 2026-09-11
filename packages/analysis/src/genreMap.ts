@@ -1,13 +1,6 @@
 import type { GenreFamily } from '@mv/core';
 
-/**
- * Fold whatever the metadata sources say into the lighting vocabulary.
- *
- * Keyword votes rather than a taxonomy walk, because the inputs are a mess by construction:
- * iTunes says "Pop" for most of the Czech catalogue, MusicBrainz genres are community votes,
- * and YouTube tags are whatever the uploader typed. A specific style name outvotes a coarse
- * one, so "drum & bass" beats the "Dance" that arrives beside it.
- */
+/** Keyword votes tolerate inconsistent source taxonomies; specific styles outweigh broad genres. */
 
 interface Rule {
 	family: GenreFamily;
@@ -16,10 +9,7 @@ interface Rule {
 	match: RegExp;
 }
 
-/**
- * Order matters only for readability; every rule is tested against every string and the
- * votes are summed, so "melodic techno" scores techno twice rather than first-match-wins.
- */
+/** Sum every matching rule; specific phrases may earn multiple votes. */
 const RULES: Rule[] = [
 	{ family: 'techno', weight: 2, match: /\btechno\b|\bminimal\b|\bschranz\b/ },
 	{ family: 'house', weight: 2, match: /\bhouse\b|\bgarage\b|\bukg\b|\b2-?step\b|\bamapiano\b/ },
@@ -71,21 +61,15 @@ const RULES: Rule[] = [
 	{ family: 'disco', weight: 2, match: /\bdisco\b|\bfunk\b|\bnu-?disco\b|\bboogie\b|\bmotown\b|\bjazz\b|\bswing\b/ }
 ];
 
-export interface GenreVote {
+interface GenreVote {
 	family: GenreFamily | null;
 	/** Share of the total vote the winner took, 0..1. Zero when nothing matched. */
 	confidence: number;
 }
 
 /**
- * `strings` is everything gathered: source genres and uploader tags. `weights` scales each
- * string's vote - the audio classifier passes its activation scores, so a 0.74 Techno
- * outvotes three 0.2 relatives instead of being outvoted by the word "electronic"
- * appearing in every one of them.
- *
- * `exclude` bars families from winning while still letting them absorb their share of the
- * vote, which is what makes the answer honest: the runner-up on a ballot the winner was
- * struck from is a weaker verdict than a winner, and its confidence should say so.
+ * weights scales each genre vote by classifier activation. Excluded families still absorb
+ * their vote share so the replacement winner reports appropriately lower confidence.
  */
 export function mapGenres(
 	strings: readonly string[],
@@ -96,11 +80,8 @@ export function mapGenres(
 	let total = 0;
 
 	for (let i = 0; i < strings.length; i++) {
-		// Discogs' "Folk, World, & Country" parent is a catch-all whose children run from
-		// Soukous to Celtic, and the parent's own words vote ballad at weight 2 - it filed
-		// a 116 bpm funk record as a ballad. The parent is struck and the style keeps its
-		// own say; every other parent (Hip Hop, Rock, Reggae...) is informative and stays,
-		// because stripping them all turned "Hip Hop Trap" into a bass vote.
+		// Drop only Discogs' broad Folk, World, & Country parent, which creates false ballad votes.
+		// Other parents still disambiguate styles such as Hip Hop Trap.
 		const s = strings[i].toLowerCase().replace(/folk,\s*world,?\s*&\s*country/g, ' ');
 		const scale = weights?.[i] ?? 1;
 		for (const rule of RULES) {

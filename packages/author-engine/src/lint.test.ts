@@ -269,10 +269,7 @@ describe('effect rules', () => {
 
 describe('safety rules', () => {
 	it('caps the flash rate at the tempo ceiling, and at nothing else', () => {
-		// The ceiling is taste, not a public-space limiter: past ~6 Hz the flashes fuse into
-		// a texture and stop reading as events. There is still no minimum gap and no per-show
-		// strobe count beyond the flash budget - a linter that refuses the biggest card in
-		// the deck is a linter people route around.
+		// Above ~6 Hz flashes fuse into texture. The flash budget separately limits their count.
 		const show = goodShow();
 		show.hits = [
 			{ bar: 40, kind: 'strobe', beats: 4, params: { perBeat: 8 }, note: 'as fast as it likes' }

@@ -9,17 +9,8 @@ export interface SectionPosteriors {
 }
 
 /**
- * Re-read segment kinds from the head's posteriors: mean posterior per DP segment,
- * argmax. The segmentation itself is untouched - the head is a labeller, and the DP's
- * boundaries plus the refiner's arrivals are better placed than an 8 Hz posterior could
- * ever be.
- *
- * The overrides that stay with the rules, because they are facts rather than predictions:
- * - a carved segment (`group < 0`: a void, a ring-out) keeps its measured kind;
- * - nothing is drop-class inside the first two phrases - a loud opening is the groove
- *   arriving, and a corpus of pop cannot teach that taste rule;
- * - a club track speaks the club vocabulary: the head's chorus/verse are re-read through
- *   `sectionBase` so one track never mixes the two readings.
+ * Assign mean-posterior labels without moving boundaries. Preserve carved kinds, measured
+ * silence, the opening two-phrase drop ban, and the track's club/song vocabulary.
  */
 export function applyHeadLabels(
 	segments: Segment[],

@@ -4,27 +4,20 @@
 	let {
 		value,
 		size = 160,
-		fluid = false,
-		quiet = 2
+		fluid = false
 	}: {
 		value: string;
 		size?: number;
 		/** Fill the width available instead of taking a fixed one, staying square. */
 		fluid?: boolean;
-		/** Modules of empty margin. The spec says four; two scans fine on a lit screen. */
-		quiet?: number;
 	} = $props();
 
+	/** Two quiet modules scan reliably on a lit screen. */
+	const quiet = 2;
 	const code = $derived(encode(value, { ecc: 'M' }));
 	const span = $derived(code.size + quiet * 2);
 
-	/**
-	 * One path for every dark module rather than one rect each.
-	 *
-	 * A version-4 code is about 900 modules, and 900 elements is a lot of DOM for something
-	 * that never changes between renders. Drawn light-on-dark to match everything else, which
-	 * scanners handle as readily as the other way round.
-	 */
+	/** Combine QR modules into one SVG path to avoid hundreds of DOM elements. */
 	const path = $derived(
 		code.data
 			.flatMap((row, y) =>

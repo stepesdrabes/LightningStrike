@@ -9,12 +9,8 @@ const g = buildGeometry(DEFAULT_ROOM);
 
 describe('hits across cue boundaries', () => {
 	/**
-	 * The anticipation lead consumes an onset up to ~30 ms EARLY, so a kick sitting exactly
-	 * on a cue boundary fires its one-frame edge a frame or two before the incoming effect
-	 * is installed: the outgoing effect got the kick, the incoming one - installed precisely
-	 * to answer it - heard silence. Reported from the room as "a kick right on the switch
-	 * does not get triggered". The player re-asserts any freshly consumed edge on the
-	 * install frame; this holds it to that.
+	 * A cue installed on a boundary must receive the hit already consumed by the anticipation
+	 * lead.
 	 */
 	it('re-asserts a kick consumed just before the switch to the incoming effect', () => {
 		const analysis = fixtureAnalysis(120);

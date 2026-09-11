@@ -38,37 +38,13 @@ interface BuildSpan {
 	end: number;
 }
 
-/**
- * The dimmest a hit may fire at. A ghost note is quiet, not absent, and an envelope that can
- * reach zero turns "the detector was unsure" into "nothing happened".
- */
+/** Minimum hit strength: uncertainty must not erase ghost notes. */
 const MIN_HIT_LEVEL = 0.35;
 
 /**
- * How much house floor each section gets, before the cue's own layers.
- *
- * A void is zero because darkness is its whole instruction, and the quiet sections get the most
- * because they are the ones whose layers do not carry the room: a bed is written to sit under
- * something and a breakdown has almost nothing on top of it. A drop needs none - it is already
- * four bright layers - and giving it one would only eat the headroom the highlight compressor
- * needs.
- *
- * The quiet three have come down by more than half from where they were, in three steps, as the
- * catalog gained layers that carry a room on their own. The floor was compensating for cues whose
- * second layer emitted nothing, and a compensation left in place after its cause is fixed is just
- * contrast spent for nothing: the room reads the difference between a verse and a drop, not the
- * absolute level of either. Every quiet section still lights 99-100% of the LEDs.
- *
- * The third step came with the planner preferring layers that actually show the music in a quiet
- * cue. Those are brighter as well as livelier, so leaving the floor where it was pushed the
- * drop-to-quiet ratio from 3.43 down to 2.79, under its 3.2 floor: the same contrast, spent twice.
- * The outro comes down least because its bed pool barely changed.
- *
- * **These are authoring values chosen for the light they make**, so they moved when `GAMMA` did:
- * each is the old number raised to `2.2 / 2.45`, which makes `floor ^ 2.45` exactly what
- * `floor ^ 2.2` used to be. Every floor emits what it always did and every ratio between them is
- * untouched, which is the point - the contrast above was measured, and a curve change is not a
- * licence to spend it. Re-derive them the same way if the exponent moves again.
+ * Section floors support sparse quiet layers; voids stay black and drops retain headroom.
+ * These are authoring values tuned for delivered light. When gamma changes, preserve that
+ * light with newFloor = oldFloor ^ (oldGamma / newGamma).
  */
 const SECTION_FLOOR: Record<SectionKind, number> = {
 	void: 0,
@@ -85,33 +61,18 @@ const SECTION_FLOOR: Record<SectionKind, number> = {
 };
 
 /**
- * How far ahead of the playhead a drum hit is read, as a fraction of the beat, with a floor and
- * a ceiling in seconds.
- *
- * The one number to turn if the room feels early or late against the real strips: DDP and WLED add
- * their own transport delay, which this cannot know and which pushes in the opposite direction.
- * Raising it makes the room anticipate; zero restores the old behaviour exactly.
- *
- * The floor is there because the transport delay does not shrink with the tempo: at six
- * hundredths of a beat alone the lead was 40 ms on a 90 bpm rap track and 26 ms on a 138 bpm
- * trance track, and the owner heard the kicks on the fast records as "very slightly delayed"
- * while the slow ones were fine. Forty is still under half a sixteenth at 174 bpm.
+ * Drum anticipation as a beat fraction, clamped in seconds to offset frame/transport delay.
+ * A 40 ms floor keeps fast tracks from lagging; raising it makes the room earlier.
  */
 const HIT_LEAD_BEATS = 0.06;
 const HIT_LEAD_FLOOR = 0.04;
 const HIT_LEAD_CAP = 0.045;
 
-
 function floorFor(section: SectionKind): number {
 	return Math.min(1, SECTION_FLOOR[section] ?? 0);
 }
 
-/**
- * Which effect each punctuation kind installs in the master layer.
- *
- * A table rather than using the kind as the id directly, so the show's vocabulary is a small
- * closed set of gestures and the catalog is free to rename what performs one.
- */
+/** Separate punctuation vocabulary from the effect IDs that perform it. */
 const HIT_EFFECT: Record<Hit['kind'], string | null> = {
 	blackout: null,
 	slam: 'slam',
@@ -120,16 +81,8 @@ const HIT_EFFECT: Record<Hit['kind'], string | null> = {
 };
 
 /**
- * Which punctuation wins when two overlap.
- *
- * They overlap by design: the strobe runs out of the build and the held-breath blackout is cut
- * from its last bar, so the two are live at the same instant on purpose. Resolving that by
- * taking whichever started first handed it to the strobe every time, and 9 of 117 planned hits
- * across the corpus never fired - every one of them the blackout before a drop, which is the
- * single strongest move in the vocabulary.
- *
- * A cut beats a flash because a cut is the absence of light and cannot be expressed by adding
- * any; a slam beats a bump because it is the bigger card.
+ * Overlapping hits are intentional. Blackout wins because adding light cannot express a cut;
+ * slams outrank bumps.
  */
 const HIT_PRIORITY: Record<Hit['kind'], number> = {
 	blackout: 3,
@@ -159,7 +112,6 @@ export class ShowPlayer {
 	private panCurve = new Float32Array(0);
 	private widthCurve = new Float32Array(0);
 	private stereoFps = 25;
-
 
 	/** frames * spectrumBands, as shipped: bytes, decoded once on load. */
 	private spectrumData: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
@@ -214,12 +166,7 @@ export class ShowPlayer {
 		return this.analysis && this.show ? { analysis: this.analysis, show: this.show } : null;
 	}
 
-	/**
-	 * Forget the loaded show entirely.
-	 *
-	 * `reset()` rewinds a show to its start; this is for when there is no longer a show at all,
-	 * which is what a queue moving to a track that has not been composed yet leaves behind.
-	 */
+	/** Unload the show; reset only rewinds it. */
 	clear(): void {
 		this.analysis = null;
 		this.show = null;
@@ -238,8 +185,7 @@ export class ShowPlayer {
 		this.barSection = new Array<SectionKind>(nBars);
 		for (let i = 0; i < nBars; i++) this.barSection[i] = analysis.bars[i].section;
 
-		// Phrases count from the section start, not from a global anchor: the audience counts
-		// from the drop, and a track whose phase shifts mid-song has no single grid to count on.
+		// Count phrases from section starts so phase changes follow the arrangement.
 		this.barSectionStart = new Int32Array(nBars);
 		this.barSectionOrdinal = new Int32Array(nBars);
 		for (const s of analysis.sections) {
@@ -249,9 +195,8 @@ export class ShowPlayer {
 			}
 		}
 
-		// Beat resolution where the analysis has it, falling back to the bar table for a blob
-		// written before it did. Bar 0 begins at beat `downbeatPhase`, so that is what turns a
-		// bar position into an index into the beat-aligned arrays.
+		// Beat-resolution envelopes start at downbeatPhase; legacy blobs fall back to bar
+		// resolution.
 		const env = analysis.envelopes;
 		if (env && env.energy.length > 0) {
 			this.beatEnergy = Float32Array.from(env.energy, (v) => v / 100);
@@ -274,8 +219,7 @@ export class ShowPlayer {
 			}
 		}
 
-		// Decoded once here rather than per frame: it is the largest thing in the analysis and a
-		// blob written before the spectrum existed simply has none, which reads as a flat zero.
+		// Decode spectrum once on load; legacy blobs without one read as zero.
 		const spectrum = analysis.spectrum;
 		this.spectrumData = spectrum?.data ? decodeBase64(spectrum.data) : new Uint8Array(0);
 		this.spectrumBands = spectrum?.bands ?? 0;
@@ -285,10 +229,8 @@ export class ShowPlayer {
 		this.widthCurve = Float32Array.from(analysis.stereo?.width ?? []);
 		this.stereoFps = analysis.stereo?.fps || 25;
 
-
 		this.sectionBounds = analysis.sections.map((s) => ({ start: s.startTime, end: s.endTime }));
-		// Drop-CLASS arrivals, not the literal kind: a chorus is the song vocabulary's drop, and
-		// build progress that never reaches 1.0 on a pop track starves every effect that climbs.
+		// Build progress targets the whole drop class, including choruses.
 		this.dropTimes = analysis.sections
 			.filter((s) => sectionBase(s.kind) === 'drop')
 			.map((s) => s.startTime)
@@ -300,15 +242,14 @@ export class ShowPlayer {
 			if (s.kind !== 'build' && s.kind !== 'void') continue;
 			const drop = analysis.sections.slice(i + 1).find((x) => sectionBase(x.kind) === 'drop');
 			if (!drop) continue;
-			// Merge a build immediately followed by a void so the progress bar keeps climbing
-			// through the silence instead of restarting.
+			// Continue progress through a void immediately after a build.
 			const existing = this.buildSpans.at(-1);
 			if (existing && Math.abs(existing.end - drop.startTime) < 1e-6) continue;
 			this.buildSpans.push({ start: s.startTime, end: drop.startTime });
 		}
 
-		// The registry belongs to the caller, which has already registered this show's
-		// generated effects by now. Clearing it here would render every cue naming one black.
+		// The caller owns generated-effect registration; clearing here would black out those
+		// cues.
 		const defaults = show.defaults;
 		const sorted = [...show.cues].sort((a, b) => a.bar - b.bar);
 		this.cues = sorted.map((cue, i) => {
@@ -329,8 +270,7 @@ export class ShowPlayer {
 
 		this.hits = show.hits
 			.map((h) => {
-				// A hit's length is in beats of the bar it lands in, not of the track average,
-				// so a two-beat slam is two beats long wherever the tempo happens to be.
+				// Use the hit bar's beat length on variable-tempo tracks.
 				const beat = barDurationAt(tempo, h.bar) / Math.max(1, tempo.beatsPerBar);
 				const t = barTimeAt(tempo, h.bar) + (h.beat ?? 0) * beat;
 				return {
@@ -410,15 +350,12 @@ export class ShowPlayer {
 
 	private updateGrid(t: number, tempo: TempoGrid): void {
 		const f = this.frame;
-		// Every index comes off the bar table, so the frame cannot disagree with the cue list
-		// about where it is. Deriving the beat from the bar rather than the other way round is
-		// what keeps them consistent when the bar is not exactly beatsPerBar * beatPeriod long.
+		// Derive all indices from barTimes so frame timing and cue timing agree.
 		const barsF = barAtTime(tempo, t);
 		const barIndex = Math.floor(barsF);
 		const barPhase = barsF - barIndex;
 
-		// Section-relative phrase: origin at the section start, ordinal folded into the index
-		// so a phrase edge fires at every section change even when both sides read zero.
+		// Fold the section ordinal into the phrase index so every section change fires an edge.
 		const nBars = this.barSectionStart.length;
 		const clamped = Math.min(Math.max(barIndex, 0), Math.max(0, nBars - 1));
 		const origin = nBars > 0 ? this.barSectionStart[clamped] : tempo.phraseAnchorBar;
@@ -429,8 +366,7 @@ export class ShowPlayer {
 		const beatIndex = Math.floor(beatsF);
 		const phraseIndex = ordinal * 4096 + Math.floor(phrasesF);
 
-		// Local, not the track median: an effect that derives its time constants from this on a
-		// track that speeds up should speed up with it.
+		// Use local tempo for effect time constants.
 		const barDuration = barDurationAt(tempo, barIndex);
 		const beatPeriod = barDuration / Math.max(1, tempo.beatsPerBar);
 
@@ -442,8 +378,7 @@ export class ShowPlayer {
 		f.beatPeriod = beatPeriod;
 		f.bpm = beatPeriod > 1e-6 ? 60 / beatPeriod : tempo.bpm;
 
-		// Edge detection by index change, never by phase threshold, so a beat cannot
-		// double-fire on a slow frame or be skipped on a fast one.
+		// Detect index changes so slow frames cannot skip edges or fast frames repeat them.
 		f.beat = beatIndex !== this.lastBeatIndex;
 		f.downbeat = barIndex !== this.lastBarIndex;
 		f.phraseStart = phraseIndex !== this.lastPhraseIndex;
@@ -457,9 +392,7 @@ export class ShowPlayer {
 		const n = this.beatEnergy.length;
 		const bars = this.barSection.length;
 		if (n > 0) {
-			// Minus half an entry, because an entry is the MEAN over its span and therefore
-			// describes its centre. Reading it at the span's start is what put the whole envelope
-			// half a bar ahead of the audio.
+			// Entries are span means, so sample from their centres using a half-entry offset.
 			const at = clamp(
 				this.beatOffset + (f.barIndex + f.barPhase) * this.entriesPerBar - 0.5,
 				0,
@@ -481,13 +414,7 @@ export class ShowPlayer {
 		}
 	}
 
-	/**
-	 * The spectrum at `t`, resampled onto however many bands the frame carries.
-	 *
-	 * Minus half an entry for the same reason the envelopes take it: an entry is the mean over
-	 * its span and so describes the span's centre. The band count is read off the blob rather
-	 * than assumed, so a show authored against a different one still plays.
-	 */
+	/** Resample spectrum at t using each span's centre and the blob's stored band count. */
 	private updateSpectrum(t: number): void {
 		const f = this.frame;
 		const bands = this.spectrumBands;
@@ -537,26 +464,11 @@ export class ShowPlayer {
 
 	private updateDrums(t: number, dt: number, a: TrackAnalysis): void {
 		const f = this.frame;
-		// Read slightly AHEAD of the playhead, so the light is already at full when the hit
-		// arrives rather than starting then. Two reasons, and they point the same way.
-		//
-		// Mechanical: an onset is consumed on the first frame at or after it, which at 60 fps is
-		// up to 16.7 ms late on its own, before anything downstream adds more.
-		//
-		// Perceptual: the tolerance is strongly asymmetric. ITU-R BT.1359-1 puts detectability at
-		// 45 ms when the picture leads and 125 ms when it lags, so early is roughly three times
-		// cheaper than late; a sound within about 100 ms pulls a flash onto itself and tightens
-		// its apparent timing (temporal ventriloquism); and a listener's own sense of "on the
-		// beat" already runs 20-80 ms early. Spend the uncertainty on the early side.
-		//
-		// Derived from the beat period so it stays a musical fraction, floored so a fast record
-		// is not read later than a slow one, and capped well inside a sixteenth at every tempo:
-		// 40 ms from 90 to 160 bpm, 45 ms below that.
+		// Anticipate onsets to cover up to one frame of detection delay plus transport latency.
+		// The beat-relative lead is clamped in seconds; see the anticipation constants.
 		const lead = Math.min(HIT_LEAD_CAP, Math.max(HIT_LEAD_FLOOR, HIT_LEAD_BEATS * f.beatPeriod));
 		const at = t + lead;
-		// Fired at the hit's own strength, floored so the quietest ghost note still registers as
-		// an event. Firing every hit at 1.0 made `kickEnv` exactly 1.0 on every kick frame in the
-		// corpus, which gave `kickTunnel` one ring size for every track ever played.
+		// Preserve hit strength, with a floor so ghost notes remain visible.
 		const kick = advance(a.onsets.kick, at, this.kickCursor, (c) => (this.kickCursor = c));
 		const snare = advance(a.onsets.snare, at, this.snareCursor, (c) => (this.snareCursor = c));
 		const hat = advance(a.onsets.hat, at, this.hatCursor, (c) => (this.hatCursor = c));
@@ -627,20 +539,16 @@ export class ShowPlayer {
 		if (this.appliedCue !== this.cueCursor) {
 			this.installLayers(active);
 			this.appliedCue = this.cueCursor;
-			// A hit landing ON the boundary was consumed a frame or two ago by the anticipation
-			// lead - up to ~30 ms early, on purpose - so its one-frame edge fired into the
-			// OUTGOING effect and the incoming one heard silence. Exactly the hits an incoming
-			// drop effect exists for. Re-assert any edge younger than the lead plus a frame, so
-			// the fresh instance sees the kick it was installed to answer; the envelopes carry
-			// across on their own, this is only the boolean.
+			// Re-assert edges within the lead plus one frame so incoming cue effects receive
+			// the
+			// boundary hit already consumed by the outgoing effect.
 			const recent = HIT_LEAD_CAP + 0.02;
 			if (t - this.lastKickAt <= recent) f.kick = true;
 			if (t - this.lastSnareAt <= recent) f.snare = true;
 			if (t - this.lastHatAt <= recent) f.hat = true;
 		}
 
-		// The fade begins fadeBeats early and completes exactly ON the boundary downbeat,
-		// which is how a lighting desk runs a cue: the change arrives with the music.
+		// Begin the fade early so it completes on the boundary downbeat.
 		let u = 0;
 		if (next && next.fadeBeats > 0) {
 			const fadeStart = next.start - next.fadeBeats * f.beatPeriod;
@@ -700,13 +608,9 @@ export class ShowPlayer {
 		}
 
 		if (live.kind === 'blackout') {
-			// A cut over everything, the master included: `dim` rather than the cue's
-			// intensity, because the mixer floors a hit against the intensity and a strobe
-			// still installed from the overlapping hit would otherwise keep flashing through
-			// the held breath.
+			// Apply blackout through dim so even a floored, overlapping master hit goes dark.
 			this.mixer.dim = 0.02;
-			// The floor goes with it, or the room would sit at its resting level through the one
-			// move whose whole point is that the room does not.
+			// Blackout must also remove the house floor.
 			this.mixer.floor = 0;
 			return;
 		}
@@ -721,7 +625,7 @@ export class ShowPlayer {
 	}
 }
 
-/** The floor across a cue fade, so the room does not step as one look hands over to the next. */
+/** Fade the floor with the cue to avoid a level step. */
 function lerpFloor(from: CompiledCue, to: CompiledCue, u: number): number {
 	const a = floorFor(from.section);
 	const b = floorFor(to.section);
@@ -735,11 +639,8 @@ function seekCursor(times: readonly number[], t: number): number {
 }
 
 /**
- * How hard the loudest hit crossed since the last frame was struck, 0 when none did.
- *
- * The loudest rather than the last: at 30 fps a frame can span two sixteenths, and letting a
- * ghost note that happened to be second overwrite the accent that opened the frame is exactly
- * the wrong way round.
+ * Loudest hit crossed since the last frame, or 0. A later ghost note must not replace an
+ * accent.
  */
 function advance(
 	stream: OnsetStream,

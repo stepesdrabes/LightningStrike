@@ -1,16 +1,10 @@
-// Which effects the engine actually reaches for, over a whole cache of tracks.
-//
-//   node bench/effectusage.ts [cacheDir] [--measure] [--limit N] [--fps 30]
-//
-// Composes a show for every analysed track (with its context, so the genre profile applies) and
-// tallies per effect how many shows and how many bars it holds, per role and per section class,
-// which effects light the peak cue, and how the strobes and slams are sized. With --measure it
-// also plays each show through `measureShow` and reports the delivered level of consecutive cues
-// inside one section: the room should not jump when only the look changed, and the pairs that do
-// name the effects responsible.
+// Tally effect usage, peak masters and punctuation across cached tracks with their genre
+// contexts.
+// node bench/effectusage.ts [cacheDir] [--measure] [--limit N] [--fps 30]
+// --measure reports delivered level changes between consecutive cues in each section.
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import {
 	BUILT_IN_EFFECTS,
 	DEFAULT_ROOM,
@@ -29,9 +23,7 @@ const flag = (n: string) => {
 	const i = argv.indexOf(`--${n}`);
 	return i >= 0 ? argv[i + 1] : undefined;
 };
-const cache =
-	argv.find((a) => !a.startsWith('--') && !/^\d+$/.test(a)) ??
-	join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache(argv.find((a) => !a.startsWith('--') && !/^\d+$/.test(a)));
 const measure = argv.includes('--measure');
 const limit = Number(flag('limit') ?? Infinity);
 const fps = Number(flag('fps') ?? 30);

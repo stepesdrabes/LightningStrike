@@ -8,11 +8,7 @@ import { INTENSITY, param } from './helpers.ts';
 
 const MAX_GLINTS = 140;
 
-/**
- * A fixed constellation swept by a spot the room cannot see: each glint fires with a
- * sharp cosine-power flash as the sweep passes its phase, and the eye reads a mirror ball
- * that is not there.
- */
+/** A fixed constellation flashes as a hidden sweep passes, suggesting mirror-ball reflections. */
 export const discoBall: EffectDef = {
 	id: 'discoBall',
 	name: 'Disco Ball',

@@ -9,15 +9,7 @@ import { ringU } from '../dsl/space.ts';
 import { bandAt } from '../dsl/spectrum.ts';
 import { INTENSITY } from './helpers.ts';
 
-/**
- * The anthem floor: the whole room held high and saturated, one broad crest of light
- * making a slow lap of the perimeter, a soft swell answering every downbeat.
- *
- * Written for choruses and nothing else - the point is a floor that reads as "the song is
- * here now", which a warehouse drop neither needs nor earns. Big and simple where
- * `chorusBloom` is articulate: that one answers six bands with six petals, this one answers
- * the mix with its whole body, and the pair being different is what gives the seed a choice.
- */
+/** A chorus-only sustained floor; broad motion keeps the anthem legible without a busy pattern. */
 export const anthemWash: EffectDef = {
 	id: 'anthemWash',
 	name: 'Anthem Wash',
@@ -34,9 +26,7 @@ export const anthemWash: EffectDef = {
 	params: [INTENSITY],
 	create(g) {
 		const buf = new Float32Array(g.count * 3);
-		// The level answers the music, read through a follower as loud beds must be: the
-		// band envelopes cannot move inside a bar and a chorus floor that holds one number
-		// for four beats is a poster, not a band playing.
+		// Follow the spectrum for articulation between beats.
 		const body = new Follower(0.03, 0.2);
 		const swell = new PulseEnv();
 		let crest = 0;
@@ -58,8 +48,7 @@ export const anthemWash: EffectDef = {
 				if (f.downbeat) swell.fire(0.7 + level * 0.3);
 				const lift = swell.decay(f.dt, f.beatPeriod, 2);
 
-				// One lap of the room per 32 beats. Slow on purpose: the crest is where the
-				// chorus is standing, not something chasing the mix.
+				// One lap per 32 beats keeps the crest from reading as a chase.
 				crest += (f.dt * ctx.motion) / Math.max(0.1, f.beatPeriod * 32);
 
 				const gain = (0.34 + p.intensity * 0.75) * (0.5 + level * 0.55 + lift * 0.25);
@@ -67,9 +56,7 @@ export const anthemWash: EffectDef = {
 				for (let i = 0; i < g.count; i++) {
 					const u = ringU(g, i);
 					const arc = 0.62 + 0.38 * sinewave(u - crest);
-					// Colour varies by POSITION only: base into the bright read at the crest,
-					// with the downbeat swell allowed a touch of white at its peak. The crest
-					// being brighter than the far wall is the ramp doing its job.
+					// Colour varies spatially; the downbeat swell reaches a little white.
 					const slot = lerp(lerp(SLOT.base, SLOT.glow, arc), SLOT.white, lift * 0.22);
 					setSample(buf, i, palette, slot + hueShift, gain * arc);
 				}

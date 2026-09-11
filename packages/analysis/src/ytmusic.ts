@@ -1,35 +1,17 @@
-/**
- * YouTube Music, through InnerTube - the API its own web player speaks.
- *
- * Searching all of YouTube returns uploads; searching YouTube Music returns releases. That is
- * the whole reason this exists. A lyric video's spoken intro, a live cut's crowd, a fan
- * reupload's re-mastered loudness and a "slowed" edit's shifted rate all corrupt onset and
- * tempo detection, so a noisy pick produces a wrong grid before anything is lit.
- *
- * Keyless and unauthenticated, like every other lookup in this package.
- */
+/** Keyless YouTube Music InnerTube search returns releases, avoiding upload edits that distort DSP. */
 
 const ENDPOINT = 'https://music.youtube.com/youtubei/v1';
 
 /**
- * The client the YouTube Music web player identifies as. InnerTube keys its response shape to
- * this, so WEB_REMIX is what makes a result carry artist and album as separate fields instead
- * of one upload title and a channel name.
- *
- * No `gl`: the region is left to the request IP, which is the same machine yt-dlp will
- * download from, so search cannot offer a track the download then cannot reach.
+ * WEB_REMIX supplies structured artist/album metadata. Omit gl so search and yt-dlp use the
+ * same IP region and agree on availability.
  */
 const CLIENT = { clientName: 'WEB_REMIX', clientVersion: '1.20250101.01.00', hl: 'en' };
 
 /** Protobuf filter pinning a search to songs. yt-dlp publishes the set; this is its `songs`. */
 const SONGS_ONLY = 'EgWKAQIIAWoKEAoQAxAEEAkQBQ==';
 
-/**
- * An auto-generated "Art Track": the distributor's own audio under static cover art, which is
- * the studio master. Everything else YouTube Music indexes is a different recording - a live
- * take with an audience, an official video with an intro - so this tag is the clean-audio
- * guarantee rather than a heuristic over titles.
- */
+/** Auto-generated distributor Art Tracks identify clean release audio without title heuristics. */
 const ART_TRACK = 'MUSIC_VIDEO_TYPE_ATV';
 
 const ARTIST_PAGE = 'MUSIC_PAGE_TYPE_ARTIST';
@@ -38,12 +20,7 @@ const ALBUM_PAGE = 'MUSIC_PAGE_TYPE_ALBUM';
 const TIMEOUT_MS = 6000;
 const USER_AGENT = 'LightningStrike/1.0 (personal music visualizer)';
 
-/**
- * Where a track is played and, more to the point, downloaded from.
- *
- * The `music.` host matters to yt-dlp: it is what makes the YouTube Music client eligible at
- * all, so a rip taken from this URL can only ever be the same release the search offered.
- */
+/** The music.youtube.com host lets yt-dlp select its Music client for the release search returned. */
 export function watchUrl(id: string): string {
 	return `https://music.youtube.com/watch?v=${id}`;
 }
@@ -60,8 +37,6 @@ export interface Song {
 	/** Cover art, not a video still. */
 	thumbnail: string;
 }
-
-// --- reading InnerTube ---------------------------------------------------------------------
 
 type Json = unknown;
 
@@ -107,13 +82,7 @@ export function clockToSeconds(label: string): number {
 	return Number(m[1] ?? 0) * 3600 + Number(m[2]) * 60 + Number(m[3]);
 }
 
-/**
- * Cover art at a usable size.
- *
- * The listing asks for 120 px, which is enough for a row and not enough for the blurred
- * backdrop or for reading a dominant hue off. The size lives in the URL, so a larger one costs
- * nothing but the rewrite.
- */
+/** Increase URL-encoded artwork size beyond 120 px for backdrop and dominant-hue sampling. */
 const ART_SIZE = /=w\d+-h\d+/;
 
 function artwork(thumbs: Json): string {
@@ -129,13 +98,7 @@ interface Byline {
 	duration: number;
 }
 
-/**
- * Read a subtitle line.
- *
- * Keyed on what each run links to rather than on its position, because the line is assembled
- * differently for a single, an album track and a track credited to two artists. A run with no
- * link that reads as a running time is the duration; the separators are runs too.
- */
+/** Identify subtitle runs by link target, not position; singles, albums, and collaborations reorder them. */
 function readByline(runs: Json[]): Byline {
 	const artists: string[] = [];
 	const out: Byline = { artist: '', album: null, duration: 0 };
@@ -165,13 +128,7 @@ function readByline(runs: Json[]): Byline {
 	return out;
 }
 
-/**
- * One row of a song search.
- *
- * The id is read from the title run's own watch endpoint rather than from the first `videoId`
- * in the subtree: the row's overflow menu carries endpoints for other videos, so a subtree
- * search finds the right answer only by luck of ordering.
- */
+/** Read the title's watch endpoint; overflow menus can contain unrelated video ids. */
 export function parseSearchRow(row: Json): Song | null {
 	const columns = at(row, 'flexColumns');
 	if (!Array.isArray(columns) || columns.length === 0) return null;
@@ -224,8 +181,6 @@ export function parseRadioRow(row: Json): Song | null {
 	};
 }
 
-// --- ranking -------------------------------------------------------------------------------
-
 /** Qualifiers a release uses to mark a version that is not the studio recording. */
 const VARIANT = /\b(?:live|slowed|sped ?-? ?up|karaoke|instrumental|cover|extended|acoustic|remaster(?:ed)?)\b/i;
 
@@ -234,13 +189,7 @@ function stem(word: string): string {
 	return word.toLowerCase().replace(/[\s-]/g, '').replace(/ed$/, '');
 }
 
-/**
- * The qualifier a title declares, or null.
- *
- * Only a bracketed suffix or a trailing dash clause counts, which is how YouTube Music
- * actually marks these - "Bohemian Rhapsody (Live)", "The Days (NOTION Remix Slowed)". Reading
- * the whole title would demote "Cover Me In Sunshine" for having the word in its name.
- */
+/** Only suffix qualifiers count; matching whole titles would misclassify names such as Cover Me In Sunshine. */
 export function variantOf(title: string): string | null {
 	const marks: string[] = [];
 	for (const m of title.matchAll(/[([{]([^)\]}]*)[)\]}]/g)) marks.push(m[1]);
@@ -254,13 +203,7 @@ export function variantOf(title: string): string | null {
 	return null;
 }
 
-/**
- * Push variants below the plain recording, unless they are what was asked for.
- *
- * A stable partition rather than a sort, so YouTube Music's own relevance order survives
- * inside each half. Searching "bohemian rhapsody" otherwise offers four live cuts before the
- * record, and a live take is the crowd noise this whole module exists to avoid.
- */
+/** Stable-partition unrequested variants below plain recordings while preserving search relevance order. */
 export function demoteVariants(songs: Song[], query: string): Song[] {
 	const asked = new Set<string>();
 	for (const m of query.matchAll(new RegExp(VARIANT.source, 'gi'))) asked.add(stem(m[0]));
@@ -273,8 +216,6 @@ export function demoteVariants(songs: Song[], query: string): Song[] {
 	}
 	return [...plain, ...variants];
 }
-
-// --- requests ------------------------------------------------------------------------------
 
 async function post(path: string, body: Record<string, unknown>, signal?: AbortSignal) {
 	const timeout = AbortSignal.timeout(TIMEOUT_MS);
@@ -323,12 +264,7 @@ export async function searchSongs(
 	return demoteVariants(songs, trimmed).slice(0, Math.max(1, Math.floor(limit)));
 }
 
-/**
- * What YouTube Music would play after this track.
- *
- * `RDAMVM<id>` is the id of a track's own radio, which is the endless mix its player offers
- * rather than a list of lookalikes.
- */
+/** RDAMVM<id> selects a track's own YouTube Music radio. */
 export async function radioFor(videoId: string, limit = 25, signal?: AbortSignal): Promise<Song[]> {
 	let payload: Json;
 	try {

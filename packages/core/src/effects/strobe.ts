@@ -25,9 +25,8 @@ export const strobe: EffectDef = {
 		param('perBeat', 'Flashes per beat', 2, 1, 4, 1)
 	],
 	create(g) {
-		// Alternating pairs rather than the whole room: perceived flash rate at any point in
-		// the room is half the strobe rate, so a 2-per-beat burst at club tempos sits near
-		// 2 Hz locally against the room's own `STROBE_MAX_HZ` of 6. The owner's word.
+		// Alternate wall pairs so each wall flashes at half the total rate capped by
+		// STROBE_MAX_HZ.
 		const groupA = new Set<number>();
 		for (const s of g.strips) if (s.inPerimeter && stripAxis(s) === 'x') groupA.add(s.id);
 
@@ -44,11 +43,9 @@ export const strobe: EffectDef = {
 				const beats = f.beatIndex + f.beatPhase;
 				const step = Math.floor(beats * rate);
 				const onA = step % 2 === 0;
-				// Each flash detonates and DECAYS from its first frame instead of holding a
-				// square: the same number of events reads sharper at the attack and calmer in
-				// the tail. A held, full-white version was judged too aggressive in the room;
-				// this is the shape the owner liked, a step brighter. The train front-loads the
-				// beat so the burst keeps the grid's hierarchy instead of flattening it.
+				// Decay from each attack instead of holding full white, and emphasize the
+				// beat's first
+				// flash to preserve grid hierarchy.
 				const flashPhase = beats * rate - step;
 				const v = Math.pow(Math.max(0, 1 - flashPhase / 0.6), 1.4);
 				const train = 1 - 0.35 * f.beatPhase;

@@ -1,8 +1,7 @@
-//! Perceptual values to linear light. The strips take linear duty, so this is the only decode;
-//! the host applies the same exponent on the DDP path, which never passes through here.
+//! Decode perceptual values once for standalone light. DDP already contains host-decoded linear duty.
 
 /// `round(65535 * (i/255)^2.45)`, the exponent the room is judged at.
-pub const GAMMA_DECODE: [u16; 256] = [
+const GAMMA_DECODE: [u16; 256] = [
 	0, 0, 0, 1, 2, 4, 7, 10, 14, 18, 23, 30, 37, 45, 54, 63, 74, 86, 99, 113, 128, 145, 162, 181,
 	200, 222, 244, 267, 292, 319, 346, 375, 406, 437, 471, 505, 541, 579, 618, 659, 701, 744, 790,
 	836, 885, 935, 987, 1040, 1095, 1152, 1210, 1271, 1332, 1396, 1462, 1529, 1598, 1669, 1741,
@@ -27,9 +26,7 @@ pub fn decode(v: u8) -> u16 {
 	GAMMA_DECODE[v as usize]
 }
 
-/// A perceptual colour and brightness into linear emitters. White is the achromatic part added,
-/// not moved out of the colour: subtracting only holds when the white emitter shares a white
-/// point with the RGB mix, and neither of this room's does.
+/// Add achromatic white without subtracting RGB; their white points do not match.
 pub fn lin_rgbw(colour: [u8; 3], brightness: u8) -> [u16; 4] {
 	let b = decode(brightness) as u32;
 	let r = (decode(colour[0]) as u32 * b / 65535) as u16;

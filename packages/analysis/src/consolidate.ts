@@ -1,65 +1,18 @@
 import { PHRASE_BARS } from '@mv/core';
 import type { Segment } from './arrange.ts';
 
-/**
- * How near the seam the material comparison looks, in bars. The DP's own banded window:
- * a seam through homogeneous material scores high across exactly these pairs.
- */
+/** Local comparison radius, bars, matching the DP's banded window. */
 const SEAM_BAND = 7;
-/**
- * The same-material standard, shared with `groupSegments`: two passages are the same
- * stuff when they resemble each other nearly as much as each resembles itself, with an
- * absolute floor so an internally loose track cannot merge on nine tenths of nothing.
- */
+/** Require near-self cohesion plus an absolute floor so internally loose material cannot merge freely. */
 const SAME_MATERIAL = 0.92;
 const SAME_MATERIAL_FLOOR = 0.62;
 
 /**
- * Merge adjacent same-kind sections whose seam is a segmentation artefact rather than
- * structure.
- *
- * The DP cannot emit a segment longer than `MAX_SEGMENT_BARS`, so a homogeneous passage
- * is force-split however strong its cohesion, and the merge inside `snapToPhrases` only
- * reunites halves that matched into one repeat group under a four-phrase cap. What is
- * left over reaches the room as structure: every surviving seam is a section transition,
- * and every drop-class section start is a punctuated arrival - measured over one judged
- * round, 28% of all section boundaries separated two sections of the same kind, and the
- * badly-rated tracks carried three times the share of the well-rated ones.
- *
- * A seam is an artefact only when BOTH halves of that claim measure true:
- *
- * - nothing arrives ON OR BESIDE it - the strongest arrival within a bar either way is
- *   under `floor`. The window is load-bearing: the judged boundary errors sit one bar
- *   early of their true arrival, so testing the seam bar alone would delete exactly the
- *   seams the boundary work needs to MOVE, converting a fixable "starts too early" into
- *   an unfixable "missed entirely";
- * - the material reads as the same stuff across it, by the standard `groupSegments`
- *   uses for repeats, applied locally: the banded similarity ACROSS the seam comes
- *   within `SAME_MATERIAL` of the two sides' own internal cohesion. This is what keeps
- *   the song corpora honest - annotators mark real section changes at soft seams, and
- *   an arrival-only merge paid two points of Harmonix boundary F for them.
- *
- * And four seams never merge however weak they measure:
- *
- * - a seam in `keep` - the caller passes the pipeline's pinned arrivals and the bars
- *   the hook snap just placed, and this pass must not undo either;
- * - a seam touching the loudest segment (by mean energy): the peak cue, its reserved
- *   master and the intensity ceiling all hang off that segment's startBar and rank,
- *   and a merge relocates or dilutes the biggest moment of the night;
- * - a seam that is not a whole number of phrases from the merged start: interior cues
- *   subdivide on the section's own phrase grid, so absorbing an odd-length run puts
- *   every cue in the absorbed half off ITS material's grid - the exact "split unevenly"
- *   complaint this pass exists to fix;
- * - a void edge.
- *
- * There is deliberately no length cap. The engine subdivides every section at
- * `MAX_CUE_BARS` on the section's own phrase grid, so a long section still moves the
- * room; what a phantom seam adds is a false arrival at a DP-chosen bar.
- *
- * Runs on the FINAL table, after the vocabulary and the hook snap, so the caller must
- * re-place events afterwards - and must hand the trust gate the PRE-merge section count,
- * or a fragmented wreck merges its way past the lounge routing that exists to catch it.
- * Mutates in place; returns the seam bars it removed.
+ * Merge same-kind seams only when nearby arrivals are weak and cross-seam material matches.
+ * The arrival window includes adjacent bars so an early boundary remains available for repair.
+ * Protect pins/hooks, peak segments, void edges, and non-phrase-aligned seams. No length cap:
+ * the engine subdivides long sections without adding false arrivals. Mutates the final table;
+ * returns removed bars. Re-place events afterward and give trust the pre-merge section count.
  */
 export function consolidateSections(
 	segments: Segment[],
@@ -154,10 +107,7 @@ function bandedCohesion(sim: Float32Array, n: number, from: number, to: number):
 	return pairs > 0 ? acc / pairs : 1;
 }
 
-/**
- * Whether the bars either side of `seam` read as the same material: the banded
- * similarity across the seam, against the two sides' own internal cohesion nearby.
- */
+/** Compare cross-seam similarity with nearby within-side cohesion. */
 function sameMaterialAcross(
 	sim: Float32Array,
 	n: number,

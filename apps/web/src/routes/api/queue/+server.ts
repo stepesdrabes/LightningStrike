@@ -77,8 +77,7 @@ export const POST: RequestHandler = async (event) => {
 			state = queue.snapshot;
 			break;
 		case 'runShow': {
-			// The owner overrides the trust verdict: this track runs its authored show. Written
-			// to the track's meta as well as the row, so the answer outlives the queue.
+			// Persist grid-trust overrides in track metadata as well as the queue row.
 			if (!body.key) error(400, 'key required');
 			const item = queue.snapshot.items.find((i) => i.key === body.key);
 			if (!item) error(404, 'no such row');

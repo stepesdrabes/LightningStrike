@@ -12,10 +12,7 @@ describe('the pounding band raise', () => {
 			pounding
 		});
 
-	/**
-	 * The band a pick actually landed in, which is the thing under test - not the effect id,
-	 * which the seed is entitled to choose freely within a band.
-	 */
+	/** Assert the chosen energy band; the seed may freely choose an effect inside it. */
 	const bandOf = (energy: number, pounding: boolean, seed = 7) =>
 		pick(energy, pounding, seed)?.taste.energy ?? 0;
 

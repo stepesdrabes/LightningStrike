@@ -12,13 +12,7 @@
 	// Rebuilt rather than snapshotted, so a tick moves the moment the choice behind it does.
 	const groups = $derived(menu.build?.() ?? []);
 
-	/**
-	 * Right-aligned under the control, flipped above it when the window is too short.
-	 *
-	 * Coordinates are the viewport's, which is what a `DOMRect` already reports and what a
-	 * `position: fixed` element at the page root is laid out in - so there is no scroll offset
-	 * to add anywhere. A scroll or a resize closes the menu instead of chasing the anchor.
-	 */
+	/** DOMRect and fixed positioning both use viewport coordinates; close on scroll or resize. */
 	const placement = $derived.by(() => {
 		const rect = menu.anchor;
 		if (!rect) return null;

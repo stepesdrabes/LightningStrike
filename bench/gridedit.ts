@@ -1,26 +1,20 @@
-// Stage a cut-grid variant of one track's analysis into a cache, so the owner can hear
-// a half-bar hypothesis before drawing the map that makes it permanent. This runs the
-// REAL pipeline path - analyzeTrack's gridCuts input, true short bars - so what is
-// heard is exactly what a hand-drawn map with these boundaries would produce.
-//
-//   MV_CACHE_DIR=<cache> node bench/gridedit.ts <trackId> <cutT1,cutT2,...>
-//   MV_CACHE_DIR=<cache> node bench/gridedit.ts <trackId> restore
-//
-// The variant keeps the ORIGINAL blob's audio hash and id, so the app serves it as
-// cached; the show.json is removed so composition re-derives. The pre-experiment blob
-// is saved beside as <id>.analysis.json.orig - `restore` puts it back. Bench-path
-// drums (no Adtof), acceptable for a listening A/B.
+// Stage an analysis variant through analyzeTrack's real gridCuts path for a listening
+// comparison.
+// MV_CACHE_DIR=<cache> node bench/gridedit.ts <trackId> <cutT1,cutT2,...>
+// MV_CACHE_DIR=<cache> node bench/gridedit.ts <trackId> restore
+// Preserve audio hash/ID, save the original as .analysis.json.orig, and invalidate the show.
+// Uses DSP drums without ADTOF.
 import { copyFileSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 
 const id = process.argv[2];
 const arg = process.argv[3];
 if (!id || !arg) throw new Error('usage: node bench/gridedit.ts <trackId> <cutT1,cutT2,...|restore>');
-const cache = process.env.MV_CACHE_DIR ?? join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache();
 const blobPath = join(cache, `${id}.analysis.json`);
 const origPath = `${blobPath}.orig`;
 const showPath = join(cache, `${id}.show.json`);

@@ -13,18 +13,8 @@ const LEAD = 0.72;
 const SIGMA = 0.18;
 
 /**
- * The room arrives by stopping.
- *
- * A broad lobe sits still for most of the beat, slides toward the next wall over the last
- * quarter of it, and comes to rest exactly on the beat. Nothing flashes and no level changes:
- * what lands is a motion discontinuity, which the eye reads as an impact because the movement
- * itself created the expectation. It is the console idiom of triggering on the "and" of the
- * preceding beat, which this repo already applies to its own hits - the player reads onsets
- * `HIT_LEAD_BEATS` early because early light reads tighter than late.
- *
- * The owner's standing rule is that an exact-arrival gesture needs the shape between arrivals
- * to be worth watching. Here the shape between arrivals IS the gesture: a slow eased slide
- * across a quarter of every beat, and stillness the rest of the time.
+ * Move only before the beat, then stop exactly on it. Motion discontinuity supplies impact
+ * without a brightness flash.
  */
 export const lean: EffectDef = {
 	id: 'lean',
@@ -42,9 +32,8 @@ export const lean: EffectDef = {
 	},
 	params: [INTENSITY, param('travel', 'How far it leans', 0.7)],
 	create(g) {
-		// The middle of each perimeter run, in ring coordinates. Read off the geometry rather
-		// than written down, because the runs are 3 m and 2 m and their midpoints are therefore
-		// not evenly spaced round the ring - and a different room divides differently again.
+		// Derive wall-centre seats from geometry; unequal wall lengths make them uneven in ring
+		// space.
 		const seats: number[] = [];
 		for (const s of g.strips) {
 			if (!s.inPerimeter) continue;
@@ -53,8 +42,7 @@ export const lean: EffectDef = {
 		seats.sort((a, b) => a - b);
 		if (seats.length === 0) seats.push(0);
 
-		// A gaussian this wide averages to about this much of its own peak around the ring, and
-		// it is what the beam holds so the middle of the room never goes dark.
+		// Hold the broad lobe's approximate mean on the beam so the centre stays lit.
 		const lobeMean = Math.min(1, SIGMA * Math.sqrt(2 * Math.PI));
 		const kit = new Presence();
 		const tilt = new Follower(0.4, 0.9);
@@ -78,11 +66,9 @@ export const lean: EffectDef = {
 
 				const playing = kit.update(f.kickEnv, f.dt, f.beatPeriod);
 
-				// Whatever position the lean actually REACHED becomes the next one's start. It
-				// matters that this is `pos` and not the seat: when the kit is resting the lean
-				// only travels part of the way, and starting the next one from the seat instead
-				// would snap the rest of the gap on the beat - the one frame this effect exists
-				// to keep still.
+				// Begin each lean at the reached position, not the intended seat; kit-gated
+				// partial motion
+				// would otherwise snap the remaining gap on the beat.
 				if (f.beatIndex !== lastBeat) {
 					if (!Number.isNaN(lastBeat)) {
 						from = pos;

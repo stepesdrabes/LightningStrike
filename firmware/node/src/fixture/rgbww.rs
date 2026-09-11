@@ -1,5 +1,4 @@
-//! What the strip is, as opposed to what a fixture does with it. `bench` measures these off a
-//! reel; `frame` inherits them.
+//! Measured strip mapping and trims shared by bench and frame.
 
 use smart_leds::{RGBW, White};
 
@@ -9,8 +8,7 @@ pub const SLOTS: [usize; 4] = [1, 0, 2, 3];
 /// Per-channel scale, 256 unity, applied last so it can only pull a channel down.
 pub const TRIM: [u32; 4] = [256, 256, 256, 64];
 
-/// On top of the 55 us embassy waits, which satisfies the original WS2812B datasheet and nothing
-/// since. Below the latch, back-to-back frames merge and colour walks down the strip.
+/// Top up Embassy's 55 us latch delay; insufficient reset time merges frames and shifts colours.
 pub const LATCH_TOP_UP_US: u64 = 225;
 
 pub const BLACK: RGBW<u8> = RGBW { r: 0, g: 0, b: 0, a: White(0) };
@@ -28,10 +26,8 @@ pub fn pack(emitters: [u8; 4]) -> RGBW<u8> {
 	wire(bytes)
 }
 
-/// An RGB24 stream into strip words, zeroing whatever the frame did not cover. The white emitter
-/// stays dark: deriving it from the achromatic part was tried and washes the room out, because
-/// the mixer already leaves most pixels part-desaturated. To put it back, pass
-/// `c[0].min(c[1]).min(c[2])` as the fourth emitter and raise `TRIM[3]`.
+/// RGB24 to strip words, zeroing uncovered pixels. Keep white dark: deriving it from the
+/// mixer's partly desaturated RGB would wash out the room.
 pub fn unpack(bytes: &[u8], out: &mut [RGBW<u8>]) {
 	for (i, px) in out.iter_mut().enumerate() {
 		*px = match bytes.get(i * 3..i * 3 + 3) {
@@ -53,8 +49,7 @@ pub fn unpack_rev(bytes: &[u8], out: &mut [RGBW<u8>]) {
 	}
 }
 
-/// Linear RGBW emitters out of `room-light` into strip words; the strip is 8-bit, so the low
-/// byte is dropped here and nowhere else.
+/// Quantise room-light's linear RGBW to 8-bit strip duty here, dropping only the low byte.
 pub fn pack16(emitters: [u16; 4]) -> RGBW<u8> {
 	pack(emitters.map(|e| (e >> 8) as u8))
 }

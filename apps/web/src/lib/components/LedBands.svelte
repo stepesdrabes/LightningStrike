@@ -1,18 +1,14 @@
 <script lang="ts">
 	import type { Viz } from '$lib/viz.svelte.ts';
 
-	let { viz, discrete = false }: { viz: Viz | null; discrete?: boolean } = $props();
+	let { viz }: { viz: Viz | null } = $props();
 
 	let canvas: HTMLCanvasElement | undefined = $state();
 	let host: HTMLDivElement | undefined = $state();
 
 	/**
-	 * One row of raw LED bytes per strip.
-	 *
-	 * This renders from the exact array that goes on the wire, gamma and dither included, so
-	 * it is the ground truth: what looks right here looks right on the hardware, and the 3D
-	 * room is presentation on top of it. When an effect and the room disagree, this is the one
-	 * that is telling the truth.
+	 * Render exact wire bytes, including gamma and dither, for comparison with the 3D
+	 * presentation.
 	 */
 	$effect(() => {
 		const el = canvas;
@@ -23,8 +19,7 @@
 		const strips = geometry.strips;
 		const maxCount = Math.max(...strips.map((s) => s.count));
 
-		// One texel per LED, scaled up on draw. Smoothing on gives the diffused look of a strip
-		// behind a channel; smoothing off gives the raw pixels.
+		// One texel per LED, smoothed to show strip diffusion.
 		const src = document.createElement('canvas');
 		src.width = maxCount;
 		src.height = strips.length;
@@ -70,8 +65,7 @@
 						data[o + 1] = bytes[from + 1];
 						data[o + 2] = bytes[from + 2];
 					} else {
-						// Strips differ in length; a dark grey tail makes a row visibly end rather
-						// than look like an unlit stretch of the same strip.
+						// Fill unequal strip tails grey to distinguish their ends from unlit LEDs.
 						data[o] = 13;
 						data[o + 1] = 13;
 						data[o + 2] = 16;
@@ -83,7 +77,7 @@
 
 			ctx.fillStyle = '#08080c';
 			ctx.fillRect(0, 0, width, height);
-			ctx.imageSmoothingEnabled = !discrete;
+			ctx.imageSmoothingEnabled = true;
 			ctx.imageSmoothingQuality = 'high';
 
 			const rowH = height / strips.length;

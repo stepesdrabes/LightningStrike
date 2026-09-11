@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { isFill, refineBoundaries, type BarFeatures } from './structure.ts';
 
-/**
- * A bar table from a list of bars, each a level and a pattern. Two-second bars, no dips
- * inside a bar, chroma flat: only what the refine and the fill test read.
- */
+/** Two-second fixture bars with level/pattern variation, flat chroma, and no within-bar dips. */
 function table(rows: { rms: number; pattern: number[] }[]): BarFeatures {
 	const count = rows.length;
 	const patternDim = rows[0].pattern.length;

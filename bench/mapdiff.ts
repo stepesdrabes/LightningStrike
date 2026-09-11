@@ -1,9 +1,5 @@
-// The owner's frozen map beside an analysis: which boundaries agree, which are off, by how
-// much, and where the seams landed.
-//
-//   node bench/mapdiff.ts bench/judged/round-2026-09-01/<id>.map.json <analysis.json>
-//
-// The analysis comes from `bench/movementprobe.ts --out=<file>` or straight from the cache.
+// Compare a frozen map with analysis boundaries and signed offsets.
+// node bench/mapdiff.ts <map.json> <analysis.json>
 import { readFileSync } from 'node:fs';
 
 interface Span {

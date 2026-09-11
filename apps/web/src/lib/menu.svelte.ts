@@ -16,22 +16,11 @@ export interface MenuGroup {
 }
 
 /**
- * The one anchored menu on the page, opened from wherever asked for it.
- *
- * It cannot be a child of the control that opens it. Every panel in this app carries a
- * `backdrop-filter`, which makes it a containing block for `position: fixed`, so a menu written
- * inside the inspector would anchor to the rail and be clipped by its scroll. This is the same
- * split, and for the same reason, as [[room]]: a small shared store, one component at the page
- * root, and a rect handed across.
+ * Mount menus at the page root: backdrop-filter on panels creates containing blocks that clip
+ * fixed descendants.
  */
 class MenuClient {
-	/**
-	 * How to build the list, not the list itself.
-	 *
-	 * Picking leaves the menu open - model and effort are two choices in one - so the ticks have
-	 * to follow the choice being made. A snapshot taken when it opened cannot: it would still be
-	 * showing whatever was chosen last time until the menu was closed and opened again.
-	 */
+	/** Build items reactively so an open menu reflects model and effort choices immediately. */
 	build = $state<(() => MenuGroup[]) | null>(null);
 	/** Viewport coordinates of the control that opened it. Null when closed. */
 	anchor = $state<DOMRect | null>(null);

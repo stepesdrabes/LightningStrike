@@ -10,12 +10,7 @@ import { queue } from './queueStore.ts';
 import { enrichFromLibrary } from './queueAdd.ts';
 import { settings } from './settings.ts';
 
-/**
- * The radio: what YouTube Music would play next, and the policy for letting it.
- *
- * Kept apart from the ingest runner so the runner stays a thing that prepares tracks and knows
- * nothing about where they came from.
- */
+/** Keep radio selection policy separate from track preparation. */
 
 /** How many unplayed rows autopilot keeps ahead of the current one. */
 const LOOKAHEAD = 2;
@@ -23,10 +18,7 @@ const LOOKAHEAD = 2;
 /** Seeds blended, newest first. One seed orbits a single artist for the rest of the night. */
 const SEEDS = 3;
 
-/**
- * Ceilings, none of which is the interesting number - they exist so that a flag left on, or a
- * network that has quietly gone away, cannot run until the disk is full.
- */
+/** Bound automatic additions and failures so unattended radio cannot fill the disk. */
 const MAX_CONSECUTIVE = 50;
 const MAX_FAILURES = 3;
 const COOLDOWN_MS = 60_000;
@@ -71,10 +63,7 @@ class Autopilot {
 		if (this.heard.length > HISTORY) this.heard = this.heard.slice(-HISTORY);
 	}
 
-	/**
-	 * Everything the queue has held this session, so a restart does not offer the set again.
-	 * Rebuilt from the queue rather than persisted: the queue is the only record there is.
-	 */
+	/** Rebuild session history from the persisted queue to avoid replaying it after restart. */
 	private seen(state: QueueState): Set<string> {
 		const out = new Set(this.heard);
 		for (const item of state.items) {
@@ -102,13 +91,8 @@ class Autopilot {
 	}
 
 	/**
-	 * One radio, as art tracks.
-	 *
-	 * A radio takes after the track that seeded it: seeded from an art track it comes back all
-	 * art tracks, seeded from a music video it comes back all music videos, and those are the
-	 * noisy recordings this whole path exists to avoid. So when the filter empties a list, look
-	 * the seed up by name and ask again from the catalogue's copy of it - which is also how a
-	 * track ripped before any of this existed gets a clean radio.
+	 * Radios inherit their seed's recording type. Resolve legacy/video seeds by title to request
+	 * clean art-track neighbours.
 	 */
 	private async oneRadio(seed: Seed): Promise<Song[]> {
 		const direct = await radioFor(seed.id, 25).catch((): Song[] => []);
@@ -119,12 +103,7 @@ class Autopilot {
 		return radioFor(match.id, 25).catch((): Song[] => []);
 	}
 
-	/**
-	 * Blend several radios into one running order.
-	 *
-	 * Round robin rather than concatenated, so the newest seed leads but the ones before it
-	 * still get a say - which is what stops a night drifting into whatever one track suggests.
-	 */
+	/** Round-robin radios so the newest seed leads without excluding earlier tracks. */
 	async suggest(seeds: Seed[], want: number, exclude: Set<string>): Promise<Song[]> {
 		const lists = await Promise.all(seeds.map((seed) => this.oneRadio(seed)));
 
@@ -158,8 +137,7 @@ class Autopilot {
 		for (const item of state.items) {
 			const id = item.trackId ?? videoIdOf(item.source);
 			if (id) queued.add(id);
-			// The row this was asked from names the track, which is what rescues a seed whose
-			// own radio is all music videos.
+			// Use the row title to resolve a clean seed when its own radio returns music videos.
 			if (id === seedId && !label) label = `${item.uploader} ${item.title}`.trim();
 		}
 		queued.add(seedId);
@@ -183,11 +161,8 @@ class Autopilot {
 	}
 
 	/**
-	 * Keep the queue from running out, one track at a time.
-	 *
-	 * Appending one per call rather than a batch is what paces the machine: preparing a track
-	 * is a download and an analysis, so the queue grows at the rate it is consumed instead of
-	 * committing the next hour before the current song is over.
+	 * Append one track at a time so preparation follows playback instead of committing an hour
+	 * ahead.
 	 */
 	async topUp(now: number): Promise<boolean> {
 		if (!(await settings.autopilotOn())) return false;
@@ -195,8 +170,7 @@ class Autopilot {
 		if (now < this.coolUntil || now - this.lastAttempt < MIN_INTERVAL_MS) return false;
 
 		const before = await queue.ready();
-		// Autopilot keeps a night going; it does not start one, because with nothing queued
-		// there is nothing to be a neighbour of.
+		// An empty queue has no seed; autopilot continues a set rather than starting one.
 		if (before.items.length === 0) return false;
 		if (unplayedAhead(before) >= LOOKAHEAD) return false;
 
@@ -213,8 +187,7 @@ class Autopilot {
 			return false;
 		}
 
-		// The fetch took a moment, and anyone may have queued something in it. Deciding against
-		// the state we started from would queue a stranger behind a guest's pick.
+		// Recheck queue state after fetching so a concurrent guest pick takes precedence.
 		const after = await queue.ready();
 		if (after.items.length === 0 || unplayedAhead(after) >= LOOKAHEAD) return false;
 		const seen = this.seen(after);

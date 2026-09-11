@@ -29,15 +29,7 @@ export interface AuthorSession {
 	compiled: Map<string, EffectDef>;
 	submitted: Show | null;
 	log: string[];
-	/**
-	 * Whether a submission has already been handed back once.
-	 *
-	 * A show that lints clean can still be one the room cannot see, and the linter is a static
-	 * check that will never know. The first submit carrying anything unanswered - a warning, a
-	 * bar that goes dark, a hit that never reaches the room - is returned with all of it. Once
-	 * only, so this is a reading the author has to take rather than a gate it can be trapped
-	 * behind: the second submit is accepted on the same terms as before, errors aside.
-	 */
+	/** Return nonfatal findings once for revision; a second submission must not loop on warnings. */
 	pushedBack: boolean;
 	onAnalysis?: (analysis: TrackAnalysis, reason: string) => void;
 }
@@ -63,13 +55,7 @@ export function createSession(
 	};
 }
 
-/**
- * The five numbers, and only the ones that are a problem spelled out.
- *
- * The legend lives in the system prompt rather than here: repeating it on every call would cost
- * more than the measurement, and an author that has read it once needs the figures rather than
- * the explanation.
- */
+/** The system prompt owns the legend; tool results report only values and actionable problems. */
 function describeCharacter(role: LayerRole, c: EffectCharacter): string {
 	const lines = [
 		`fill ${Math.round(100 * c.fill)}% · brightest tenth ${Math.round(100 * c.top10)}% · on palette ${Math.round(
@@ -113,14 +99,8 @@ function text(body: string) {
 	return { content: [{ type: 'text' as const, text: body }] };
 }
 
-/**
- * Which half of the job the agent is on.
- *
- * `research` withholds everything that can write, and it has to: given `submit_show` while
- * being asked for a plan, the model writes the effects, lints and submits a whole show in the
- * first pass, and the second pass then starts over on work that is already done.
- */
-export type ToolPhase = 'research' | 'build';
+/** Research omits write tools so the planning pass cannot submit a show prematurely. */
+type ToolPhase = 'research' | 'build';
 
 export function buildTools(session: AuthorSession, phase: ToolPhase = 'build') {
 	const getBars = tool(

@@ -1,4 +1,4 @@
-export interface RoomInfo {
+interface RoomInfo {
 	token: string;
 	address: string | null;
 	/** Null when this machine has no network address a phone could reach. */
@@ -6,12 +6,8 @@ export interface RoomInfo {
 }
 
 /**
- * The room code, shared between the trigger in the queue rail and the dialog at the page root.
- *
- * They are apart because a dialog cannot live inside a panel that blurs its backdrop: that
- * makes the panel a containing block, and `position: fixed` then centres on the rail rather
- * than the window. A small shared store is how the two halves stay one thing without threading
- * state through the panel between them.
+ * Share room state because the dialog must live outside panels whose backdrop-filter traps
+ * fixed positioning.
  */
 class RoomClient {
 	info = $state<RoomInfo | null>(null);
@@ -42,8 +38,4 @@ class RoomClient {
 	}
 }
 
-/**
- * One per page rather than one per component: there is a single room, and both halves of its
- * interface have to agree about the code on screen.
- */
 export const room = new RoomClient();

@@ -86,10 +86,7 @@ describe('snapToPhrases', () => {
 	});
 
 	it('folds a snapped-empty sliver away from a pinned boundary', () => {
-		// The Vitej shape: the 2-bar kickless cut before the last drop. Snapping pulls the
-		// cut's start onto the phrase line, leaving a one-bar sliver whose LONGER neighbour
-		// is the drop - and folding into the longer side would drag the drop's pinned start
-		// back onto a bar nothing arrives at, undoing the pin the arrival earned.
+		// A sliver must not absorb a pinned drop start merely because the drop is the longer neighbour.
 		const segments: Segment[] = [
 			{ startBar: 0, endBar: 73, kind: 'groove', group: 0 },
 			{ startBar: 73, endBar: 80, kind: 'groove', group: 1 },

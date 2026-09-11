@@ -7,9 +7,8 @@ import { fillSolid } from '../dsl/buffer.ts';
 import { Edge, INTENSITY, param } from './helpers.ts';
 
 /**
- * The techno architectural event: the room as one lamp being switched. Everything is
- * whole-room and instantaneous, because a gradient or a soft edge anywhere would turn the
- * cut into a fade and lose the move.
+ * Instant whole-room edges preserve the architectural cut; gradients would soften it into a
+ * fade.
  */
 export const shutterCut: EffectDef = {
 	id: 'shutterCut',
@@ -24,8 +23,7 @@ export const shutterCut: EffectDef = {
 		peakReserved: false,
 		activity: 1,
 		character: 'flash',
-		// Redundant with the bloom-excludes-flash veto today, declared so the exclusion
-		// survives anyone refactoring that veto away.
+		// Declare peak treatment independently of the flash-family veto.
 		peakStyle: 'slam'
 	},
 	params: [INTENSITY, param('trigger', 'Trigger', 0, 0, 1, 1)],
@@ -45,8 +43,7 @@ export const shutterCut: EffectDef = {
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
 
-				// A chorus is the song vocabulary's drop; arming on the literal kind alone would
-				// leave a pop peak carrying this and never firing it.
+				// Arm on drop class so choruses also fire.
 				if (sectionBase(f.section) === 'drop' && f.downbeat) {
 					const impact = f.timeSinceDrop < 0.3;
 					if ((impact || f.phraseStart) && armedFor !== f.barIndex) {
@@ -65,8 +62,8 @@ export const shutterCut: EffectDef = {
 					return;
 				}
 
-				// The grid is laid down at arm time: every cut lands on an eighth-note boundary
-				// however the frames fall, and a tempo drift mid-sequence cannot shear it off.
+				// Capture the eighth-note grid at arm time so frame timing and tempo drift
+				// cannot shear the cuts.
 				const age = f.t - t0;
 				const step = Math.floor(age / eighth);
 				const white = 0.6 + p.intensity;
@@ -80,8 +77,8 @@ export const shutterCut: EffectDef = {
 					return;
 				}
 
-				// The cuts are grid-locked; the release afterwards is the one speed motion scales.
-				// White fading in place: a release that walked to the base was a colour change.
+				// Motion scales only release; grid cuts stay fixed and white fades without
+				// changing hue.
 				const decayT = (eighth * 4) / Math.max(0.05, motion);
 				const u = clamp((age - eighth * 4) / decayT);
 				const v = (1 - u) * (1 - u);

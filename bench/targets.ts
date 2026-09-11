@@ -1,10 +1,5 @@
-// The frozen boundary ground truth: the owner's marked seams from the 2026-08-14 judged
-// round, with the bar each build emitted and the bar the ear puts it at.
-//
-// Shared by `earlybars.ts`, which scores by BAR, and `phasegrid.ts`, which scores the same
-// seams by TIME. They have to be one list: a bar-numbered target stops naming the same
-// instant the moment a grid re-phases, so the two instruments disagree by construction
-// unless they are reading the same rows.
+// Frozen owner targets from 2026-08-14, shared by bar-domain earlybars.ts and time-domain
+// phasegrid.ts.
 
 export interface Target {
 	id: string;

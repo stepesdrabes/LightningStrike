@@ -1,16 +1,8 @@
 import { EMPTY_QUEUE, currentItem, type NewItem, type QueueState } from './queueModel.ts';
 
-/**
- * A view onto the server's queue.
- *
- * Deliberately holds no authority: every mutation is a POST and the new state arrives back
- * over the stream like anybody else's would. That is what lets a phone in the room change
- * the queue without this tab having a stale copy of it, and it is why there is no optimistic
- * update here - a queue two people are editing is one where guessing is worse than waiting.
- */
+/** The server owns queue state; all edits return over SSE so concurrent guests stay consistent. */
 export class QueueClient {
 	state = $state<QueueState>(EMPTY_QUEUE);
-	connected = $state(false);
 
 	private source: EventSource | null = null;
 
@@ -27,10 +19,7 @@ export class QueueClient {
 		const es = new EventSource('/api/queue/stream');
 		es.addEventListener('queue', (ev) => {
 			this.state = JSON.parse((ev as MessageEvent).data) as QueueState;
-			this.connected = true;
 		});
-		// EventSource reconnects on its own; this only reports that it is trying.
-		es.addEventListener('error', () => (this.connected = false));
 		this.source = es;
 	}
 
@@ -47,12 +36,7 @@ export class QueueClient {
 		});
 	}
 
-	/**
-	 * Returns the state the server built for this call, whose last rows are the ones just
-	 * added. Reading them off the live queue instead would be a guess: it is fed by the stream,
-	 * and anyone else - a phone in the room, the radio topping the queue up - may have appended
-	 * between the POST and its reply.
-	 */
+	/** Use this POST's returned rows; concurrent SSE appends could belong to another caller. */
 	async add(items: NewItem[]): Promise<QueueState | null> {
 		const res = await this.post({ action: 'add', items });
 		if (!res.ok) return null;

@@ -1,13 +1,8 @@
-// Score structure-tuning variants against the owner's frozen maps, to the bar.
-//
-//   MV_CACHE_DIR=<cache> node bench/mapsweep.ts [--maps=bench/judged/round-2026-09-07] [--variant=name,...] [--only=<id>]
-//
-// Each map is the owner's word on one track: a boundary is a hit within 0.6 s (the maps are
-// drawn to the frame), a miss is signed in bars so the early-late bias is visible, and a
-// label counts on hits only. Every variant sees the same audio, the same heard beats and
-// the same drum-model kit, decoded once per track; only `tuning` differs, so a difference
-// between two rows is the dial and nothing else. The ten maps that accepted the analysis as
-// it stood are regression rows: any move on them is a loss.
+// Compare structure variants against frozen maps with a 0.6 s boundary tolerance and signed
+// bar misses.
+// MV_CACHE_DIR=<cache> node bench/mapsweep.ts [--maps=<dir>] [--variant=name,...]
+// [--only=<id>]
+// Each variant shares decoded audio, beats and drums; accepted maps act as regression targets.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CACHE_DIR, decodeAudio, publishedLevel, readContext } from '@mv/analysis';
@@ -44,11 +39,8 @@ const VARIANTS: Record<string, Partial<StructureTuning>> = {
 	'split-4': { splitAtArrival: 4 },
 	'split-3': { splitAtArrival: 3 },
 	'stay-2-kit-2-split-4': { stayPinScore: 2, kitMinKicks: 2, splitAtArrival: 4 },
-	// The 2026-09-07 evening corpus: anacrusis and fill bars carrying the arrival a bar
-	// before the owner's downbeat, the hook snap dragging decisive boundaries onto vocal
-	// pickups, and the DP's phrase-length prior. The guard, the fill veto and the strict
-	// snap ship as the defaults; these rows switch each one back off, so the negative stays
-	// measurable against the next round's maps.
+	// Ablate the shipped pickup guard, fill veto and strict snap independently against owner
+	// maps.
 	'nohook': { hookSnapReach: 0 },
 	'hook-1': { hookSnapReach: 1 },
 	'hooklax': { hookSnapStrict: false },
@@ -85,9 +77,8 @@ interface Row {
 	late: number;
 	labelWrong: number;
 	/**
-	 * Analysis boundaries no owner boundary sits within 0.6 s of: the phantom splits. Not a
-	 * miss - the hit count reads the owner's boundaries - but on an accepted row every one is
-	 * a seam the owner did not hear, and a rule that gains hits by splitting shows here.
+	 * Analysis boundaries unmatched within 0.6 s; penalizes phantom splits even when recall
+	 * improves.
 	 */
 	extra: number;
 	deltas: number[];
@@ -97,10 +88,8 @@ const DRUMS = join(import.meta.dirname, 'corpus', '.drums');
 mkdirSync(DRUMS, { recursive: true });
 
 /**
- * A cached drum run with its activation curves restored to Float32Array. JSON writes a typed
- * array as an object of index keys, and a curve read back as that object is one the
- * quantiser cannot see - two tracks of the corpus moved a boundary between a fresh run and a
- * cached one until this was noticed. Older caches in the object shape are read the same way.
+ * Restore drum activations to Float32Array, including legacy JSON objects with numeric index
+ * keys.
  */
 function readDrums(path: string): Awaited<ReturnType<Adtof['run']>> {
 	const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;

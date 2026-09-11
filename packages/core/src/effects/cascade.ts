@@ -7,11 +7,7 @@ import { BeatHold } from '../dsl/env.ts';
 import { spectralTilt } from '../dsl/spectrum.ts';
 import { beatRelease, INTENSITY } from './helpers.ts';
 
-/**
- * Four fixture groups fire in sequence across the bar - beam, front, sides, back - so
- * the light visibly pours from the ceiling down and around the room. A call-and-response
- * chase at the scale of the architecture.
- */
+/** Sequence beam, front, sides and back to make the chase follow the architecture. */
 export const cascade: EffectDef = {
 	id: 'cascade',
 	name: 'Cascade',
@@ -36,8 +32,7 @@ export const cascade: EffectDef = {
 			walls[2] ? [walls[2]] : []
 		];
 		const env = new Float32Array(4);
-		// `f.energy` is beat-resolution data the player interpolates per frame, so a level
-		// multiplied by it slides continuously under a chase that lands on the grid.
+		// Latch beat energy so level does not slide under a grid-locked chase.
 		const level = new BeatHold(0.5);
 		const tilt = new BeatHold(0.25);
 		let lastStage = -1;
@@ -63,12 +58,7 @@ export const cascade: EffectDef = {
 				const held = level.update(f.energy, f.beat, f.dt, f.beatPeriod);
 				const gain = (0.4 + p.intensity * 0.8) * clamp(0.45 + held * 0.55);
 				const warm = tilt.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
-				// Where the arrangement sits picks the walls' colour, so the same chase reads
-				// as body under a bass passage and as texture when the top opens up.
-				// A spectral term may only walk the slot inside base..glow. That span is safe because it
-				// is a SATURATION move at constant flux (measured x1.03 over 24 hues); crossing to
-				// white is x2.66, a spectrum driving BRIGHTNESS through the palette, which is the
-				// blinking the mixer already had to be rescued from once.
+				// Keep spectral tint in the nearly constant-flux base..glow span.
 				const wallLit = lerp(SLOT.base, SLOT.glow, clamp(warm * 0.7));
 
 				for (let s = 0; s < 4; s++) {

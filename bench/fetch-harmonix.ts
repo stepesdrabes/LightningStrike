@@ -4,20 +4,11 @@ import { spawn } from 'node:child_process';
 import { MAX_DURATION_DRIFT } from './kinds.ts';
 
 /**
- * Harmonix Set: structure annotations from the repo, audio per track via yt-dlp.
- *
- * Derived from the deleted harness's bench/fetch-structure.ts (removed in b94e2fa), with the
- * lesson it learned promoted into the fetch itself. Harmonix annotates Rock Band game edits,
- * and 139 of the 254 uploads the old harness kept were a different length from the edit that
- * was annotated: usually the full single against a game cut with an internal section removed,
- * which no constant offset can reach. So every download is gated on the metadata.csv master
- * duration against the decoded duration before it earns a place on disk, and misfits are
- * deleted rather than kept for an alignment step to reject later.
- *
- * Best-aligned first (the repo's own DTW scores), so the gate spends its budget where a pass
- * is most likely. Serial and throttled: one host, be polite.
- *
- * Idempotent: passing audio and recorded rejects both survive a rerun.
+ * Fetch Harmonix annotations and audio. Gate decoded duration against the Rock Band master
+ * edit;
+ * a full single with omitted game sections cannot be repaired by a constant time offset.
+ * Try the best DTW alignments first, serially. Passing files and recorded rejects survive
+ * reruns.
  */
 
 const CORPUS = join(import.meta.dirname, 'corpus');

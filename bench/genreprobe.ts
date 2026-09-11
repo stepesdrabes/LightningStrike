@@ -3,11 +3,7 @@ import { join } from 'node:path';
 import { CACHE_DIR, decodeAudio } from '@mv/analysis';
 import { GenreClassifier } from '../packages/analysis/src/genreModel.ts';
 
-/**
- * Run the Discogs-EffNet style classifier over every cached track and print the top styles,
- * so a frontend or model regression shows up as nonsense labels rather than a silent drift.
- * Pass track ids as arguments to probe a subset.
- */
+/** Print Discogs-EffNet style activations over the cache; optional track IDs select a subset. */
 const only = new Set(process.argv.slice(2));
 
 const metas = (await readdir(CACHE_DIR)).filter((f) => f.endsWith('.meta.json'));

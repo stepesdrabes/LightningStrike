@@ -7,15 +7,7 @@ import { Presence } from '../dsl/env.ts';
 import { stripAxis } from '../dsl/space.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-/**
- * The backbeat, as a bloom rather than a stamp: every snare opens both short walls from
- * their middles outward, white at the core cooling to glow as it widens, and the long walls
- * catch a dim echo at their ends a moment later. Written for the two and the four, which in
- * rap and pop is the thing the room should be answering and mostly was not.
- *
- * No `character`, because a bloom is light arriving rather than light interrupting: the
- * no-flash families may reach for it.
- */
+/** No character tag: gradual snare blooms remain available to no-flash families. */
 export const backbeatBloom: EffectDef = {
 	id: 'backbeatBloom',
 	name: 'Backbeat Bloom',
@@ -57,8 +49,7 @@ export const backbeatBloom: EffectDef = {
 				}
 				if (!Number.isFinite(since)) return;
 
-				// Open inside a sixth of a beat, hold, and fade out over the rest of it: the
-				// bloom has to be open before it starts leaving, or it is a flicker at the centre.
+				// Open before release so the bloom does not flicker at the centre.
 				const beat = Math.max(0.1, f.beatPeriod);
 				const u = since / beat;
 				if (u > 1.3) return;
@@ -70,8 +61,7 @@ export const backbeatBloom: EffectDef = {
 				for (const wall of shorts) {
 					for (let k = 0; k < wall.count; k++) {
 						const x = Math.abs((k + 0.5) / wall.count - 0.5) * 2;
-						// A flat-topped bloom: bright across most of its width, falling only at
-						// the rim, or it is a spot with a halo rather than a wall opening.
+						// A flat top makes the gesture a widening wall rather than a spot.
 						const v = Math.sqrt(clamp(1 - x / width));
 						addSample(out, wall.offset + k, palette, lerp(SLOT.glow, SLOT.white, v * v) + hueShift, (0.18 + 0.82 * v) * gain);
 					}

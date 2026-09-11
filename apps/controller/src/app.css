@@ -1,8 +1,4 @@
-/*
- * The same greyscale chrome as apps/web, and for the same reason: the light in the room is the
- * only saturated thing worth looking at, so anything here that carries a hue competes with it.
- * The colour swatches are the exception, because there the hue IS the subject.
- */
+/* Greyscale chrome leaves saturation to the room and colour swatches. */
 :root {
 	--background: #09090b;
 	--card: #0f0f12;
@@ -50,8 +46,7 @@ body {
 	font-size: 15px;
 	line-height: 1.5;
 	-webkit-font-smoothing: antialiased;
-	/* A control panel has nothing to select, and a long-press that highlights a label instead
-	   of pressing the button reads as the app being broken. */
+	/* Prevent long-press text selection from intercepting controls. */
 	-webkit-user-select: none;
 	user-select: none;
 	-webkit-tap-highlight-color: transparent;

@@ -8,26 +8,12 @@ import { ringU } from '../dsl/space.ts';
 import { BeatHold } from '../dsl/env.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-/**
- * The beam's share, in place of the walls' wandering body rather than on top of it.
- *
- * A fire is under you, so the ceiling gets bounce: even, and dimmer than the wall the fire has
- * settled against. Not much dimmer, though. Gamma 2.2 means a level of 0.72 arrives as 48% of the
- * bytes, and the coverage test reads the beam as one of five strips - a ceiling taken to half
- * level is a bed that measures as unable to hold a room, and looks it.
- */
+/** Give the beam even, slightly dimmer bounce. Keep enough level after gamma to carry the room. */
 const BEAM_SPILL = 0.72;
 
 /**
- * Firelight, on the room's own clock rather than the music's.
- *
- * Three noise fields at three rates multiplied together, which is what stops a flicker having an
- * audible period: the body wanders over about half a minute, the flame moves at a second or so,
- * and the sputter is fast and shallow. Any one of them alone reads as a pattern.
- *
- * The slot only ever walks `deep` to `glow`. That stretch of the ramp is one hue at three
- * lightnesses, which is exactly what fire is, and crossing past `white` toward the accent would
- * make the flame change colour rather than brightness.
+ * Multiply slow body, flame and shallow sputter noise to avoid a repeating flicker pattern.
+ * Stay within deep..glow so the fire changes lightness within one hue.
  */
 export const hearth: EffectDef = {
 	id: 'hearth',
@@ -51,8 +37,7 @@ export const hearth: EffectDef = {
 			grain[i] = hash01(i * 3 + 11);
 			onBeam[i] = g.perim[i] < 0 ? 1 : 0;
 		}
-		// How loud the passage is, not what is in it: a fire answers a room filling up, not a
-		// snare. Latched on the beat for the same reason every other bed latches.
+		// Latch passage level; fire responds to the room filling, not individual snares.
 		const passage = new BeatHold(0.5);
 		let phase = 0;
 		let heard = 0;
@@ -76,15 +61,12 @@ export const hearth: EffectDef = {
 
 				for (let i = 0; i < g.count; i++) {
 					const u = ringU(g, i);
-					// Where the fire's body is. Two crests round the ring at a wide period, drifting
-					// about a lap every three minutes. The trough is high because the far side of a
-					// room with a fire in it is still a room with a fire in it.
+					// Slow, broad crests retain a high trough so the far side stays lit.
 					const body = onBeam[i]
 						? BEAM_SPILL
 						: 0.52 + 0.48 * sinewave(u * 2 + phase * 0.0055 * roam);
-					// Perlin spends most of its time near the middle, so a flame taken straight off it
-					// swings by about a tenth and reads as a lamp with a loose contact rather than as
-					// fire. Stretched about its own centre first, it reaches the ends it needs.
+					// Expand Perlin about its centre so the flame has a visible range instead
+					// of weak jitter.
 					const raw = noise3(u * 5.5 * roam + phase * 0.42, phase * 0.11, 2.7);
 					const flame = clamp((raw - 0.5) * 2.4 + 0.5);
 					const sputter = noise3(u * 26 - phase * 1.05, 8.3, phase * 0.62);

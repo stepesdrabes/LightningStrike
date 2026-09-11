@@ -12,9 +12,8 @@ import { CACHE_DIR } from '@mv/analysis';
 import { composeShow, lintShow, measureShow, allowedFlashes } from '@mv/author-engine';
 
 /**
- * The scoreboard: compose, lint and measure a show for every cached track, and report the
- * numbers a taste change has to not regress - delivered contrast, coverage, punctuation
- * firing, smoothness, and how differently the corpus's shows come out from one another.
+ * Compose, lint and measure cached shows: contrast, coverage, hits, smoothness and corpus
+ * variety.
  */
 const geometry = buildGeometry(DEFAULT_ROOM);
 const effects = new Map(BUILT_IN_EFFECTS.map((e) => [e.id, e]));

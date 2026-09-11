@@ -3,17 +3,11 @@ import { CONTEXT_VERSION } from '@mv/core';
 import { mapGenres } from './genreMap.ts';
 
 /**
- * Resolve what a YouTube rip actually is, from keyless free APIs, in a handful of guarded
- * calls: identity first (yt-dlp's own music metadata, then song.link, then a title parse
- * confirmed against Deezer), then genre (iTunes + MusicBrainz), published tempo (Deezer)
- * and synced lyrics (LRCLIB) fanned out from it.
- *
- * Every call is optional and timeout-bound. The design rule is that this function cannot
- * fail: the worst network day returns an empty context and the pipeline behaves exactly as
- * it did before enrichment existed.
+ * Optional, timeout-bound identity, genre, tempo, and lyric lookups. Network failures must
+ * degrade to an empty context so enrichment never blocks analysis.
  */
 
-export interface EnrichInput {
+interface EnrichInput {
 	/** Raw upload title, e.g. "CHRYSTAL - THE DAYS (NOTION REMIX)". */
 	title: string;
 	uploader: string;
@@ -63,7 +57,7 @@ export function cleanTitle(raw: string): string {
 /** "Artist - Title" with any dash the world writes it with. */
 const SPLIT = /\s+[-–—―:|]\s+/;
 
-export interface ParsedTitle {
+interface ParsedTitle {
 	artist: string | null;
 	title: string;
 }
@@ -141,11 +135,8 @@ async function deezerSearch(artist: string | null, title: string, duration: numb
 		| { data?: { id: number; duration: number; artist?: { name?: string } }[] }
 		| null;
 	const rows = j?.data ?? [];
-	// Duration decides between namesakes - a name search returns covers, sped-up edits and
-	// karaoke versions. A music video runs longer than the record it carries, so when nothing
-	// lands inside the window the artist's own top hit is still better than nothing.
-	// With no duration to arbitrate (a local file before decode), the artist has to: the
-	// top hit for a bare title search is whoever is famous, not whoever is asked about.
+	// Use duration to disambiguate versions. With no duration, require artist agreement; otherwise
+	// the artist's top hit is fallback when video length prevents a close match.
 	const near =
 		duration > 0
 			? rows.find((r) => Math.abs(Number(r.duration ?? 0) - duration) <= 6)
@@ -157,9 +148,8 @@ async function deezerSearch(artist: string | null, title: string, duration: numb
 }
 
 /**
- * song.link resolves the YouTube URL itself, which catches official uploads title parsing
- * mangles. Only real catalogue entities count: the YOUTUBE entities echo the uploader as
- * "artist", which is how a channel name became the credited artist on a third of a corpus.
+ * song.link catalogue identities can resolve malformed titles; ignore YouTube entities that
+ * echo channel names as artists.
  */
 const ODESLI_PLATFORMS = ['DEEZER_SONG', 'SPOTIFY_SONG', 'ITUNES_SONG', 'TIDAL_SONG', 'AMAZON_SONG', 'SOUNDCLOUD_SONG'];
 
@@ -233,10 +223,7 @@ interface LrcHit {
 	duration: number;
 }
 
-/**
- * Search rather than /get: the exact-signature endpoint happily returns a plain-only
- * duplicate while a synced variant of the same length sits one row away.
- */
+/** Search finds synced duplicates that the exact-signature /get endpoint can miss. */
 async function lrclib(artist: string | null, title: string, duration: number): Promise<LrcHit | null> {
 	const params = artist
 		? `track_name=${encodeURIComponent(title)}&artist_name=${encodeURIComponent(artist)}`
@@ -251,8 +238,7 @@ async function lrclib(artist: string | null, title: string, duration: number): P
 		instrumental: !!r.instrumental,
 		duration: Number(r.duration ?? 0)
 	}));
-	// The search is already artist-scoped, so a duration miss here is usually the music-video
-	// gap rather than a namesake; near matches are preferred and far ones still allowed.
+	// Prefer duration matches, but permit video-length gaps within artist-scoped lyric results.
 	const near = rows.filter((r) => duration <= 0 || Math.abs(r.duration - duration) <= 6);
 	const pool = near.length > 0 ? near : rows;
 	return pool.find((r) => r.syncedLyrics) ?? pool[0] ?? null;
@@ -279,7 +265,6 @@ export async function enrichTrack(input: EnrichInput): Promise<TrackContext> {
 	const sources: string[] = [];
 	const genres: string[] = [];
 
-	// --- identity --------------------------------------------------------------------------
 	let artist: string | null = null;
 	let title: string | null = null;
 	let resolvedBy: string | null = null;
@@ -325,7 +310,6 @@ export async function enrichTrack(input: EnrichInput): Promise<TrackContext> {
 		}
 	}
 
-	// --- catalogue -------------------------------------------------------------------------
 	log('looking the track up');
 	let deezer = deezerId ? await deezerById(deezerId) : null;
 	// A linked id whose duration is nowhere near the audio is a mismatched link: a live cut,

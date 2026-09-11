@@ -3,11 +3,11 @@
 // against this working tree; any diff means a stale build was judged (or the tree moved).
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { composeShow } from '@mv/author-engine';
 import type { Show } from '@mv/core';
 
-const cache = join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache();
 const judgeDir = join(cache, 'judge');
 
 let same = 0;

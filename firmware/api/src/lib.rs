@@ -1,5 +1,4 @@
-//! The HTTP face of a light: four routes over anyone's TCP. Speaks only `embedded-io-async`,
-//! imports nothing from Embassy, and therefore builds and tests on the host like `wire` does.
+//! HTTP over embedded-io-async, independent of Embassy and testable on the host.
 
 #![no_std]
 
@@ -83,8 +82,7 @@ pub async fn serve<C: Read + Write>(conn: &mut C, api: &mut impl Api) -> Result<
 	};
 
 	match (method, route) {
-		// Answered for every path, including unknown ones: a preflight that 404s reads to the
-		// browser as the whole origin being unreachable rather than one route being absent.
+		// Answer preflights on every path so unknown routes do not appear as unreachable origins.
 		(Method::Options, _) => respond(conn, 204, "No Content", b"").await,
 		(Method::Get, Route::State) => {
 			let state = api.state().await;
@@ -157,15 +155,8 @@ async fn respond_error<C: Write>(conn: &mut C, msg: &str) -> Result<(), C::Error
 	respond(conn, 400, "Bad Request", body.as_bytes()).await
 }
 
-/// The CORS headers are on every response rather than the API routes alone.
-///
-/// The controller is served from somewhere else on the network - a Pi, a laptop - so every
-/// request it makes is cross-origin. Without `Access-Control-Allow-Origin` a browser may send to
-/// a board and never read the reply, which is what limited the old controller page to displaying
-/// its own guesses rather than what the light actually holds.
-///
-/// The head goes into a fixed buffer and a `core::fmt` overflow is silent, so [`HEAD_CAP`] has to
-/// stay ahead of the longest line this can produce.
+/// Every response needs CORS because the controller uses another origin. HEAD_CAP must fit
+/// the longest header: core::fmt overflow in the fixed buffer is silent.
 async fn respond<C: Write>(
 	conn: &mut C,
 	status: u16,

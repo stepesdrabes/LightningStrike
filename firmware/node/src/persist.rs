@@ -12,15 +12,12 @@ use crate::irq::Irqs;
 
 const FLASH_SIZE: usize = 2 * 1024 * 1024;
 
-/// The carve in memory.x: the last 16 KB of the part. Two 4 KB sectors are the map's minimum
-/// and the spare pair is headroom for whatever 0.3 remembers.
+/// Last 16 KB reserved by memory.x: two required 4 KB sectors plus two spare sectors.
 const RANGE: Range<u32> = 0x1FC000..0x20_0000;
 
 const KEY: u8 = 0;
 
-/// The remembered light in flash. A record is ~24 bytes, so a sector pair holds hundreds per
-/// erase cycle; at 100k rated cycles even a save every two seconds takes years to wear, and
-/// saves are debounced far below that.
+/// ~24-byte settings records amortise erase wear; debounce saves across hundreds of records per sector pair.
 pub struct Persist {
 	map: MapStorage<
 		u8,
@@ -47,8 +44,7 @@ impl Persist {
 		}
 	}
 
-	/// Best effort: a light that cannot save is still a light. An erase stalls XIP and IRQs for
-	/// tens of ms, which is why saves are debounced rather than per-change.
+	/// Debounce saves because erase stalls XIP/IRQs for tens of milliseconds. Failure must not stop lighting.
 	pub async fn save(&mut self, s: &LightState) {
 		if let Err(e) = self.map.store_item(&mut self.buf, &KEY, &settings::encode(s)).await {
 			log::warn!("settings save failed: {e:?}");

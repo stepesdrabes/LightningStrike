@@ -6,11 +6,8 @@ import { sinewave } from '../dsl/wave.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
- * The stepping is everything: a smoothly rotating wheel reads as a screensaver, one that
- * clicks around in quantized 8th-note steps reads as a machine playing the music.
- *
- * The wheel is the show's own colours rather than the spectrum, which is the difference
- * between a look that belongs to this track and one that belongs to no track.
+ * Quantized eighth-note steps make the palette wheel read as a musical machine, not a smooth
+ * drift.
  */
 export const hueCarousel: EffectDef = {
 	id: 'hueCarousel',
@@ -40,8 +37,7 @@ export const hueCarousel: EffectDef = {
 
 				for (let i = 0; i < g.count; i++) {
 					const u = g.perim[i] >= 0 ? g.perim[i] : g.theta[i];
-					// Bar-locked brightness wave gives the wheel light and shade; squared so it
-					// dwells dark rather than reading as a flat band of colour.
+					// Square the bar-locked wave to leave dark gaps between colour bands.
 					const w = 0.25 + 0.75 * Math.pow(sinewave(u * 3 - f.barPhase), 2);
 					sample(palette, paletteArc(u - spin + hueShift), w * gain, rgb);
 					setPixel(out, i, rgb[0], rgb[1], rgb[2]);

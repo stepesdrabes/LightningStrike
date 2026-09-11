@@ -6,10 +6,7 @@ import { fadeToBlack } from '../dsl/buffer.ts';
 import { stampOnStrip, stripAxis } from '../dsl/space.ts';
 import { beatRelease, INTENSITY, param } from './helpers.ts';
 
-/**
- * A streak crosses the beam in a quarter of a beat - far faster than any other motion in
- * the room, which is exactly what a whip is. Fires only on snares, so it IS the backbeat.
- */
+/** Cross the beam in a quarter beat so the snare gesture reads as a whip. */
 export const snareWhip: EffectDef = {
 	id: 'snareWhip',
 	name: 'Snare Whip',
@@ -61,8 +58,7 @@ export const snareWhip: EffectDef = {
 					stampOnStrip(out, g.count, beam, pos, 2.2, sample(palette, SLOT.white + hueShift, gain * 0.7));
 				}
 
-				// The answering shiver on the side walls, a hair later: the crack is on the beam,
-				// the sting is on the walls, and the walls are where the room is watching.
+				// Delay the side-wall shiver slightly after the beam crack.
 				const echo = clamp(u - 0.2) * gain * 0.45;
 				if (echo > 0.02) {
 					for (const wall of sides) {

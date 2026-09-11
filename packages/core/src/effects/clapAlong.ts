@@ -7,11 +7,7 @@ import { PulseEnv } from '../dsl/env.ts';
 import { stampOnStrip, stripAxis } from '../dsl/space.ts';
 import { beatRelease, INTENSITY } from './helpers.ts';
 
-/**
- * Symmetry is what makes this read as a crowd of hands rather than as scattered hits:
- * every clap fires mirrored positions on both side walls, cycling four spots, over a
- * flash of the whole side wall that is gone inside the beat.
- */
+/** Mirror claps across side walls so repeated spots read as a crowd of hands. */
 export const clapAlong: EffectDef = {
 	id: 'clapAlong',
 	name: 'Clap Along',
@@ -62,9 +58,8 @@ export const clapAlong: EffectDef = {
 					}
 				}
 
-				// The wall lights under the hands. Laid under the stamps with a max rather than
-				// added into the decaying buffer, which would integrate it into a glow that
-				// outlasts the clap.
+				// Max the wall flash under stamps; adding into decay would accumulate a
+				// lingering glow.
 				const v = wash.decay(f.dt, f.beatPeriod, 0.8) * gain * 0.4;
 				if (v <= 0.005) return;
 				for (const wall of sideWalls) {

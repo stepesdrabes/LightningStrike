@@ -7,14 +7,7 @@ import { BeatHold } from '../dsl/env.ts';
 import { sinewave } from '../dsl/wave.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-/**
- * A spiral field in (theta, dist) space. The ceiling beam sits near the room's axis, so
- * it naturally becomes the vortex's bright eye. The kick surge is integrated, which gives
- * the swirl inertia instead of a twitch.
- *
- * Arms, direction, twist and speed are all params the planner draws per cue, because this
- * was in 64 of 65 shows as the same two-armed spiral turning the same way.
- */
+/** Spiral depth makes the beam a bright eye; kick integration adds inertia. */
 export const vortex: EffectDef = {
 	id: 'vortex',
 	name: 'Vortex',
@@ -38,9 +31,7 @@ export const vortex: EffectDef = {
 	create(g) {
 		const buf = new Float32Array(g.count * 3);
 		const rgb: [number, number, number] = [0, 0, 0];
-		// The passage's own level, latched on the beat. Straight off `f.energy` this swung the
-		// whole field four to one between frames, which is the arrangement's dynamics arriving
-		// as a dimmer rather than as a gesture.
+		// Latch beat energy before whole-field brightness modulation.
 		const passage = new BeatHold(0.5);
 		let surge = 0;
 
@@ -55,17 +46,14 @@ export const vortex: EffectDef = {
 
 				surge += f.kickEnv * f.dt * 1.8 * motion;
 				surge *= Math.exp(-f.dt / Math.max(0.1, f.beatPeriod * 3));
-				// The phase is read off the absolute bar clock so a seek reproduces the frame
-				// exactly; ctx.motion deliberately does not scale it, because multiplying a
-				// growing counter by a value the player cross-fades between cues moves the
-				// pattern by the whole elapsed length.
+				// Do not scale absolute bar phase by motion; cue changes would move the pattern
+				// by elapsed time.
 				const dir = p.dir < 0 ? -1 : 1;
 				const spin = dir * ((f.barIndex + f.barPhase) / Math.max(0.5, p.barsPerRev) + surge);
 				const twist = 1 + p.twist * 3;
 				const arms = Math.max(1, Math.round(p.arms));
 				const held = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
-				// The arms are the picture and the dark between them is what makes it turn: held
-				// under full so the swirl is contrast rather than a bright field with a pattern on it.
+				// Keep arms below full so dark gaps make the rotation visible.
 				const gain = (0.27 + p.intensity * 0.5) * clamp(0.7 + held * 0.3);
 
 				for (let i = 0; i < g.count; i++) {

@@ -3,22 +3,10 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 
 /**
- * Raveform: beats, downbeats and ten-label EDM structure for 1423 tracks, annotated by DJs
- * (mir-aidj.github.io/raveform). The one corpus whose vocabulary is already this project's:
- * intro, buildup, breakdown, drop, cooldown, outro, not letters.
- *
- * Companion to bench/fetch-harmonix.ts (both derive from the deleted harness's
- * bench/fetch-structure.ts, removed in b94e2fa). The annotations come as one zip from
- * HuggingFace; only `structures/` (segments.json + per-track beat CSVs) and the small track
- * index are kept, since the other 68k files describe the unannotated DJ-mix corpus. Track ids
- * ARE YouTube video ids, so unlike Harmonix the annotation was made on the referenced file
- * itself; the duration gate here only catches videos that have since been replaced or
- * region-cut, not a systematic wrong-edit problem.
- *
- * Audio is fetched for a seeded random sample rather than the head of the list, so the sample
- * spans the corpus's genres and eras while every rerun picks the same tracks.
- *
- * Idempotent: passing audio and recorded rejects both survive a rerun.
+ * Fetch Raveform's DJ-annotated EDM structures and beats (mir-aidj.github.io/raveform).
+ * Keep the annotation subset and index, then fetch a seeded sample of the referenced YouTube
+ * IDs.
+ * Gate duration against replaced or edited uploads; passing files and rejects survive reruns.
  */
 
 const CORPUS = join(import.meta.dirname, 'corpus');

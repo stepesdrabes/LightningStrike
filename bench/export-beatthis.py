@@ -1,16 +1,11 @@
-# One-off dev-time export: a Beat This! checkpoint -> ONNX, matching the graph the shipped
-# beat_this.onnx presents. Never committed; the artefact lands in models/ beside the others.
-# Upstream is MIT (CPJKU/beat_this), so the export is unencumbered.
+# Development export: Beat This! checkpoint -> the host's ONNX interface.
+# CPJKU/beat_this is MIT; outputs remain uncommitted in models/.
 #
 #   uv run --python 3.12 --with torch --with onnx --with onnxruntime \
 #     --with "beat_this @ https://github.com/CPJKU/beat_this/archive/main.zip" \
 #     python bench/export-beatthis.py --checkpoint small0
 #
-# Why this exists: the shipped graph came from a third-party export, so there was no way to
-# try the distilled checkpoint without redoing that work. small0 is 2.1 M parameters against
-# final0's 20.3 M - a tenth of the download - and the paper reports it "still gives SOTA F1
-# scores". Whether that survives THIS decode path, resampler and peak picker is what
-# bench/beatscore.ts is for; this only produces the graph to ask with.
+# Compare alternative checkpoints through bench/beatscore.ts on the actual host pipeline.
 import argparse
 from pathlib import Path
 
@@ -19,8 +14,7 @@ import torch
 from beat_this.inference import load_model
 from beat_this.model import beat_tracker
 
-# The window the host feeds, one per call: batching materialises an attention tensor of
-# windows x 32 x 1500 x 1500 floats, which is gigabytes on a long track.
+# One window per call avoids a windows x 32 x 1500 x 1500 attention allocation.
 CHUNK = 1500
 MEL_BINS = 128
 
@@ -29,12 +23,8 @@ parser.add_argument('--checkpoint', default='small0')
 parser.add_argument('--out', default=None)
 args = parser.parse_args()
 
-# `PartialTransformer.forward` and `PartialFTTransformer.forward` both read the batch size as
-# `b = len(x)`, a PYTHON int, which the tracer folds into a constant. The published export
-# rewrites that as a shape read because it takes a variable WINDOW axis. This one does not:
-# the host feeds exactly one window per call, so batch 1 is the contract rather than a
-# limitation, and the folded constant is the truth. The parity check at the bottom is what
-# says so rather than this comment.
+# Both transformer forwards trace len(x) as a constant. Batch 1 matches the host contract;
+# only a variable-window exporter would need to replace it with a dynamic shape read.
 assert hasattr(beat_tracker, 'PartialFTTransformer'), 'upstream layout moved; re-read the forwards'
 
 model = load_model(args.checkpoint, 'cpu')
@@ -71,8 +61,7 @@ torch.onnx.export(
 )
 print(f'wrote {out} ({out.stat().st_size / 1e6:.1f} MB)')
 
-# Parity against torch on the same input, because an export that silently substitutes an
-# approximation is worth less than no export at all.
+# Compare ONNX with torch on identical probes.
 import onnxruntime as ort  # noqa: E402
 
 session = ort.InferenceSession(str(out), providers=['CPUExecutionProvider'])

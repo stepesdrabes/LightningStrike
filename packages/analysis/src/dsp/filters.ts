@@ -1,5 +1,5 @@
 /** Normalised direct-form-I biquad: y = b0 x + b1 x1 + b2 x2 - a1 y1 - a2 y2. */
-export interface Biquad {
+interface Biquad {
 	b0: number;
 	b1: number;
 	b2: number;
@@ -69,10 +69,8 @@ export function applyCascade(signal: Float32Array, filters: readonly Biquad[]): 
 }
 
 /**
- * ITU-R BS.1770-4 K-weighting: a +4 dB high shelf standing in for the head, then a 38 Hz
- * high-pass. The magic constants are the spec's 48 kHz design re-derived for `sampleRate`,
- * which is what libebur128 and pyloudnorm do; using the tabulated 48 kHz coefficients at
- * 44.1 kHz would shift both corners by 9%.
+ * ITU-R BS.1770-4 K-weighting: +4 dB shelf and 38 Hz high-pass. Re-derive coefficients for
+ * sampleRate; using the 48 kHz table at other rates shifts the filter corners.
  */
 export function kWeighting(sampleRate: number): [Biquad, Biquad] {
 	const shelfF = 1681.974450955533;
@@ -106,10 +104,7 @@ export function kWeighting(sampleRate: number): [Biquad, Biquad] {
 	return [shelf, hp];
 }
 
-/**
- * Anti-aliased decimation by an integer factor. Two cascaded Butterworth sections at 0.4 of
- * the new Nyquist, which is enough for feature extraction; nothing downstream listens to it.
- */
+/** Two cascaded Butterworth sections at 0.4 of the new Nyquist prevent aliasing during decimation. */
 export function decimate(signal: Float32Array, sampleRate: number, factor: number): Float32Array {
 	if (factor <= 1) return Float32Array.from(signal);
 	const work = Float32Array.from(signal);

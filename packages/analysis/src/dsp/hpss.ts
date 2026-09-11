@@ -1,34 +1,15 @@
 /**
- * Harmonic-percussive separation by median filtering (Fitzgerald 2010, with Driedger's
- * separation factor).
- *
- * A sustained note is a horizontal ridge in a spectrogram: steady in a few bands over many
- * frames. A drum hit is a vertical stripe: broadband, in one frame. Median-filtering along
- * time keeps the ridges and erases the stripes; filtering along frequency does the reverse.
- * Comparing the two says which each cell belongs to.
- *
- * This runs on the filterbank spectrogram rather than on raw bins, which is a tenth of the
- * work and loses nothing: the decision is about shape in time, not about pitch. Nothing is
- * ever resynthesised, so the artefacts that make people wary of median-filter HPSS - all of
- * which come from inverting a masked spectrum - cannot arise.
+ * Median-filter HPSS (Fitzgerald 2010, Driedger separation factor): time ridges are harmonic,
+ * frequency stripes percussive. Filterbank cells suffice; no masked spectrum is resynthesised.
  */
-export interface Separation {
+interface Separation {
 	/** frames * bands, the percussive share of each cell, 0 or 1. */
 	percussive: Float32Array;
 	/** frames * bands, the harmonic share. */
 	harmonic: Float32Array;
 }
 
-/**
- * Sharpness of the split.
- *
- * A soft Wiener mask rather than a hard gate. The gate this replaces required one side to beat
- * the other by a factor before a cell went anywhere at all, which sent 46% of kick-band cells
- * to neither side and left about 6% of the band's magnitude in `percussive`: a kick is
- * broadband and short, so half its cells look like a draw at any one band. Splitting every cell
- * in proportion keeps the two shares summing to the input, and the exponent decides how
- * decisive a small lead is.
- */
+/** Soft Wiener masks preserve the input sum; a hard gate discards ambiguous kick cells. */
 const MASK_POWER = 2;
 
 export function separate(
@@ -71,11 +52,7 @@ export function separate(
 	return { percussive, harmonic };
 }
 
-/**
- * Median over a centred window, kept exact by maintaining the window sorted. An insertion
- * and a deletion per step is O(w) with a memmove, which beats re-sorting by enough to matter
- * over the millions of cells a track produces.
- */
+/** Maintain a sorted median window: O(w) insertion/deletion avoids re-sorting millions of cells. */
 function movingMedian(src: Float32Array, len: number, radius: number, out: Float32Array): void {
 	if (radius <= 0 || len === 0) {
 		out.set(src.subarray(0, len));

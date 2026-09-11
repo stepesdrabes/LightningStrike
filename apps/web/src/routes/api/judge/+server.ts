@@ -8,11 +8,7 @@ import {
 } from '$lib/server/judge.ts';
 import type { RequestHandler } from './$types';
 
-/**
- * The judge panel's store. Loopback only, like everything else that is the owner's act:
- * a phone in the room may add songs, but the verdicts steering the next round of engine
- * work are the person running the night's.
- */
+/** Judgements are loopback-only host input. */
 export const GET: RequestHandler = async (event) => {
 	if (!isLocal(event)) return new Response('forbidden', { status: 403 });
 	return json({ judgements: await readJudgements() });

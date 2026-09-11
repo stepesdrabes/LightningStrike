@@ -49,14 +49,7 @@ describe('Layer handover', () => {
 		expect(m.frame[0]).toBeCloseTo(0.2 * 1.4, 5);
 	});
 
-	/**
-	 * Halfway means halfway in LIGHT, not halfway in the authoring number.
-	 *
-	 * These values are gamma-encoded on the way to the wire, so an LED's output goes as the square
-	 * of them. Mixing them arithmetically halves both looks at the midpoint and lands at a fifth of
-	 * the light, which is a handover anyone in the room can see dipping. Squares in, root out, so
-	 * the square of the result is the midpoint even though the result itself is not.
-	 */
+	/** Crossfades must preserve squared light at the midpoint, not halve the authoring values. */
 	it('sits halfway between the two effects in light, halfway through a fade', () => {
 		const m = mixerAt(1);
 		const f = createShowFrame();
@@ -119,8 +112,7 @@ describe('Layer handover', () => {
 });
 
 describe('the hit floor', () => {
-	// `frame` is read after `compose`, before the output chain, so the numbers are the scale
-	// arithmetic and nothing else: master opacity 1, blend add, headroom 1.4.
+	// Inspect compose before output processing: master opacity 1, additive blend, headroom 1.4.
 	const composed = (intensity: number, dim = 1): number => {
 		const m = mixerAt(intensity);
 		m.dim = dim;

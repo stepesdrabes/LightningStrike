@@ -10,11 +10,8 @@ import {
 import { renderExamples } from './examples.ts';
 
 /**
- * Deliberately terse. Written to Anthropic's Opus 5 guidance: no self-verification
- * instructions, no shouted emphasis, the task specified rather than the steps prescribed,
- * and the hardest constraint restated last.
- *
- * The bulk of the effort belongs in the effects, not in prose about them.
+ * Opus 5 guidance: specify the task, omit self-verification, restate the hardest constraint
+ * last.
  */
 const CRAFT = `# Craft
 
@@ -277,32 +274,7 @@ a layer. The family forbids the gesture and the linter rejects it.`;
 up to ${allowance}, each on a moment that deserves it; the linter rejects ${allowance + 1}.`;
 }
 
-/** Pass 2: execute the plan. */
-export function buildShowPrompt(analysis: TrackAnalysis, brief: string, flashAllowance = 1): string {
-	return `Your plan for "${analysis.title}":
-
-${brief}
-
----
-
-Build it. Write the effects and get each through test_effect, then the cue list against the
-bar table, then lint, preview and submit.
-
-${flashRule(flashAllowance)}
-
-analysisHash is ${analysis.hash}. Bars run 0-${analysis.bars.length - 1}, starting at bar 0.
-Keep notes short.`;
-}
-
-/**
- * Pass 2, when a draft already exists.
- *
- * The engine has already covered every bar, kept the effects inside their taste metadata,
- * reserved the peak and satisfied the linter. None of that is worth spending a model on
- * again. What it cannot do is know what the song is, so the instruction is to change what the
- * brief asks for and leave the rest - a rewrite from scratch would mostly reproduce the draft
- * with fresh opportunities to get the bookkeeping wrong.
- */
+/** Revise the engine draft so interpretation preserves its valid grid and effect constraints. */
 export function buildRevisePrompt(analysis: TrackAnalysis, brief: string, flashAllowance = 1): string {
 	return `Your plan for "${analysis.title}":
 
@@ -336,14 +308,7 @@ analysisHash is ${analysis.hash}. Bars run 0-${analysis.bars.length - 1}, starti
 Lint, preview, and submit when it says what your brief says. Keep notes short.`;
 }
 
-/**
- * The one retry, when a build pass ended without submitting.
- *
- * Deliberately narrow. Everything the previous pass achieved is still on the session - the
- * effects it registered are compiled and usable, and the analysis is whatever it settled on -
- * so the instruction is to finish rather than to reconsider. A prompt that reopened the design
- * here would spend the retry redoing the part that already worked.
- */
+/** The retry completes the existing session without reopening the design. */
 export function buildRepairPrompt(analysis: TrackAnalysis, log: readonly string[]): string {
 	const tail = log.slice(-14);
 	return `The previous pass ended without a submitted show. This is what it did:

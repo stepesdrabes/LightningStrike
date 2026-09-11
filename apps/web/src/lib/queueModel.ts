@@ -1,11 +1,4 @@
-/**
- * The queue as data and pure transitions over it.
- *
- * Kept apart from the file it is persisted to and the stream it is published on, because
- * every interesting question about a queue - what "next" means when the current track was
- * removed, what happens when the same track is added twice - is answerable without either.
- * The server module owns persistence; this owns the meaning.
- */
+/** Pure queue transitions; queueStore owns persistence and publication. */
 
 import type { Authored } from '$lib/types.ts';
 
@@ -18,10 +11,7 @@ export type ItemStatus =
 	| 'error';
 
 export interface QueueItem {
-	/**
-	 * Identifies the row, not the track. The same song may sit in the queue twice, and after
-	 * the first copy plays the second still has to be addressable.
-	 */
+	/** Row identity, independent of track identity, so repeated songs remain addressable. */
 	key: string;
 	/** A YouTube URL or a local path. The only thing known before it is resolved. */
 	source: string;
@@ -36,18 +26,11 @@ export interface QueueItem {
 	/** Why it failed, or which stage it is in. Empty when there is nothing to say. */
 	message: string;
 	authored: Authored;
-	/**
-	 * Fetches already spent on this row. Only set while a transient failure is being retried,
-	 * so an untouched row and a first attempt look the same.
-	 */
+	/** Fetch attempts during transient retry; absent for untouched rows and first attempts. */
 	attempts?: number;
 	/** The lighting family, once the track has been enriched. Absent until then. */
 	genre?: string;
-	/**
-	 * The analyser lost this track's grid, so the room runs the lounge scenes over it instead
-	 * of the authored show. Set from the analysis's own trust verdict; cleared by the owner
-	 * overriding it from the row.
-	 */
+	/** An untrusted analysis grid selects lounge scenes until the host overrides it. */
 	loungeOnly?: boolean;
 	/** Why the grid is not trusted, for the row and the inspector. */
 	trustNote?: string;
@@ -85,13 +68,7 @@ export interface NewItem {
 
 const WATCH_ID = /^[A-Za-z0-9_-]{11}$/;
 
-/**
- * The video a source points at, whatever host it names.
- *
- * `music.youtube.com/watch?v=`, `www.youtube.com/watch?v=` and `youtu.be/` are three spellings
- * of one track, so comparing sources as strings would let the radio queue a song the room has
- * already heard.
- */
+/** Normalise YouTube host/path aliases so radio cannot repeat the same video. */
 export function videoIdOf(source: string): string | null {
 	try {
 		const url = new URL(source);
@@ -108,15 +85,8 @@ export function videoIdOf(source: string): string | null {
 }
 
 /**
- * What makes two rows the same song.
- *
- * One song exists under many ids: the art track, the remaster, the extended mix, the release
- * that names its featured artist in the title. This is what stops the radio offering something
- * the room has already heard, so it deliberately reads a remix as the song it is a remix of -
- * the question being answered is "have we played this", not "is this the same master".
- *
- * Duration is not part of it. Two listings of one recording routinely differ by a second or
- * two, and any bucketing of that has an edge for them to fall either side of.
+ * Deduplicate songs across release IDs and remixes. Ignore duration: listings of one recording
+ * often differ by seconds.
  */
 /** Everything that is not a letter or a digit, so punctuation and case cannot split a match. */
 function condense(s: string): string {
@@ -128,27 +98,16 @@ const DASHED_VERSION =
 	/\s[-–]\s[^-–]*\b(?:remix|mix|edit|version|live|remaster(?:ed)?|acoustic|instrumental|slowed|sped)\b.*$/i;
 
 /**
- * The song a title names, with any version it names stripped off.
- *
- * "The Days", "The Days (NOTION Remix)" and "The Days - NOTION Remix" are one song, and a
- * radio seeded from any of them offers the other two first, because they are its nearest
- * neighbours. Matching on this alone is deliberately blunt: two unrelated songs sharing a
- * title costs one skipped suggestion, where a missed match costs the room the same song twice.
+ * Strip version clauses; skipping an unrelated same-title suggestion is preferable to replaying
+ * a song.
  */
 export function titleKeyOf(title: string): string {
-	// Brackets come off first. A rip titled "CHRYSTAL - THE DAYS (NOTION REMIX)" otherwise
-	// reads as a title with a dashed version clause and loses everything after the act's name.
+	// Strip brackets before dashed version clauses so Artist - Title (Remix) retains its title.
 	const unbracketed = title.replace(/[([{][^)\]}]*[)\]}]/g, ' ');
 	return condense(unbracketed.replace(DASHED_VERSION, '').replace(/\bfeat\.?\b.*$/i, ' '));
 }
 
-/**
- * What makes two rows the same recording by the same act.
- *
- * The lead credit only: a remix is billed "Original & Remixer" while the track it remixes is
- * billed "Original", so keeping the whole credit lets one song back into a set under a
- * collaborator's name.
- */
+/** Use the lead artist credit so adding a remixer cannot bypass song deduplication. */
 export function signatureOf(artist: string, title: string): string {
 	const lead = artist.split(/\s*[&,]\s*|\s+x\s+/i)[0];
 	return `${condense(lead)}:${titleKeyOf(title)}`;
@@ -192,12 +151,7 @@ function makeItem(input: NewItem, key: string, now: number): QueueItem {
 	};
 }
 
-/**
- * Append, and take over as current if nothing was playing.
- *
- * Adding never interrupts. A queue whose point is that several people put songs into it
- * cannot have the newest arrival cut off whatever is running.
- */
+/** Append without interrupting playback; select a current row only if none is playing. */
 export function addItems(
 	state: QueueState,
 	inputs: NewItem[],
@@ -215,12 +169,7 @@ export function addItems(
 	};
 }
 
-/**
- * Remove a row.
- *
- * Removing what is playing hands the room to whatever moved up into its place, so the
- * gesture reads as "skip this" rather than "stop the music".
- */
+/** Removing the current row advances to its successor. */
 export function removeItem(state: QueueState, key: string): QueueState {
 	const at = indexOfKey(state, key);
 	if (at === -1) return state;
@@ -263,10 +212,7 @@ export function jumpTo(state: QueueState, key: string): QueueState {
 	return { ...state, currentKey: key, revision: state.revision + 1 };
 }
 
-/**
- * Step through the queue. Stops at both ends rather than wrapping: a set that silently
- * restarts is worse than one that ends.
- */
+/** Stop at queue boundaries rather than restarting the set. */
 export function step(state: QueueState, dir: -1 | 1): QueueState {
 	const at = indexOfKey(state, state.currentKey);
 	if (at === -1) {
@@ -290,13 +236,7 @@ export function patchItem(
 	return { ...state, items, revision: state.revision + 1 };
 }
 
-/**
- * Whether a guest may pull a row back out.
- *
- * Their own, and not the one playing. Removing what is playing is a skip however it is
- * spelled, and a room where anyone can skip is a room where nobody finishes a song. An
- * anonymous row belongs to nobody and so cannot be removed by anybody.
- */
+/** Guests may remove only their own non-current rows; anonymous rows belong to nobody. */
 export function canGuestRemove(state: QueueState, key: string, guest: string): boolean {
 	if (!guest) return false;
 	const item = state.items.find((i) => i.key === key);

@@ -27,11 +27,7 @@
 		onlounge: () => void;
 	} = $props();
 
-	/**
-	 * Down from 5. At full bloom every lit pixel wore a halo wider than the strip, which
-	 * reads as a music visualiser rather than as a room; at this level a bright cue still
-	 * blooms and a dim one is honestly dim, which is what judging a show in here needs.
-	 */
+	/** Limit bloom so bright cues glow without hiding the difference between strips and halos. */
 	const MAX_BLOOM = 3.2;
 
 	let renderer: RoomRenderer | null = $state(null);
@@ -40,17 +36,12 @@
 	let layer: HTMLDivElement | undefined = $state();
 	let column: HTMLDivElement | undefined = $state();
 
-	// {@attach} rather than $effect: the canvas is the only dependency, and an $effect reading
-	// the other controls would tear down and rebuild the whole WebGL context on every tweak.
+	// Attach to the canvas so control updates cannot rebuild its WebGL context.
 	function mount(canvas: HTMLCanvasElement) {
 		const v = viz;
 		if (!v) return;
 		const r = new RoomRenderer(canvas, v.geometry, { spec: v.spec });
-		// Fixed rather than exposed. Diffused is how the strips actually read behind a channel,
-		// and bloom at full is what makes a lit room look lit; both were only ever turned down
-		// to inspect the raw emitters, which the LED bands in the timeline drawer show better.
-		r.diffused = true;
-		r.showDots = false;
+
 		r.bloomIntensity = MAX_BLOOM;
 		renderer = r;
 		v.roomRenderer = r;
@@ -63,12 +54,8 @@
 	}
 
 	/**
-	 * Two rectangles, not one.
-	 *
-	 * The canvas is the whole window, so that a lit room glows through the panels; the room is
-	 * looked at in the column between them. Both are watched, because the column changes without
-	 * the window doing anything - a rail collapses, the timeline drawer opens - and that is
-	 * exactly when the room needs re-framing.
+	 * Watch both canvas and open column: rail/drawer changes require reframing without a window
+	 * resize.
 	 */
 	$effect(() => {
 		const r = renderer;
@@ -114,10 +101,7 @@
 
 		<span class="spacer"></span>
 
-		<!--
-			Over the room rather than in the player bar, because it is about the room rather than about
-			the track: what it says while the room is resting is the name of the look on the walls.
-		-->
+		<!-- The room label also names resting scenes when no track is playing. -->
 		<button
 			class="lounge"
 			class:on={lounge || readout.resting}
@@ -172,17 +156,13 @@
 </div>
 
 <style>
-	/*
-	 * A transparent column, not a viewport. The canvas is full-window underneath; this only
-	 * reserves the space the room is meant to read as its own and anchors the controls.
-	 */
+	/* Reserve framing space and anchor controls; the canvas fills the window beneath it. */
 	.stage {
 		position: relative;
 		flex: 1;
 		min-width: 0;
 		min-height: 0;
-		/* Transparent to the pointer as well as to the eye, so a drag over the room reaches the
-		   canvas underneath. The controls inside take their events back individually. */
+		/* Pass room drags to the canvas; controls opt back into pointer events. */
 		pointer-events: none;
 	}
 	canvas {
@@ -208,12 +188,8 @@
 		bottom: 0;
 	}
 	/*
-	 * `:global` because one of these is a component.
-	 *
-	 * Svelte scopes a selector by requiring its own hash class on the elements it matches, and a
-	 * child component's root element never carries the parent's. Without this the camera presets
-	 * inherit the stage's `pointer-events: none` and cannot be clicked at all - which is exactly
-	 * what happened the moment they became a `Segmented` rather than markup written here.
+	 * Use :global for child-component roots, which lack this component's scope class and would
+	 * inherit pointer-events: none.
 	 */
 	.overlay > :global(*) {
 		pointer-events: auto;
@@ -246,11 +222,7 @@
 		color: var(--foreground);
 		border-color: #ffffff2b;
 	}
-	/*
-	 * Lit for what the room is doing rather than for what the switch says, so the accent means the
-	 * same thing here as everywhere else: the walls are being driven by something other than the
-	 * track on the scrubber.
-	 */
+	/* Accent follows the room's actual lounge/rest state, not the requested switch state. */
 	.lounge.on {
 		background: color-mix(in srgb, var(--live) 20%, #0d0d10cc);
 		border-color: color-mix(in srgb, var(--live) 45%, transparent);

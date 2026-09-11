@@ -3,12 +3,8 @@ import { Rng, rampHueFor, wrapHue } from '@mv/core';
 import type { GenreProfile } from './genre.ts';
 
 /**
- * The palette library, base first. Every base and accent are 140-180 degrees apart, which is
- * what makes colour read as emotion rather than as decoration.
- *
- * Three hues, not two. Base and accent carry the argument; the third is what the room turns to
- * when it wants to look like somewhere else without abandoning its identity, and sections
- * promote it rather than inventing a fourth.
+ * Three-hue palette choices preserve a complementary base/accent while allowing a section
+ * variation.
  */
 interface PaletteChoice extends ShowPalette {
 	name: string;
@@ -17,12 +13,7 @@ interface PaletteChoice extends ShowPalette {
 	heat: number;
 }
 
-/**
- * Twenty of them, with base hues walked around the whole wheel rather than clustered.
- *
- * The spread is the point. Ten palettes chosen by nearest-heat put every four-on-the-floor
- * track in the same three, and the room looked like it owned four colours.
- */
+/** Spread choices around the full hue wheel so similar tempos still have color variety. */
 const PALETTES: PaletteChoice[] = [
 	{ name: 'glacier', base: 196, accent: 22, third: 168, sat: 0.86, shade: 0.2, heat: 0.05 },
 	{ name: 'ice', base: 190, accent: 8, third: 230, sat: 0.88, shade: 0.18, heat: 0.12 },
@@ -47,15 +38,8 @@ const PALETTES: PaletteChoice[] = [
 ];
 
 /**
- * Pick a palette from what the track is, then vary it a little.
- *
- * Everything fed in here is an absolute property of the recording. That is a correction, not a
- * preference: the obvious inputs - section energy, peak energy - are normalised across the
- * track, so the loudest passage of every track reads about the same and the palette barely
- * moved. Tempo, mode and how squashed the master is do vary between records.
- *
- * The choice is then weighted-random rather than nearest, so the seed genuinely decides among
- * everything plausible. Nearest-heat is what made ten palettes behave like three.
+ * Weight by absolute tempo, key and mastering dynamics; track-normalized energy cannot
+ * distinguish records.
  */
 export function choosePalette(
 	analysis: TrackAnalysis,
@@ -63,10 +47,8 @@ export function choosePalette(
 	artHue?: number | null,
 	profile?: GenreProfile,
 	/**
-	 * One song of a track that is several: its own tempo and key decide the heat, the cover
-	 * does not anchor it (the sleeve belongs to the record, and the first song wears it), and
-	 * the base is kept a clear step away from the song before, so the switch reads as a
-	 * change of room.
+	 * For later songs in a medley, use their tempo/key and separate the base from the preceding
+	 * palette.
 	 */
 	own?: { bpm: number; key: TrackAnalysis['key']; awayFrom: number }
 ): ShowPalette {
@@ -110,15 +92,9 @@ export function choosePalette(
 	const choice = PALETTES[index];
 	const fromArt = own === undefined && artHue !== undefined && artHue !== null;
 
-	// The cover wins when there is one. The whole palette rotates rather than the base being
-	// overwritten, so the 140-180 degrees between base and accent survive exactly: a yellow
-	// sleeve gets a yellow room with the same complementary answer the palette was built with.
-	// Without a cover the tonic rotates the story by up to fifteen degrees instead, so two
-	// tracks landing on the same palette in different keys still light the room differently.
-	// The cover's hue is measured in textbook HSV; the palette's hues are ramp coordinates, and the
-	// two are different curves rather than a rotation of each other. Converting is not a nicety:
-	// declared 90 is delivered as 60, so a chartreuse sleeve lit the room yellow and the palette
-	// looked like it had ignored the artwork.
+	// Rotate the whole palette to preserve hue spacing. Artwork HSV must convert to ramp
+	// coordinates;
+	// without artwork, tonic supplies a small rotation.
 	let shift = fromArt
 		? ((rampHueFor(artHue as number) * 360 - choice.base) % 360 + 360) % 360
 		: key.confidence > 0.5

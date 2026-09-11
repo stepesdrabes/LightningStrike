@@ -5,11 +5,8 @@ import { fillSolid } from '../dsl/buffer.ts';
 import { Edge, INTENSITY, param } from './helpers.ts';
 
 /**
- * Every real desk keeps a colour bump under a finger for the moments timecode cannot
- * predict. Floods the room in the accent hue and decays over a beat and a half.
- *
- * No hold and no hard edge on purpose: it is a flood, not a flash, and the version with a
- * hold read as a second slam. This is the shape the room was judged on.
+ * Decay the accent flood immediately, without a hold or hard edge that would make it another
+ * slam.
  */
 export const colorBump: EffectDef = {
 	id: 'colorBump',

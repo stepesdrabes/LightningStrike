@@ -8,10 +8,6 @@ import { sinewave } from '../dsl/wave.ts';
 import { ringU } from '../dsl/space.ts';
 import { INTENSITY } from './helpers.ts';
 
-/**
- * The rock build is a held breath rather than a snare-roll meter: the whole room swells
- * while a vibrato shimmer tightens from a slow wow into a scream, released on the one.
- */
 export const feedbackSwell: EffectDef = {
 	id: 'feedbackSwell',
 	name: 'Feedback Swell',
@@ -27,9 +23,7 @@ export const feedbackSwell: EffectDef = {
 	},
 	params: [INTENSITY],
 	create(g) {
-		// Where the arrangement sits decides the shimmer's pitch and the colour it drains
-		// through. Latched, so those only change on a beat instead of following the spectrum's
-		// own noise at the frame rate.
+		// Latch spectral pitch and colour modulation to avoid frame shimmer.
 		const tilt = new BeatHold(0.4);
 		const focus = new BeatHold(0.25);
 		let fill = 0;
@@ -55,16 +49,14 @@ export const feedbackSwell: EffectDef = {
 				const bright = tilt.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const focused = focus.update(spectrumFocus(f), f.beat, f.dt, f.beatPeriod);
 
-				// Cycles per beat rather than per second: a scream that arrives on the one is the
-				// whole gesture, and at a fixed rate it arrives wherever the tempo leaves it.
+				// Use cycles per beat so the tightening gesture stays musical.
 				shimmer += perBeat * (0.7 + fill * fill * 10) * motion;
 				const gain = (0.6 + p.intensity * 1.2) * (0.25 + fill * 0.75);
 				// A single sustained note ripples in a tight band; a full arrangement spreads it
 				// around the room.
 				const waves = 3 + bright * 8;
-				// Colour drains toward white as the feedback peaks, and further as the passage
-				// fills out, so a thin build and a dense one do not read the same.
-				// The swell may bleach toward white; the spectrum may not push it there. See meterBuild.
+				// Build progress may bleach toward white; spectral modulation stays within its
+				// colour budget.
 				const slot = lerp(lerp(SLOT.base, SLOT.glow, clamp(1 - focused)), SLOT.white, clamp(fill * fill * 0.8));
 
 				for (let i = 0; i < g.count; i++) {

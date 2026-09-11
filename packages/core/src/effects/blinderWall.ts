@@ -7,10 +7,8 @@ import { fillSolid } from '../dsl/buffer.ts';
 import { Edge, INTENSITY, param } from './helpers.ts';
 
 /**
- * The audience blinder translated to strips: attack inside one frame, because the point
- * of a blinder is that nobody saw it start, and an afterglow that settles into the
- * palette base rather than black, the way the eye keeps a bright room after the lamp is
- * gone.
+ * A one-frame attack reads as a blinder; the afterglow sustains the impression of a bright
+ * room.
  */
 export const blinderWall: EffectDef = {
 	id: 'blinderWall',
@@ -48,8 +46,7 @@ export const blinderWall: EffectDef = {
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
 
-				// A chorus is the song vocabulary's drop; arming on the literal kind alone would
-				// leave a pop peak carrying this and never firing it.
+				// Arm on drop class so choruses also fire.
 				if (sectionBase(f.section) === 'drop' && f.downbeat) {
 					const impact = f.timeSinceDrop < 0.3;
 					if ((impact || f.phraseStart) && armedFor !== f.barIndex) {
@@ -68,16 +65,14 @@ export const blinderWall: EffectDef = {
 					return;
 				}
 
-				// Period captured at arm time, so a tempo drift mid-decay cannot stretch the hold.
+				// Capture period at arm time so tempo drift cannot stretch the hold.
 				const hold = period;
 				const decay = (period * 2) / Math.max(0.05, motion);
 				const age = f.t - t0;
 				const v = age < hold ? 1 : Math.max(0, 1 - (age - hold) / decay) ** 2;
 
-				// Leaned toward glow rather than pure white: a blinder is tungsten, not a strobe.
-				// One colour throughout: the afterglow fades in place rather than settling into
-				// the base, because a hit that changes hue as it leaves reads as the room
-				// changing colour, not as a blow (the owner's verdict on the slam).
+				// Use one glow-leaning hue throughout; changing hue during decay would become a
+				// colour event.
 				const warmWhite = lerp(SLOT.white, SLOT.glow, p.warmth);
 				const bright = v * (0.4 + p.intensity * 0.9);
 				fillSolid(out, g.count, sample(palette, warmWhite + hueShift, bright));

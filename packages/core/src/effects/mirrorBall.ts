@@ -9,12 +9,7 @@ import { INTENSITY, param } from './helpers.ts';
 
 const MAX_GLINTS = 24;
 
-/**
- * Disco glitter without the ball: discrete white glints around the ring and along the
- * beam, the constellation turning once per eight bars while each glint flares and dies on
- * its own phase. Between glints, nothing - the bed underneath carries the room, this is
- * only the glitter on it.
- */
+/** Sparse rotating glints need a bed underneath; darkness between them is intentional. */
 export const mirrorBall: EffectDef = {
 	id: 'mirrorBall',
 	name: 'Mirror Ball',
@@ -67,8 +62,8 @@ export const mirrorBall: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
-				// One lap per 8 bars. Accumulated rather than read off the bar clock, because
-				// motion scales this speed and a scaled absolute clock jumps on a motion change.
+				// Integrate the eight-bar orbit so motion changes cannot jump an absolute
+				// clock.
 				rot = frac(rot + (f.dt / Math.max(0.1, f.beatPeriod * 32)) * motion);
 				tw += (f.dt / Math.max(0.1, f.beatPeriod)) * motion;
 				// The passage's loudness sets the glitter's level, slowly: glints answer the
@@ -83,9 +78,8 @@ export const mirrorBall: EffectDef = {
 				sample(palette, SLOT.white + hueShift, 1, rgb);
 
 				for (let k = 0; k < count; k++) {
-					// Fourth power of the raised cosine: sharp flare, long dark. A glint is a
-					// specular event, not a pulse; at the fifth power on a pixel and a half it
-					// was a hot point winking, which sat among the busiest accents in the corpus.
+					// Fourth-power flare keeps long dark gaps without turning narrow glints
+					// into hot points.
 					const c = 0.5 + 0.5 * Math.cos(frac(tw * rate[k] + phase[k]) * Math.PI * 2);
 					const flare = c * c * c * c;
 					if (flare < 0.01) continue;

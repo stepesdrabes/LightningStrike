@@ -34,12 +34,7 @@ export function makePalette(p: ShowPalette): Palette {
 	return writePalette(new Float32Array(PALETTE_ANCHORS * 3), p);
 }
 
-/**
- * The same, into a buffer that already exists.
- *
- * A show's palettes are baked once at load, so allocating there costs nothing. A palette that
- * drifts is rebuilt while the room is running, and that one belongs on the frame path's terms.
- */
+/** Write into a caller-owned palette for allocation-free colour updates. */
 export function writePalette(out: Palette, p: ShowPalette): Palette {
 	const sat = clamp(p.sat ?? 0.94, 0, 1);
 	const shade = clamp(p.shade ?? 0.08, 0, 0.4);

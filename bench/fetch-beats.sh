@@ -1,13 +1,7 @@
 #!/bin/bash
-# Fetch the beat/tempo corpora the analyser is measured against.
-#
-# Derived from the deleted harness's bench/fetch.sh (removed in b94e2fa); same sources, same
-# checks. Not in the repo and not redistributable. GTZAN carries beat, downbeat and meter
-# annotations; GiantSteps carries tempo only. Beatport's own host for the GiantSteps audio is
-# dead, so the JKU mirror is the live one; md5s from the dataset repo decide whether a file
-# arrived intact.
-#
-# Idempotent: an existing, correct file is left alone, so an interrupted run resumes.
+# Fetch uncommitted, non-redistributable evaluation corpora: GTZAN beat/downbeat/meter
+# annotations and GiantSteps tempo. Use JKU's audio mirror and the dataset's MD5 digests.
+# Existing files are retained so interrupted runs resume.
 set -u
 cd "$(dirname "$0")/corpus" 2>/dev/null || { mkdir -p "$(dirname "$0")/corpus"; cd "$(dirname "$0")/corpus"; }
 

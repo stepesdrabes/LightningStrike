@@ -10,8 +10,7 @@ async function snapshot(port: string) {
 	return {
 		token,
 		address,
-		// Null rather than a localhost URL when there is no network: a QR pointing at 127.0.0.1
-		// is one nobody's phone can reach, and saying so is more use than drawing it.
+		// Without a LAN address, return null; localhost QR codes cannot reach this host from phones.
 		url: address ? `http://${address}:${port}/join?t=${token}` : null
 	};
 }

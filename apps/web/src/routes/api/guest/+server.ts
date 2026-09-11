@@ -8,11 +8,8 @@ import { room } from '$lib/server/room.ts';
 import type { RequestHandler } from './$types';
 
 /**
- * What someone in the room can do from their own phone.
- *
- * Deliberately a different surface from /api/queue rather than the same one with a flag: the
- * host API can skip, reorder and clear, and the safest way to be sure a guest cannot reach
- * those is for the guest to be talking to something that does not implement them.
+ * The guest API implements only adding tracks and removing owned rows; host controls stay
+ * separate.
  */
 interface Body {
 	token?: string;
@@ -47,7 +44,6 @@ export const POST: RequestHandler = async ({ request }) => {
 		const item = body.item;
 		if (!item?.source?.trim()) error(400, 'nothing to add');
 
-		// Cached tracks start ready, exactly as they do for the host.
 		const state = await queue.add(await enrichFromLibrary([fromRequest(item, name)]));
 		autopilot.handAdded();
 		void runner.pump();

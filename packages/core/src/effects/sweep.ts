@@ -28,9 +28,7 @@ export const sweep: EffectDef = {
 	],
 	create(g) {
 		const u = new Float32Array(g.count);
-		// The front's colour and its thickness are the music's share of this effect; its speed
-		// belongs to the bar clock. Both latched, so the front changes on a beat and not
-		// continuously along its own travel.
+		// Latch colour and thickness on beats; speed remains tied to the bar clock.
 		const tilt = new BeatHold(0.25);
 		const focus = new BeatHold(0.5);
 		let quarter = -1;

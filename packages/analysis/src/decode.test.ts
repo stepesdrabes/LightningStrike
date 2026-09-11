@@ -2,10 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { isTransientFetchError } from './decode.ts';
 
 /**
- * The cost of the two mistakes is not symmetric. Calling a permanent refusal transient spends
- * five more fetches and a minute of the queue on a video that will never arrive; calling a
- * transient one permanent drops a track the next attempt would have got. Both lists are here
- * as the real strings yt-dlp emits.
+ * Real yt-dlp messages pin both retry directions: permanent refusals waste retries; temporary
+ * ones need another chance.
  */
 describe('which fetch failures are worth asking again', () => {
 	const transient = [

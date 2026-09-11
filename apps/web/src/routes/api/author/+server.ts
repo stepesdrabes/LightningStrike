@@ -15,15 +15,10 @@ import { isLocal } from '$lib/server/access.ts';
 import { settings } from '$lib/server/settings.ts';
 import type { RequestHandler } from './$types';
 
-/**
- * Server-sent events, because authoring takes minutes. Every tool call the agent makes is
- * forwarded as it happens: watching it fetch bars 40-56, then reject its own effect, then
- * lint clean, is far more informative than a spinner.
- */
+/** Stream tool progress over SSE during long-running authoring. */
 export const GET: RequestHandler = async (event) => {
 	const { url, request } = event;
-	// Authoring spends credits, and the server binds every interface so phones in the room can
-	// reach the guest pages. Being on the same WiFi is not the same as running the night.
+
 	if (!isLocal(event)) error(403, 'authoring belongs to the machine running the show');
 
 	const id = url.searchParams.get('id');
@@ -47,9 +42,7 @@ export const GET: RequestHandler = async (event) => {
 	const context = await readContext(id);
 	const geometry = buildGeometry(DEFAULT_ROOM);
 
-	// The engine's show is the starting point. Handing the agent a draft that already covers
-	// every bar and lints clean spends it on interpretation rather than on bookkeeping, and
-	// leaves a working show behind if it fails.
+	// Revise a valid engine draft, keeping a working show if authoring fails.
 	let draft: Show;
 	try {
 		const existing = JSON.parse(await readFile(showPath(id), 'utf8')) as Show;
@@ -75,8 +68,7 @@ export const GET: RequestHandler = async (event) => {
 			};
 			request.signal.addEventListener('abort', () => (closed = true));
 
-			// The agent may correct the tempo mid-run, which replaces the grid the show is
-			// addressed against. Whatever it ends up with is what gets persisted and linted.
+			// Persist and lint against the final grid, including any tempo correction made by the agent.
 			let grid = analysis;
 
 			try {
@@ -96,9 +88,7 @@ export const GET: RequestHandler = async (event) => {
 					onEvent: (e) => send('event', e)
 				});
 				grid = result.analysis;
-				// The agent's show is parsed by a non-strict schema, which drops fields it does not
-				// declare. The draft's roll is one of them, and it is what says which composition
-				// this one was revised from.
+				// Restore the draft roll omitted by the agent schema to retain composition provenance.
 				result.show.seed ??= draft.seed;
 
 				const effects = new Map(BUILT_IN_EFFECTS.map((e) => [e.id, e]));

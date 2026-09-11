@@ -1,20 +1,13 @@
-// A picture of what the strips do over time, so an effect or a stack can be judged by eye.
-//
-//   node bench/stripchart.ts <track id or title substring> [--at BAR] [--bars N] [--out chart.png]
-//   node bench/stripchart.ts <track> --list                  # sections, cues and their stacks
-//   node bench/stripchart.ts --effect vortex [--bpm 130]     # the effect alone over the gate journey
-//   node bench/stripchart.ts <track> --stack "b:wash r:vortex t:kickTunnel a:sparkle" [--at BAR]
-//
-// Each column is one frame at 60 fps (or `--x N` frames max-pooled per column), each row one LED
-// in strip order with a gap between strips, so a flash is a vertical line, a chase a diagonal, a
-// twinkle is grain and a hold is a flat band. Under the strips: the room mean, the per-pixel
-// shimmer against an 80 ms average, and the grid (downbeats, kicks, snares, cue changes, hits).
-// Bytes are shown through a display curve so dim values are visible the way the eye sees them;
-// `--linear` shows the raw PWM duty instead. A track is composed fresh with its context, as the
-// app would; `--stack` replaces the cue's layers over the charted range with the given ones.
+// Plot LED bytes over time, with room mean, shimmer and grid/hit markers.
+// node bench/stripchart.ts <track> [--at BAR] [--bars N] [--out chart.png] [--list]
+// node bench/stripchart.ts --effect vortex [--bpm 130]
+// node bench/stripchart.ts <track> --stack "b:wash r:vortex t:kickTunnel a:sparkle" [--at BAR]
+// Rows are LEDs; columns are 60 fps frames or --x N max-pooled frames. --linear shows raw PWM
+// duty;
+// otherwise a display curve exposes dim values. Tracks compose fresh with their context.
 import { readFileSync, readdirSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { deflateSync } from 'node:zlib';
 import {
 	BUILT_IN_EFFECTS,
@@ -29,7 +22,6 @@ import {
 	makePalette,
 	scriptFrames,
 	sectionBase,
-	type EffectDef,
 	type LayerRole,
 	type SectionKind,
 	type Show,
@@ -128,7 +120,7 @@ if (flag('effect')) {
 } else {
 	const want = positional[0];
 	if (!want) throw new Error('name a track (id or title substring) or --effect');
-	const cache = flag('cache') ?? join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+	const cache = benchmarkCache(flag('cache'));
 	const found = readdirSync(cache)
 		.filter((f) => f.endsWith('.meta.json'))
 		.map((f) => {

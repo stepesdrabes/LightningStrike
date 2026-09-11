@@ -6,15 +6,11 @@ import { addSample, sample, setSample } from '../color/palette.ts';
 import * as dsl from '../dsl/index.ts';
 import { runGate } from './gate.ts';
 
-/**
- * Everything a generated effect may reach. Nothing else is in scope: no imports, no
- * require, no global it could reach through.
- */
-export const SANDBOX_API = { ...dsl, SLOT, sample, setSample, addSample };
-export type SandboxApi = typeof SANDBOX_API;
+/** DSL and palette helpers injected into generated JavaScript. */
+const SANDBOX_API = { ...dsl, SLOT, sample, setSample, addSample };
+type SandboxApi = typeof SANDBOX_API;
 
-// Belt and braces around the gate. The gate catches nondeterminism, which is the failure
-// that actually matters; this catches the obvious escapes before anything is evaluated.
+// Reject obvious escapes before evaluation; the gate separately checks deterministic output.
 const BANNED = [
 	/\bimport\s*[({]/,
 	/\brequire\s*\(/,
@@ -22,8 +18,7 @@ const BANNED = [
 	/\bglobalThis\b/,
 	/\beval\s*\(/,
 	/\bnew\s+Function\b/,
-	// `({}).constructor.constructor` IS `Function`, so banning the keyword alone leaves the
-	// door open. No effect has any business reaching for a constructor.
+	// constructor.constructor reaches Function without spelling its name.
 	/\.\s*constructor\b/,
 	/\bfetch\s*\(/,
 	/\bXMLHttpRequest\b/,
@@ -34,17 +29,12 @@ const BANNED = [
 	/\b__proto__\b/
 ];
 
-export interface CompileResult {
+interface CompileResult {
 	def: EffectDef | null;
 	failures: string[];
 }
 
-/**
- * Turn a generated effect into a registrable EffectDef.
- *
- * The source is plain JavaScript declaring `create(g)` and reaching the DSL through the
- * injected namespace, so there is no module to resolve and nothing to fetch.
- */
+/** Compile plain JavaScript declaring create(g), using the injected namespace without imports. */
 export function compileGenerated(gen: GeneratedEffect, g: Geometry): CompileResult {
 	const failures: string[] = [];
 
@@ -78,8 +68,8 @@ export function compileGenerated(gen: GeneratedEffect, g: Geometry): CompileResu
 		name: gen.name,
 		role: gen.role,
 		blurb: gen.blurb,
-		// A one-off written for this track is not reusable elsewhere, so it carries no section
-		// restriction and is never peak-reserved. The linter still bounds how long it runs.
+		// Song-specific effects have no section or peak restriction; the linter still bounds
+		// duration.
 		taste: {
 			energy: 3,
 			sections: ['intro', 'groove', 'breakdown', 'build', 'void', 'drop', 'outro'],

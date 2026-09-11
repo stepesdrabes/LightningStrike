@@ -10,26 +10,18 @@ export const blackout: EffectDef = {
 	blurb: 'Everything off but a faint keep-alive on the beam. The void, held.',
 	taste: {
 		energy: 1,
-		// The void's bed and nothing else's.
-		//
-		// This used to declare every section, which reads as "darkness is always available" and
-		// is true only of the one section that means it. It also made this the ONLY bed legal in
-		// a one-bar cue in a drop, and the peak's opening cue is one bar because that is how long
-		// a master burst holds the room - so the biggest moment of every show was lit by a bed
-		// that emits nothing but a keep-alive on the beam.
+		// Restrict to voids so short peak cues cannot select a black bed.
 		sections: ['void'],
 		minBars: 1,
 		maxBars: 4,
 		peakReserved: false,
 		activity: 0,
 		quiet: 1.06,
-		// Darkness is the whole instruction.
 		carries: false
 	},
 	params: [param('keepAlive', 'Keep-alive', 0.02, 0, 0.15)],
 	create(g) {
-		// The beam is the strip that is not part of the perimeter ring, not whichever strip a
-		// room spec happens to list last.
+		// Find the beam by topology, never by strip order.
 		const beam = g.strips.find((s) => !s.inPerimeter) ?? g.strips[g.strips.length - 1];
 		return {
 			reset() {},

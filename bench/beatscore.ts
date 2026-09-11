@@ -6,17 +6,8 @@ import { BeatThis } from '../packages/analysis/src/beatthis.ts';
 import { scoreBeats } from './metrics.ts';
 
 /**
- * Score the beat tracker against GTZAN's annotations.
- *
- *   node bench/beatscore.ts [--limit 100]
- *
- * This harness was deleted once and the figures in `beatthis.ts` survived only as a comment,
- * which is how a claim outlives the thing that could check it. It is back because a smaller
- * distilled checkpoint is worth considering and "it is 0.3 F1 worse on paper" is not a
- * measurement of this repertoire, this decode path, or this resampler.
- *
- * Downbeats are scored the same way beats are, on the annotation's own beat-1 marks: the
- * published number is an F-measure against those, not a phase agreement.
+ * Score GTZAN beats and annotated beat-1 downbeats with F-measure.
+ * node bench/beatscore.ts [--limit 100]
  */
 const argv = process.argv.slice(2);
 const flag = (n: string, d: string) => {

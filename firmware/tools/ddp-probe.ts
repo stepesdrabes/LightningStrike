@@ -1,10 +1,6 @@
-// Bring-up probe for the Pico W firmware. Streams the real DDP sink at a target and reports the
-// sender's own timing next to the board's, in the same shape, so the two subtract.
-//
-//   node --experimental-strip-types ddp-probe.ts <host|loopback> [pixels] [seconds] [pacer]
-//
-// `loopback` sends to 127.0.0.1 and scores the packets here instead, which measures the sender
-// and the OS with no radio in the path. That difference is the whole point of the tool.
+// DDP bring-up timing probe:
+// node --experimental-strip-types ddp-probe.ts <host|loopback> [pixels] [seconds] [pacer]
+// loopback isolates sender/OS timing from radio and board costs.
 
 import { createSocket, type Socket } from 'node:dgram';
 import { createDdpSink } from '../../packages/transport/src/index.ts';
@@ -53,8 +49,7 @@ class Timing {
 const sent = new Timing();
 const echoed = new Timing();
 
-// The board reports to the source address of the DDP stream. In loopback the local receiver
-// stands in for it, so the same socket serves both roles.
+// Reuse the telemetry socket as loopback receiver; boards reply to the stream source address.
 const stats = createSocket('udp4');
 const boardLines: string[] = [];
 stats.on('message', (m) => {
@@ -108,8 +103,7 @@ if (pacer === 'interval') {
 	await new Promise((r) => setTimeout(r, seconds * 1000));
 	clearInterval(timer);
 } else {
-	// Absolute deadlines, so granularity error does not accumulate. Sleep to just short of the
-	// deadline and spin the rest: setTimeout alone rounds up by a millisecond or more.
+	// Absolute deadlines prevent accumulated timer rounding; sleep short, then spin to the deadline.
 	let deadline = t0;
 	while (performance.now() < until) {
 		deadline += FRAME_MS;

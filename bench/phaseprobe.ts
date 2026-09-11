@@ -1,21 +1,13 @@
-// The downbeat-phase probe, round 4's opening instrument.
-//
-// (A) Every owner-timestamped mark, placed WITHIN its bar on the shipped grid: if the
-// grid's phase is right, marks cluster near beat 0 (plus ~0.3-0.8 beats of reaction
-// lag); a half-bar phase flip clusters them near beat 2. Original-round notes are
-// scored against the A cache's grids (the grids they were judged on), fresh C-judge
-// notes against cache-C.
-// (B) Where earlybars cached a Beat This run, the model's own downbeat stream against
-// the shipped grid's bar starts: the offset (in beats, mod beatsPerBar) says whether
-// the shipped phase agrees with the model, and on which tracks they diverge.
-//
-//   node bench/phaseprobe.ts
+// Compare owner timestamps within bars and model downbeats against the grid that each judgment
+// used.
+// Marks near beat 0 plus reaction lag support the phase; beat 2 suggests a half-bar offset.
+// node bench/phaseprobe.ts
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache, desktopCache } from './cache.ts';
 
-const A = join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
-const C = join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache-C');
+const A = benchmarkCache();
+const C = desktopCache('cache-C');
 const BEATS = join(import.meta.dirname, 'corpus/.beats');
 const snapshot = JSON.parse(
 	readFileSync(join(import.meta.dirname, 'judged/round-2026-08-14/snapshot.json'), 'utf8')

@@ -1,12 +1,8 @@
 import type { GenreFamily, TrackAnalysis, TrackContext } from '@mv/core';
 
 /**
- * How each genre family is lit. Distilled from how working designers actually light these
- * rooms, compressed to the dials this engine owns. The rows encode the disagreements that
- * are genuinely genre - flash budget, blackout grammar, palette discipline, how a peak is
- * marked - and none of the universals, which stay hard-coded where they always were:
- * contrast is earned in the valleys, cues land on structure, the biggest card goes to the
- * biggest moment.
+ * Genre-specific palette, motion and punctuation policy; structural restraint is shared by all
+ * families.
  */
 export interface GenreProfile {
 	/** Added to the tempo-derived palette heat before a palette is drawn. */
@@ -15,16 +11,9 @@ export interface GenreProfile {
 	heatWidth: number;
 	/** Multiplies palette saturation. Above 1 forbids pastels; below 1 invites them. */
 	satScale: number;
-	/**
-	 * One hue and white. The third slot collapses onto the base so nothing mid-show can
-	 * introduce a second colour; the accent survives for the single inversion event.
-	 */
+	/** Collapse the third hue onto the base; preserve the accent for the inversion event. */
 	monochrome: boolean;
-	/**
-	 * Flashes (strobes + blackouts) a show may spend at full track energy. Scaled down by
-	 * the track's own measured intensity, floored at zero. Zero means the family forbids
-	 * the gesture outright and the room never flashes, whatever the track does.
-	 */
+	/** Combined strobe/blackout budget at full track intensity. Zero forbids either gesture. */
 	flashBudget: number;
 	/** What marks the arrival of the biggest section. */
 	peak: 'slam' | 'bloom' | 'swell';
@@ -36,51 +25,21 @@ export interface GenreProfile {
 	transientEvery: number;
 	/** Phrase multiples between colour bumps in loud sections; 0 disables punctuation. */
 	bumpEvery: number;
-	/**
-	 * Effects that ARE this family's look, preferred by the picker wherever they are legal.
-	 * A weight, never a filter: an id that does not exist in the catalog simply never wins.
-	 * Non-master roles only - the peak master is chosen by seed alone, deliberately, so a
-	 * master listed here would be dead weight pretending to matter. genre.test.ts holds the
-	 * rows to both halves of that: every id must resolve, and never to a master.
-	 */
+	/** Preferred non-master effect IDs. Weighting never overrides eligibility. */
 	signatures: readonly string[];
-	/**
-	 * Effects that are NOT this family's vocabulary, dispreferred by the same order of
-	 * weight. The mirror of `signatures` and under the same law - never a filter. This is
-	 * what stops a Czech rap verse reaching for moshSlam, headbang and the DnB roller just
-	 * because they fit the energy band: the profiles steered palette and motion while the
-	 * effect pool stayed genre-blind, and 61% of the owner's corpus is the two families
-	 * with the thinnest signature lists.
-	 */
+	/** Disfavored effect IDs, weighted like signatures without removing them from the pool. */
 	avoid: readonly string[];
-	/**
-	 * The hard form of `avoid`: never picked while anything else fits. Only techno uses it,
-	 * for the decorations and hue cycles no techno floor has ever been lit by; a weight cannot
-	 * keep them out of a drop whose top band holds two other accents.
-	 */
+	/** Excluded while any alternative fits; stronger than the avoid weight. */
 	exclude: readonly string[];
-	/**
-	 * Interior cues keep the section's bed and rhythm layer and move only the transient or
-	 * accent, every second cue. Techno is lit by holding a look and taking things away or
-	 * adding one, not by re-staging every two phrases: the owner heard eight-bar re-picks on
-	 * a techno track as "the effects are just off", and every club lighting account on record
-	 * (Berghain, Panorama Bar, Awakenings) describes looks held across whole sections with one
-	 * parameter moving at a time.
-	 */
+	/** Keep bed/rhythm through interior cues, changing transient/accent only every second cue. */
 	holdLooks: boolean;
-	/**
-	 * A build DIMS toward the drop instead of climbing: the room goes darker through the
-	 * riser and the return arrives out of near-black. The techno grammar; every other family
-	 * climbs.
-	 */
+	/** Dim builds toward the drop instead of climbing. */
 	buildDims: boolean;
 }
 
 const PROFILES: Record<GenreFamily, GenreProfile> = {
-	// One hue or white, darkness as the bed, looks held across whole sections and moved one
-	// layer at a time; the strobe is punctuation on the kick's return, not a texture. Drawn from
-	// the Berghain, Panorama Bar, Tresor and Awakenings lighting accounts (2026-09-08 research):
-	// the rock and pop gestures are foreign here, so are twinkles, blooms and any hue cycle.
+	// Held, monochrome looks and kick-return punctuation, from Berghain/Tresor/Awakenings
+	// lighting accounts.
 	techno: { heatBias: -0.05, heatWidth: 0.3, satScale: 1.05, monochrome: true, flashBudget: 3, peak: 'slam', darkBreakdowns: true, motionScale: 1.05, transientEvery: 2, bumpEvery: 4, signatures: ['impulseSpin', 'glitchScan', 'pump', 'subThrob', 'flexStrobe'], avoid: ['moshSlam', 'headbang', 'stageBlinders', 'chorusBloom'], exclude: ['confetti', 'discoBall', 'mirrorBall', 'emberStorm', 'crownSpill', 'sparkle', 'vocalGlow', 'hueCarousel'], holdLooks: true, buildDims: true },
 	// Warmer and rounder: wash blooms rather than assaults, gentle punctuation.
 	house: { heatBias: 0, heatWidth: 0.24, satScale: 0.95, monochrome: false, flashBudget: 2, peak: 'bloom', darkBreakdowns: false, motionScale: 1, transientEvery: 2, bumpEvery: 2, signatures: ['impulseSpin', 'rippleTank'], avoid: ['moshSlam', 'headbang', 'doubleKickGatling'], exclude: [], holdLooks: false, buildDims: false },
@@ -137,10 +96,8 @@ export function profileFor(context: TrackContext | null | undefined, analysis?: 
 	const family = context?.genreFamily;
 	const profile = family ? PROFILES[family] : DEFAULT_PROFILE;
 	if (!analysis || !kitless(analysis)) return profile;
-	// A track with no kit at all is a ballad whatever its metadata says: Someone You Loved
-	// files under rock and got glitch and pyro in its verses. The family keeps its colour;
-	// the restraint is the ballad's - nothing that flashes, punches or answers a drum - and
-	// it is hard here, because an avoided effect is still picked when the pool runs dry.
+	// Kitless tracks keep their family color but inherit ballad restraint, including hard effect
+	// exclusions.
 	const ballad = PROFILES.ballad;
 	return {
 		...profile,
@@ -161,11 +118,8 @@ export const KICK_BURSTS = ['shockwave', 'kickTunnel', 'kickCannon', 'ricochet',
 /** Kicks and snares per bar this low, over the bars that are loud, is a record with no kit. */
 const KITLESS_PER_BAR = 0.15;
 
-/**
- * Whether the drum streams are silent across the loud bars. Read from the analysis's bar
- * table, which the drum model wrote, so a piano note in the kick band cannot vote.
- */
-export function kitless(analysis: TrackAnalysis): boolean {
+/** Use drum-model bar counts so piano energy in the kick band cannot imply a kit. */
+function kitless(analysis: TrackAnalysis): boolean {
 	let hits = 0;
 	let loud = 0;
 	for (const row of analysis.bars) {
@@ -177,12 +131,8 @@ export function kitless(analysis: TrackAnalysis): boolean {
 }
 
 /**
- * How many flashes this track has earned: the genre's budget scaled by how hard the track
- * actually goes. Energy is normalised within a track, so the scale reads kick density and
- * crest instead - a relentless track keeps the family budget, a mellow one loses most of it.
- *
- * One place, imported by the planner that spends the budget and the linter that enforces
- * it, because two implementations of the same allowance is how they come to disagree.
+ * Shared planner/linter allowance. Kick density and crest compare tracks; normalized energy
+ * cannot.
  */
 export function allowedFlashes(
 	analysis: TrackAnalysis,
@@ -200,12 +150,7 @@ export function allowedFlashes(
 	}
 	const density =
 		loudBars > 0 ? kicks / loudBars / Math.max(1, analysis.tempo.beatsPerBar) : 0;
-	// A slow song is a ballad whatever its family says: Iris files under rock, and a strobe
-	// into its chorus reads as a rig fault. The felt tempo is trustworthy here because the
-	// compound-meter guard has already put slow songs at their real pulse. The half-time
-	// families are exempt - a 75 bpm grid is trap's and dubstep's natural reading, and
-	// their flashes belong to them. Kick density cannot arbitrate this: an acoustic strum
-	// lands in the kick band and Iris out-counts Enter Sandman.
+	// Slow songs suppress flashes except in half-time families, where a 75 bpm grid is normal.
 	const halftime = context?.genreFamily === 'hiphop' || context?.genreFamily === 'bass';
 	if (analysis.tempo.bpm < 90 && !halftime) return 0;
 	// Density 1 is four-on-the-floor; half that already reads as driving in a song. The

@@ -108,8 +108,7 @@
 	let lampDraft = $state('');
 	let lampTouched = $state(false);
 
-	// The fields follow the server until they are typed in, so a host set from another tab shows
-	// up here without overwriting something half-typed.
+	// Follow server addresses unless the user has an unfinished edit.
 	$effect(() => {
 		if (!touched) draft = status.host;
 	});
@@ -134,15 +133,8 @@
 	const WIRE_OPTIONS = WIRE_PROTOCOLS.map((p) => ({ id: p, label: WIRE_LABEL[p] }));
 
 	/**
-	 * Connect is one action, so it is one button.
-	 *
-	 * Committing an edited address used to be its own press, and testing it a second - but the
-	 * probe already runs on a timer for as long as this dialog is watching, so the only thing
-	 * either of them added was a decision about which to press first.
-	 *
-	 * The address goes with the press rather than being read back off the status: setting it is
-	 * a round trip through the server and an SSE frame, and starting output in between would
-	 * stream to whatever the previous host was.
+	 * Pass the entered host directly when connecting; persisted/SSE status can still name the
+	 * previous board.
 	 */
 	function connect() {
 		const host = draft.trim();
@@ -171,11 +163,7 @@
 		</span>
 	</header>
 
-	<!--
-		One scroller for everything under the header, rather than one around the device rows. With
-		the settings fixed above it, every control added to them came out of the readout's height
-		instead of the panel's, and the stats ended up in a two-line window.
-	-->
+	<!-- Scroll all dialog contents together so settings cannot squeeze telemetry out of view. -->
 	<div class="scroll">
 	<div class="address">
 		<div class="field">
@@ -190,10 +178,7 @@
 				oninput={() => (touched = true)}
 				onkeydown={(e) => e.key === 'Enter' && connect()} />
 		</div>
-		<!--
-			Enabled with nothing playing on purpose: a board joined before the music starts takes the
-			resting scenes, which is what the room is doing at that moment.
-		-->
+		<!-- Connecting before playback drives the resting scenes. -->
 		<Button
 			variant={status.streaming ? 'danger' : 'primary'}
 			onclick={status.streaming ? ondisconnect : connect}
@@ -563,8 +548,7 @@
 		flex: none;
 	}
 	.hint {
-		/* A picker's note is prose rather than digits, so it takes the row's spare width instead
-		   of the slider's fixed column, where anything longer than "fps" wrapped three ways. */
+		/* Prose notes use the row's remaining width instead of the narrow numeric column. */
 		flex: 1;
 		min-width: 0;
 	}

@@ -1,22 +1,14 @@
-// Which stage moved it? Mirror analyze.ts's structure pass one call at a time and print
-// the boundary table after each stage, so "the pipeline put the drop at 81" becomes "the
-// DP placed 82 and consolidation merged it" - a name, not a feeling.
-//
-//   MV_CACHE_DIR=... node bench/stagetrace.ts <trackId> [fromBar] [toBar]
-//
-// Beats come from bench/corpus/.beats (the earlybars cache), NEVER from a fresh BeatThis
-// run: boundlab's fresh grids have disagreed with the shipped cache by a bar on real
-// tracks, and a trace in the wrong coordinates reads as a disagreement about the music.
-// Meter comes from the cached analysis blob for the same reason. The mirror is verified
-// every run: analyzeTrack runs on the identical inputs at the end, and any difference
-// between its sections and the mirror's final table is printed as MISMATCH - a MISMATCH
-// means this file has drifted from analyze.ts and its trace is fiction until fixed.
+// Trace every structure stage using cached model beats and meter, then compare with
+// analyzeTrack.
+// MV_CACHE_DIR=<cache> node bench/stagetrace.ts <trackId> [fromBar] [toBar]
+// MISMATCH means the mirror has drifted from the shipped pipeline; its intermediate trace is
+// unreliable.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
-import { arrange, bandLevels, type Plan } from '../packages/analysis/src/arrange.ts';
+import { arrange, bandLevels } from '../packages/analysis/src/arrange.ts';
 import { beatSynchronous } from '../packages/analysis/src/beatsync.ts';
 import { chromagram } from '../packages/analysis/src/chroma.ts';
 import { consolidateSections } from '../packages/analysis/src/consolidate.ts';
@@ -55,7 +47,7 @@ if (!id) throw new Error('usage: node bench/stagetrace.ts <trackId> [fromBar] [t
 const from = Number(process.argv[3] ?? 0);
 const to = Number(process.argv[4] ?? 40);
 
-const cache = process.env.MV_CACHE_DIR ?? join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache();
 const beatsPath = join(import.meta.dirname, 'corpus/.beats', `judged-${id}.json`);
 if (!existsSync(beatsPath)) throw new Error(`no cached beats at ${beatsPath} - run earlybars first`);
 const tracked = JSON.parse(readFileSync(beatsPath, 'utf8')) as { beats: number[]; downbeats: number[] };
@@ -155,7 +147,7 @@ const kicks = countPerBar(quantise(detected.kick).times, bars.time, bars.count);
 const snares = countPerBar(quantise(detected.snare).times, bars.time, bars.count);
 
 const barsDb = bandLevels(features.spec, bars.time, bars.count);
-const plan: Plan = arrange(
+const plan = arrange(
 	barsDb,
 	bars,
 	bounds,
@@ -197,12 +189,8 @@ const snapMoves =
 console.log('  snap moves:', snapMoves.map((m: { from: number; to: number }) => `${m.from}->${m.to}`).join(' ') || '(none)');
 segStage('snapToHooks', plan.segments);
 
-// Hook windows the snap could not reach, and what the material says about them. The
-// question package C turns on: a chorus-class section holding a hook window well inside it
-// is either a chorus whose own riff opens it (Blinding Lights - the map says the riff IS
-// the chorus, ten bars before the voice) or a chorus that starts late and dragged its
-// lead-in along (Snooze, six bars early by the owner's mark). The discriminator on offer is
-// whether the lead-in is the body's own material, so print the ratio and let the numbers say.
+// Print material similarity for hook windows inside sections to distinguish an opening riff
+// from a late hook.
 if (lyricLines && lyricLines.length > 0) {
 	const windows: number[] = [];
 	let lastBar = -Infinity;

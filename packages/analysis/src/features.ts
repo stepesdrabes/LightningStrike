@@ -2,16 +2,12 @@ import { chromagram, type Chromagram } from './chroma.ts';
 import { computeSpectrogram, logFilterBank, type Spectrogram } from './dsp/spectrogram.ts';
 import { conditionCurve, onsetStrength, type OnsetCurves } from './onsets.ts';
 
-/**
- * 100 frames a second. A 10 ms grid is finer than any onset the ear resolves as separate,
- * and it is what the published onset and beat detectors are tuned at, so their parameters
- * transfer without rescaling.
- */
-export const FEATURE_FPS = 100;
+/** 100 Hz matches published onset-detector timing and provides 10 ms resolution. */
+const FEATURE_FPS = 100;
 const FFT_SIZE = 2048;
 const BANDS_PER_OCTAVE = 24;
 
-export interface AnalysisFeatures {
+interface AnalysisFeatures {
 	sampleRate: number;
 	duration: number;
 	spec: Spectrogram;

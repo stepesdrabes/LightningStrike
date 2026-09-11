@@ -48,8 +48,6 @@ describe('IdleClock', () => {
 			expect(Array.from(f.spectrum).every((v) => v === 0)).toBe(true);
 			expect(Array.from(f.bands).every((v) => v === 0)).toBe(true);
 			expect(f.kick || f.snare || f.hat).toBe(false);
-			// A plausible quiet passage, so an effect scaling by it lights a room rather than a
-			// noise floor - and never so loud that the room reads as playing something.
 			expect(f.energy).toBeGreaterThan(0.15);
 			expect(f.energy).toBeLessThan(0.4);
 		}
@@ -107,13 +105,7 @@ describe('AmbientColour', () => {
 		expect(c.shown.third).toBeCloseTo(330, 0);
 	});
 
-	/**
-	 * The whole look, not three hues out of it.
-	 *
-	 * Carrying only base, accent and third and imposing the room's own saturation over them lit the
-	 * record's colour visibly washed out - a show declaring 0.94 came out of the room at 0.78 - and
-	 * a palette the show did not design is not the record's colour any more.
-	 */
+	/** Track mode must preserve the whole palette, including saturation and shade. */
 	it('takes a track palette exactly as the show declared it', () => {
 		const c = new AmbientColour();
 		c.settings = { source: 'track', hue: 28, sat: 0.4, drift: 0 };
@@ -139,9 +131,7 @@ describe('AmbientColour', () => {
 		c.settings = { source: 'track', hue: 0, sat: 0.8, drift: 0 };
 		c.trackPalette = { base: 300, accent: 140 };
 		c.snap();
-		// A track change clears this for as long as the next bundle takes to arrive. Nothing loaded
-		// means nothing to move toward, not a jump back to the picked colour - a room that swings
-		// toward amber and back on every track change is a room reporting a fetch.
+		// Hold the current colour while the next track bundle loads.
 		c.trackPalette = null;
 		for (let i = 0; i < 60 * 60; i++) c.update(1 / 60);
 		expect(c.shown.base).toBeCloseTo(300, 4);
@@ -244,9 +234,7 @@ describe('AmbientPlayer', () => {
 		for (let i = 0; i < 60 * 40; i++) {
 			const f = clock.update(1 / 60);
 			player.update(f, false);
-			// Composed and finished the way the director does it, with auto-exposure frozen.
-			// `render` would quietly lift a dim room toward the exposure target and report a scene
-			// as lighting a room that the room will never actually see it light.
+			// Freeze auto-exposure, matching the director's resting path.
 			mixer.compose(f);
 			mixer.finish(f, false);
 			if (i % 30 !== 0) continue;
@@ -276,15 +264,9 @@ describe('AmbientPlayer', () => {
 	}
 
 	/**
-	 * The question the gate cannot ask.
-	 *
-	 * An ambient scene has nothing over it and no cue under it, and it will be the only thing on the
-	 * walls for minutes at a time. Three readings, because each catches something the others cannot:
-	 * `mean` is the one that says the room is lit rather than glowing, and it is what caught two
-	 * scenes running at half the pool's brightness while passing everything else; `top10` catches a
-	 * scene lighting a corner; `fill` catches one lighting a stripe. The `fill` bar is the loosest of
-	 * the three on purpose - a curtain field is bright bands over dark, and that is the look rather
-	 * than a fault.
+	 * Mean checks delivered light, top10 catches corner-only scenes, fill catches narrow
+	 * stripes.
+	 * Fill allows dark bands because curtains deliberately include them.
 	 */
 	it('lights the room on every scene an empty room can be shown', () => {
 		const dark = AMBIENT_SCENES.filter((s) => !s.needsMusic)

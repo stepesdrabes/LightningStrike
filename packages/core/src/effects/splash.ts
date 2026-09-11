@@ -23,8 +23,7 @@ export const splash: EffectDef = {
 	},
 	params: [INTENSITY, param('size', 'Size', 0.35, 0.1, 1), param('decay', 'Decay beats', 0.55, 0.1, 2)],
 	create(g) {
-		// Fixed patch: kicks own the depth axis and the base hue, snares the width axis and
-		// the accent. Randomising this makes hits stop reading as the same instrument.
+		// Fixed drum axes and hues make repeated hits read as the same instrument.
 		const kickWalls = g.strips.filter((s) => s.inPerimeter && stripAxis(s) === 'x');
 		const snareWalls = g.strips.filter((s) => s.inPerimeter && stripAxis(s) === 'y');
 		let kickCount = 0;
@@ -37,16 +36,15 @@ export const splash: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette } = ctx;
-				// Four fifths of the decay setting in beats: a splash that was gone inside an
-				// eighth read as a shutter, and a lamp takes most of a beat to go dark.
+				// A four-fifths-beat tail leaves like a lamp rather than snapping off.
 				fadeToBlack(out, f.dt, p.decay * f.beatPeriod * 0.8);
 
 				const sigma = 8 + p.size * 30;
 
 				if (f.kick && kickWalls.length > 0) {
 					const wall = kickWalls[kickCount % kickWalls.length];
-					// Golden-ratio walk: successive hits never repeat a position but the spread
-					// stays even, which random placement does not guarantee.
+					// Golden-ratio placement gives deterministic, even spread without repeated
+					// positions.
 					const u = (kickCount * 0.618034) % 1;
 					kickCount++;
 					const strength = clamp(0.5 + 0.4 * f.bands[Band.Sub]) * (0.45 + p.intensity * 0.7);

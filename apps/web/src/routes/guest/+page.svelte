@@ -33,8 +33,7 @@
 		return () => queue.dispose();
 	});
 
-	// Same debounce and abort as the desktop palette: each search is a yt-dlp process, and a
-	// late answer to an old query overwriting a fresh one is what makes a search box feel broken.
+	// Debounce and abort stale searches so late results cannot replace a newer query.
 	$effect(() => {
 		const q = query.trim();
 		if (q.length < 2) {

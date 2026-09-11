@@ -1,12 +1,6 @@
 /**
- * What the desktop shell tells the page about itself.
- *
- * Injected as a global before any of the page's own script runs, rather than fetched, so the
- * first paint already has it. Absent in a browser, which is the whole point: the same build
- * serves both.
- *
- * The space the window controls need is not here: it changes when the window goes fullscreen,
- * so the shell pushes it as the --traffic-inset custom property instead.
+ * Desktop injects hints before first paint; absent in browsers. Dynamic window-control spacing
+ * uses --traffic-inset.
  */
 export interface ShellHints {
 	desktop: boolean;
@@ -34,10 +28,7 @@ export function readShell(): ShellHints {
 	};
 }
 
-/**
- * What each tool is packaged as, which is not always its own name: ffprobe ships inside
- * ffmpeg, and a bare name leaves winget asking which of several matches was meant.
- */
+/** ffprobe ships with ffmpeg; explicit winget package IDs avoid ambiguous matches. */
 const WINGET: Record<string, string> = {
 	ffmpeg: 'Gyan.FFmpeg',
 	ffprobe: 'Gyan.FFmpeg',

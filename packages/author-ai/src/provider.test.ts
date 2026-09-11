@@ -55,11 +55,8 @@ describe('deepseek', () => {
 });
 
 describe('a subprocess spawned from inside another Claude Code session', () => {
-	// The SDK sets CLAUDE_CODE_ENTRYPOINT only when it is unset, so an inherited value wins. A
-	// dev server started from a Claude Code session hands the child `claude-desktop`, the child
-	// authenticates the way the desktop app does, and DeepSeek answers 401 for a credential
-	// nobody meant to send it. Verified by bisecting the environment against a live endpoint:
-	// this one variable is the difference between a working call and a hang.
+	// An inherited desktop entrypoint changes subprocess authentication; the backend must
+	// override it.
 	it('identifies as the SDK rather than as whatever launched the server', () => {
 		expect(environmentFor(deepseek('sk-test')).CLAUDE_CODE_ENTRYPOINT).toBe('sdk-ts');
 	});

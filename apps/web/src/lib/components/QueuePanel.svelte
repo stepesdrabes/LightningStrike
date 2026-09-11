@@ -224,9 +224,7 @@
 			</div>
 		{/if}
 
-		<!-- Inside the scroller, not below it. As a sibling it was a block that appeared a second
-		     after the queue did and took a third of the rail, which resized the list under
-		     whatever the eye was already reading. Here it is simply what follows the set list. -->
+		<!-- Keep suggestions in the scroller so loading them cannot resize the queue above. -->
 		{#if suggestions.length > 0}
 			<section class="suggested">
 				<p class="divider">
@@ -287,10 +285,6 @@
 		margin-left: auto;
 	}
 
-	/*
-	 * The one place the accent is spent in this rail, because the radio running is a state that
-	 * is genuinely live: the queue will grow on its own while it is lit.
-	 */
 	.pilot {
 		display: grid;
 		place-items: center;
@@ -342,8 +336,7 @@
 		gap: 10px;
 		flex: 1;
 		min-width: 0;
-		/* The trailing space is the gap to the duration; without it a long title truncates
-		   hard against the clock and the two read as one string. */
+		/* Reserve space between truncated titles and the duration. */
 		padding: 7px 12px 7px 8px;
 		text-align: left;
 	}

@@ -6,14 +6,12 @@ publish = false
 
 [features]
 default = ["frame"]
-# Exactly one fixture per binary, checked in src/fixture/mod.rs. The Bounce Lamp lives in
-# ../lamp on its own silicon since 0.2.
+# Exactly one fixture per binary, enforced in src/fixture/mod.rs. The lamp is a separate target.
 frame = ["strips"]
 bench = ["strips"]
 # Not a fixture: what the two addressable builds share.
 strips = ["dep:smart-leds"]
-# The frame's five-run colour pass at boot. Off by default, because `restore` exists so that a
-# midnight power blip does not relight the room and a selftest would.
+# Optional five-run boot test; default-off preserves Restore across power glitches.
 selftest = []
 
 [dependencies]

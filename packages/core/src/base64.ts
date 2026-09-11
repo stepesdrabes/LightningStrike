@@ -1,10 +1,4 @@
-/**
- * Base64, written out rather than reached for.
- *
- * `atob` is a browser and Node global and neither is guaranteed on a microcontroller runtime,
- * which is the whole reason `core` imports nothing. Twenty lines here buys the spectrum a
- * compact encoding everywhere the show runs.
- */
+/** Portable Base64 without browser or Node globals. */
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
 const INVERSE = /*@__PURE__*/ (() => {

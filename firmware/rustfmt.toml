@@ -1,6 +1,5 @@
 hard_tabs = true
 max_width = 100
 
-# Keep anything that fits on one line on one line, rather than rustfmt's 60-column default for
-# calls and chains, which breaks up code the rest of the repo would have left alone.
+# Keep calls/chains on one line when they fit the repository width.
 use_small_heuristics = "Max"

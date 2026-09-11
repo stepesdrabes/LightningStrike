@@ -6,8 +6,8 @@ import { BeatHold, Presence, PulseEnv } from '../dsl/env.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
- * The wavefront travels with the DECAY, so a fresh hit is at the front wall and a faded
- * one is at the back: the nod is in the groove rather than reacting to it.
+ * Move the wavefront with decay: a fresh hit starts at the front and a faded one reaches the
+ * back.
  */
 export const headbang: EffectDef = {
 	id: 'headbang',
@@ -21,22 +21,17 @@ export const headbang: EffectDef = {
 		maxBars: 32,
 		peakReserved: false,
 		activity: 0.5,
-		// 'kick', not 'any': the nod follows the floor, and a clap backbeat with the kick
-		// out is a passage to sway through, not to nod to.
+		// Require kick presence; a clap-only suspension should not keep nodding.
 		kit: 'kick'
 	},
 	params: [INTENSITY, param('everyBeat', 'Every beat', 0, 0, 1, 1)],
 	create(g) {
 		const env = new PulseEnv();
-		// The passage's own level, latched on the beat: `f.energy` is beat-resolution data the
-		// player interpolates per frame, so a brightness multiplied by it slides continuously.
+		// Latch interpolated beat energy before applying it to brightness.
 		const passage = new BeatHold(0.45);
-		// The nod is in the groove, not reacting to it - but nobody nods to a groove that has
-		// stopped. The downbeat keeps the timing; the kit grants permission to strike.
+		// The grid times the nod; kit presence grants permission.
 		const kit = new Presence();
-		// ny is normalised by the room's LONGEST side, so the depth axis covers only part of
-		// 0..1. A front swept over the full range spends the last fifth of the nod outside the
-		// room, which is why the wave used to die before it reached the back wall.
+		// Expand fixture-normalized depth so the wave reaches the back wall before it dies.
 		let lo = Infinity;
 		let hi = -Infinity;
 		for (let i = 0; i < g.count; i++) {

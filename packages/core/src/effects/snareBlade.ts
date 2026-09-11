@@ -16,15 +16,7 @@ interface Blade {
 	power: number;
 }
 
-/**
- * Every snare draws one straight stroke: a blade wipes a single wall end to end in about a
- * third of a beat, leaving a trail that fades over most of the beat, the next snare taking
- * the next wall in the other direction. One wall at a time and the room never moves at once,
- * which is what separates a stroke from the burst family's everywhere-at-once.
- *
- * The wall it crosses is lit behind it: a stroke three pixels wide across an unlit run
- * measured as nothing at all from the room's side, and a blade needs a surface to cut.
- */
+/** Keep a lit wall under the blade so the narrow stroke remains visible from the room. */
 export const snareBlade: EffectDef = {
 	id: 'snareBlade',
 	name: 'Snare Blade',
@@ -39,9 +31,7 @@ export const snareBlade: EffectDef = {
 		activity: 0.5,
 		kit: 'snare'
 	},
-	// A third of a beat for the cut: the bright head is the event, and a slower stroke put it
-	// mid-wall a tenth of a second after the snare, which the owner heard as the blade
-	// arriving late.
+	// Cut in a third of a beat so the snare lands before the head reaches mid-wall.
 	params: [INTENSITY, param('sweepBeats', 'Sweep length', 0.32, 0.2, 0.8, 0.05)],
 	create(g) {
 		const walls = g.strips.filter((s) => s.inPerimeter);
@@ -78,12 +68,9 @@ export const snareBlade: EffectDef = {
 				}
 
 				const sweep = Math.max(0.08, (p.sweepBeats * f.beatPeriod) / Math.max(0.2, motion));
-				// The stroke lives a beat and a half: a quarter of it cutting, the rest as the
-				// trail fading, long enough to leave the way a lamp does rather than a shutter.
+				// Keep a beat-and-a-half life for a lamp-like fading trail.
 				const life = Math.max(0.15, f.beatPeriod * 1.5) / Math.max(0.2, motion);
-				// The wall under the stroke pops on the snare itself and settles within a fifth
-				// of a beat to the lit floor the stroke runs over: the hit is felt where the
-				// snare is, and the blade draws the line out of it.
+				// The wall answers immediately, then settles to the floor the blade crosses.
 				const pop = Math.max(0.03, f.beatPeriod * 0.18) / Math.max(0.2, motion);
 				const gain = 0.55 + p.intensity * 0.9;
 
@@ -94,15 +81,12 @@ export const snareBlade: EffectDef = {
 						b.alive = false;
 						continue;
 					}
-					// Ease-out: the stroke lands fast and decelerates, which is how a hand
-					// draws a line; constant speed reads as a scanner.
+					// Ease out so the stroke reads as a drawn line rather than a scanner.
 					const u = Math.min(1, age / sweep);
 					const head = 1 - Math.pow(1 - u, 2);
 					const fade = 1 - age / life;
 					const struck = 0.3 * Math.exp(-age / pop);
-					// The stroke and its mirror on the opposite wall, drawn the other way: one
-					// wall alone is a sixth of the room for a third of a beat, and a backbeat
-					// wants to be seen from every seat.
+					// Mirror on the opposite wall so every seat can see the backbeat.
 					for (let m = 0; m < 2; m++) {
 						const wall = walls[(b.strip + m * (walls.length >> 1)) % walls.length];
 						const fromEnd = (b.fromEnd + m) % 2;
@@ -112,10 +96,8 @@ export const snareBlade: EffectDef = {
 							// Distance behind the head along the direction of travel, in wall lengths.
 							const behind = fromEnd === 0 ? head - x : x - (1 - head);
 							const at = Math.abs(behind) * n;
-							// A bright blade some six pixels wide, the trail it drew fading behind
-							// it, and the wall it cuts lit underneath for the stroke's life. The
-							// blade itself stops short of a hard white: a stroke is a line of light
-							// drawn across a wall, not a flash on it.
+							// Use a soft six-pixel head below hard white, with a fading trail
+							// and lit surface underneath.
 							const blade = u < 1 ? Math.exp(-(at * at) / 30) : 0;
 							const trail = behind > 0 ? Math.exp(-behind * 3) * 0.8 : 0;
 							const v = (blade * 1.1 + trail * fade + (0.4 * fade + struck)) * b.power * gain;

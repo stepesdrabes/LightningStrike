@@ -4,10 +4,8 @@ import { mean } from './dsp/stats.ts';
 import { IMPACT_KICKS, IMPACT_KICK_JUMP } from './structure.ts';
 
 /**
- * Where a repeated-line block BEGINS, as a per-bar flag: on a wall-to-wall vocal track
- * the coverage column never moves, and the hook starting is the boundary the audience
- * hears. A hook landing in the back quarter of a bar is sung INTO the next bar: lyric
- * sync carries tens-of-milliseconds jitter and singers anticipate the downbeat.
+ * Per-bar repeated-hook starts reveal boundaries when vocal coverage is continuous. Back-quarter
+ * starts belong to the next bar to allow singer anticipation and lyric-sync jitter.
  */
 export function hookBars(
 	lyrics: readonly LyricLine[],
@@ -26,32 +24,16 @@ export function hookBars(
 	return hooks;
 }
 
-/**
- * Fewest sung hooks that may vote for the phrase phase, and how many must agree: two hooks
- * agree by chance half the time, three choruses is the smallest song this is for.
- */
+/** Minimum hook count/agreement for phase voting; two hooks can agree by chance. */
 const SUNG_MIN_HOOKS = 3;
 const SUNG_AGREEMENT = 0.8;
-/**
- * Share of the interior boundaries that must sit a bar before the sung phase before the shift
- * is the song's habit rather than one boundary's: an instrumental change a bar ahead of the
- * singer is a production choice a record makes everywhere or nowhere.
- */
+/** Require most interior boundaries to share the early offset before treating it as a song-wide habit. */
 const SUNG_MAJORITY = 0.6;
 
 /**
- * Move the boundaries a song places a bar before its sung phrases onto the phrases, in place.
- *
- * The DP reads material and the refine reads arrivals, and on a record whose instrumental
- * turns a bar ahead of the singer both put every section a bar early: Best Part's chords and
- * level move at bars 3, 11, 15, 27, 39 and 55 and the owner draws 4, 12, 16, 28, 40 and 56,
- * where each sung phrase begins. The hooks the lyrics prove (`hookBars`) carry the phrase
- * phase the owner hears; where three or more agree on one residue and most of the table sits
- * exactly a bar before it, the table moves. A boundary the kit lands on or leaves at keeps its
- * bar - the drums arriving or stopping is the record's own line, and the owner draws it there
- * (Best Part's build at 51, where the kit stops under the bridge) - and so does a movement
- * start or a boundary an arrival moved and pinned. Song vocabulary only: a club track's hook
- * lags the drop it belongs to, which is the snap's business.
+ * Shift song boundaries onto a strongly agreed sung phrase phase when most sit one bar early.
+ * Keep kit arrivals/departures and protected boundaries; club hooks can lag their drop and
+ * must not apply this global shift.
  */
 export function sungPhaseShift(
 	bounds: number[],
@@ -80,8 +62,7 @@ export function sungPhaseShift(
 		if (b % PHRASE_BARS !== before || fixed.has(b)) continue;
 		const now = kicksPerBar[b] ?? 0;
 		const prev = kicksPerBar[b - 1] ?? 0;
-		// The landing the anacrusis guard reads, not any kick after none: one kick on the bar
-		// before the sung phrase is the drummer's pickup (Best Part's last chorus).
+		// Require kit landing rather than one pickup kick before the sung phrase.
 		const kitLands = (prev <= 1 && now >= IMPACT_KICKS) || now >= prev + IMPACT_KICK_JUMP;
 		const kitLeaves = now === 0 && prev > 0;
 		if (kitLands || kitLeaves) continue;
@@ -94,12 +75,8 @@ export function sungPhaseShift(
 }
 
 /**
- * Which section vocabulary a track speaks.
- *
- * Club music has drops: passages defined by impact, set up and slammed into. Song music
- * has choruses: the same energy class arrived at by lift rather than by impact, and lit
- * as an anthem rather than an assault. The families whose records are built around the
- * drop keep the club vocabulary; everything else reads as songs.
+ * Genre selects lighting vocabulary: club families retain impact-led drops; other families
+ * use chorus/verse labels.
  */
 const CLUB_FAMILIES: ReadonlySet<GenreFamily> = new Set([
 	'techno',
@@ -111,11 +88,8 @@ const CLUB_FAMILIES: ReadonlySet<GenreFamily> = new Set([
 ] as GenreFamily[]);
 
 /**
- * The kick rate under which a club-family verdict is not believed. The drop vocabulary
- * is a claim about how the record moves, and a genre tag cannot outvote a floor that
- * never kicks: a piano ballad the audio model filed as house (0.0 kicks/beat) got six
- * "drop" sections, while every genuinely club track in the judged round measures 0.5+
- * even at half-time. Sits well under fourOnFloor's 0.8 so halftime bass keeps its drops.
+ * Minimum loud-bar kick rate corroborating club vocabulary, below four-on-floor rate so
+ * halftime bass qualifies while beatless ballads do not.
  */
 const CLUB_KICK_FLOOR = 0.4;
 
@@ -124,12 +98,7 @@ export function isClubFamily(family: GenreFamily | null): boolean {
 	return family !== null && CLUB_FAMILIES.has(family);
 }
 
-/**
- * The families whose name is a promise about the drums: a house record has a kick, and so
- * does a techno, edm, trance or bass one. Ambient is deliberately absent though it keeps
- * the club vocabulary - a record with no kick is exactly what ambient IS, so silence
- * corroborates it rather than refuting it.
- */
+/** Families that imply drums. Ambient is exempt because its absence of kick is expected. */
 export const KICK_CLAIMING_FAMILIES: readonly GenreFamily[] = [
 	'techno',
 	'house',
@@ -139,14 +108,8 @@ export const KICK_CLAIMING_FAMILIES: readonly GenreFamily[] = [
 ] as GenreFamily[];
 
 /**
- * Whether the record backs up its genre verdict's drum claim.
- *
- * The audio classifier is confident and sometimes wrong in the same breath: it heard a
- * Lewis Capaldi piano ballad as Tropical House 0.63 with House 0.48 behind it, and two
- * house labels outvote its own Pop Ballad 0.45 however the ballot is weighted, so no vote
- * arithmetic can overturn it. A measurement can. This is the same floor `speaksClub`
- * gates the drop vocabulary on, asked one level up: not "may this track speak club" but
- * "is this genre verdict true of this record at all".
+ * Check a genre's drum claim against measured loud-bar kicks. Confident but incorrect club
+ * labels can otherwise outvote a ballad label regardless of vote weighting.
  */
 export function familyCorroborated(family: GenreFamily | null, loudKicksPerBeat: number): boolean {
 	if (family === null || !KICK_CLAIMING_FAMILIES.includes(family)) return true;
@@ -173,7 +136,7 @@ export function toSongVocabulary(segments: Segment[]): void {
 	}
 }
 
-export interface TimeSpan {
+interface TimeSpan {
 	start: number;
 	end: number;
 }
@@ -188,14 +151,7 @@ function foldLine(s: string): string {
 		.trim();
 }
 
-/**
- * Where the chorus is, according to the words.
- *
- * A chorus is the passage whose lines the track repeats: runs of two or more lines that
- * each occur again elsewhere. Line-level sync is enough - the value is the span, not the
- * word - and the estimate is deliberately coarse: it exists to settle which loud section
- * is THE chorus, not to place a boundary.
- */
+/** Repeated runs of at least two lyric lines identify coarse chorus spans, not exact boundaries. */
 export function chorusSpansFromLyrics(lyrics: readonly LyricLine[], duration: number): TimeSpan[] {
 	if (lyrics.length < 8) return [];
 
@@ -248,13 +204,8 @@ export function spanOverlap(spans: readonly TimeSpan[], from: number, to: number
 }
 
 /**
- * Let the words promote a loud verse to the chorus it evidently is.
- *
- * Promotion only: the energy evidence that made a section a chorus is stronger than the
- * absence of a lyric match, which on a sparsely synced track means nothing. A verse is
- * promoted when the repeated lines sit squarely on it and it is loud enough to be the
- * chorus it claims - the second condition keeps a repeated post-chorus tag from dragging
- * a quiet section up.
+ * Promote sufficiently loud verses covered by repeated lyrics; absent matches alone cannot
+ * undo energy evidence, and quiet repeated tags must not become choruses.
  */
 export function promoteChorusesFromLyrics(
 	segments: Segment[],
@@ -271,14 +222,8 @@ export function promoteChorusesFromLyrics(
 		const overlap = spanOverlap(spans, barTime(s.startBar), barTime(s.endBar));
 		if (overlap >= 0.55 && loud(i)) s.kind = 'chorus';
 	}
-	// And the same material at the same energy is the same chorus, whatever the sync file
-	// made of its words: Someone You Loved's second chorus shares its group with the first and
-	// the last, sits within a few points of them, and carried none of the repeated lines
-	// because the file words it differently - the owner heard the chorus "there more times".
-	// Only where the sung statements are the MAJORITY of the material's loud statements: on a
-	// rap record the verses and the hook ride one loop and share one group (HUMBLE.'s eight
-	// loud sections, two of them the hook), and there the material is the song's bed, not its
-	// chorus.
+	// Propagate chorus identity only when sung choruses are the majority of the material's loud
+	// instances. A shared rap loop is backing material, not proof that every verse is a chorus.
 	const groups = new Map<number, { chorus: number; loud: number }>();
 	for (let i = 0; i < segments.length; i++) {
 		const s = segments[i];
@@ -297,11 +242,8 @@ export function promoteChorusesFromLyrics(
 }
 
 /**
- * The other direction: a "chorus" whose bars carry none of the repeated lines, on a track
- * where the repeated lines clearly live somewhere else, is a loud verse - rock verses are
- * walls of guitar and the energy model cannot tell them from the hook. Demotion needs both
- * halves: near-zero overlap here AND a strongly overlapping chorus elsewhere, so a track
- * with instrumental chorus reprises or sparse sync data is left alone.
+ * Demote lyric-free choruses only when repeated lines strongly establish a chorus elsewhere;
+ * sparse sync alone is insufficient.
  */
 export function demoteVersesFromLyrics(
 	segments: Segment[],
@@ -314,11 +256,7 @@ export function demoteVersesFromLyrics(
 	);
 	const anchored = overlaps.some((o) => o >= 0.5);
 	if (!anchored) return;
-	// A group with a chorus member that KEEPS its label is chorus MATERIAL: an instrumental
-	// reprise of the hook carries no lines and must not be demoted away from its own siblings,
-	// and neither may a second chorus whose lines the sync file words differently (Someone You
-	// Loved's second chorus, the same material as the first and last at the same energy, came
-	// out a verse while they stayed choruses, and the owner heard the chorus "there more times").
+	// Preserve chorus-group reprises even when instrumental or worded differently in the sync file.
 	const kept = new Set<number>();
 	for (let i = 0; i < segments.length; i++) {
 		if (segments[i].kind === 'chorus' && overlaps[i] >= 0.12) kept.add(segments[i].group);
@@ -330,25 +268,16 @@ export function demoteVersesFromLyrics(
 	}
 }
 
-export interface HookStart {
+interface HookStart {
 	/** When the block's first line starts being sung, seconds. */
 	t: number;
-	/**
-	 * True for a restart inside a continuing run. The distinction carries trust: a run
-	 * START after unrepeated lines is a vocal ENTRANCE, which in club music routinely
-	 * lags the instrumental drop it belongs to, while a restart happens mid-flow and
-	 * cannot lag anything.
-	 */
+	/** A restart is mid-flow; an entrance after unrepeated lines can lag a club drop. */
 	restart: boolean;
 }
 
 /**
- * Where a repeated-line block starts being sung, seconds - the run starts that become the
- * chorus spans, PLUS the restarts hiding inside a run. When the opening chorus flows
- * straight into the first real one, every line from the first bar to the second verse is
- * "repeated" and the merged span buries the boundary the audience hears; but the block's
- * own lines coming round again betray it, sitting the same distance from the repeat as
- * the originals sat from the cycle's start.
+ * Repeated-block starts, seconds, including restarts inside a continuous repeated-line run.
+ * Relative line timing exposes a new chorus that merged lyric spans would hide.
  */
 export function hookStarts(lyrics: readonly LyricLine[]): HookStart[] {
 	if (lyrics.length < 8) return [];
@@ -393,32 +322,18 @@ export function hookStarts(lyrics: readonly LyricLine[]): HookStart[] {
 	return out;
 }
 
-export interface HookSnapMove {
+interface HookSnapMove {
 	from: number;
 	to: number;
 }
 
-/**
- * Fewest bars a section needs before a hook inside it may split it, and how far from either
- * end the hook has to sit: twelve is a phrase and a half, under which the DP already put its
- * boundary where it heard a change, and a phrase from each edge keeps the split from being
- * the refine's one-bar business.
- */
+/** Minimum section length and edge distance for hook splits; leave short sections to the DP/refiner. */
 const SPLIT_MIN_BARS = 12;
 const SPLIT_EDGE_BARS = 4;
 
 /**
- * Split long song-vocabulary sections where a sung block begins a whole phrase into them, in
- * place; returns the bars the new sections begin on.
- *
- * The DP reads material and one loop played end to end has none to change: Thinkin Bout You
- * is one groove for three minutes, and the owner draws its sections where the verses and the
- * hook begin, eight bars apart. A repeated block beginning eight (or sixteen) bars into a
- * chorus or a verse is that boundary, whether the lyrics call it the start of a run or a
- * restart inside one - the pre-chorus and the hook are both repeated lines, and only the
- * eight-bar grid tells the hook from the refrain four bars before it. The block's bar is the
- * nearest bar line, not the sung-into rule the snap uses: a singer on a slow record leads the
- * downbeat by a beat or more ("Or do you not think so far ahead" a third of a bar early).
+ * Split long song sections on phrase-spaced sung blocks that unchanged material cannot
+ * separate. Use nearest bar lines because singers can lead downbeats; return inserted bars.
  */
 export function splitAtHooks(
 	segments: Segment[],
@@ -449,51 +364,24 @@ export function splitAtHooks(
 	return out;
 }
 
-/**
- * Hooks that recur within a phrase are a refrain cycling inside its section, not section
- * starts, and a snap fed them drags real boundaries onto chant lines.
- */
+/** Within-phrase repeated hooks are refrains, not section starts. */
 const HOOK_MIN_GAP_BARS = 4;
 /** How far a boundary may be pulled BACK onto a hook window. The judged failure class. */
 const SNAP_REACH_EARLIER = 2;
-/**
- * A boundary on a decisive arrival (the refine pass's pin class) is not pulled back
- * unless the window edge arrives within the refine margin of it; max(1, ...) keeps the
- * ratio meaningful over near-zero edges.
- */
+/** Decisive incumbents need a comparably strong target edge; max(1, ...) bounds near-zero ratios. */
 const SNAP_KEEP_DECISIVE = 2;
 const SNAP_DOMINANCE = 1.45;
 /**
- * Below this, a window edge is a bar the record has not arrived at. A restart is exempt
- * from the ratio veto - it cannot lag or lead - but a "restart" onto silence while the
- * incumbent is decisive is a repeated line mid-flow, not a section the band knows about:
- * the singer runs unbroken through Kisses' last groove, and the snap dragged the pinned
- * drop two bars back onto the voice alone (edge 0.23). A true restart is corroborated -
- * Le Freak's edge arrives at 1.57 with the band and clears this floor untouched.
+ * Restart hooks bypass the arrival-ratio veto, but still need physical evidence above the
+ * noise floor when the incumbent is decisive; a voice-only restart is not a band arrival.
  */
 const SNAP_RESTART_NOISE = 0.6;
 
 /**
- * Align chorus-class startBars with the hook windows the sung lyrics prove, in place.
- *
- * A hook line starting at bar b + frac belongs to bar b or to the downbeat it is sung
- * into at b+1 - measured across the judged library, verified-correct boundaries sit on
- * either side of their hook with the in-bar phase unable to split them (a 0.27 pickup
- * lands on the next bar where a 0.31 lands on its own). So the hook claims a two-bar
- * WINDOW, a boundary already inside any window is evidence and stays, and only a
- * boundary outside every window moves, onto the nearest window edge:
- *
- * - up to two bars EARLIER: the diagnosed failure has an instrumental pickup slamming a
- *   bar or two before the sung chorus and taking the boundary with it;
- * - at most one bar LATER, and only toward a RESTART hook: a run start is a vocal
- *   entrance, which in club music routinely lags the instrumental drop it belongs to,
- *   and must not delay the biggest cue of the night onto its own lag. A restart happens
- *   mid-flow and cannot lag anything.
- *
- * The refiner's hook term still tips one-bar cases against weak incumbents; this pass
- * exists for the boundary that is beyond its reach or facing a strong wrong incumbent.
- * Runs after the vocabulary settles which segments are chorus-class; the caller
- * re-places events afterwards, or cues keep firing at the bars the boundaries left.
+ * A sung hook claims its current and next bar. Preserve boundaries inside any hook window;
+ * otherwise move to the nearest edge, at most two bars earlier or one later. Later moves
+ * require a restart: vocal entrances can lag instrumental drops. Runs after vocabulary;
+ * re-place events after moving boundaries.
  */
 export function snapToHooks(
 	segments: Segment[],
@@ -509,11 +397,7 @@ export function snapToHooks(
 	reachEarlier = SNAP_REACH_EARLIER,
 	/** A decisive incumbent is never displaced: restarts obey the dominance test, and no move later. */
 	strict = false,
-	/**
-	 * Whether a move may leave the phrase grid, given the section before, the boundary and its
-	 * target: the anacrusis guard the refine obeys, so the sung hook cannot do by the snap what
-	 * the level step may not do by the refine (Killing In the Name's chorus, sung a bar early).
-	 */
+	/** Apply the shared off-phrase guard so sung pickups cannot bypass the refine's timing constraint. */
 	mayMove?: (prevStart: number, from: number, to: number) => boolean
 ): HookSnapMove[] {
 	const moves: HookSnapMove[] = [];
@@ -551,27 +435,11 @@ export function snapToHooks(
 			if (edge < from && from - edge > reachEarlier) continue;
 			if (edge > from && (edge - from > 1 || !w.restart)) continue;
 			if (mayMove && !mayMove(prev.startBar, from, edge)) continue;
-			// The later move exists for a vocal entrance lagging its drop; a boundary that already
-			// sits on a decisive arrival is not lagging anything (Az na mesic's last chorus, 4.7).
+			// A decisive arrival cannot move later onto a lagging vocal entrance.
 			if (strict && edge > from && arrivals && (arrivals[from] ?? 0) >= SNAP_KEEP_DECISIVE) continue;
-			// The physics veto on the pull-back: a singer leading the beat puts the hook
-			// window on bars the record has not arrived at yet, and the snap was dragging
-			// correct boundaries off the beat and onto them - EARFQUAKE's second drop by two
-			// bars over near-silence, its first chorus by two over a sung entrance. A
-			// decisive incumbent stays unless the edge arrives comparably; a wrongly-late
-			// boundary sits on a bar nothing arrived at, so every legitimate rescue on
-			// record (weak incumbent) still proceeds. This ratio form was tried, dropped
-			// against a sentinel that scored its one disagreement as a regression, and
-			// restored when the owner's round-2 note overturned that sentinel: the veto had
-			// been right about the bar and the instrument wrong.
-			// The ratio form is for entrances only: a vocal ENTRANCE can lead the beat (the
-			// veto's whole case), but a RESTART happens mid-flow and cannot lag or lead
-			// anything - held to the ratio, the veto slid a lyric-perfect restart chorus
-			// two bars onto the band's arrival. A restart window still cannot claim a bar
-			// the record never arrives at, though: physics cannot rank a corroborated
-			// restart edge against a decisive incumbent (the lyric does that), but it can
-			// tell a band-backed edge from the voice alone, and only the absolute noise
-			// floor makes that call.
+			// Preserve a decisive incumbent unless an entrance edge has comparable physics. Restarts
+			// need only the absolute noise floor: lyrics place a corroborated mid-flow restart, while
+			// physics rejects voice-only edges.
 			if (edge < from && arrivals) {
 				const incumbent = arrivals[from] ?? 0;
 				const target = arrivals[edge] ?? 0;
@@ -585,12 +453,8 @@ export function snapToHooks(
 					continue;
 				}
 			}
-			// A move that would shrink the previous segment below the minimum is normally
-			// refused - except when that segment is a two-bar BUILD, the connective tissue
-			// the DP cuts off a riser. Then the move absorbs it leftward instead: its first
-			// bar joins the passage it rose out of, and the chorus starts where the hook
-			// says. The owner marked Safir's second chorus at 42 twice across two rounds
-			// while a 2-bar build at 41-43 held this exact refusal in place.
+			// A hook move may absorb a two-bar build leftward rather than leave an undersized predecessor;
+			// the chorus then begins on its lyric-supported bar.
 			const shrinks = edge - prev.startBar < minSegmentBars;
 			const canAbsorb =
 				shrinks &&

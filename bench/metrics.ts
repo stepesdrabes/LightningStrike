@@ -1,33 +1,19 @@
 /**
- * Beat, downbeat and tempo metrics, faithful to mir_eval 0.8.
- *
- * Recovered from the deleted harness (bench/metrics.ts, removed in b94e2fa), unchanged: the
- * numbers must stay comparable with the baselines recorded against it.
- *
- * Faithful rather than approximate on purpose: these numbers are the only thing that says
- * whether a change to the analyser is real, and a metric that is merely close makes a
- * regression look like noise. Every threshold and every denominator here matches
- * mir_eval.beat and mir_eval.tempo so the figures are comparable with published ones.
+ * Beat/downbeat metrics follow mir_eval 0.8 thresholds and denominators so baselines remain
+ * comparable.
  */
 
 /** mir_eval trims the first five seconds: nobody's tracker has locked on yet. */
-export const MIN_BEAT_TIME = 5;
+const MIN_BEAT_TIME = 5;
 const F_WINDOW = 0.07;
 const PHASE_THRESHOLD = 0.175;
 const PERIOD_THRESHOLD = 0.175;
-const TEMPO_TOL = 0.04;
 
-export function trimBeats(beats: readonly number[], minTime = MIN_BEAT_TIME): number[] {
+function trimBeats(beats: readonly number[], minTime = MIN_BEAT_TIME): number[] {
 	return beats.filter((b) => b >= minTime);
 }
 
-/**
- * Maximum bipartite matching between reference and estimated events inside `window`.
- *
- * Greedy nearest-neighbour is the obvious shortcut and it undercounts: two estimates either
- * side of one reference can steal each other's partners, which shows up as a lower F on
- * exactly the dense-onset tracks that matter here.
- */
+/** Use maximum bipartite matching; greedy event pairing undercounts dense neighboring onsets. */
 function matchEvents(ref: readonly number[], est: readonly number[], window: number): number {
 	const adj: number[][] = ref.map(() => []);
 	let j = 0;
@@ -86,10 +72,7 @@ function interpolateBeats(beats: readonly number[], step: number): number[] {
 	return out;
 }
 
-/**
- * The metrical variations AML is allowed to match against: double time, both half-time
- * phases, the offbeat, and the three third-time phases.
- */
+/** AML permits double time, both half-time phases, offbeats and three third-time phases. */
 function referenceVariations(ref: readonly number[]): number[][] {
 	if (ref.length < 2) return [];
 	const double = interpolateBeats(ref, 0.5);
@@ -166,14 +149,14 @@ function continuityHelper(ref: readonly number[], est: readonly number[]): [numb
 	return [longest / n, total / n];
 }
 
-export interface Continuity {
+interface Continuity {
 	cmlC: number;
 	cmlT: number;
 	amlC: number;
 	amlT: number;
 }
 
-export function continuity(ref: readonly number[], est: readonly number[]): Continuity {
+function continuity(ref: readonly number[], est: readonly number[]): Continuity {
 	if (ref.length === 0 || est.length === 0) return { cmlC: 0, cmlT: 0, amlC: 0, amlT: 0 };
 	const [cmlC, cmlT] = continuityHelper(ref, est);
 	let amlC = cmlC;
@@ -186,15 +169,7 @@ export function continuity(ref: readonly number[], est: readonly number[]): Cont
 	return { cmlC, cmlT, amlC, amlT };
 }
 
-/**
- * Acc1 is the estimate within 4% of the annotated tempo; Acc2 forgives a metrical factor.
- *
- * The factor set is the MIREX one. Two thirds and three halves are in it because a tracker
- * that reads a 6/8 track in two is not making the same mistake as one that is simply wrong.
- */
-const METRICAL_FACTORS = [1 / 3, 1 / 2, 2 / 3, 1, 3 / 2, 2, 3];
-
-export interface BeatScores {
+interface BeatScores {
 	f: number;
 	cmlC: number;
 	cmlT: number;

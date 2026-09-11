@@ -7,12 +7,8 @@ import { RoomScene } from './scene/RoomScene.ts';
 import type { CameraView, RoomRendererOptions, Viewport } from './types.ts';
 
 /**
- * Device pixels the bloom chain may work over, before the ratio is reduced.
- *
- * The chain costs roughly linearly in pixels, and 60 fps is not a preference here: the preview is
- * what a show is judged by, and one that stutters in the preview reads as a show that stutters.
- * Retina sharpness is the cheaper thing to give up, because almost everything on screen is a soft
- * glow that bloom has already blurred.
+ * Cap bloom device pixels to preserve 60 fps; its soft glow benefits less from retina
+ * resolution.
  */
 const PIXEL_BUDGET = 3_000_000;
 
@@ -46,26 +42,8 @@ export class RoomRenderer {
 		this.bloom = post.bloom;
 	}
 
-	/** LINEAR filtering across the LED texture: the frosted channel rather than raw pixels. */
-	set diffused(v: boolean) {
-		this.room.led.diffused = v;
-	}
-	get diffused(): boolean {
-		return this.room.led.diffused;
-	}
-
-	set showDots(v: boolean) {
-		this.room.dots.visible = v;
-	}
-	get showDots(): boolean {
-		return this.room.dots.visible;
-	}
-
 	set bloomIntensity(v: number) {
 		this.bloom.intensity = v;
-	}
-	get bloomIntensity(): number {
-		return this.bloom.intensity;
 	}
 
 	setView(view: CameraView): void {

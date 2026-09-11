@@ -4,11 +4,7 @@ import { WORKED_EXAMPLES } from './examples.ts';
 
 const geometry = buildGeometry(DEFAULT_ROOM);
 
-/**
- * The examples are the only part of the prompt that makes a claim the system can check. An
- * example that would not survive `test_effect` teaches the dialect wrong and costs a round trip
- * every time it is followed.
- */
+/** Gate the prompt examples so the model is never taught an inadmissible effect. */
 describe.each(WORKED_EXAMPLES)('$id', (example) => {
 	const result = compileGenerated(
 		{

@@ -86,10 +86,7 @@ describe('a hand map drawn on a piecewise grid', () => {
 	});
 
 	it('is what the residue walk gets wrong', () => {
-		// Characterisation, not a wish. The corroboration rule drops the verse's lone one-beat
-		// nudge, but the boundaries after the first real cut all carry its shift, so the walk
-		// still cuts at 67.40 where nothing was edited and never finds 53.80 at all. Measuring
-		// residues against a uniform grid this map was not drawn on cannot be rescued.
+		// Characterisation: uniform-grid residues invent cuts for a map drawn on an already piecewise grid.
 		const derived = deriveGridCuts(
 			boundaries,
 			Float64Array.from(safir.beats),
@@ -141,11 +138,8 @@ describe('a deliberate cut re-syncs at the next drawn boundary', () => {
 	});
 
 	it('walks its own reference grid, so a missing cached analysis changes nothing', () => {
-		// `handMapGrid` reads the grid a map was DRAWN on out of the cached blob, and answers
-		// nothing when there is no blob. The re-sync must not inherit that: a cache cleared
-		// behind a kept judgement would otherwise re-phase the whole map for good.
-		// Without a blob the map still yields its deliberate cut and nothing else - no carried
-		// cuts, and no way to tell which later boundary was on a bar line.
+		// Re-sync must work without a cached drawing grid; a kept fine-drag judgement still needs
+		// its original phase restored after a cache clear.
 		expect(handMapGrid(boundaries, null, [17]).gridCuts).toEqual([17]);
 		// The walk supplies the rest anyway.
 		expect(cuts([17])).toEqual([beatAt(17), beatAt(32)]);

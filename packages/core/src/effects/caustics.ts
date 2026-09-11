@@ -9,15 +9,8 @@ import { bandAt } from '../dsl/spectrum.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
- * Light refracted off moving water.
- *
- * The filaments are the zero set of the difference between two drifting noise fields, not a
- * threshold on one of them. A threshold gives clouds: wide bright regions with wide dark ones
- * between. Water gives the opposite - thin bright lines over a lot of dark - and that ratio is the
- * whole difference between the two looks.
- *
- * The lines ride over a dim wash rather than over black, because a real pool lights its room as
- * well as its ceiling, and because a bed is what a quiet cue has instead of a room.
+ * The zero set between two noise fields gives thin bright filaments; a single threshold
+ * would produce broad clouds. A dim wash beneath them keeps the room lit.
  */
 export const caustics: EffectDef = {
 	id: 'caustics',
@@ -52,8 +45,7 @@ export const caustics: EffectDef = {
 				const { f, p, palette, hueShift, motion } = ctx;
 
 				clock += f.dt * (0.028 + p.flow * 0.075) * motion;
-				// The top of the spectrum, which is where the movement in water actually is: hats and
-				// air tighten the net, a mix with nothing up there leaves it wide and slow.
+				// Top-end content tightens the net; sparse air leaves broad, slow caustics.
 				heard = air.update(bandAt(f, 0.82), f.dt);
 				const listen = clamp(p.listen);
 

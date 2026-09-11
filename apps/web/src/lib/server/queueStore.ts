@@ -22,15 +22,8 @@ const QUEUE_FILE = join(CACHE_DIR, 'queue.json');
 type Listener = (state: QueueState) => void;
 
 /**
- * The queue lives here rather than in the browser because people in the room will add to it
- * from their phones. That makes the server the only place that can hold one list, and it
- * makes `currentKey` server state: the browser watches it and plays what it is told, so a
- * skip from any device works without the desktop tab being involved in the decision.
- *
- * Nothing in here forgets a row on its own. The queue is the owner's set list: a corpus of
- * sixty-five tracks is played through and judged over days, and a history cap that trimmed
- * rows played more than thirty ago (kept for the size of the payload pushed to phones) took
- * the head of that list away. Only a person removes a row.
+ * The server owns the shared queue and currentKey. Retain every row until explicitly removed;
+ * this set list also supports multi-session corpus review.
  */
 class QueueStore {
 	private state: QueueState = EMPTY_QUEUE;
@@ -49,16 +42,12 @@ class QueueStore {
 		try {
 			const raw = JSON.parse(await readFile(QUEUE_FILE, 'utf8')) as QueueState;
 			if (!Array.isArray(raw.items)) throw new Error('not a queue');
-			// A row written before the genre was carried has one in the cache already, and a set
-			// list where only the newest rows say what they are reads as a bug rather than as a
-			// field that arrived late. The trust verdict is refreshed the same way.
+			// Refresh cached genre and grid trust for older queue rows.
 			const entries = new Map((await readLibrary()).map((e) => [e.id, e]));
 			const items = raw.items.map((i) => {
 				const hit = i.trackId ? entries.get(i.trackId) : undefined;
 				const genre = i.genre ?? hit?.genreFamily ?? undefined;
-				// Anything that was mid-flight when the process died is not mid-flight now - and
-				// a row left ready by an older build is not ready now: its analysis or its engine
-				// show is the old version's, and replaying it as-is is how a fix never arrives.
+				// Reset interrupted work and invalidate rows prepared by stale analysis/engine versions.
 				const stale = i.status === 'ready' && hit !== undefined && !hit.current;
 				const revived =
 					(i.status === 'ready' && !stale) || i.status === 'error'
@@ -88,12 +77,7 @@ class QueueStore {
 		return () => this.listeners.delete(listener);
 	}
 
-	/**
-	 * Apply a transition, publish it, and persist it.
-	 *
-	 * Publishing before persisting on purpose: a listener waiting on a disk write to hear that
-	 * a track finished would show a stale row for as long as the write takes.
-	 */
+	/** Publish before persistence so disk latency cannot delay queue state updates. */
 	private commit(next: QueueState): QueueState {
 		if (next === this.state) return this.state;
 		this.state = next;
@@ -107,8 +91,7 @@ class QueueStore {
 		this.writing = this.writing
 			.then(async () => {
 				await mkdir(CACHE_DIR, { recursive: true });
-				// Written beside and renamed, so a crash mid-write cannot leave a half file that
-				// the next boot silently reads as an empty queue.
+				// Rename a complete temporary file so crashes cannot erase the queue with a partial write.
 				const tmp = `${QUEUE_FILE}.${process.pid}.tmp`;
 				await writeFile(tmp, JSON.stringify(snapshot, null, '\t'));
 				await rename(tmp, QUEUE_FILE);

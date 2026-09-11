@@ -1,22 +1,21 @@
-//! The standalone state machine: what the light does whenever the app is not painting it, and
-//! how it hands over when the app is. Pure and tickless inside; the board loop drives it.
+//! Pure standalone/handover state machine, ticked by the board loop.
 
 use crate::api::{Command, Patch, StateDto};
 use crate::colour::{lin_rgbw, scale4, widen};
 use crate::effects::{fire, twinkle, wash};
 use crate::state::{Colour, EffectKind, LightState, Mode, PowerOnPolicy};
 
-pub const FADE_ON_MS: u64 = 1200;
-pub const FADE_OFF_MS: u64 = 500;
+const FADE_ON_MS: u64 = 1200;
+const FADE_OFF_MS: u64 = 500;
 /// Longer than any stall the radio has been measured to produce, so a party cannot end by jitter.
-pub const PARTY_SILENCE_MS: u64 = 2000;
-pub const PARTY_DOWN_MS: u64 = 400;
-pub const PARTY_UP_MS: u64 = 800;
-pub const MUTE_DOWN_MS: u64 = 300;
-pub const RETARGET_MS: u64 = 300;
-pub const SWAP_DOWN_MS: u64 = 250;
-pub const SWAP_UP_MS: u64 = 400;
-pub const IDENTIFY_MS: u64 = 1000;
+const PARTY_SILENCE_MS: u64 = 2000;
+const PARTY_DOWN_MS: u64 = 400;
+const PARTY_UP_MS: u64 = 800;
+const MUTE_DOWN_MS: u64 = 300;
+const RETARGET_MS: u64 = 300;
+const SWAP_DOWN_MS: u64 = 250;
+const SWAP_UP_MS: u64 = 400;
+const IDENTIFY_MS: u64 = 1000;
 
 /// What a command did to the remembered state, so the caller knows when to touch flash.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -132,8 +131,7 @@ impl<const N: usize> Engine<N> {
 		let s = self.remembered;
 
 		match self.mode {
-			// The keyed-on-the-request check, not the delta: a light that entered the party
-			// soft-off is still muted by an explicit off.
+			// Explicit off mutes a party even if the remembered standalone state was already off.
 			Mode::Party { muted } => {
 				if p.power == Some(false) && !muted {
 					self.mode = Mode::Party { muted: true };
@@ -303,8 +301,7 @@ impl<const N: usize> Engine<N> {
 		}
 	}
 
-	/// The twinkle's own palette pulled halfway toward the tint, so a chosen colour reaches it
-	/// without flattening the scatter.
+	/// Blend twinkle halfway toward the tint to retain palette variation.
 	fn render_twinkle(&mut self, tint: [u16; 4], env: u32) {
 		let level = tint[0].max(tint[1]).max(tint[2]) as u32;
 		let gain = ((level * env) >> 16) >> 8;

@@ -1,6 +1,5 @@
-# Dev-time: unpack the float16 corpus embeddings (extract-musicfm.py) into raw f32 .bin
-# files the TS head-gate harness can mmap with a Float32Array view. Temporary artefacts
-# beside the .npz they mirror; gitignored with the rest of bench/corpus/.musicfm.
+# Convert float16 corpus embeddings to raw f32 for the TS head-gate harness.
+# Outputs stay gitignored beside the source .npz files in bench/corpus/.musicfm.
 #
 #   uv run --python 3.12 --with numpy python bench/convert-embeddings.py
 import json

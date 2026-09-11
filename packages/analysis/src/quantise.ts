@@ -2,33 +2,11 @@ import type { OnsetStream } from '@mv/core';
 import type { DrumStream } from './drums.ts';
 
 /**
- * Correct a drum track against the pattern the passage repeats, without moving what was heard.
- *
- * A detector that finds four kicks in five is precise and still looks wrong in a room: the
- * flashes land on beats 1, 2 and 4 and the eye reads the gap, not the accuracy. Percussion in
- * this repertoire is overwhelmingly periodic, and that redundancy is evidence a frame-by-frame
- * detector never uses.
- *
- * The shape is Yoshii et al. (ICASSP 2006): read the pattern bottom-up from an imperfect onset
- * sequence, then top-down, treat every disagreement with it as an error CANDIDATE and verify
- * each candidate against the audio before acting. The verification is the part that matters and
- * the part the previous vote did not have. It could only add, never remove, and it added
- * wherever the pattern said so whether or not anything was audible there, which is how 19.6% of
- * shipped kicks came to be fabrications. Published work is unanimous on this point: a pattern is
- * a prior over a detection, never a replacement for one, which is also what leaves a fill or a
- * break intact, since both are passages where the audio outvotes the pattern.
- *
- * Two things this deliberately does NOT do, both of which it used to:
- *
- * Detected hits keep their detected time. Snapping them to the nearest sixteenth moves them by
- * up to half a slot, which is 58 ms at 130 bpm, and a flash 58 ms off the drum reads as late
- * however accurate the underlying detection was. The grid decides whether a hit is real and
- * where a missing one goes; it does not get to correct one that was heard.
- *
- * Slot times come from the beat array, not from an averaged period. A single period laid from
- * beat zero is a straight line, and on a track that speeds up the music walks off it.
+ * Pattern correction follows Yoshii et al. (ICASSP 2006): patterns propose additions/removals;
+ * audio verifies every candidate so fills and breaks survive. Detected hits keep their times.
+ * Missing-hit slots use actual beat times, not an averaged period that drifts on live music.
  */
-export interface QuantiseOptions {
+interface QuantiseOptions {
 	beats: Float64Array;
 	beatsPerBar: number;
 	/** Which beat index mod beatsPerBar starts a bar, so invented hits land in real bars. */
@@ -37,11 +15,7 @@ export interface QuantiseOptions {
 	perBeat?: number;
 	/** Fraction of a subdivision an onset may sit from the grid and still be called on it. */
 	tolerance?: number;
-	/**
-	 * Repeat identity per bar. Two bars sharing an id are the same passage of the song, so they
-	 * should carry the same drum pattern and any disagreement is a fill or a detector error.
-	 * Negative, or absent, falls back to a fixed window.
-	 */
+	/** Repeat identity per bar; negative or absent ids use a fixed-window fallback. */
 	barGroup?: Int32Array;
 	/** Bars considered together when there is no repeat identity to use instead. */
 	windowBars?: number;
@@ -49,26 +23,18 @@ export interface QuantiseOptions {
 	duration: number;
 }
 
-export interface QuantisedOnsets extends OnsetStream {
+interface QuantisedOnsets extends OnsetStream {
 	/** True where the hit was completed from the pattern rather than detected. */
 	invented: boolean[];
 }
 
 /**
- * How much of a group's evidence a slot must carry before the pattern claims it, and how much
- * the audio must then show at a bar where nothing was detected before one is added.
- *
- * The promotion threshold is deliberately well above zero. A slot at 0.12 of the group's
- * strongest is audible under the arrangement rather than merely non-silent, which is the line
- * between completing a hit the detector missed and inventing one in a gap the producer left.
+ * Pattern claims need group support; promotion also needs audible local energy. A nonzero
+ * floor prevents completing a pattern across a deliberate gap.
  */
 const PATTERN_SUPPORT = 0.45;
 const PROMOTE_EVIDENCE = 0.12;
-/**
- * And the other direction: a weak detection at a slot the passage never plays is the detector
- * hearing the bassline or a neighbouring drum. Both conditions have to hold, so a strong hit
- * survives however unexpected it is, which is what a fill consists of.
- */
+/** Remove only weak, unexpected detections; strong unpatterned hits may be genuine fills. */
 const DEMOTE_SUPPORT = 0.12;
 const DEMOTE_LEVEL = 0.22;
 /** What an invented hit is worth, as a fraction of the support that asked for it. */
@@ -158,9 +124,7 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 		if (bar >= 0 && bar < bars) barActive[bar] = 1;
 	}
 
-	// Bars that repeat the same material are read together. A section and its reprise play the
-	// same figure, so pooling them is more evidence for the same pattern rather than an average
-	// of two different ones, which is what a fixed window gives when a groove changes halfway.
+	// Pool repeating bars instead of mixing different groove patterns within a fixed window.
 	const cohorts = new Map<number, number[]>();
 	for (let bar = 0; bar < bars; bar++) {
 		if (!barActive[bar]) continue;

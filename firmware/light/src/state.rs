@@ -1,7 +1,6 @@
 //! What a light remembers, and the two modes it can be in.
 
-/// What wall power coming back does. The lamp ships AlwaysOn so its switch behaves like a light
-/// switch; the frame ships Restore so a midnight power blip cannot relight a whole wall.
+/// Lamp AlwaysOn follows its wall switch; frame Restore prevents power glitches from relighting the room.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PowerOnPolicy {
 	Restore,
@@ -115,8 +114,7 @@ pub struct LightState {
 	pub policy: PowerOnPolicy,
 }
 
-/// Party is entered by DDP arriving, never by hand; `muted` is a party-session flag, which is
-/// what lets a stream take over a soft-off light and an explicit off still win afterwards.
+/// DDP enters Party. Session-local mute lets a stream take over soft-off while later explicit off wins.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Mode {
 	Smart,

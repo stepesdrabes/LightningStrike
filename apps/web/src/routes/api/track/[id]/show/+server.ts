@@ -23,27 +23,12 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 	return new Response(null, { status: 204 });
 };
 
-/**
- * The next roll from the current one, rather than a random number.
- *
- * A track's rolls are then a sequence: the third reroll of a track is the third reroll of it
- * next week too, so a composition that looked good can be reached again by counting back to it.
- * Numerical Recipes' LCG, which is enough to decorrelate a seed and is the only job it has here.
- */
+/** Use Numerical Recipes' LCG so rerolls form a reproducible sequence. */
 function nextSeed(from: number): number {
 	return (Math.imul(from, 1664525) + 1013904223) >>> 0 || 1;
 }
 
-/**
- * Compose the track again, differently.
- *
- * The engine is deterministic and seeded from the analysis hash, which is right for a bug
- * reproducing and wrong for living with a room: the fiftieth play of a favourite track is the
- * same picture as the second. This is the same composer with a different roll.
- *
- * Persisted rather than held in memory, because the hardware renders its own copy from disk.
- * An unsaved reroll would change the preview and leave the strips playing the old show.
- */
+/** Persist rerolls so preview and hardware, which loads from disk, play the same composition. */
 export const POST: RequestHandler = async (event) => {
 	const id = event.params.id;
 	if (!isValidId(id)) error(400, 'invalid track id');
@@ -63,8 +48,7 @@ export const POST: RequestHandler = async (event) => {
 		// No show yet, so this is the first roll rather than the next one.
 	}
 
-	// Refuse rather than warn. Rerolling runs the engine, so on an agent's show it would spend
-	// nothing and destroy something that cost real credits to make.
+	// Reject engine rerolls of model shows to preserve paid authoring work.
 	if (current && current.authoredBy && current.authoredBy !== 'engine') {
 		error(409, `${current.authoredBy} wrote this show; revising it is the way to change it`);
 	}

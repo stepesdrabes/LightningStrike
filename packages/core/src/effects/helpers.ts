@@ -41,17 +41,13 @@ export interface WallDrop {
 	wall: number;
 	fromEnd: number;
 	t0: number;
-	/** Spawn number. Colour derived from it never repeats and survives a seek. */
+	/** Deterministic spawn number for seek-stable colour. */
 	seq: number;
-	/** The caller's colour for this droplet: a palette slot, a hue, whatever it means. */
+	/** Caller-defined colour value. */
 	tint: number;
 }
 
-/**
- * The machinery under the rain effects: a fixed pool of droplets spawned round-robin
- * around the walls on the beat grid, falling under something like gravity. Colour is the
- * caller's, and is the only thing that separates one rain from another.
- */
+/** Fixed droplet pool, spawned round-robin on the grid; callers own colour. */
 export class WallDrops {
 	readonly walls: readonly StripSpec[];
 	private readonly drops: WallDrop[] = [];
@@ -84,10 +80,7 @@ export class WallDrops {
 		return d;
 	}
 
-	/**
-	 * Advance every live droplet, calling `onFall` with its progress and sub-pixel position
-	 * and `onLand` once as it reaches the centre.
-	 */
+	/** onFall receives progress and sub-pixel position; onLand fires once at the wall centre. */
 	fall(
 		f: ShowFrame,
 		fallBeats: number,

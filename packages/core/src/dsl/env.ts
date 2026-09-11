@@ -1,6 +1,6 @@
 import { alphaFor, clamp } from './math.ts';
 
-/** Fires to `strength`, then decays over a musical duration. The club pulse. */
+/** Fires to strength, then decays over a musical duration. */
 export class PulseEnv {
 	value = 0;
 
@@ -20,13 +20,7 @@ export class PulseEnv {
 	}
 }
 
-/**
- * Instant attack, hold, then exponential release.
- *
- * The hold is the whole point: without it a hit lasts one frame, lands below the eye's
- * integration window, and its apparent brightness depends on where the frame boundary
- * fell relative to the onset.
- */
+/** Hold hits through the eye's integration window so brightness is independent of frame timing. */
 export class FlashEnvelope {
 	value = 0;
 	private held = 0;
@@ -60,22 +54,9 @@ export class FlashEnvelope {
 }
 
 /**
- * Follows a continuously moving signal: fast up, slower down, in seconds rather than in beats.
- *
- * What anything reading `f.spectrum` should pass through. The spectrum is a real 50 Hz
- * measurement resampled per frame, so it carries a few per cent of frame-to-frame noise, and an
- * effect wired straight to it shimmers. `BeatHold` removes that by sampling once a beat, which
- * also removes every guitar stab, cymbal and word that happens between beats - most of what
- * makes a room look like it is listening.
- *
- * An attack in the tens of milliseconds is under the eye's integration window, so a transient
- * arrives looking instant while noise, which alternates sign every frame or two, is averaged
- * away. The longer release is what stops the room strobing on the back of every note: the eye
- * forgives a slow decay and objects loudly to a fast one.
- *
- * Defaults are a compromise picked for level: 25 ms up reads as immediate, 140 ms down is about
- * a sixteenth at 110 bpm, so a chord rings out rather than snapping off. Pass a longer attack
- * for a position, which should never teleport, and a shorter one for a meter tip.
+ * Smooth continuous measurements in seconds, preserving between-beat articulation.
+ * The 25 ms attack suppresses frame noise; the 140 ms release avoids abrupt note endings.
+ * Use a slower attack for position and a faster one for meter tips.
  */
 export class Follower {
 	value = 0;
@@ -89,8 +70,7 @@ export class Follower {
 	}
 
 	update(target: number, dt: number): number {
-		// Straight to the first reading. Rising from zero over the first frames of a cue is a
-		// fade nobody asked for, and on a one-bar cue it is most of the cue.
+		// Start at the first reading to avoid adding a cue-entry fade.
 		if (!this.started) {
 			this.started = true;
 			this.value = target;
@@ -144,22 +124,13 @@ export function ratchet(current: number, target: number, dt: number, riseTau: nu
 }
 
 /**
- * Reads its input once per beat and holds it until the next one.
- *
- * What anything driven by the music should pass through before it reaches the room. The
- * spectrum moves continuously and its own frame-to-frame noise is several per cent, so an
- * effect that follows it directly shimmers at the frame rate against a beat it has no
- * relationship to. Latched here, every change the room makes lands ON a beat by construction,
- * and the ones between beats simply do not happen.
- *
- * The glide is a small fraction of a beat, not zero: a hard step is right for a colour and
- * wrong for a position, and at an eighth of a beat the arrival still reads as on the beat while
- * nothing in the room teleports. Pass 0 for a true sample and hold.
+ * Sample once per beat; glide in beats to soften position steps. Pass 0 for a true hold.
+ * Use Follower for continuous spectrum articulation.
  */
 export class BeatHold {
 	private held = Number.NaN;
 	private shown = Number.NaN;
-	/** In beats. A constructor parameter property would not survive type stripping. */
+	/** In beats; explicit fields support type stripping. */
 	private readonly glide: number;
 
 	constructor(glide = 0.12) {
@@ -188,25 +159,14 @@ export class BeatHold {
 }
 
 /**
- * Whether an instrument is CURRENTLY PLAYING, read off its hit envelope: 1.0 while hits keep
- * arriving, holding through the gaps a pattern actually contains, and releasing only when the
- * instrument has genuinely left.
- *
- * For the grid-locked pulse effects. A pulse on the beat grid is in the groove rather than
- * reacting to it - that is its point - but it also keeps pounding through the bars where the
- * producer pulled the kick out, and a room that slams over a suspension is a room that is not
- * listening. Scaling each pulse by this restores the arrangement without costing the grid:
- * timing stays the grid's, only the permission to strike follows the kit.
- *
- * The hold is in beats because gaps are musical: four-on-the-floor rests for one beat, a
- * syncopated pattern for two or three, so a hold of a bar keeps every real pattern at full
- * while an eight-bar suspension fades inside two. Rises to the envelope's own peak rather
- * than to 1.0, so a lone ghost note arms a ghost of a pulse, not a full slam.
+ * Hold an instrument's hit level across musical gaps, then release when it leaves.
+ * Grid pulses keep their timing and use this as permission to strike. A bar-long hold covers
+ * syncopated patterns; envelope strength preserves ghost notes.
  */
 export class Presence {
 	private level = 0;
 	private sinceHit = Infinity;
-	/** In beats. Constructor parameter properties would not survive type stripping. */
+	/** In beats; explicit fields support type stripping. */
 	private readonly holdBeats: number;
 	private readonly releaseBeats: number;
 
@@ -220,18 +180,7 @@ export class Presence {
 		this.sinceHit = Infinity;
 	}
 
-	/**
-	 * `env` is the instrument's hit envelope, e.g. `f.kickEnv`.
-	 *
-	 * Time is accumulated in BEATS, not in seconds compared against a beat-derived threshold.
-	 * The two are algebraically identical while the tempo holds - which is every constant-tempo
-	 * track, so nothing in the library renders differently - and they part company the moment
-	 * it steps. Measured against seconds, a hold recomputed from the CURRENT period
-	 * retroactively re-decides whether hits that already happened still count: SICKO MODE goes
-	 * 136 to 77 bpm mid-track, which moves a four-beat hold from 1.72 s to 3.12 s in one frame,
-	 * and every kit-gated effect jumps its permission level with it. The idle transition does
-	 * the same thing harder, at 40 bpm against a track's 130.
-	 */
+	/** Accumulate time in beats so tempo changes cannot retroactively change a hit's age. */
 	update(env: number, dt: number, beatPeriod: number): number {
 		if (env > this.level) {
 			this.level = env;

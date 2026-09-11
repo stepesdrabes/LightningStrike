@@ -1,53 +1,11 @@
-// What the Bounce Lamp actually makes, all the way through its own firmware.
-//
-//   node bench/lampprobe.ts                  # every cached track, one row each
-//   node bench/lampprobe.ts sicko            # one track, with the per-section table
-//   node bench/lampprobe.ts sicko            # one track, with the per-section table
-//
-// The lamp is two halves that can each make it dim, and the complaint "too dim, no punch" does
-// not say which. Host-side, `bounce.ts` decides a level; board-side, `lamp/src/fixture.rs`
-// decides what is done with it. So this reports both:
-//
-//   `wire` is what leaves the host, as a share of full scale on the strongest channel, and `top`
-//   is the highest that channel ever reached over the whole track. `top` under 100 means the show
-//   never asked this fixture for everything it has.
-//   `light` is what the fixture makes of it, as a share of what its three colour dies could emit
-//   together. The white gate is dark during a show, so it is not in this number.
-//
-// `punch` is the direct question, asked the way `punchprobe` asks it of the room: at each kick,
-// how much brighter is the lamp within 120 ms (the eye's integration window and a little) than
-// it was in the 120 ms before? A RATIO, so it survives a recalibration - 1.0 is a lamp that does
-// not answer the kit at all, 2.0 is a doubling, and the weakest tenth beside the median is what
-// separates a lamp that answers every kick from one that answers the loud ones and sleeps
-// through the rest.
-//
-// `light` and `peak` are per-hue and cannot be compared across tracks with different accents: a
-// hue is one die, and green has about three times the luminance of red and four times blue.
-//
-// Measured 2026-09-10 over the seven cached tracks, across the round (ranges over the per-track
-// columns, `punch` as the median of the medians). The middle rows spent the white phosphors and
-// are kept as a record of what that bought and cost:
-//
-//                            wire%   light%    peak%   punch
-//   at the start of the day   18-35  1.2-2.8  1.8-6.7  1.3x
-//   phosphors above a knee    31-44  1.2-5.7   18-26   5.0x
-//   that knee at full duty    46-61  1.7-8.2   80-92   20x
-//   an emitter class each     72-86   17-41    98-99   3.0x
-//
-// Those four all normalise `light`/`peak` against a fixture that includes the white gate, so they
-// do not compare with what ships, which is the dies alone:
-//
-//                            wire%  top%  kick%  light%  peak%  punch
-//   dies only, no phosphor    35-49  100  90-96   6-31   24-71  2.0-2.5x
-//
-// `top` and `kick` are the answer to "is this the full potential of the LED": the strongest die
-// reaches full scale on every track, and a typical kick gets it to nine tenths. The rest of the
-// spread is the kit's own dynamics. The phosphors went because they outnumber the dies on this
-// reel, so any share of them large enough to see is large enough to pale the accent, and their
-// weight against a hue depends on which die that hue is.
-//
-// Read `light%` and `peak%` together with `punch`, never `punch` alone. The 20x row reached it by
-// resting near black.
+// Measure the Bounce Lamp through host level math and firmware emitter trims.
+// node bench/lampprobe.ts [track-id-or-title]
+// wire/top = mean/peak strongest-channel duty; light/peak = RGB-die luminous output, excluding
+// white.
+// punch = post-kick maximum / pre-kick mean in 120 ms windows; report median and weakest
+// tenth.
+// Compare light/peak across equal hues only, and read them with punch: a near-black bed
+// inflates ratios.
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -63,10 +21,6 @@ import { CACHE_DIR } from '@mv/analysis';
 import { composeShow } from '@mv/author-engine';
 
 const argv = process.argv.slice(2);
-const flag = (n: string) => {
-	const i = argv.indexOf(`--${n}`);
-	return i >= 0 ? Number(argv[i + 1]) : undefined;
-};
 const wanted = argv.filter((a, i) => !a.startsWith('--') && !argv[i - 1]?.startsWith('--'));
 
 /** Relative luminous output of each gate at full duty, the three colour dies summing to one. */
@@ -79,13 +33,7 @@ const DT = 1 / FPS;
 /** The eye integrates over roughly this long, and perceived brightness peaks inside it. */
 const WINDOW = 0.12;
 
-/**
- * One frame of `director.bounce` as the board would light it: `present` in `lamp/src/fixture.rs`.
- *
- * Returns light rather than duty, as a share of what all four gates could emit at once. The
- * bytes arrive gamma-encoded, so they are already linear in light and the only steps left are
- * the white derivation and the trim.
- */
+/** Convert the lamp's PWM pixel to RGB-die light using firmware trims; white stays dark. */
 function fixtureLight(px: Uint8Array): number {
 	const gate = (v: number, trim: number) => (v / 255) * (trim / 256);
 	return LUM[0] * gate(px[0], TRIM[0]) + LUM[1] * gate(px[1], TRIM[1]) + LUM[2] * gate(px[2], TRIM[2]);
@@ -157,11 +105,8 @@ function kickPeaks(samples: Sample[]): number[] {
 }
 
 /**
- * How much brighter each kick made the lamp than the window before it.
- *
- * Both windows are `WINDOW` long: the max after against the mean before, because a hit is a peak
- * and a bed is an average. A floor on the denominator keeps a kick landing in a blackout from
- * reporting an infinite punch it did not deliver.
+ * Compare the post-kick maximum with the pre-kick mean over WINDOW seconds. Floor blackout
+ * denominators.
  */
 function punches(samples: Sample[]): number[] {
 	const span = Math.round(WINDOW * FPS);

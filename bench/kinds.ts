@@ -1,29 +1,13 @@
 import type { SectionKind } from '@mv/core';
 
 /**
- * Annotated musical function, read as a lighting instruction.
- *
- * Recovered from the deleted harness (bench/kinds.ts, removed in b94e2fa) and extended:
- * `SectionKind` has since grown 'verse' and 'chorus', so the one table is now two. Which one a
- * probe scores against is the probe's choice, not this file's.
- *
- * Harmonix annotates 912 pop, dance and hip-hop tracks with verse, chorus, prechorus and break.
- * Those are the only public labels that say what a section IS doing rather than merely which
- * other sections it resembles. Every line is a judgement, written out one per line rather than
- * folded into prefix rules so that disagreeing with one costs an edit rather than an
- * archaeology session.
- *
- * `prechorus` is the only annotated function whose definition is "the passage leading into the
- * chorus", which is exactly what a build is, and it is why this corpus can score builds at all.
+ * Explicit annotation-to-lighting mappings. Prechorus maps to build because it leads into a
+ * chorus.
  */
 
 /**
- * The club reading: the original seven-kind table, unchanged. Two lines are arguable:
- *
- * - `bridge` is groove, not breakdown. Harmonix uses it for any contrasting section and most of
- *   them keep their kit; the ones that do not are annotated `break`.
- * - `postchorus` is drop. It is the hook continuing at the chorus's energy, and the room has no
- *   quieter instruction that would not read as the big moment ending early.
+ * Club mapping: bridges retain groove unless annotated as breaks; postchoruses retain drop
+ * energy.
  */
 export const KIND_CLUB: Record<string, SectionKind> = {
 	intro: 'intro',
@@ -53,10 +37,8 @@ export const KIND_CLUB: Record<string, SectionKind> = {
 };
 
 /**
- * The song reading: verse and chorus keep their names now that the vocabulary has them, and
- * bridge moves to breakdown, since in a song a contrasting section is a lull between choruses
- * rather than more groove. Instrumental passages stay groove; a postchorus stays with the
- * chorus whose energy it continues.
+ * Song mapping keeps verse/chorus, treats bridges as breakdowns and preserves postchorus
+ * energy.
  */
 export const KIND_SONG: Record<string, SectionKind> = {
 	intro: 'intro',
@@ -86,12 +68,7 @@ export const KIND_SONG: Record<string, SectionKind> = {
 };
 
 /**
- * How far the decoded audio may differ in length from the master that was annotated.
- *
- * The gate that makes Harmonix usable. Its annotations are of Rock Band edits, and 139 of the
- * 254 uploads the old harness had on disk were a different length from the edit that was
- * annotated: usually the full single against a game-length cut with an internal section
- * removed. No constant offset reaches those, and asking the offset fit about them is asking a
- * question it cannot answer.
+ * Maximum relative duration mismatch. Different Rock Band edits cannot align by a constant
+ * offset.
  */
 export const MAX_DURATION_DRIFT = 0.02;

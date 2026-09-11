@@ -65,20 +65,12 @@
 	});
 
 	$effect(() => {
-		// Any new query invalidates the highlight; keeping it would fire Enter at whatever row
-		// happened to slide into that position.
+		// Reset the highlight so Enter cannot select a different row after a query change.
 		void query;
 		cursor = 0;
 	});
 
-	/**
-	 * Search after the typing stops.
-	 *
-	 * Each search is a yt-dlp process and about a second and a half, so a request per
-	 * keystroke would queue up processes faster than they finish. The in-flight one is
-	 * aborted rather than left to land, because a late answer to an old query overwriting a
-	 * fresh one is the failure mode that makes a search box feel broken.
-	 */
+	/** Debounce searches and abort stale requests so late results cannot overwrite a newer query. */
 	$effect(() => {
 		const q = query.trim();
 		if (!open || q.length < 2 || link) {
@@ -203,8 +195,7 @@
 					</Badge>
 				{/if}
 
-				<!-- On a catalogue hit too, not only a library row: the whole point is knowing that
-				     this one costs nothing before picking it. -->
+
 				{#if candidate.cached}
 					<Badge variant="outline" title="Already downloaded and analysed">Ready</Badge>
 				{/if}

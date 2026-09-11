@@ -1,18 +1,13 @@
-# One-off dev-time export: MusicFM conformer (layer-9 hidden states) + section head -> ONNX.
-# Never shipped in the repo; the graphs land in models/ beside the other optional weights.
-# MIT upstream (ByteDance MusicFM), so unlike ADTOF the artefact itself is unencumbered.
+# Development export: MusicFM layer-9 embeddings and section head -> ONNX.
+# ByteDance MusicFM is MIT; optional graphs remain uncommitted in models/.
 #
 #   uv run --python 3.12 --with torch --with torchaudio --with transformers \
 #     --with einops --with onnx --with onnxruntime python bench/export-musicfm.py
 #
-# The encoder needs a DYNAMIC time axis: extract-musicfm.py fed variable-length pieces
-# (35 s at the track head, 40 s interior, whatever remained at the tail), and the head
-# was trained on those numerics, so a fixed-window graph would put unfamiliar edge
-# effects exactly where intro and outro live. The HF conformer's rotary embedding caches
-# its table behind a Python length check, which a legacy trace constant-folds, so the
-# module is patched to compute positions unconditionally and the export goes through
-# dynamo. The mel frontend does NOT export - the TS port recomputes it - so the graph
-# input is the NORMALISED mel: (AmplitudeToDB(MelSpectrogram(wav))[..., :-1] - mean) / std.
+# Dynamic time preserves extract-musicfm.py's variable pieces (35 s head, 40 s interior,
+# shorter tail). Patch the rotary cache's Python length check before dynamo export.
+# The TS frontend supplies normalised mel, not audio:
+# (AmplitudeToDB(MelSpectrogram(wav))[..., :-1] - mean) / std.
 import json
 import sys
 from pathlib import Path
@@ -70,9 +65,7 @@ class Encoder(torch.nn.Module):
 
 encoder = Encoder(model, LAYER).eval()
 
-# The rotary cache: `if sequence_length == self.cached_sequence_length` is Python control
-# flow over a symbolic dimension, which no exporter can keep. Recomputing every call is
-# what the cache was saving anyway, and export happens once.
+# Recompute rotary positions so symbolic lengths cannot be frozen by a Python cache check.
 from transformers.models.wav2vec2_conformer import modeling_wav2vec2_conformer as w2v2c  # noqa: E402
 
 
@@ -117,7 +110,7 @@ if not HEAD_ONLY:
     )
     print('exported musicfm_encoder_int8.onnx')
 
-# --- the section head, dynamic time axis (it reads a whole track at 8.33 Hz) ----------
+# The section head reads whole tracks at 25/3 Hz with a dynamic time axis.
 sys.path.insert(0, str(ROOT))
 head_cfg = json.load(open(PROBE_DIR / 'sectionhead.json'))
 
@@ -141,11 +134,8 @@ head = SectionHead()
 head.load_state_dict(torch.load(PROBE_DIR / 'sectionhead.pt', map_location='cpu'))
 head.eval()
 
-# dynamo, not the legacy tracer: nn.MultiheadAttention reshapes with Python ints, which
-# a trace bakes in - the first track longer than the example then fails inside the graph.
+# Dynamo keeps MultiheadAttention's reshape lengths dynamic.
 head_example = torch.randn(1, 400, 1025)
-with torch.no_grad():
-    head_ref = head(head_example)
 torch.onnx.export(
     head,
     (head_example,),
@@ -158,11 +148,7 @@ torch.onnx.export(
 )
 print('exported musicfm_sectionhead.onnx')
 
-# --- probes -----------------------------------------------------------------------------
-# Three parity targets, one per seam the TS port can get wrong on its own:
-#  1. audio -> mel (the torchaudio frontend the TS code reimplements),
-#  2. normalised mel -> hidden (the exported encoder graph),
-#  3. embedding+position -> logits (the exported head graph).
+# Probe audio -> mel, normalised mel -> hidden, and embedding+position -> logits separately.
 rng = np.random.default_rng(7)
 wav = (rng.standard_normal(WIN_S * SR) * 0.1).astype(np.float32)
 with torch.no_grad():
@@ -172,13 +158,11 @@ mel_norm = ((mel - MEAN) / STD).float()
 with torch.no_grad():
     hidden = encoder(mel_norm).numpy()
 
-# Raw little-endian f32 with a shape manifest, so the TS parity test reads them with a
-# Float32Array view instead of growing an npy parser.
+# Raw little-endian f32 plus shape manifest lets TS use Float32Array without an npy parser.
 wav.tofile(PROBE_DIR / 'probe_wav.bin')
 mel_np.astype(np.float32).tofile(PROBE_DIR / 'probe_mel.bin')
 hidden.astype(np.float32).tofile(PROBE_DIR / 'probe_hidden.bin')
-# The head probe crosses the TS side's PUBLIC seam: raw 1024-dim embeddings in,
-# softmaxed posteriors out, with the position channel appended by each side itself.
+# Match the TS interface: raw embeddings to posteriors, with each side appending position.
 head_emb = rng.standard_normal((400, 1024)).astype(np.float32)
 pos = np.linspace(0, 1, 400, dtype=np.float32)[:, None]
 head_in = np.concatenate([head_emb, pos], axis=1)[None]
@@ -199,23 +183,21 @@ json.dump(
     indent=1,
 )
 
-# The exact filterbank torchaudio built, saved for the TS port to matmul rather than
-# rederive: HTK mel arithmetic reimplemented by hand is exactly the parity bug the ADTOF
-# port hit, and a saved matrix cannot drift.
+# Save torchaudio's exact filterbank so independent HTK mel arithmetic cannot drift.
 fb = model.preprocessor_melspec_2048.mel_stft.mel_scale.fb  # [n_freqs=1025, n_mels=128]
 fb.numpy().astype(np.float32).tofile(OUT / 'musicfm_mel_fb.bin')
 print('wrote musicfm_mel_fb.bin', tuple(fb.shape))
 
-# ONNX runtime cross-check right here, so a broken export never reaches the TS side.
+# Cross-check exported graphs against torch.
 import onnxruntime as ort  # noqa: E402
 
 sess = ort.InferenceSession(str(OUT / 'musicfm_encoder.onnx'), providers=['CPUExecutionProvider'])
 got = sess.run(None, {'mel_norm': mel_norm.numpy()})[0]
 print('encoder onnx max err', float(np.abs(got - hidden).max()))
 
-# The dynamic axis has to be proven at a second length, or a silently-pinned shape only
-# fails on the first track whose tail window is short.
-short = mel_norm[:, :, : 35 * SR // HOP]
+# Compare a sliced window to expose fixed-shape exports.
+short = mel_norm[:, :, : 25 * SR // HOP]
+assert short.shape[-1] != mel_norm.shape[-1]
 with torch.no_grad():
     short_ref = encoder(short).numpy()
 short_got = sess.run(None, {'mel_norm': short.numpy()})[0]
@@ -231,8 +213,7 @@ sess_head = ort.InferenceSession(
 got_head = sess_head.run(None, {'emb_pos': head_in})[0]
 print('head onnx max err', float(np.abs(got_head - head_logits.numpy()).max()))
 
-# One corpus track's stored training embedding as the end-to-end target: the TS port
-# must reproduce the numbers the head actually learned from, windowing scheme included.
+# Corpus embeddings test end-to-end parity with the actual training windowing.
 track_ref = sorted(PROBE_DIR.glob('harmonix-*.npz'))
 if track_ref:
     d = np.load(track_ref[0])

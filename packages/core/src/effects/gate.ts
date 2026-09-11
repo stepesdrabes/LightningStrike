@@ -23,16 +23,12 @@ const SCRIPT: Beat[] = [
 	{ bars: 8, section: 'drop', energy: 1, drums: true }
 ];
 
-/**
- * Synthesise a deterministic frame journey with no audio at all. An effect that only
- * looks right against real music is an effect whose timing is wrong.
- */
+/** Deterministic synthetic journey, requiring no audio. */
 export function scriptFrames(bpm = 130): ShowFrame[] {
 	const beatPeriod = 60 / bpm;
 	const frames: ShowFrame[] = [];
 	const dt = 1 / FPS;
 
-	let bar = 0;
 	let t = 0;
 	let lastBeat = Number.NaN;
 	let lastBar = Number.NaN;
@@ -97,13 +93,9 @@ export function scriptFrames(bpm = 130): ShowFrame[] {
 			f.bands[1] = stage.energy * 0.8;
 			f.bands[2] = stage.energy * 0.6;
 			f.bands[3] = stage.section === 'build' ? f.buildProgress : stage.energy * 0.5;
-			// A spectrum with a shape and a moving tilt, not a flat level: an effect that reads
-			// only the four bands must survive this, and one that reads the spectrum has to be
-			// exercised by it rather than handed silence and marked as emitting no light.
+			// Exercise spectrum readers with a moving shape as well as four-band envelopes.
 			for (let k = 0; k < f.spectrum.length; k++) {
 				const u = f.spectrum.length > 1 ? k / (f.spectrum.length - 1) : 0;
-				// Bass-heavy on the groove and drop, walking upward through the build, and gone
-				// in the void, which is the same journey the four bands take.
 				const tilt = stage.section === 'build' ? f.buildProgress : 0.25;
 				const shape = Math.exp(-((u - tilt) ** 2) / 0.12);
 				f.spectrum[k] = clamp(stage.energy * shape * (0.7 + 0.3 * Math.sin(t * 3 + k)));
@@ -118,17 +110,15 @@ export function scriptFrames(bpm = 130): ShowFrame[] {
 			frames.push(f);
 			t += dt;
 		}
-		bar += stage.bars;
 	}
 
-	void bar;
 	return frames;
 }
 
 function makeCtx(g: Geometry, def: EffectDef): RenderCtx {
 	const p: Record<string, number> = {};
 	for (const spec of def.params) p[spec.key] = spec.default;
-	// Masters are hit-driven; without a trigger they render nothing and prove nothing.
+	// Trigger masters so the gate tests their active output.
 	if ('trigger' in p) p.trigger = 1;
 	return {
 		g,
@@ -154,7 +144,7 @@ function runOnce(def: EffectDef, g: Geometry, frames: ShowFrame[]): Float32Array
 	return snapshots;
 }
 
-export interface GateResult {
+interface GateResult {
 	id: string;
 	ok: boolean;
 	failures: string[];
@@ -162,11 +152,7 @@ export interface GateResult {
 	producesLight: boolean;
 }
 
-/**
- * Admission test for any effect, built-in or generated. The determinism check is the one
- * that matters most for generated code: it catches a smuggled Math.random or Date.now,
- * which would silently break seeking and exports.
- */
+/** Validate bounds, reset and determinism for built-in and generated effects. */
 export function runGate(def: EffectDef, g: Geometry): GateResult {
 	const failures: string[] = [];
 	const frames = scriptFrames();
@@ -239,17 +225,8 @@ export function runGate(def: EffectDef, g: Geometry): GateResult {
 }
 
 /**
- * An intro or outro: quiet, no kit at all, but real music playing.
- *
- * The gate's own journey has no such section, so nothing has ever been checked against the one
- * case the room is reported to look dead in. It is deliberately NOT part of `SCRIPT`: pass/fail
- * has to stay comparable across sessions, and this asks a quality question rather than a
- * correctness one. `measureEffect` is what reads it.
- *
- * The spectrum here moves the way a real quiet passage does - a slow tilt, a wandering peak and a
- * band that comes and goes - while `energy` barely changes. An effect that holds still through
- * this is an effect that will hold still through every intro in the corpus, however good it looks
- * over a drop.
+ * Quiet, kit-free journey for quality measurement. Keep it separate from SCRIPT so admission
+ * results remain comparable. Sparse moving spectra expose effects that only animate on drums.
  */
 export function quietFrames(bpm = 96, bars = 16): ShowFrame[] {
 	const beatPeriod = 60 / bpm;
@@ -290,7 +267,7 @@ export function quietFrames(bpm = 96, bars = 16): ShowFrame[] {
 		f.sectionProgress = (barsF % (bars / 2)) / (bars / 2);
 		f.energy = 0.2 + 0.04 * Math.sin(t * 0.4);
 
-		// No kit. This is the whole point: an effect that only moves on a kick has nothing here.
+		// No kit: test whether the effect has a response without hits.
 		f.kick = false;
 		f.snare = false;
 		f.hat = false;
@@ -306,8 +283,7 @@ export function quietFrames(bpm = 96, bars = 16): ShowFrame[] {
 
 		for (let i = 0; i < f.spectrum.length; i++) {
 			const u = f.spectrum.length > 1 ? i / (f.spectrum.length - 1) : 0;
-			// A peak that wanders across the bands, so an effect reading position sees position
-			// move and one reading a single band sees it come and go.
+			// A moving peak exercises both spectral position and single-band readers.
 			const peak = Math.exp(-((u - tilt) ** 2) / 0.05);
 			f.spectrum[i] = clamp(0.15 + 0.6 * peak + 0.1 * Math.sin(t * 0.7 + i * 0.9));
 		}

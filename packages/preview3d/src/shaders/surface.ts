@@ -10,23 +10,9 @@ export const SURFACE_VERTEX = /* glsl */ `
 `;
 
 /**
- * How much of each fixture a surface receives, and in what colour.
- *
- * The Frame's runs are integrated as the line lights they are: sampled along their length, each
- * sample falling off by `cos(emitter) * cos(surface) / d^2` and weighted by the metres it stands
- * for. Taking the nearest point instead treats a 3 m run as a bulb, and a wall two metres from a
- * run is nothing like a wall two metres from a bulb - the pool is the wrong shape, it falls off
- * far too fast at the ends, and the colour gradient along the run never reaches the surface.
- *
- * The falloff is physics rather than a tuned constant, and it earns that: it does the one thing
- * an exponential could not, which is give a surface ABOVE the fixture a negative emitter cosine
- * and therefore nothing. That is what keeps the ceiling dark under a downward-facing fixture,
- * with no rule anywhere saying so.
- *
- * The lamp is added on its own gain rather than the Frame's, so the two can be tuned against each
- * other. It is a diffusing column rather than a downlight, so it has no emitter cosine to apply -
- * a metre of tube throws sideways as readily as down - and it softens over its own size rather
- * than going singular against the two walls it stands between.
+ * Integrate each run as a line light using cos(emitter) * cos(surface) / distance squared.
+ * Clamped emitter cosine keeps the ceiling dark. The diffuse lamp has no emitter cosine and
+ * softens over its size.
  */
 export function surfaceFragment(segments: number): string {
 	return /* glsl */ `

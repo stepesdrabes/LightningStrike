@@ -58,10 +58,6 @@ describe('parseInfo', () => {
 		expect(info?.effects).toEqual(['wash']);
 	});
 
-	/**
-	 * The scan knocks on every address on the subnet, so this is what stands between a light and
-	 * a router that answers with JSON of its own.
-	 */
 	it('does not mistake another device for a light', () => {
 		expect(parseInfo({ status: 'ok' })).toBeNull();
 		expect(parseInfo({ name: 'printer' })).toBeNull();

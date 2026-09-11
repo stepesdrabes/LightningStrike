@@ -8,10 +8,7 @@ import { stampOnStrip } from '../dsl/space.ts';
 import { sinewave } from '../dsl/wave.ts';
 import { INTENSITY } from './helpers.ts';
 
-/**
- * One gesture per backbeat and nothing else: no kick response, no filler. The darkness
- * around it is what makes the constellation read as expensive rather than busy.
- */
+/** One backbeat gesture with darkness around it keeps the constellation distinct. */
 export const flexStrobe: EffectDef = {
 	id: 'flexStrobe',
 	name: 'Flex Strobe',
@@ -53,10 +50,8 @@ export const flexStrobe: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
-				// The constellation never moves, so it is a field and every pixel is written
-				// every frame. Decaying the buffer and adding the spots on top made the
-				// displayed level roughly four times what the effect asked for, and the
-				// shimmer this exists for was clipped away above white.
+				// Rewrite the field each frame; adding over decay would accumulate and clip
+				// away shimmer.
 				out.fill(0);
 				if (spotIdx.length === 0) return;
 
@@ -64,8 +59,7 @@ export const flexStrobe: EffectDef = {
 				const v = env.decay(f.dt, f.beatPeriod, 1.65);
 				if (v < 0.01) return;
 
-				// Under two cycles per beat. At a fixed 22 turns per second it ran past 25 Hz,
-				// which at 60 fps is aliasing rather than a shimmer.
+				// Stay below two cycles/beat to avoid high-rate aliasing.
 				shimmer += (f.dt / f.beatPeriod) * 1.5 * motion;
 				const gain = (0.85 + p.intensity * 1.25) * v;
 				for (let k = 0; k < spotIdx.length; k++) {

@@ -1,8 +1,10 @@
 import type { AmbientSettings, ColourSource } from '@mv/core';
 import type { WireProtocol } from '$lib/hardware.ts';
 
-/** Mirrors @mv/analysis TrackMeta. Duplicated because SvelteKit blocks server imports on
-    the client, even for types. */
+/**
+ * Mirror @mv/analysis TrackMeta: SvelteKit blocks client imports from server modules, even for
+ * types.
+ */
 export interface TrackMeta {
 	id: string;
 	title: string;
@@ -16,13 +18,7 @@ export interface TrackMeta {
 	duration?: number;
 }
 
-/**
- * Which author a track already has, if any.
- *
- * One definition rather than one per consumer: the queue row, the search candidate and the
- * library entry all carry it, and when DeepSeek was added only two of the three learned about
- * it. The backends are named individually for the reason `Show.authoredBy` gives.
- */
+/** Shared author attribution for queue rows, search candidates and library entries. */
 export type Authored = 'none' | 'engine' | 'claude' | 'deepseek';
 
 /** Mirrors @mv/analysis LibraryEntry. The family is one of GenreFamily, or null until enriched. */
@@ -50,7 +46,7 @@ export interface SearchResult {
 	webpageUrl: string;
 }
 
-export type Phase =
+type Phase =
 	| 'idle'
 	| 'resolving'
 	| 'downloading'
@@ -62,23 +58,16 @@ export type Phase =
 export interface LoadState {
 	phase: Phase;
 	message: string;
-	/** 0..1 when known, otherwise null for an indeterminate bar. */
-	progress: number | null;
 }
 
 /** Mirrors @mv/author-ai BackendId. */
-export type AuthorBackend = 'claude' | 'deepseek';
+type AuthorBackend = 'claude' | 'deepseek';
 
 /** Mirrors @mv/author-ai EffortLevel. */
 export type AuthorEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
-/**
- * Mirrors @mv/author-ai AuthorModel.
- *
- * The shape is mirrored, the list is not: the models themselves arrive with the settings, so
- * adding one to the catalogue does not need an edit here as well.
- */
-export interface AuthorModelInfo {
+/** Mirror the AuthorModel shape; model choices arrive from the server catalogue. */
+interface AuthorModelInfo {
 	id: string;
 	label: string;
 	note: string;
@@ -110,19 +99,13 @@ export interface Settings {
 	lounge: boolean;
 	/** Whether the room drifts into ambient when nothing is playing, rather than freezing. */
 	rest: boolean;
-	/**
-	 * How the resting room looks. `AmbientSettings` is a `core` type rather than a mirror: it is
-	 * the shape the renderer is driven with, and the browser runs its own copy of the renderer.
-	 */
+	/** AmbientSettings is shared with the renderer that also runs in this browser. */
 	ambient: AmbientSettings;
 }
 
 /**
- * What `PUT /api/settings` accepts, which is flat where `Settings` is nested.
- *
- * Mirrors the route's own whitelist by hand, like everything else across this boundary. It is flat
- * because a patch names the fields it is changing, and a nested object would mean sending the whole
- * ambient block to move one slider.
+ * Mirror the settings route whitelist. Flat patches let one slider update without replacing
+ * ambient settings.
  */
 export interface SettingsPatch {
 	deepseekApiKey?: string;

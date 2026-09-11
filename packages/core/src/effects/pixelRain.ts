@@ -33,8 +33,7 @@ export const pixelRain: EffectDef = {
 		const landTint = new Float32Array(rain.walls.length).fill(SLOT.base);
 		const rgb: [number, number, number] = [0, 0, 0];
 
-		// The frame's context, held so the fall callbacks can be built once. `fall` takes them
-		// every frame, and a fresh closure per frame is an allocation per frame.
+		// Retain context so fall callbacks allocate once, outside render.
 		let dst: Float32Array = new Float32Array(0);
 		let palette: Palette = new Float32Array(0);
 		let hueShift = 0;
@@ -42,8 +41,7 @@ export const pixelRain: EffectDef = {
 
 		const onFall = (drop: WallDrop, u: number, pos: number, wall: StripSpec): void => {
 			sample(palette, drop.tint + hueShift, gain * (0.5 + 0.5 * u), rgb);
-			// A droplet two pixels of sigma wide: a one-pixel drop at full level was a hot
-			// point sliding down the wall, and a wall of hot points is grain.
+			// A two-pixel sigma avoids hot points from under the frame.
 			stampOnStrip(dst, g.count, wall, pos, 2.2, rgb);
 		};
 		const onLand = (drop: WallDrop): void => {
@@ -64,15 +62,13 @@ export const pixelRain: EffectDef = {
 				hueShift = ctx.hueShift;
 				fadeToBlack(out, f.dt, beatRelease(f.beatPeriod, 0.2));
 
-				// Low, because a droplet two pixels wide carries twice the light of the hot
-				// point it replaced: measured, the old rain delivered 42 bytes over a drop, more
-				// than any bed, from a look that is supposed to be a few drops on a wall.
+				// Lower gain compensates for the wider droplets so sparse rain does not
+				// outshine beds.
 				gain = 0.15 + p.intensity * 0.22;
 				const spawned = rain.spawn(f, p.perBeat);
 				if (spawned) {
-					// Where the arrangement is sitting chooses the droplet's colour, so a bass
-					// passage rains in the home hue and an opening one answers in the accent.
-					// Read once at spawn, which is on the grid, so nothing recolours mid-fall.
+					// Capture spectral colour on the spawn grid; never recolour a falling
+					// droplet.
 					const tilt = spectralTilt(f);
 					spawned.tint = tilt < 0.34 ? SLOT.base : tilt < 0.62 ? SLOT.third : SLOT.accent;
 				}
@@ -83,8 +79,8 @@ export const pixelRain: EffectDef = {
 					const v = landGlow[w].decay(f.dt, f.beatPeriod, 3);
 					if (v < 0.02) continue;
 					const wall = rain.walls[w];
-					// The splash keeps its own droplet's colour. A base-hue glow under an accent
-					// droplet is two hues in one place, which sums to one the palette cannot make.
+					// Keep splash and droplet colours identical so their sum remains
+					// on-palette.
 					sample(palette, landTint[w] + hueShift, v * gain * 0.8, rgb);
 					stampOnStrip(out, g.count, wall, wall.count / 2, 3.2, rgb);
 				}

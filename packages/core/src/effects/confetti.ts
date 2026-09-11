@@ -11,8 +11,8 @@ import { beatRelease, INTENSITY, param } from './helpers.ts';
 const SLOTS = [SLOT.base, SLOT.third, SLOT.accent, SLOT.white];
 
 /**
- * Golden-angle placement: every dot lands far from its neighbours forever, with no
- * randomness to reproduce. Choruses pop on every beat, verses only on the downbeat.
+ * Golden-angle placement separates neighbours deterministically; chorus density differs from
+ * verse.
  */
 export const confetti: EffectDef = {
 	id: 'confetti',
@@ -57,8 +57,7 @@ export const confetti: EffectDef = {
 					const strip = g.strips[g.strip[Math.min(g.count - 1, Math.floor(pos))]];
 					const slot = SLOTS[seq % SLOTS.length];
 					const c = sample(palette, slot + hueShift, gain * (0.6 + hash01(seq) * 0.4));
-					// Two and a half pixels of sigma: a one-pixel dot is under what reads as lit
-					// from the floor, and a hard two-pixel one at full level is a hot point.
+					// A 2.5-pixel sigma stays visible from the floor without a hot point.
 					stampOnStrip(out, g.count, strip, pos - strip.offset, 2.4, c);
 				}
 			}

@@ -1,159 +1,124 @@
 # CLAUDE.md
 
-House rules for this repo. `README.md` explains what LightningStrike is and why it is built this way;
-this file is only the conventions.
+Development rules for LightningStrike. [README.md](README.md) covers setup and product use.
 
 ## Commands
 
-```sh
-npm run dev      # the app on http://localhost:5180
-npm test         # vitest over packages/*/src/**/*.test.ts and apps/*/src/**/*.test.ts
-npm run check    # tsc --build across the packages, then svelte-check
-npm run build    # production build of apps/web
-```
-
-The desktop build, from `apps/desktop`. `bundle` runs the web build itself, so it cannot ship
-a stale server:
+Run from the repository root:
 
 ```sh
-npm run bundle -w @mv/desktop   # build the server, fetch Node, assemble the runtime
-npm run build -w @mv/desktop    # LightningStrike.app, or the Windows installers
+npm run dev                         # app, localhost:5180
+npm test                            # Vitest
+npm run check                       # TypeScript packages, web and controller
+npm run build                       # production web build
+npm run build -w @mv/desktop         # bundles server/runtime and builds desktop
 ```
 
-Needs `ffmpeg`, `ffprobe` and `yt-dlp` on PATH, and Node 22+. Keep `check` and `test` green
-before committing.
+Use Node 22+ with `ffmpeg`, `ffprobe` and `yt-dlp` on PATH. Desktop also needs the platform's
+Rust/Tauri toolchain. Keep checks and relevant tests green; run the full check and test suite
+before committing. Test behavior that can regress, not comment wording or trivial delegation.
 
-## Layering
+## Architecture
 
-```
-apps/desktop  -> apps/web (as a running process, not an import)
-apps/web      -> preview3d, transport, author-ai, author-engine, analysis, core
-author-ai     -> author-engine, analysis, core
-author-engine -> core
-analysis      -> core
-core          -> nothing
-```
+- `core` has no external runtime dependencies: no Node, three.js or framework imports.
+- `analysis`, `author-engine`, `preview3d` and `transport` depend on `core`.
+- `author-ai` depends on `core`, `analysis` and `author-engine`; `apps/web` integrates them.
+- `apps/desktop` runs the web server as a Node sidecar. `apps/controller` calls the firmware API.
+- Keep the desktop Node version pinned in `apps/desktop/scripts/bundle-support.js`; the
+  build machine's Node version must not silently change the shipped runtime.
+- Respect package boundaries and declared dependencies. Workspace packages expose TypeScript
+  source; no intermediate package build is needed.
+- Product features belong in the app, not a new CLI. Build scripts and measurement harnesses
+  are allowed; shipped code must never import `bench/`.
 
-`core` imports nothing at all: no `node:`, no `three`, no framework. That is what lets the
-same show run in a browser, in headless Node and eventually on a microcontroller. The
-`package.json` files enforce the direction; do not route around them.
+## Cleanup and comments
 
-The app is the only way to use this. No CLIs, no `scripts/` for driving it: if something is
-worth doing, it is worth a control in the interface.
+Default to no comment. Write one only for a non-obvious reason, invariant, unit/range,
+compatibility constraint, hardware/model contract, or required license/tool directive.
+Usually one or two lines are enough. Put long technical rationale in focused documentation.
 
-`apps/desktop/scripts/bundle.js` is not an exception to that. It assembles a build and is never
-run to use the product. Measurement harnesses are the other kind of exception: they answer a
-question about the room, they never light one, and nothing shipped may import them.
+When touching code, remove or shorten verbose comments. Delete narration, restatements,
+historical fixes, benchmark stories and duplicated explanations. Keep each rationale in one
+place. Do not move redundant prose into a new document merely to preserve it.
 
-## Comments
+Executable prompt strings and embedded generated source are runtime inputs. Do not trim or
+rewrite them as if they were ordinary comments, even when their contents look explanatory.
+Preserve licenses and executable annotations such as compiler, linter and bundler directives.
 
-Let the code speak for itself. A comment earns its place by saying **why**, not what:
+For behavior-preserving cleanup:
 
-- keep the reason a value is what it is, a hardware or perceptual constraint, a trap that
-  looks like a mistake until you know the reason, and units or ranges on interface fields;
-- drop anything that restates the line below it, and do not narrate fixed bugs - keep only
-  the invariant that stops the bug coming back;
-- one rationale, one place. If the contract already explains it, the implementation does not
-  repeat it.
-
-No em-dashes anywhere: code, comments, docs or commit messages. Use a plain hyphen.
+- Preserve app behavior and rendered shows exactly, including numeric operation order,
+  iteration order, seeded RNG consumption, timing, defaults and serialization.
+- Preserve data schemas, cache keys and version constants. Do not invalidate caches,
+  regenerate saved shows or change user settings as part of cleanup.
+- Prove code is unused across routes, dynamic imports, workers, sandbox DSL exposure,
+  benchmarks, build entrypoints and firmware feature targets before removing it.
+- Preserve import side effects when removing types or narrowing exports. Delete unused code
+  rather than hiding it with `void`, compiler suppression or a dummy reference.
+- Choose verification appropriate to the risk; compare deterministic output when a refactor
+  could affect a show. Do not broaden the task into a behavior change.
 
 ## Effects
 
-One effect per file in `packages/core/src/effects/`, exported as an `EffectDef` and listed in
-`effects/index.ts`. Every effect, built-in or generated for a track, must pass the same gate
-in `effects/gate.ts`:
+One built-in effect per file under `packages/core/src/effects/`, exported as an `EffectDef`
+and registered in `effects/index.ts`. Built-in and generated effects use the same
+[gate](packages/core/src/effects/gate.ts):
 
-- **Deterministic.** No `Math.random`, `Date` or `performance`. Use `Rng` or `hash01`, so a
-  seek reproduces the frame exactly.
-- **No allocation in `render`.** Allocate in `create`.
-- `reset()` restores a fresh instance.
-- Bounded, finite, non-negative pixels across the gate's groove/build/void/drop journey.
+- Deterministic: use `Rng` or `hash01`, never `Math.random`, `Date` or `performance`.
+- No allocation in `render`; allocate in `create`.
+- `reset()` restores the state of a fresh instance.
+- Pixels stay bounded, finite and non-negative through the gate's section journey.
 
-Colour goes through `SLOT` so a show's palette reaches the effect without it knowing any
-hues. Multiply speeds by `ctx.motion`; derive time constants from `ctx.f.beatPeriod`, never
-from bpm. `taste` metadata is what the linter enforces restraint with, so fill it in honestly,
-and keep `sections` to the ones the effect is actually for: it is a hard filter, and an effect
-that claims every section will be picked for one it has no business in. Sections come in two
-vocabularies - club (`drop`, `groove`) and song (`chorus`, `verse`) - and eligibility is
-checked through `sectionBase()`, so a drop effect serves a chorus without listing it; list
-`chorus` or `verse` explicitly only for an effect written for that reading and not the other.
-Every effect rates `taste.activity`, how much of the room's light moves at frame scale (1
-for a whole-room strike on every hit, 0 for a field), which the picker spends as a per-cue
-budget so one layer hits and the rest move or hold; an effect without it counts as still.
-An effect whose whole gesture answers one drum stream declares `taste.kit`, and the picker
-keeps it out of passages where that stream is silent; a grid-locked pulse that reads as the
-kit additionally gates its strikes on a `Presence` of the hit envelope, so a suspension rests
-the room instead of being pounded through. A change to what the engine composes must bump
-`SHOW_VERSION`, or every already-cached track keeps its old show and never hears the fix.
+Use `SLOT` for palette colours, multiply speeds by `ctx.motion`, and derive musical time
+constants from `ctx.f.beatPeriod`. Prefer existing DSL helpers over handwritten pixel loops.
 
-Two traps that have each cost a rewrite:
+Declare honest `taste` metadata. Section eligibility uses `sectionBase()`: drop/groove also
+serve chorus/verse; list song-specific sections explicitly only for that distinct treatment.
+`taste.activity` spends the per-cue motion budget. Drum-specific gestures declare `taste.kit`;
+grid-locked strikes that read as the kit also gate on hit-envelope `Presence`.
+Re-measure `taste.quiet` with `bench/quietprobe.ts` when changing effects in the quiet pool.
 
-- **`f.spectrum` and `f.bands` are not interchangeable.** The spectrum is a 50 Hz measurement
-  resampled per frame; the band envelopes are per-beat and cannot move inside a bar. They are
-  also not the same scale - a band is normalised across the track and reaches 1.0 in any loud
-  passage, the spectrum is a fixed window well under it, so swapping one for the other at the
-  same gain changes how much room an effect fills. Read the spectrum through a `Follower` for
-  anything that should answer the music; use the envelopes for how loud a passage is.
-- **The `SLOT` ramp is not a hue wheel, and its three spans are not alike.** Measured over 24
-  hues through the real ramp: `deep` to `base` is x12.5 in flux, a brightness step; `base` to
-  `glow` is x1.03 flux and x0.86 peak channel, a SATURATION move at constant light; `glow` to
-  `white` is x2.66. So a second colour means crossing past `white` toward `third`, and that
-  crossing is a brightness event. Vary colour by POSITION freely; vary it over TIME only
-  slowly, and only inside `base..glow`, which is the one span that costs no light - which also
-  makes `glow -> base` on a hit the cheapest punch in the system.
+`f.spectrum` is high-rate spectral evidence; `f.bands` contains coarse per-beat envelopes.
+Their scales differ. Use a `Follower` for spectral response; do not substitute either input
+at the same gain. Preserve the distinction between local articulation and passage energy.
 
-Reach for the DSL before writing the loop by hand: `ringU`, `alphaFor`, `setPixel`,
-`fillSolid`, `stampOnStrip`, `ringsFor`/`scatter`, `fadeToBlack`, `Follower`, `PulseEnv`,
-`Presence`.
-Anything added under `src/dsl/` also becomes vocabulary for Claude-generated effects, so
-document it in `renderDslReference()` in `packages/author-ai/src/catalog.ts`.
+The `SLOT` ramp is not a hue wheel. `base..glow` changes saturation at near-constant light;
+crossing toward `white` or `third` changes brightness. Prefer spatial colour variation;
+keep fast temporal changes within `base..glow` and deliberate hue changes slow.
 
-## Contracts
+DSL exports are also vocabulary for generated effects, even without a built-in caller.
+Update `renderDslReference()` in [catalog.ts](packages/author-ai/src/catalog.ts) when that
+public vocabulary changes.
 
-`TrackAnalysis`, `Show` and `ShowFrame` in `packages/core/src/contracts/` are the seams
-between the DSP, the model and the renderer. Change them there and update both sides.
+## Contracts and cache versions
 
-Cues are addressed **by bar, never by time**. All grid arithmetic lives in
-`packages/core/src/grid.ts` (`barTimeAt`, `onPhraseGrid`, `nearestPhraseBar`); the analyser
-and the linter have to agree on it, so neither writes the modulo out by hand.
+`TrackAnalysis`, `TrackContext`, `Show` and `ShowFrame` in `packages/core/src/contracts/`
+define package boundaries. Change contracts there and update every producer and consumer.
+Cues use bars, never timestamps. Use [grid.ts](packages/core/src/grid.ts) for grid arithmetic
+so analysis, composition and linting agree; do not duplicate its modulo logic.
 
-Bump `ANALYSIS_VERSION` when the analysis shape changes, or cached blobs go silently stale
-rather than obviously broken.
+For intentional semantic changes, bump `ANALYSIS_VERSION` when analysis shape or meaning
+changes, `SHOW_VERSION` when composed output changes, and `CONTEXT_VERSION` when enrichment
+needs invalidation. Pure cleanup must leave these versions unchanged.
 
-## Interface
+Client mirrors in [types.ts](apps/web/src/lib/types.ts) deliberately avoid server-only
+dependencies. Keep them synchronized instead of importing server code into the browser.
 
-Three rules, in `apps/web`. They are absolutes rather than preferences, because each one is a
-tell that an interface was assembled rather than designed:
+## Style and interface
 
-- **No `text-transform: uppercase`.** Write a label in the case it should be read in.
-- **No left-edge colour bars.** The `border-left: 3px solid <colour>` list row is out. A dot, a
-  filled chip or a full background says the same thing without pretending to be structure.
-- **No label that only rephrases the thing next to it.** A heading reading "room-node" does not
-  need "A Pico W on the same network" underneath it, and a section whose contents announce
-  themselves does not need a caption. Say the next thing or say nothing.
-
-Beyond those: one accent, spent only on states that are genuinely live; monospace only where
-digits change in place; and the room is the only saturated thing on screen, so chrome that
-carries a hue is competing with the thing being judged.
-
-## Style
-
-- TypeScript, `strict`, tabs, single quotes, semicolons, around 100 columns.
-- Packages are consumed as `.ts` source, so there is no build step between editing one and
-  seeing it in the app.
-- `noUnusedLocals` and `noUnusedParameters` are on: delete unused code rather than `void`-ing
-  it to keep the compiler quiet.
-- Effect imports group contracts -> color -> dsl -> helpers.
-- Client-side mirrors of server types (`apps/web/src/lib/types.ts`) are duplicated on
-  purpose, so the browser bundle never reaches into a server-only package. Keep them in sync
-  by hand.
+- TypeScript strict mode, tabs, single quotes, semicolons, roughly 100 columns.
+- No em-dashes in code, comments, documentation or commit messages.
+- Effect imports group contracts, colour, DSL, then helpers.
+- No `text-transform: uppercase`; write labels in the intended case.
+- No left-edge colour bars. Use a dot, chip or background where a state needs an accent.
+- No label or caption that merely repeats adjacent content.
+- Keep chrome restrained: one accent for live states, monospace only for changing digits,
+  and saturated colour reserved for the room.
 
 ## Commits
 
-Conventional Commits: `type(scope): subject`, imperative, body only when the reasoning is not
-obvious from the subject. Never add a co-author trailer.
+Commit only when asked. Use `type(scope): subject`, imperative, with a body only when the
+reason needs explanation. Never add a co-author trailer.
 
-Only commit when asked. Stage explicit paths rather than `git add -A`: `apps/desktop` holds
-around 270 MB of assembled runtime that is ignored today only because someone remembered to
-ignore it, and `cache/` fills with whatever has been played.
+Stage explicit paths, not `git add -A`. Never stage cache, downloaded models, measurement
+corpora, generated renders or assembled desktop runtime artifacts.

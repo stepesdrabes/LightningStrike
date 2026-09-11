@@ -65,10 +65,7 @@
 		onundo?: () => void;
 	} = $props();
 
-	/**
-	 * The dividers: every seam the analysis knows, plus any mark it has not heard yet. A mark
-	 * the analysis has adopted is drawn once, as the analysis's.
-	 */
+	/** Draw adopted movement marks once, alongside pending marks. */
 	const dividers = $derived.by(() => {
 		const out: { t: number; source: 'auto' | 'mark'; note: string; pending: boolean }[] = detected.map((d) => ({ ...d, pending: false }));
 		for (const t of movements) {
@@ -90,12 +87,7 @@
 	// Read off the bar table, so it is a measurement of the grid the room is playing.
 	const tempoMap = $derived(analysis ? tempoSegments(analysis.tempo) : []);
 
-	/**
-	 * Four bars, which is the closest a zoom gets.
-	 *
-	 * A floor in bars rather than in seconds, because the useful limit is "one phrase and its
-	 * approach" on every track, and that is four seconds at 240 bpm and sixteen at 60.
-	 */
+	/** Four local bars give a useful minimum zoom across tempos. */
 	const minSpan = $derived.by(() => {
 		if (!analysis || duration <= 0) return 0.02;
 		const bar = analysis.tempo.beatPeriod * analysis.tempo.beatsPerBar;
@@ -104,8 +96,7 @@
 
 	const pct = (t: number) =>
 		duration > 0 ? Math.max(-20, Math.min(120, fractionIn(view, t / duration) * 100)) : 0;
-	// A span that starts before the window still has to end where it does, so both ends are
-	// mapped and the width taken from the difference rather than from the span's own length.
+	// Map both span endpoints so off-screen starts retain the correct visible end.
 	const widthPct = (a: number, b: number) => Math.max(0.12, pct(b) - pct(a));
 
 	function across(e: { clientX: number }): number {
@@ -120,11 +111,8 @@
 	}
 
 	/**
-	 * Vertical for zoom, horizontal for pan.
-	 *
-	 * That is what a trackpad already sends for pinch and for a two-finger swipe, and the drawer
-	 * has nothing else a scroll could mean. Non-passive because zooming has to stop the gesture
-	 * reaching whatever is behind it.
+	 * Vertical wheel input zooms; horizontal pans. Prevent default to stop scrolling behind the
+	 * drawer.
 	 */
 	function wheel(el: HTMLElement) {
 		const onWheel = (e: WheelEvent) => {
@@ -145,12 +133,7 @@
 		view = FULL_WINDOW;
 	}
 
-	/**
-	 * The playhead pulls the window along once it has left it, unless a pan just happened.
-	 *
-	 * Untracked on purpose: this runs when the playhead moves, not when the window does. Reading
-	 * `view` as a dependency here would make the effect its own trigger.
-	 */
+	/** Follow only on playhead changes; tracking view would make the effect trigger itself. */
 	$effect(() => {
 		const at = duration > 0 ? position / duration : 0;
 		untrack(() => {
@@ -165,9 +148,7 @@
 		tip = { x: e.clientX - rect.left, title, lines };
 	}
 
-	// ---- Section editing ------------------------------------------------------------------
-	// The draft is owned by the page; a gesture works on local state for smoothness and
-	// commits once on release, so each drag is one save rather than a stream of them.
+	// Gestures update locally and commit the page-owned draft once on release.
 
 	/** `live` separates a pointer drag from a keyboard nudge waiting on its commit timer. */
 	let drag = $state<{ boundary: number; t: number; live: boolean } | null>(null);
@@ -177,38 +158,20 @@
 	let selected = $state<number | null>(null);
 
 	/**
-	 * Snap to BAR lines, which is the only coordinate a section has.
-	 *
-	 * This used to snap to beats, on the reasoning that a hand mark should land where the
-	 * hand put it. But every consumer addresses sections by whole bars - the adoption, the
-	 * preview, every cue - so a boundary drawn between two bar lines is one the engine
-	 * cannot keep: it rounds, and the arrangement then disagrees with the map on screen by
-	 * up to half a bar. Sixteen boundaries on one judged track, six of them off a bar line,
-	 * one by two whole bars. Snapping here is what makes the drawn line the heard line.
+	 * Snap to bars because show sections are bar-addressed; off-grid boundaries are rounded on
+	 * adoption.
 	 */
 	function snapT(t: number, fine = false): number {
 		const tempo = analysis?.tempo;
 		if (!tempo) return t;
 		const bars = barAtTime(tempo, t);
-		// Shift drops to the beat grid, for the case bars cannot express: the ear hears the
-		// change between two bar lines, which is a statement about the GRID rather than about
-		// the section. The mark is kept where it was put; the adoption still rounds it onto a
-		// bar, and the durable answer to a grid that disagrees with the ear is a movement mark
-		// or a listener cut, both of which move the bar lines themselves.
+		// Shift uses the beat grid to mark deliberate off-bar evidence. Adoption still rounds; movement
+		// marks or listener cuts move the grid.
 		if (fine) return barTimeAt(tempo, Math.round(bars * tempo.beatsPerBar) / tempo.beatsPerBar);
 		return barTimeAt(tempo, Math.round(bars));
 	}
 
-	/**
-	 * A section cannot be shorter than the bar it is addressed in - the LOCAL bar, not the
-	 * median one.
-	 *
-	 * On a track that changes tempo those differ by a factor of two, and a margin in median
-	 * bars refuses a placement the grid allows: SICKO MODE's beat switch sits 1.7 s after the
-	 * boundary before it while the median bar is 3.1 s, so the drag clamped past the switch
-	 * and the owner reported being able to place it "only slightly after it". The keyboard
-	 * nudge already reasons this way; the pointer drag did not.
-	 */
+	/** Minimum section length uses the local bar, not the track median, across tempo changes. */
 	function minSpanAt(t: number, fine = false): number {
 		const tempo = analysis?.tempo;
 		if (!tempo) return fine ? 0.25 : 1;
@@ -222,18 +185,11 @@
 
 	function withBars(s: JudgedSection): JudgedSection {
 		const tempo = analysis?.tempo;
-		// Fractional, because a shift-drag is allowed to sit between bar lines and the stored
-		// bar is what a mining session reads. Rounding it here would report a boundary as
-		// being on a bar line it was deliberately placed off.
+		// Keep fractional bars to record deliberate shift-drag placement.
 		const bar = (t: number) => (tempo ? Math.round(barAtTime(tempo, t) * 1000) / 1000 : 0);
-		// The plain drag snaps to bar lines, so a start that is off one was placed there with
-		// the fine drag - a statement that the bar line belongs at the mark. Recorded here
-		// rather than inferred later, because maps drawn before the editor snapped to bars are
-		// full of beat-snapped boundaries that meant no such thing.
+		// Record explicit fine-drag intent; legacy beat-snapped maps do not imply grid corrections.
 		const offBar = tempo ? Math.abs(bar(s.startTime) - Math.round(bar(s.startTime))) > 0.001 : false;
-		// Recomputed from where the boundary IS, not merged onto where it was. Spreading the
-		// old flag left a boundary nudged off the grid and back still claiming a deliberate
-		// off-grid placement - and a keyboard nudge makes that round trip two keystrokes.
+		// Recompute off-grid intent so a nudge back onto the grid clears it.
 		const { offGrid: _was, ...rest } = s;
 		return {
 			...rest,
@@ -262,8 +218,7 @@
 		}
 		const el = e.currentTarget as HTMLElement;
 		el.setPointerCapture(e.pointerId);
-		// Explicit, because a button is not focused by a press on every platform, and the
-		// selection the arrow keys read is this element's focus.
+		// Focus explicitly: button presses do not focus on every platform.
 		el.focus();
 		drag = { boundary, t: sections[boundary].startTime, live: true };
 	}
@@ -276,8 +231,7 @@
 		const hi =
 			sections[drag.boundary].endTime -
 			minSpanAt(sections[drag.boundary].endTime - 1e-3, e.shiftKey);
-		// Snapped AFTER the clamp: clamping a snapped value pushes it back off the grid, by
-		// however much the local bar differs from the median one.
+		// Snap after clamping so the bound cannot push a placement off-grid.
 		const t = snapT(Math.max(lo, Math.min(hi, timeFrom(e))), e.shiftKey);
 		drag = { boundary: drag.boundary, t, live: true };
 	}
@@ -287,8 +241,7 @@
 		(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
 		const { boundary, t } = drag;
 		drag = null;
-		// A press that only selects the handle is not an edit, and a save per press is a step
-		// the undo has to be walked back through for nothing.
+		// Do not save selection-only presses or add empty undo steps.
 		if (t === sections[boundary].startTime) return;
 		const next = sections.map((s) => ({ ...s }));
 		next[boundary - 1].endTime = t;
@@ -296,20 +249,15 @@
 		commit(next);
 	}
 
-	// ---- Keyboard nudge -------------------------------------------------------------------
-	// The drag's own two steps, one press at a time. This is what makes a boundary placeable:
-	// a bar is a couple of pixels wide at full zoom, and the hand cannot hit it.
+	// Keyboard nudges make grid boundaries reachable when a bar spans only a few pixels.
 
 	/** The nudged map waiting on its timer. Held whole, so a disarm cannot drop the edit. */
 	let pending: JudgedSection[] | null = null;
 	let commitTimer: ReturnType<typeof setTimeout> | null = null;
 
 	/**
-	 * One grid step from `t`, on the same grids `snapT` snaps to.
-	 *
-	 * Stepping to the next line in the direction of travel rather than from `round + dir`, so a
-	 * boundary deliberately left between two bar lines moves onto the nearer one instead of
-	 * jumping across it. The epsilon is for a bar line whose own number reads back as 9.999999.
+	 * Step to the next grid line in the requested direction; epsilon handles floating-point bar
+	 * indices.
 	 */
 	function stepT(t: number, dir: number, fine: boolean): number {
 		const tempo = analysis?.tempo;
@@ -323,9 +271,7 @@
 		const base = pending ?? sections;
 		if (!base || boundary <= 0 || boundary >= base.length) return;
 		const t = stepT(base[boundary].startTime, dir, fine);
-		// The real constraint, rather than the drag's one-step margin: a step onto the grid is
-		// as narrow as a section is allowed to get, and a margin in median bars would refuse it
-		// wherever the local bar is longer.
+		// Use actual neighbouring boundaries, not a margin based on median bar duration.
 		if (t <= base[boundary - 1].startTime || t >= base[boundary].endTime) return;
 		const next = base.map((s) => ({ ...s }));
 		next[boundary - 1].endTime = t;
@@ -347,8 +293,7 @@
 		commit(next);
 	}
 
-	// A nudge still on its timer when the lane goes away is an edit the owner made and cannot
-	// see was lost, so it is written rather than dropped.
+	// Flush pending nudges when unmounting so committed gestures are not lost.
 	$effect(() => () => flushNudge());
 
 	function handleKey(e: KeyboardEvent, boundary: number) {
@@ -401,8 +346,7 @@
 
 	function pickerKey(e: KeyboardEvent) {
 		if (!picker) return;
-		// The popup has the keyboard while it is open, so nothing it does not use reaches the
-		// bindings underneath it.
+		// Keep popup keystrokes from reaching bindings underneath it.
 		e.stopPropagation();
 		if (e.key === 'Escape') {
 			picker = null;
@@ -425,10 +369,7 @@
 		if (picker) pickerEl?.focus({ preventScroll: true });
 	});
 
-	/**
-	 * Taking a divider back: a mark is removed from the marks, a detection is refused - the
-	 * analysis would find it again otherwise.
-	 */
+	/** Remove manual marks, but persist refusals of detected seams to prevent rediscovery. */
 	function removeDivider(d: { t: number; source: 'auto' | 'mark' }) {
 		if (d.source === 'auto') onveto(d.t);
 		else onmovements(movements.filter((t) => Math.abs(t - d.t) >= 8));
@@ -462,14 +403,7 @@
 		return i === sections.length - 1 ? sections[i].endTime : boundaryTime(i + 1);
 	}
 
-	/**
-	 * The drum lane is drawn rather than laid out.
-	 *
-	 * A four-minute track carries a few thousand onsets, and one element each is tens of
-	 * thousands of nodes for a lane eighteen pixels tall. Counting them into one column per
-	 * pixel says the same thing - where the kit is busy and where it stops - for a fraction of
-	 * the cost, and it is the only lane with nothing worth hovering.
-	 */
+	/** Bucket thousands of onsets into canvas columns instead of creating a DOM node per onset. */
 	$effect(() => {
 		const el = canvas;
 		const w = width;
@@ -534,8 +468,7 @@
 		onpointerleave={() => (tip = null)}
 		role="presentation">
 		{#if tempoMap.length > 1}
-			<!-- Only where there is something to say: one segment is every ordinary track, and a
-			     lane announcing "this track has one tempo" is noise. -->
+			<!-- Show tempo lanes only for multi-tempo tracks. -->
 			<div class="lane tempi" aria-label="Tempo changes">
 				{#each tempoMap as seg (seg.startBar)}
 					<div class="tempo" style:left={`${pct(seg.start)}%`} style:width={`${widthPct(seg.start, seg.end)}%`}>
@@ -564,9 +497,7 @@
 						<span class="label">{titleCase(s.kind)}</span>
 					</div>
 				{/each}
-				<!-- Where a new song starts: the same mark the panel lists, drawn where it falls.
-				     Under the handles, because a movement often lands on a seam and the seam has
-				     to stay draggable; its glyph sits clear of the line for the same reason. -->
+				<!-- Keep seam handles draggable when movement marks coincide; offset the movement glyph. -->
 				{#each dividers as d (d.t)}
 					<div class="movement" class:pending={d.pending} style:left={`${pct(d.t)}%`}>
 						<button
@@ -803,8 +734,7 @@
 	.sec {
 		border-right: 1px solid #00000091;
 	}
-	/* The divider between cues is drawn as a full inset rule rather than a coloured left edge,
-	   so a one-bar cue reads as a block rather than as a stripe. */
+	/* Inset cue dividers keep one-bar cues readable as blocks. */
 	.cue {
 		background: var(--card-raised);
 		box-shadow: inset 1px 0 0 #ffffff2e;
@@ -881,8 +811,7 @@
 	.sections.editing .sec {
 		cursor: pointer;
 	}
-	/* The grab area stops short of the lane's foot; the bar it draws does not. That bottom
-	   band belongs to the movement marks, which land on a seam more often than not. */
+	/* Reserve the lane's bottom band for movement marks while drawing handles through it. */
 	.handle {
 		position: absolute;
 		top: -3px;
@@ -915,10 +844,10 @@
 		box-shadow: 0 0 6px var(--live);
 	}
 
-	/* Heavier than a seam and taller than the lane, because it is a statement about the whole
-	   track rather than about the two sections it happens to fall between. Above the handles,
-	   but the line itself takes no pointer: a movement usually lands ON a boundary, and a
-	   3px rule that ate the drag would cost more than it is worth. */
+	/*
+	 * Movement rules span the lane but ignore pointer events so coincident boundaries remain
+	 * draggable.
+	 */
 	.movement {
 		position: absolute;
 		top: -6px;
@@ -929,12 +858,7 @@
 		pointer-events: none;
 		z-index: 4;
 	}
-	/**
-	 * The glyph keeps to a band along the foot of the lane, which is the one strip no handle
-	 * claims. A mark on a seam is the ordinary case rather than the awkward one, so the two
-	 * cannot be allowed to fight over the same pixels: the handle owns the height above this
-	 * band at every x, and the mark owns the band.
-	 */
+	/** Movement glyphs own the bottom band; boundary handles own the height above it. */
 	.movement .mark {
 		position: absolute;
 		left: 3px;
@@ -993,8 +917,7 @@
 		background: var(--hover);
 		color: var(--foreground);
 	}
-	/* The kind this section already is, which the keyboard cursor moves over rather than
-	   replaces: one says where you are, the other says where you started. */
+	/* Distinguish the current section kind from the keyboard cursor. */
 	.kind.on {
 		color: var(--foreground);
 		background: var(--muted);

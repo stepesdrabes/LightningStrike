@@ -60,12 +60,7 @@
 
 	const tempoMap = $derived(analysis ? tempoSegments(analysis.tempo) : []);
 
-	/**
-	 * How hard the model thinks, in the words the API uses for it.
-	 *
-	 * Presentation only - the ids are the contract. `xhigh` is spelled out because a label is
-	 * read rather than passed, and nobody says "ex high" out loud.
-	 */
+	/** Display labels only; effort IDs remain the API contract. */
 	const EFFORTS: { id: AuthorEffort; label: string; note?: string }[] = [
 		{ id: 'low', label: 'Low' },
 		{ id: 'medium', label: 'Medium' },
@@ -80,12 +75,7 @@
 	const needsKey = $derived(model?.backend === 'deepseek' && !settings.hasDeepseekKey);
 	let draftKey = $state('');
 
-	/**
-	 * The whole choice in one list, because it is one choice.
-	 *
-	 * A key it cannot spend is the only reason an option is refused here: the model is what the
-	 * night costs, and the effort is how much of that it spends.
-	 */
+	/** Model and effort share a menu; only an unavailable key disables a model. */
 	function openMenu(e: MouseEvent) {
 		menu.show(
 			e.currentTarget as HTMLElement,
@@ -136,8 +126,7 @@
 
 	const liveCue = $derived(activeCue(show, readout.bar));
 
-	// Rerolling runs the engine, so on an agent's show it would spend nothing and throw away
-	// something that cost credits. Revising is how that one is changed.
+	// Rerolling an agent show would discard paid work; use revision instead.
 	const byAgent = $derived(show !== null && !!show.authoredBy && show.authoredBy !== 'engine');
 	const liveTabs = $derived(steps.some((s) => s.state === 'pending') ? ['design'] : []);
 
@@ -148,21 +137,14 @@
 			.join(' ');
 	}
 
-	// Nothing requires a show to store its cues in bar order, and an agent's show is whatever
-	// JSON the model wrote. Sorted once here rather than per section.
+	// Sort once because agent cues need not arrive in bar order.
 	const ordered = $derived(show ? [...show.cues].sort((a, b) => a.bar - b.bar) : []);
 
 	function cuesIn(startBar: number, endBar: number): Show['cues'] {
 		return ordered.filter((c) => c.bar >= startBar && c.bar < endBar);
 	}
 
-	/**
-	 * Which sections are open.
-	 *
-	 * The one holding the playhead opens itself, so following a show costs nothing; a section the
-	 * user has touched keeps whatever they set it to. Keyed by the show as well as the index so a
-	 * different track starts closed rather than inheriting the last one's shape.
-	 */
+	/** Auto-open the active section unless manually toggled; reset overrides for each show. */
 	let manual = $state<Record<string, boolean>>({});
 	const keyFor = (index: number) => `${show?.analysisHash ?? ''}:${index}`;
 
@@ -183,11 +165,7 @@
 	<div class="scroll">
 		{#if tab === 'show'}
 			<div class="action">
-				<!--
-					One button, split. Which model and how hard it thinks are settings of the same
-					decision the button carries out, so they belong on it rather than beside it - and
-					the choice made last time is the one it reads, so the common case is one click.
-				-->
+
 				<div class="split">
 					<Button
 						variant="primary"
@@ -269,8 +247,7 @@
 								{analysis.tempo.confidence.toFixed(2)}
 							</span>
 							{#if analysis.tempo.ambiguous}
-								<!-- Only where the evidence really is split. Offering the correction on every
-								     track would teach people to ignore it. -->
+								<!-- Offer tempo correction only when the evidence is split. -->
 								<Badge
 									variant="warn"
 									title="an unusual tempo for a tactus; a commoner reading of the same beats is offered beside it">
@@ -290,8 +267,7 @@
 						</div>
 
 						{#if tempoMap.length > 1}
-							<!-- A track assembled from several is the one case where a single figure
-							     above is a summary of nothing anybody plays. -->
+
 							<p class="facts subtle">
 								{#each tempoMap as seg, i (seg.startBar)}
 									{#if i > 0}<span class="sep">·</span>{/if}
@@ -319,11 +295,7 @@
 					</div>
 				</Section>
 
-				<!--
-					The arrangement is the cue sheet. Cues are addressed by bar and every bar belongs to
-					a section, so a separate list of them was the same information sorted differently -
-					and only one of the two could say where the room is now.
-				-->
+
 				<Section title="Arrangement">
 					<ul class="sections">
 						{#each analysis.sections as s (s.index)}
@@ -460,12 +432,7 @@
 		width: 100%;
 	}
 
-	/*
-	 * One control, split by a rule rather than by a gap.
-	 *
-	 * A gap shows the panel through it, which is nearly black and reads as two buttons that
-	 * happen to be touching. A faint rule on the white keeps it one object with two halves.
-	 */
+	/* A faint rule keeps the split control visually one button; a gap exposes the dark panel. */
 	.split {
 		display: flex;
 	}

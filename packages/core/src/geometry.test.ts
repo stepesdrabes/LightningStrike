@@ -26,7 +26,6 @@ describe('the frame', () => {
 		expect(off.at(-1)).toBe(719);
 	});
 
-	// Every run faces the floor, so nothing may tell them apart by where they point.
 	it('faces every run down', () => {
 		for (const s of g.strips) expect(s.normal).toEqual([0, 0, -1]);
 		expect(g.strips.filter((s) => stripAxis(s) === 'x').map((s) => s.name)).toEqual([
@@ -47,7 +46,6 @@ describe('the frame', () => {
 });
 
 describe('normalisation', () => {
-	// Against the fixture, never the pergola: a sweep has to cross the whole of what is lit.
 	it('spans the full range on the fixture', () => {
 		const span = (a: Float32Array) => [Math.min(...a), Math.max(...a)];
 		const [nxLo, nxHi] = span(g.nx);
@@ -72,10 +70,7 @@ describe('regions', () => {
 		expect(ids).toContain('NW corner');
 	});
 
-	/**
-	 * One 5 m reel is one long run plus one short one, so this is the unit a board is fed during
-	 * a bring-up. It has to come out at exactly a reel, or the region is useless for the job.
-	 */
+	/** A bring-up region must match one 5 m reel: one long run plus one short run. */
 	it('pairs the perimeter into the reels it is wired from', () => {
 		const lines = roomRegions(g).filter((r) => r.id.startsWith('line-'));
 		expect(lines.map((r) => r.name)).toEqual(['Frame N + E', 'Frame S + W']);

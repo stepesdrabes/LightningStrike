@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
-export interface DecodedAudio {
+interface DecodedAudio {
 	mono: Float32Array;
 	/** Interleaved is avoided on purpose: every consumer wants one side at a time. */
 	left: Float32Array;
@@ -13,11 +13,8 @@ export interface DecodedAudio {
 }
 
 /**
- * 22.05 kHz. Halving the rate halves every spectral pass and, at a fixed window length,
- * doubles the frequency resolution where it is scarce: a 2048-point window puts bins 10.8 Hz
- * apart rather than 21.5, which is the difference between four and eight of them between
- * 20 and 100 Hz. What is lost is everything above 11 kHz, which is cymbal shimmer rather
- * than cymbal attack, and which a lossy source has usually thrown away already.
+ * 22.05 kHz halves spectral work and doubles fixed-window bass resolution. The lost >11 kHz
+ * content is shimmer, beyond the attack features used here.
  */
 export const ANALYSIS_RATE = 22050;
 
@@ -39,18 +36,8 @@ function run(cmd: string, args: string[]): Promise<{ stdout: Buffer; stderr: str
 }
 
 /**
- * Decode to f32 at the analysis rate, keeping both channels.
- *
- * Stereo is kept because where a sound sits across the room is a thing the show can use, and
- * it is the one property that a mono downmix destroys rather than merely blurs. The mono sum
- * every other stage works from is derived here rather than asked of ffmpeg, so the two can
- * never disagree.
- *
- * Deliberately does not ask for soxr. It resamples better, but it is a separate library that
- * a stock Homebrew ffmpeg is not built with, and naming an unavailable engine is a hard error
- * rather than a fallback. The built-in resampler is what every accuracy figure in this package
- * was measured through; `filter_size` buys a longer kernel from it for nothing.
- *
+ * Keep both channels and derive mono here so stereo and DSP share one decode. Use ffmpeg
+ * resampling without soxr, which is unavailable in some stock builds.
  */
 export async function decodeAudio(path: string, sampleRate = ANALYSIS_RATE): Promise<DecodedAudio> {
 	const { stdout } = await run('ffmpeg', [
@@ -101,15 +88,7 @@ export interface ProbeResult {
 	tags?: string[];
 }
 
-/**
- * yt-dlp failures that clear on their own, against the ones that never will.
- *
- * YouTube answers 403 to a share of requests under no discernible pattern: of fifty tracks
- * fetched in one sitting, twelve failed this way and a plain re-run recovered seven of them.
- * A permanent refusal looks nothing like it - a private, removed or region-locked video says
- * so - and retrying those three times only delays the queue by the length of two more
- * downloads. The permanent list is checked first, because a takedown notice can carry a 403.
- */
+/** Retry temporary HTTP failures; check permanent refusals first because takedowns may also say 403. */
 const PERMANENT =
 	/Video unavailable|Private video|removed by the uploader|members-only|Sign in to confirm|not available in your country|account associated with this video has been terminated|violat|copyright|age-restricted|requested format is not available|out of date/i;
 const TRANSIENT =
@@ -121,31 +100,20 @@ export function isTransientFetchError(message: string): boolean {
 }
 
 /** How a caller is told a fetch is being tried again, so a row can say so rather than hang. */
-export type RetryNote = (attempt: number, of: number, reason: string) => void;
+type RetryNote = (attempt: number, of: number, reason: string) => void;
 
 const ATTEMPTS = 3;
 /** Short: a 403 clears in seconds or not at all, and the queue is waiting behind this. */
 const BACKOFF_MS = [1500, 4000];
 
-/**
- * How old a yt-dlp may be before its refusals are read as its own rather than YouTube's.
- *
- * Releases are date-stamped, so the age is legible from the binary itself and costs no network
- * call to learn. Set beyond the usual release cadence so a quiet month upstream is not blamed
- * on the install.
- */
+/** Age threshold exceeds normal release cadence so an upstream quiet month is not blamed on installation. */
 const STALE_AFTER_DAYS = 45;
 
 const VERSION_DATE = /^(\d{4})\.(\d{1,2})\.(\d{1,2})/;
 
 let ytdlpAge: Promise<number | null> | null = null;
 
-/**
- * Days since the installed yt-dlp was released, or null when that cannot be read.
- *
- * Asked once per process and remembered: the answer cannot change while the app runs, and it
- * is consulted on a failure path with the queue already waiting behind it.
- */
+/** Cache the installed yt-dlp release age per process; failure handling should not keep spawning it. */
 function ytdlpAgeDays(): Promise<number | null> {
 	ytdlpAge ??= run('yt-dlp', ['--version'])
 		.then(({ stdout }) => {
@@ -159,17 +127,8 @@ function ytdlpAgeDays(): Promise<number | null> {
 }
 
 /**
- * The one refusal that reads as transient and is not: a 403 from a yt-dlp too old to speak
- * YouTube's current player protocol.
- *
- * YouTube moves the client its media URLs are signed for every few months, and a binary from
- * before the move is refused for every track rather than for a share of them. Retrying re-runs
- * an identical command against the same dead client, so the row spends both retry layers - up
- * to nine downloads and a few minutes - to arrive exactly where it started, and reports a
- * mysterious 403 at the end of it. Naming the binary costs one attempt and fixes the night.
- *
- * Only a 403 is read this way. A 429 or a 5xx is YouTube saying "not now" whatever the version
- * is, and those keep their retries.
+ * A 403 from stale yt-dlp needs an update, not identical retries. Version age does not change
+ * retry handling for 429 or 5xx responses.
  */
 function staleBinaryNote(days: number): string {
 	const upgrade =
@@ -224,10 +183,7 @@ export async function probe(url: string, onRetry?: RetryNote): Promise<ProbeResu
 	};
 }
 
-/**
- * Downloads bestaudio without `-x --audio-format`, which would transcode a lossy source
- * into another lossy format for no benefit.
- */
+/** Keep bestaudio in its source container to avoid another lossy transcode. */
 export async function downloadAudio(
 	url: string,
 	outTemplate: string,

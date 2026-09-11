@@ -15,9 +15,9 @@ import {
 	strobePerBeat
 } from '@mv/core';
 
-export type Severity = 'error' | 'warning';
+type Severity = 'error' | 'warning';
 
-export interface Finding {
+interface Finding {
 	severity: Severity;
 	rule: string;
 	message: string;
@@ -31,7 +31,7 @@ export interface LintResult {
 	warnings: Finding[];
 }
 
-export interface LintContext {
+interface LintContext {
 	analysis: TrackAnalysis;
 	/** Built-ins plus anything the show generated. */
 	effects: Map<string, EffectDef>;
@@ -40,25 +40,11 @@ export interface LintContext {
 }
 
 /**
- * There is deliberately no minimum gap between strobes and no safety limiter here. A room this
- * size is one person's, the strobe is half the point of the genre, and a linter that refuses
- * the biggest card in the deck is a linter people route around. Anyone fitting this in a public
- * space owns that decision, and these rules are the only thing between a show and the room:
- * there is no limiter downstream of them.
- *
- * How LONG a gesture holds the room is capped in `HIT_RULES`, and how FAST it flashes in
- * `strobePerBeat`. Both are taste rather than safety: a strobe that outlasts the phrase it
- * points at has stopped being punctuation, and one past ~6 Hz has fused into a texture -
- * heard in the room as "the strobe is just noise now", not as a longer list of events.
+ * HIT_RULES caps gesture duration; strobePerBeat caps flash rate before flashes fuse into
+ * texture.
  */
 const SETTLE_BARS = 16;
-/**
- * How long a void may hold the room before it stops reading as a held breath.
- *
- * Shared with `measureShow`, which excuses a cue-declared void from its dark-bar report up to
- * exactly this length. Two instruments complaining about one passage taught the author that the
- * strongest move in the vocabulary was a fault; past this, one of them still should.
- */
+/** Maximum held-breath length in bars, shared with the measurement dark-bar exemption. */
 export const MAX_VOID_BARS = 2;
 /** Distinct hues across the whole show, not at once. See the colour section below. */
 const MAX_HUES = 6;
@@ -108,23 +94,8 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 		}
 	}
 
-	// Structural changes land on a phrase multiple. Off-phrase cues read as wrong even when
-	// the audience cannot say why.
-	//
-	// A void is the exception, and necessarily so: it is phrase-TERMINAL, occupying the last
-	// bar or two before a drop, so its start is never on a phrase multiple. What has to be
-	// on-grid is where it ends, which is the drop cue that follows it.
-	//
-	// A bar the analyser named as a section start is the other exception, and the rule is about
-	// invention rather than about the grid: music does move off a four-bar phrase, after an
-	// inserted break or a bar of 2/4, and a global anchor cannot follow it. Dragging those
-	// boundaries onto the grid anyway cost 1.7 points of boundary F0.5 across 374 annotated
-	// tracks. What this still forbids is a cue placed off-phrase where nothing changed.
-	// A bar is on the phrase grid when it sits on a 4-bar multiple counted from ITS OWN
-	// section's start. Phrases count from the drop, not from bar 0: a track that inserts an
-	// odd passage shifts its phase mid-song, and the global anchor then disagrees with what
-	// everyone in the room is counting. The global grid is still accepted, for cues placed
-	// against the anchor on tracks where the two agree.
+	// Accept measured section starts and either section-relative or global phrase grids.
+	// Voids may start off-grid because their following drop anchors the end.
 	const measured = new Set(analysis.sections.map((s) => s.startBar));
 	const sectionStartOf = (bar: number): number => {
 		for (const s of analysis.sections) if (bar >= s.startBar && bar < s.endBar) return s.startBar;
@@ -179,14 +150,8 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 	const cueEnd = (i: number) => (i + 1 < cues.length ? cues[i + 1].bar : lastBar + 1);
 
 	/**
-	 * How long an effect actually runs, across cue boundaries.
-	 *
-	 * The mixer keeps an effect instance while the id in a role does not change, so two
-	 * consecutive cues naming the same bed are one continuous run and not two short ones.
-	 * `minBars` asks whether a look gets long enough to read, which is a question about the run
-	 * rather than about where an author happened to split it - and the peak's burst cue is a bar
-	 * precisely so the master is not held longer, with the section's own look carried underneath.
-	 * Measured per cue, that reported every layer under a burst as starved.
+	 * An unchanged effect ID preserves its instance across cues, so minBars applies to the full
+	 * run.
 	 */
 	const runBars = (i: number, role: LayerRole, id: string): number => {
 		let from = i;
@@ -196,11 +161,8 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 		return cueEnd(to) - cues[from].bar;
 	};
 
-	// One hit layer over a stable base. The engine spends `activityBudget` while it picks;
-	// an authored show is held to the same sum, without its master, which is a moment rather
-	// than a look. The cues the owner heard as "everything is flickering" were three layers
-	// striking on the same kick, each defensible alone. The slack is what the engine's own
-	// fallback may add: a pool with nothing under budget still lights its calmest member.
+	// Allow the activity overshoot from the picker fallback, which selects the calmest viable
+	// effect.
 	const SLACK = 0.3;
 	for (const cue of cues) {
 		const span = analysis.sections.find((s) => cue.bar >= s.startBar && cue.bar < s.endBar);
@@ -254,10 +216,8 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 					cue.bar
 				);
 			}
-			// An outro keeps the bed the room was already wearing - the thinning is the
-			// gesture, and demanding outro eligibility of it would force the look-change
-			// the inheritance exists to prevent. Only the bed, and only when it really is
-			// the previous cue's: anything else in an outro still answers for its sections.
+			// An inherited outro bed may keep its prior section eligibility; fresh layers must fit the
+			// outro.
 			const inheritedOutroBed =
 				cue.section === 'outro' &&
 				role === 'bed' &&
@@ -317,11 +277,8 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 		}
 	}
 
-	// Your best trick loses value with every repeat. Except on the way out: an outro's
-	// sameness IS the gesture - the look thins and holds - and warning on it pushes an
-	// agent toward exactly the look-change the inheritance forbids. A decline step is
-	// the same gesture wherever it lives: the record is leaving, the stack holds and
-	// only the level falls.
+	// Repeated stacks are intentional during outros and declining endings; only their level
+	// changes.
 	const level = (i: number) => cues[i].intensity ?? show.defaults.intensity;
 	for (let i = 1; i < stacks.length; i++) {
 		if (cues[i].section === 'outro' && cues[i - 1].section === 'outro') continue;
@@ -399,14 +356,8 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 		}
 		if (hit.beats <= 0) err('hit-zero-length', `hit at bar ${hit.bar} has no duration`, hit.bar);
 
-		// Punctuation is counted in whole BEATS and must touch a downbeat at one end or the
-		// other. A gesture that starts on one is the ordinary case; one that only ends on one is
-		// a gesture whose whole job is the thing that follows it, and the held breath before a
-		// drop is exactly that: at a whole bar it is four beats of nothing, and the only way to
-		// be shorter and still finish on the downbeat is to start inside the bar.
-		//
-		// What this still forbids is a hit that touches a downbeat at neither end, which lands
-		// the room back mid-bar with nothing to have marked.
+		// Hits use whole beats and must touch a downbeat at either end; pre-drop breaths may start
+		// mid-bar.
 		const beat = hit.beat ?? 0;
 		if (!Number.isInteger(beat) || beat < 0 || beat >= tempo.beatsPerBar) {
 			err(
@@ -493,12 +444,8 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 				);
 			}
 
-			// The held breath exists to set up the downbeat after it. Ending anywhere else hands
-			// the room back before the thing the silence was for.
-			//
-			// Only where the room would otherwise come back UP. A blackout cut from a void is
-			// already inside darkness - the void cue runs at 0.05 with no house floor - so its
-			// length decides how hard the cut is, not whether the room returns.
+			// Blackouts must end on their arrival unless already inside a void, where the room stays
+			// dark.
 			const inVoid = section === 'void';
 			const next = analysis.sections.find((s) => s.startBar > hit.bar);
 			if (
@@ -519,14 +466,8 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 		}
 	}
 
-	// The flash allowance, counting strobes and blackouts together: genre times energy, one
-	// for a track nothing could identify, zero for the families that forbid the gesture.
-	//
-	// The same function the engine plans against, so an agent's show cannot spend more.
-	// Counted together because they are one gesture from the audience's side: the room stops
-	// being a room and becomes an event, and past the budget it is a lighting rig. An error
-	// rather than a warning, because it is the difference between a show with a biggest
-	// moment and a show without one.
+	// Strobes and blackouts share the planner allowance because both spend the same contrast
+	// gesture.
 	const allowance = allowedFlashes(analysis, ctx.context);
 	const flashes = hits.filter((h) => h.kind === 'strobe' || h.kind === 'blackout');
 	// A strobe smuggled in as a cue's master layer with its trigger armed is the same gesture
@@ -573,11 +514,8 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 		}
 	}
 
-	// Punctuation is anchored to something an audience can hear: the phrase grid, a boundary the
-	// analyser measured, a crash in the audio, or the gesture it hands over to. The last of those
-	// is what makes strobe-then-black-then-slam one figure rather than three loose hits, and
-	// without it the run into a drop is unplaceable - only its final part lands on a downbeat
-	// anyone is counting.
+	// A hit may anchor to a phrase, measured boundary, crash or adjacent gesture in a compound
+	// arrival.
 	const anchoredStart = new Set<number>();
 	for (const hit of [...hits].sort((a, b) => b.bar - a.bar)) {
 		const end = hitEnd(hit);
@@ -585,10 +523,7 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 			onPhrase(hit.bar) ||
 			onPhrase(end) ||
 			anchoredStart.has(end) ||
-			// The finish line: a hit that ends exactly where the record does is anchored to
-			// the one boundary every listener hears, whatever the phrase arithmetic says of
-			// a final partial phrase. This is what lets the button exist on a track whose
-			// last section is not a whole number of phrases.
+			// The record ending anchors a hit even when the final phrase is partial.
 			end >= analysis.bars.length ||
 			(analysis.bars[hit.bar]?.events.includes('crash') ?? false);
 		if (ok) anchoredStart.add(hit.bar);
@@ -613,10 +548,7 @@ export function lintShow(show: Show, ctx: LintContext): LintResult {
 			if (cue.palette.third !== undefined) hues.add(cue.palette.third);
 		}
 	}
-	// What muds a room is three hues lit at once, not six visited over four minutes. A cue can
-	// only ever declare base, accent and third, so simultaneity is bounded by the type; this
-	// bounds how far the identity is allowed to wander before it stops being one. A track
-	// that is several songs has an identity per song, and each is allowed its own six.
+	// Limit hue changes per song; the cue type already bounds simultaneous hues.
 	const songs = Math.max(1, (analysis.movements ?? []).filter((m) => typeof m === 'object' && m !== null).length);
 	const hueCap = MAX_HUES * songs;
 	if (hues.size > hueCap) {

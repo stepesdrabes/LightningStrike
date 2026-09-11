@@ -3,12 +3,7 @@ import type { BeatFeatures } from './beatsync.ts';
 import { PITCH_CLASSES } from './chroma.ts';
 import { quantile } from './dsp/stats.ts';
 
-/**
- * How many sub-frames each bar is resampled to. Keeping a time axis inside the bar is what
- * separates "these two bars have the same average spectrum" from "these two bars play the
- * same pattern", and in this repertoire the pattern is the identity of the section. Sixteen
- * is a sixteenth note in four, which is as fine as a placement ever needs to be read.
- */
+/** Sixteen sub-frames retain sixteenth-note pattern timing in 4/4 instead of averaging it away. */
 const SUB_FRAMES = 16;
 /** Timbre needs roughly a third of an octave; finer only adds pitch, which chroma covers. */
 const TIMBRE_BANDS = 32;
@@ -32,13 +27,7 @@ export interface BarFeatures {
 	floor: Float32Array;
 }
 
-/**
- * Bars built from beats, keeping the within-bar time axis.
- *
- * Aggregating to bars rather than beats is the single largest accuracy lever in structure
- * analysis: published boundary F-measures rise by around a third for the same algorithm,
- * because Western popular structure changes on bar lines by construction.
- */
+/** Keep within-bar timing while aggregating to the grid where structural changes usually occur. */
 export function barSynchronous(bf: BeatFeatures, beatsPerBar: number, phase: number): BarFeatures {
 	const count = Math.max(0, Math.floor((bf.count - phase) / beatsPerBar));
 	const starts = new Array<number>(count + 1);
@@ -47,12 +36,8 @@ export function barSynchronous(bf: BeatFeatures, beatsPerBar: number, phase: num
 }
 
 /**
- * The bar table over explicit bar-start beat indices, so a grid can absorb a half-bar
- * edit as one SHORT bar. A track that inserts two beats has no uniform reading: every
- * phase choice is wrong on one side of the edit (Safir's chorus was heard "still early"
- * through three uniform fixes), and absorbing the edit as a LONG bar stretches whatever
- * gesture lands in it (the staged strobe led its slam by six real beats). `starts` has
- * one entry per bar plus the end boundary, ascending, in beat indices.
+ * Bar-start beat indices, ascending with an end boundary. Absorb edits as short bars so
+ * pre-arrival gestures keep their duration.
  */
 export function barSynchronousAt(bf: BeatFeatures, starts: readonly number[]): BarFeatures {
 	const count = Math.max(0, starts.length - 1);
@@ -151,29 +136,18 @@ export function sliceBars(bars: BarFeatures, from: number, to: number): BarFeatu
 }
 
 /** The similarity matrix of one movement's bars, cut from the track's. */
-export function sliceSimilarity(sim: Float32Array, n: number, from: number, to: number): Float32Array {
+function sliceSimilarity(sim: Float32Array, n: number, from: number, to: number): Float32Array {
 	const m = to - from;
 	const out = new Float32Array(m * m);
 	for (let i = 0; i < m; i++) out.set(sim.subarray((from + i) * n + from, (from + i) * n + to), i * m);
 	return out;
 }
 
-/**
- * Physics under which the settling-contrast term is allowed to vote: the decisive class
- * (the pin threshold) needs no second witness, and boosting it is how a fill's echo
- * once outbid the owner's bar.
- */
+/** Allow settling contrast only below decisive physics; a strong arrival needs no extra boost. */
 const SETTLE_GATE = 2;
-/**
- * Under this the track has no dynamics to read and a level term would only amplify noise.
- * Six dB is about the range a heavily limited master still has left between its verse and its
- * chorus, so it is the point below which "louder" stops carrying structure.
- */
+/** Ignore level evidence below six dB dynamic range so a limited master's noise is not amplified. */
 const MIN_LEVEL_SPREAD_DB = 6;
-/**
- * How far apart in level two bars may sit, as a fraction of the track's own p10-p90 range,
- * before they stop reading as the same passage.
- */
+/** Level separation as a share of track p10-p90 range beyond which bars no longer match. */
 const LEVEL_TOL = 0.2;
 /** The most of a pair's similarity that a level difference is allowed to withdraw. */
 const LEVEL_DEPTH = 0.55;
@@ -196,12 +170,8 @@ export function similarityMatrix(bars: BarFeatures): Float32Array {
 	const dim = bars.patternDim;
 	const sim = new Float32Array(n * n);
 
-	// Amplitude has to re-enter somewhere. `barSynchronous` L2-normalises each bar's pattern,
-	// which is what lets a repeat match its original at any level, and is also why a drop and
-	// the groove behind it playing the same figure were literally identical rows: a 1.6 dB step
-	// scored 1.000. It re-enters as a multiplier rather than a summand, because two bars playing
-	// different figures are different whatever their levels, so level may only ever withdraw
-	// similarity and never supply it.
+	// L2-normalised patterns lose level contrast. Restore it only as a similarity multiplier:
+	// level may reject a match, never make different patterns match.
 	const db = barLevels(bars);
 	const tol = LEVEL_TOL * levelSpread(db);
 
@@ -226,17 +196,9 @@ export function similarityMatrix(bars: BarFeatures): Float32Array {
 	return sim;
 }
 
-/**
- * Only bars within `BAND` of each other are compared inside a candidate segment. A section
- * is a place where nearby bars resemble each other; requiring bar 1 to resemble bar 16
- * would reject any section that develops, which is most of them.
- */
+/** Compare nearby bars within BAND; distant bars in a developing section need not be identical. */
 const BAND = 7;
-/**
- * Six phrases. Reachable only because `similarityMatrix` now sees level: while it did not, a
- * ceiling above 16 fused a drop with the groove behind it, since the two play the same figure
- * and the L2-normalised patterns were identical rows.
- */
+/** Six-phrase maximum; level-aware similarity prevents matching loud and quiet runs of one figure. */
 const MAX_SEGMENT_BARS = 24;
 const MIN_SEGMENT_BARS = 2;
 /** Weight of the length prior, in units of one bar's worth of banded pairs. */
@@ -252,19 +214,8 @@ function lengthPenalty(bars: number): number {
 }
 
 /**
- * How much better than average the bars inside this segment resemble each other.
- *
- * The baseline subtraction is what makes the objective work, and its absence was a real bug:
- * dividing the banded similarity sum by the segment length saturates once the length passes
- * `BAND`, because each bar can only ever contribute `BAND` pairs. A saturating per-segment
- * score summed over segments is maximised by having as many segments as possible, so the DP
- * chopped every input into the shortest length that paid no phrase penalty, and a synthetic
- * matrix of five perfect 32-bar blocks came back as twenty 8-bar ones.
- *
- * Measuring each pair against the track's own mean instead makes a boundary cost what it
- * should: splitting homogeneous material throws away pairs that were scoring above average,
- * and merging unlike material takes on pairs scoring below it. Neither direction is free, so
- * the optimum is where the music actually changes.
+ * Subtract track-mean pair similarity before scoring segments. Without that baseline, banded
+ * sums saturate with length and reward splitting homogeneous material into tiny sections.
  */
 function segmentScore(
 	sim: Float32Array,
@@ -296,19 +247,12 @@ function bandedMean(sim: Float32Array, n: number): number {
 }
 
 /**
- * Convolutive block matching (Marmoret et al.): choose the segmentation maximising total
- * within-segment similarity minus a cost for lengths that are not phrase multiples.
- *
- * The length term is the point. Every published alternative either snaps boundaries onto a
- * phrase grid afterwards, which throws away every genuine off-grid change, or ignores phrase
- * structure entirely. Expressing it as a cost lets the evidence overrule it when the music
- * really does move at seven bars, and lets it win when the evidence is a coin toss.
+ * Convolutive block matching (Marmoret et al.). A phrase-length cost breaks weak ties while
+ * allowing strong off-grid changes.
  */
 /**
- * Segment each movement on its own and join the tables: the DP's baseline is the mean
- * similarity of the passage it reads, and two songs share no baseline, so a seam between
- * them is not a boundary to be found but a wall to segment up to. The movement starts are
- * bounds by construction.
+ * Segment movements independently because each has its own similarity baseline; their starts
+ * are mandatory boundaries.
  */
 export function segmentMovements(sim: Float32Array, bars: BarFeatures, starts: readonly number[], lambda = LAMBDA): number[] {
 	const edges = [...new Set([0, ...starts.filter((b) => b > 0 && b < bars.count), bars.count])].sort((a, b) => a - b);
@@ -363,14 +307,8 @@ export function segmentBars(sim: Float32Array, bars: BarFeatures, lambda = LAMBD
 }
 
 /**
- * How decisively a neighbour has to beat the chosen boundary before the boundary moves.
- *
- * The DP optimises segment cohesion, which is the right objective everywhere except at a
- * hard arrival: the drop bar and the bar after it are nearly identical rows, so cohesion
- * barely changes when the boundary slides one bar off the hit - and one bar late is
- * exactly how the reported failures present. Arrival evidence is a different signal from
- * cohesion, so it gets a second pass rather than a term inside the DP, where a level-step
- * bonus was already tried once and measurably hurt.
+ * Refine arrival placement after cohesion-based segmentation: adjacent drop bars have similar
+ * material, so cohesion cannot reliably identify the hit itself.
  */
 const REFINE_MARGIN = 1.45;
 /** Below this, a bar's arrival is noise and has no business moving a boundary. */
@@ -378,11 +316,7 @@ const REFINE_FLOOR = 0.6;
 /** How far a boundary may be pulled onto an arrival. One bar is the observed failure class. */
 const REFINE_REACH = 1;
 
-/**
- * How hard bar `b` arrives: a level step up, the kit returning, the voice arriving, the bar
- * before collapsing, and the pattern changing, in comparable units. Zero for a bar that
- * continues its passage.
- */
+/** Arrival score combines level, kit, voice, prior collapse, and pattern novelty in comparable units. */
 /** The arrival score taken apart, in the units the score sums them in. */
 interface ArrivalParts {
 	step: number;
@@ -424,13 +358,8 @@ function arrivalParts(
 		else kit = Math.max(0, now - before) / 8;
 	}
 
-	// The lyric evidence, two forms because tracks come in two shapes. On a sparse-vocal
-	// track the voice ENTERING is the boundary (coverage jumps across the bar line); on a
-	// wall-to-wall one - most rap - coverage never moves and the boundary the audience
-	// hears is the HOOK starting, so the caller marks the bars where a repeated-line block
-	// begins. Weighted beside the kit's return: either tips a boundary that has physical
-	// evidence, neither moves one alone (the refine floor sits above them), and a track
-	// with no lyrics scores exactly zero everywhere.
+	// Lyrics contribute coverage jumps for sparse vocals and repeated-hook starts for continuous
+	// vocals. Neither can exceed the refine floor alone; absent lyrics contribute zero.
 	const entrance = vocal && vocal[b] >= 0.25 && (vocal[b - 1] ?? 0) < 0.1;
 	const voice = entrance || (hooks && hooks[b] === 1) ? 1.2 : 0;
 
@@ -448,19 +377,8 @@ function arrivalParts(
 		novelty = Math.max(0, 1 - dot);
 	}
 
-	// Newness that PERSISTS: an arrival bar resembles its successor and not its
-	// predecessor, while a fill resembles neither - the drum fill before a slam scores
-	// kit and novelty exactly like the slam does, and this is the term that tells them
-	// apart. The judged round's boundary errors ran three-to-one EARLY, onto fills.
-	//
-	// EVIDENCE-GATED: the term votes only where the physics are indecisive. Ungated at
-	// weight 1.2 it fixed a voice-led seam (KITN 21 -> 22, vocal 0.26 -> 1.0, physics
-	// 0.89) and broke a physics-led one (Titi 73 -> 74, where 74's own 2.43 needed no
-	// help and the boost pushed the boundary past the owner's bar). Where the physics
-	// already speak, settling has nothing to add; where they cannot, it is the only
-	// witness left. The gate also keeps every absolute threshold calibrated on the
-	// settle-free scale honest for decisive bars: pins, the snap's cuts and the
-	// consolidation floor all read decisive arrivals exactly as before.
+	// Settling contrast distinguishes a sustained arrival from a fill. Gate it off when physical
+	// evidence is decisive so absolute pin, snap, and consolidation thresholds keep their scale.
 	const bass = bassWeight > 0 ? bassWeight * Math.max(0, bars.low[b] - bars.low[b - 1]) : 0;
 	const physics = step + kit + 0.8 * collapse + 1.5 * novelty + bass;
 	const settling =
@@ -489,58 +407,21 @@ function arrivalStrength(
 }
 
 /**
- * Whether an arrival is the kind a section starts on when it starts OFF the phrase grid.
- *
- * The owner draws sections on phrase downbeats: over the 2026-09-07 corpus the refine's
- * moves off that grid were right twenty times and wrong seventeen, and the two groups do
- * not overlap in what the target bar carries. The wrong ones are a level step that the kit
- * does not join - the hook riff, the shout or the voice entering on the last bar of the
- * phrase (Blinding Lights, Le Freak, Praha/Viden), a drum fill before a breakdown, or the
- * groove's own two-bar figure (365, an arrival every odd bar). The right ones carry one of:
- *
- * - the kit landing outright, four kicks after a bar of one or none, or three more than
- *   the bar before (Vitej's fourth groove, Kisses' last drop), or returning after a bar of
- *   none with the voice on the same bar (SICKO MODE's first chorus, sparse trap kicks and
- *   the hook together on the bar after the break);
- * - the pattern breaking, a dot under a half with the bar before (Someone You Loved's
- *   verse halves, Cigo a kava's build);
- * - a sung entrance after the bar before collapsed under it (Thinkin Bout You's every
- *   hook, sung into a breath);
- * - music rising out of the track's own quiet floor (Panama's and Cigo's three-bar intros,
- *   Stranded's riff, Higher's breakdowns);
- * - a collapse that is not periodic - the arrival two bars either side does not match it,
- *   so it is not the groove's figure (Hovorili mi ze's verse, seventeen bars in).
- *
- * And in every case the physics have to be decisive on their own: a voice or a settling
- * term cannot carry a boundary off the grid.
+ * An off-phrase move needs decisive physics plus kit arrival, pattern break, a sung entrance
+ * after a dip, quiet-floor emergence, or a non-periodic collapse. Voice/settling alone cannot
+ * pull boundaries onto pickups or a groove's repeating figure.
  */
 export const IMPACT_KICKS = 4;
 export const IMPACT_KICK_JUMP = 3;
 const IMPACT_NOVELTY = 0.5;
 const IMPACT_COLLAPSE = 0.625;
-/**
- * Share of the track's p10-p90 level range under which a bar sits on the quiet floor. Both
- * bars before the target have to: a single quiet bar is the pre-chorus dip Blinding Lights
- * takes before its hook riff, not an intro.
- */
+/** Quiet-floor share of p10-p90 range. Require two preceding quiet bars to exclude a one-bar dip. */
 const QUIET_FLOOR = 0.45;
-/**
- * And the floor has to be a floor: at least this far under the track's loud passages. A
- * compressed record spans six decibels end to end and its verses ARE its bottom decile (Le
- * Freak), which is not what music rising out of silence sounds like.
- */
+/** Require depth below loud passages; a compressed verse can be the bottom decile without being silence. */
 const QUIET_DEPTH_DB = 8;
-/**
- * An arrival two bars either side this close to the target's is the groove's own figure.
- * 365's odd bars arrive at 0.47 to 0.94 of each other; every real collapse on file sits
- * at 0.25 or under (Higher's builds, Hovorili mi ze's verse).
- */
+/** Similar arrivals two bars apart indicate a repeating groove figure, not a unique collapse. */
 const PERIODIC_SHARE = 0.35;
-/**
- * And music rising out of the floor has to arrive: the rises the owner kept sit at 2.96 and
- * above (Stranded's riff 8.2, Higher's breakdowns 3.6 and 3.0), the one refused was Panama's
- * pad at 2.03, a bar before the phrase downbeat the build actually starts on.
- */
+/** Quiet-floor emergence still needs decisive arrival strength; a soft early pad must not shift the boundary. */
 const QUIET_PHYSICS = 2.5;
 /** Why an off-grid target counts as an impact, or the empty string when it does not. */
 function offGridImpact(
@@ -583,10 +464,8 @@ function offGridImpact(
 }
 
 /**
- * The same guard for every later pass that can move a boundary off the phrase grid - the
- * hook snap, today. Physics only: the voice is the evidence a hook snap is adjudicating, so
- * it may not vouch for the bar. Returns whether a move from `from` to `to`, with the section
- * before starting at `prevStart`, is allowed.
+ * Apply the refine's physics-only off-grid guard to later moves. Voice cannot vouch for the
+ * hook placement being judged.
  */
 export function offGridMoveGuard(
 	bars: BarFeatures,
@@ -625,11 +504,7 @@ export interface GuardDecision {
 	depthBefore: number;
 }
 
-/**
- * Per-bar settling contrast from the similarity matrix: how much more bar `b` resembles
- * the bar after it than the bar before it. Positive where new material establishes
- * itself, near zero mid-passage and on one-bar transients.
- */
+/** Per-bar similarity to the next bar minus the previous; new sustained material scores positively. */
 export function settlingContrast(sim: Float32Array, n: number): Float32Array {
 	const out = new Float32Array(n);
 	for (let b = 1; b < n - 1; b++) {
@@ -645,23 +520,15 @@ export interface BoundaryMove {
 	score: number;
 }
 
-/**
- * The structure stage's tunable constants, in one object so the bench can sweep them
- * against annotated ground truth. The defaults are what shipped after that sweep.
- */
+/** Bench-sweep structure constants; shipping callers use the measured defaults. */
 export interface StructureTuning {
 	/** Arrival score below which a boundary does not move at all. */
 	refineFloor: number;
 	/** Arrival score below which a refined move may not become a phase pin. */
 	pinScore: number;
 	/**
-	 * PHYSICS-ONLY arrival score at which a boundary that never moved earns a pin anyway.
-	 * Higher than pinScore on purpose: a moved pin proved itself against its neighbours
-	 * under the refine margin, a stayed bound was never contested, so it pins only where
-	 * no contest is conceivable. Physics-only because the hook term lifted a weak bar
-	 * (0.89) over pinScore on Killing In the Name and the false pin then held off the
-	 * phrase snap that kept the praised bar - the lyric evidence cannot vouch for the
-	 * bar the lyric stages downstream are still adjudicating.
+	 * Unmoved boundaries need a higher physics-only pin threshold because they have not beaten
+	 * neighbours in a refine contest. Lyric evidence cannot pre-empt downstream lyric placement.
 	 */
 	stayPinScore: number;
 	/** 0 disables re-phasing entirely. Bars a boundary may be dragged onto the pinned phase. */
@@ -670,18 +537,11 @@ export interface StructureTuning {
 	rephaseMinPins: number;
 	/** Share of pins that must share the winning phase. */
 	rephaseAgreement: number;
-	/**
-	 * Arrival score below which a seam between two same-kind sections is a DP artefact
-	 * rather than structure, and the sections merge. 0 disables consolidation.
-	 */
+	/** Same-kind seam arrival floor for consolidation; zero disables it. */
 	consolidateFloor: number;
 	/**
-	 * Weight of the settling-contrast term in arrival scores. 0 keeps the score the
-	 * refine sweep shipped; positive lets an arrival that PERSISTS outbid the fill
-	 * before it. Swept at 1.6 it fixed one marked bar and moved two praised ones, so it
-	 * ships at 0. Any positive weight rescales a score that five ABSOLUTE thresholds are
-	 * calibrated on - refineFloor, pinScore, consolidateFloor, and the snap veto's
-	 * decisive/noise cuts - so a future sweep must re-ask all five, not just this dial.
+	 * Settling-contrast weight; zero preserves the measured default. A positive weight requires
+	 * retuning refineFloor, pinScore, consolidateFloor, and hook-snap decisive/noise thresholds.
 	 */
 	settleWeight: number;
 	/** Bars a boundary may be pulled onto an arrival by the refine pass. */
@@ -690,114 +550,51 @@ export interface StructureTuning {
 	refineMargin: number;
 	/** Physics score under which the settling term may vote; Infinity lets it vote everywhere. */
 	settleGate: number;
-	/**
-	 * Weight of the low band landing on a bar. The kit and a crash arrive on the fill bar
-	 * and the floor lands one bar later, which is the bar the owner draws: 0 keeps the score
-	 * as shipped.
-	 */
+	/** Low-band arrival weight; distinguishes the floor landing from the preceding crash/fill. Zero disables it. */
 	bassWeight: number;
-	/**
-	 * Kicks a bar needs before its kit counts as arriving after a bar of none. 1 is the
-	 * shipped reading; with the drum model a lone kick is a pickup, and the kit lands with
-	 * the bar after it (Timeless at 0:24, Melanz at 3:01).
-	 */
+	/** Minimum kicks establishing kit return after silence; one detected kick may be only a pickup. */
 	kitMinKicks: number;
-	/**
-	 * Physical arrival score at which a bar inside a long segment splits it, on the phrase
-	 * grid; 0 never splits. A verse restated on a decisive arrival that the segmenter, which
-	 * reads material, cannot see (Timeless at 1:20, 4.6).
-	 */
+	/** Phrase-grid physical arrival floor for splitting long sections; zero disables splits. */
 	splitAtArrival: number;
 	/** Weight of the DP's phrase-length prior, in bars-worth of banded evidence. */
 	lambda: number;
 	/** Bars the hook snap may pull a chorus-class start back onto a sung hook; 0 disables the snap. */
 	hookSnapReach: number;
-	/**
-	 * The hook snap never displaces a boundary on a decisive arrival: a restart window is
-	 * held to the same dominance test an entrance is, and the one-bar move LATER onto a
-	 * restart is refused outright. The evening corpus had it pull 365's drop, Praha/Viden's
-	 * chorus and Az na mesic's last chorus off arrivals of 2.2, 4.2 and 4.7 onto sung lines.
-	 */
+	/** Protect decisive arrivals from hook snaps, including later restart moves and weaker restart edges. */
 	hookSnapStrict: boolean;
-	/**
-	 * The refine may not move a boundary OFF the local phrase grid (a section length that is
-	 * a multiple of four bars) onto a bar the kit does not land on. The anacrusis class: the
-	 * hook riff, the shout or the voice enters on the last bar of the phrase and the owner
-	 * draws the downbeat after it (Blinding Lights 27 -> 28, Praha/Viden 7 -> 8, Best Part).
-	 */
+	/** Guard off-phrase refine moves so pickups, shouts, or hook riffs cannot displace the following downbeat. */
 	pickupGuard: boolean;
 	/**
-	 * The refine never moves a boundary onto a drum fill: a loud bar whose pattern is held
-	 * by neither neighbour while the bar after it settles into what follows (Killing In the
-	 * Name 29 and 61, where the fill pinned and re-phased three correct choruses a bar
-	 * early). A boundary the DP itself put on such a bar keeps its pin - Doppler's build
-	 * opens on one - because the material changed there, whatever the bar's shape.
+	 * Refinement cannot move onto a fill. A fill already selected by DP may retain its pin because
+	 * its material change independently supports the boundary.
 	 */
 	fillVeto: boolean;
-	/**
-	 * Physics an arrival out of the quiet floor needs before the guard lets it off the grid.
-	 * 2 is the refine floor itself, which let Panama's pad a bar before the phrase move the
-	 * build onto it.
-	 */
+	/** Physical arrival floor needed for a quiet-floor event to move a boundary off-grid. */
 	quietImpactPhysics: number;
-	/**
-	 * Two DP boundaries two bars apart with the arrival between them collapse onto it. The DP
-	 * cannot express a one-bar transition, so it fences the arrival in (Stranded's chorus at
-	 * 17, sung and kicked, between boundaries at 16 and 18 that the two-bar minimum kept the
-	 * refine from moving).
-	 */
+	/** Collapse two boundaries surrounding a one-bar arrival the DP's two-bar minimum cannot represent. */
 	straddle: boolean;
-	/**
-	 * A build the DP opened on a drum fill moves onto the bar after it when the kit leaves
-	 * there. A build otherwise begins under the kit (PROVENZA) and keeps its bar; a fill with
-	 * the kit gone the next bar is the fill INTO the build (SICKO MODE's second, 47 -> 48).
-	 */
+	/** Move a build opening on a fill to the following kit departure; otherwise builds may start under kit. */
 	departFromFill: boolean;
-	/**
-	 * On a song-vocabulary track whose sung hooks agree on a phrase phase, boundaries sitting one
-	 * bar before it move onto it when most of the table does: the instrumental changes a bar
-	 * ahead of the singer all song long, and the owner draws where the singer starts (Best
-	 * Part, six of seven boundaries a bar early with every hook on the owner's bar).
-	 */
+	/** Optional song-vocabulary shift onto an agreed sung phase when most boundaries sit one bar before it. */
 	sungPhase: boolean;
 	/**
-	 * A chorus-class or verse-class section of twelve bars or more splits where a sung block
-	 * begins a whole phrase into it. One loop played end to end has no material change for the
-	 * DP to find, and the owner draws its sections where the verses and hooks begin (Thinkin
-	 * Bout You, eight-bar phrases of one groove). OFF: measured on 2026-09-08 it found two of
-	 * those and one on goosebumps, and planted seven seams the owner never drew across four
-	 * accepted corpus-1 tables (Hannah Montana three, Je mi fajn two, Safír, Do I Wanna Know?),
-	 * where a repeated line starts eight bars into a section that is one section.
+	 * Optional hook splits in long verse/chorus sections. Disabled: repeated lines within one
+	 * section produced more false seams than recovered boundaries in the judged corpus.
 	 */
 	hookSplit: boolean;
 }
 
-/**
- * Swept against 60 annotated Harmonix tracks and 60 annotated Raveform EDM tracks, five
- * variants. This one - move a boundary only onto a DECISIVE arrival, pin what moved, and
- * re-phase one bar at most behind three near-unanimous pins - was best or tied-best on
- * every metric on both corpora. The first shipped version (floor 0.6, reach 2, 70%
- * agreement) was the worst on every boundary metric, which is what the room's owner heard
- * as "every section start is wrong": weak arrivals, vocal jumps among them, were dragging
- * good boundaries off by up to two bars track-wide.
- */
+/** Defaults selected by the 60-track Harmonix and 60-track Raveform boundary sweep. */
 export const DEFAULT_TUNING: StructureTuning = {
 	refineFloor: 2,
 	pinScore: 2,
 	rephaseReach: 1,
 	rephaseMinPins: 3,
 	rephaseAgreement: 0.8,
-	// The 2026-08-14 sweep (60 Harmonix + 60 Raveform, material gate on): 1.6 was
-	// best-or-tied on both corpora - Raveform F3 0.521 -> 0.552 with sections 20.0 ->
-	// 17.2, Harmonix within noise (0.530 -> 0.526, sections 10.4 vs 10.1 annotated).
-	// Arrival-only merging (no material gate) paid 1.7-2.2 points of Harmonix F3 for
-	// the same floors: soft real boundaries between different material must survive.
+	// Corpus-selected consolidation floor. Material agreement is required so soft real boundaries survive.
 	consolidateFloor: 1.6,
-	// Still 0, now with the gate measured too: ungated, 1.2 fixed one tentative bar and
-	// broke a hard one; GATED (physics < 2, and < 2.4), it fixes and breaks nothing at
-	// all - the one gain travelled through a decisive bar the gate rightly silences.
-	// The term, the gate and this negative result are all kept; the next candidate
-	// weight starts from here instead of rediscovering the trade.
+	// Keep settling disabled: gated sweeps yielded no boundary gain, while ungated weights moved
+	// accepted arrivals. Retain the dial for measured experiments.
 	settleWeight: 0,
 	refineReach: 1,
 	refineMargin: REFINE_MARGIN,
@@ -805,32 +602,15 @@ export const DEFAULT_TUNING: StructureTuning = {
 	bassWeight: 0,
 	kitMinKicks: 1,
 	splitAtArrival: 0,
-	// The on-file cases split wide: legitimate stays tower (5.9, 6.0, 7.2 - Vitej's and
-	// Way Too Self Aware's drops, Titi's slam) while the stays that displaced praised or
-	// marked bars sat at 2.4 and below (Titi 74, KITN 50), and 3 sat in the gap. The
-	// 2026-09-07 corpus moved it: the refine had Blinding Lights' first chorus on the
-	// owner's bar at 2.72 and the phrase snap took it away, and at 2 the nineteen maps
-	// gain two boundaries with no accepted track moving (`bench/mapsweep.ts`, stay-2).
+	// Stay-pin floor tuned by bench/mapsweep.ts to preserve accepted physical arrivals.
 	stayPinScore: 2,
 	lambda: LAMBDA,
 	hookSnapReach: 2,
-	// The three below shipped together from the 2026-09-07 evening corpus (bench/mapsweep.ts,
-	// 27 maps of review corpus 2 plus the 19 of corpus 1): 214 -> 232 of 266 and 151 -> 158
-	// of 180, early misses 38 -> 25 and 22 -> 17, no accepted track moving on either. The
-	// refine's moves off the phrase grid had been right twenty times and wrong seventeen on
-	// the same maps; the guard keeps every one of the twenty. The one map that loses is Best
-	// Part, which the owner rated 3 "not so sure myself". Measured and rejected beside them:
-	// lambda 1.6 and 2.2 (six and eight accepted tracks moved), stayPinScore 3 (two moved),
-	// hookSnapReach 1 (nothing), and a guard without the quiet-floor depth (Le Freak's
-	// verses are its bottom decile) or with the kit returning after a single silent bar
-	// (Le Freak's alternating kick detections).
+	// Jointly tuned by bench/mapsweep.ts; off-grid guard and quiet-floor depth must be evaluated together.
 	hookSnapStrict: true,
 	pickupGuard: true,
 	fillVeto: true,
-	// The 2026-09-08 round (bench/mapsweep.ts, the 31 maps of round-2026-09-08 plus the 19 of
-	// corpus 1): the four below ship together with the grid work of the same round (the fold
-	// parity, bars never in two, the strict phase walk), 290 -> 300 of 318 and 158 of 180 held,
-	// no accepted table losing a boundary. The hook split stays measurable and off.
+	// Jointly tuned with grid changes on the 2026-09-08 maps; optional hook splits remain disabled.
 	quietImpactPhysics: QUIET_PHYSICS,
 	straddle: true,
 	departFromFill: true,
@@ -839,10 +619,8 @@ export const DEFAULT_TUNING: StructureTuning = {
 };
 
 /**
- * Whether bar `b` is a drum fill: its pattern is held by neither neighbour while the bar
- * after it belongs to what follows, and it is louder than that bar. Read on the level-free
- * pattern, because the level term is exactly what binds a loud fill to the loud passage
- * before it in the similarity matrix.
+ * A fill is loud, unlike either neighbour, with the next bar settling. Use level-free patterns
+ * so loudness cannot bind the fill to the preceding passage.
  */
 const FILL_SETTLE = 0.25;
 const FILL_LOUDER_DB = 1.5;
@@ -865,15 +643,9 @@ function collapseBefore(bars: BarFeatures, b: number): number {
 }
 
 /**
- * A boundary sitting on the bar the kit drops out of, one bar before it comes back on a
- * decisive arrival, moves onto the return. That bar is the tension bar that ends the
- * section before - Vitej mezi nama's fourth groove begins where the kick returns, and the
- * phrase grid had put it a bar early on the bar of nothing. Only into a section the kit
- * carries: a breakdown begins on the bar the kit LEAVES, and HIGHEST IN THE ROOM's second
- * one sits there, a bar before the crash the same pull would have moved it onto. Bars in
- * `keep` (pins, movement starts, hook-placed bars) and void edges are not up for review,
- * and the section keeps at least two bars. Returns the bars moved onto, so consolidation
- * leaves them alone too.
+ * Move a tension-bar boundary onto a decisive kit return only when the destination section
+ * keeps the kit. Preserve keep/void edges and two-bar minimums. Return target bars so
+ * consolidation protects them.
  */
 const KIT_CARRIED = new Set(['drop', 'groove', 'chorus', 'verse']);
 export function pullOntoReturn(
@@ -907,16 +679,8 @@ const DEPARTURE_LOW = 0.5;
 const DEPARTURE_LEVEL = 0.7;
 
 /**
- * The mirror of `pullOntoReturn`: a section the kit leaves begins on the bar it leaves. Where
- * a boundary into one sits a bar after a bar of no kicks that followed a bar of kicks, and
- * the kit has not come back on the boundary bar either, the boundary moves back onto the
- * departure. HIGHEST IN THE ROOM's second breakdown: the kit stops at 1:52.95 and the refine
- * had put the boundary on the crash a bar later, because arrivals are all it weighs. The
- * floor has to go with the kit: SICKO MODE's kick pauses a bar before its breakdown while
- * the 808 holds the low band at six tenths, and that bar is still the chorus; HIGHEST's low
- * band falls to a quarter on the bar the kit leaves. A pin from the refine does not hold
- * here - it pinned that crash - but a movement start, a hook bar or a drawn boundary does,
- * and the section before keeps at least two bars.
+ * Move kit-free section starts back onto kit departure only when the low-band floor also
+ * fell. Refine pins may yield; movement/hook/drawn boundaries and two-bar minimums do not.
  */
 export function pushOntoDeparture(
 	segments: { startBar: number; endBar: number; kind: string }[],
@@ -941,12 +705,8 @@ export function pushOntoDeparture(
 			moved.push(b - 1);
 			continue;
 		}
-		// And the other way: the boundary a bar BEFORE the kit leaves - pinned there by a
-		// last vocal pickup on Blinding Lights, by the chorus's tag bar on EARFQUAKE - moves
-		// forward onto the bar it leaves. Outros and breakdowns, and a build only when the DP
-		// opened it on a drum fill: a build otherwise begins under the kit, on the riser or the
-		// voice, and the drums drop out a bar into it (PROVENZA), but a fill with the kit gone
-		// the next bar is the fill INTO the build (SICKO MODE's second build, 47 -> 48).
+		// Move outro/breakdown boundaries forward to kit departure. Apply to builds only when they
+		// open on a fill; ordinary builds may start while drums still play.
 		const falls = low[b + 1] <= DEPARTURE_LOW * low[b] || energy[b + 1] <= DEPARTURE_LEVEL * energy[b];
 		const mayLead = here.kind !== 'build' || fills?.[b] === 1;
 		if (mayLead && b + 1 < kicks.length && here.endBar - (b + 1) >= 2 && kicks[b] > 0 && kicks[b + 1] <= 1 && falls) {
@@ -958,11 +718,7 @@ export function pushOntoDeparture(
 	return moved;
 }
 
-/**
- * Split a segment longer than `minBars` at an interior bar whose physical arrival reaches
- * `floor` and sits on the phrase grid of the segment's own start, so a decisive restatement
- * the material-reading segmenter cannot see still gets its boundary. Returns the new table.
- */
+/** Split long segments at decisive physical arrivals on their own phrase grid; return a new table. */
 export function splitAtArrivals(bounds: number[], physical: Float32Array, floor: number, minBars = 12): number[] {
 	if (floor <= 0) return bounds;
 	const out = [...bounds];
@@ -977,10 +733,7 @@ export function splitAtArrivals(bounds: number[], physical: Float32Array, floor:
 	return out.sort((a, b) => a - b);
 }
 
-/**
- * Per-bar arrival strengths: the same evidence `refineBoundaries` weighs, as an array,
- * for the consolidation pass and the bench.
- */
+/** Shared per-bar arrival evidence for refinement, consolidation, and bench probes. */
 export function arrivalStrengths(
 	bars: BarFeatures,
 	kicksPerBar: Int32Array | null,
@@ -1009,10 +762,7 @@ export function fillBars(bars: BarFeatures): Uint8Array {
 	return out;
 }
 
-/**
- * The arrival score taken apart, per bar, for the bench: the level step, the kit, the
- * collapse before, the pattern novelty and the voice, in the units the score sums them in.
- */
+/** Bench output of arrival components in the units used by the combined score. */
 export function arrivalComponents(
 	bars: BarFeatures,
 	kicksPerBar: Int32Array | null,
@@ -1040,11 +790,8 @@ export function arrivalComponents(
 }
 
 /**
- * Pull each boundary onto the arrival next door when the evidence there clearly beats it.
- *
- * Refinement, not re-segmentation: a boundary may move at most `REFINE_REACH` bars, may not
- * shorten a neighbour below `MIN_SEGMENT_BARS`, and stays put on a soft transition, where
- * arrival strength is mush on both sides and the DP's cohesion answer is the better one.
+ * Move boundaries only toward clearly stronger nearby arrivals while retaining minimum section
+ * lengths. Soft transitions keep the DP's cohesion-based placement.
  */
 export function refineBoundaries(
 	bounds: number[],
@@ -1067,12 +814,7 @@ export function refineBoundaries(
 	fillVeto = false,
 	/** A bench sink for the guard's decisions; nothing shipped passes one. */
 	guardLog?: GuardDecision[],
-	/**
-	 * Boundaries the guard kept on the grid against a decisive neighbour, collected for the
-	 * caller: something arrives within a bar of each, so no later pass may read them as a seam
-	 * nothing arrives on and merge them away - which is exactly what the wrong move used to
-	 * protect them from, as a pin.
-	 */
+	/** Guarded boundaries still have nearby arrival evidence; protect them from later consolidation. */
 	held?: number[],
 	quietPhysics = QUIET_PHYSICS,
 	straddle = false
@@ -1091,14 +833,8 @@ export function refineBoundaries(
 	};
 	const physicsAt = (b: number) => parts(b).physics;
 
-	// Two boundaries two bars apart with the arrival between them are the DP fencing in a
-	// one-bar transition it cannot express: the bar before (a fill, a pickup) and the bar after
-	// both read as changes of material, and the two-bar minimum then keeps the refine from
-	// moving either onto the arrival. Both collapse onto it when it beats each by the margin
-	// and clears the floor on its PHYSICS alone - a sung line in the middle of a two-bar
-	// breakdown is the breakdown's own second bar (goosebumps at 33), while Stranded's chorus
-	// at 17 lands with the kit and the level under the voice - and the arrival keeps the pin
-	// the move earns.
+	// Collapse a two-bar transition around its stronger middle arrival only when physical
+	// evidence clears the margin and floor. The resulting boundary retains its earned pin.
 	if (straddle) {
 		for (let i = 1; i + 2 < out.length; i++) {
 			const a = out[i];
@@ -1116,9 +852,7 @@ export function refineBoundaries(
 	for (let i = 1; i + 1 < out.length; i++) {
 		const here = out[i];
 		if (fixed.has(here)) continue;
-		// The phrase grid the previous boundary implies: a section that is a whole number of
-		// phrases long is the owner's overwhelming reading, and a bar before that grid is where
-		// an anacrusis lands.
+		// Use the previous boundary's phrase grid to distinguish a final-bar pickup from the next downbeat.
 		const onGrid = (b: number) => (b - out[i - 1]) % PHRASE_BARS === 0;
 		let best = here;
 		let bestScore = score(here) * margin;
@@ -1157,14 +891,8 @@ export function refineBoundaries(
 }
 
 /**
- * Re-read the boundaries that had only mush to stand on onto the phrase phase the pinned
- * arrivals prove.
- *
- * A pinned boundary sits on a measured hit - the kick wall, the sub slam, the voice - and
- * a track's arrivals overwhelmingly share one bar-phase mod 4. The boundaries between
- * gentle passages have no such evidence, land within a bar of the truth, and one bar early
- * is exactly how a show telegraphs its own next move. Nothing moves unless at least two
- * pins agree on a phase, and nothing moves further than the ambiguity being corrected.
+ * Move weak boundaries onto the phrase phase supported by agreeing arrival pins; require
+ * enough agreement and limit movement to the ambiguity being corrected.
  */
 export function rephaseToPins(
 	bounds: number[],
@@ -1172,10 +900,8 @@ export function rephaseToPins(
 	barCount: number,
 	tuning: StructureTuning = DEFAULT_TUNING,
 	/**
-	 * The pins whose phase agreement is trusted, when narrower than `pinned`. A moved pin
-	 * proved the track's phase against a contested neighbour; a stayed pin is decisive
-	 * about its own bar only - letting stays vote diluted a unanimous phase vote below
-	 * agreement on Killing In the Name and switched the praised re-phasing off track-wide.
+	 * Use contested moved pins for phase agreement when supplied; stayed pins support only their
+	 * own bar and can dilute the shared-phase vote.
 	 */
 	voting: ReadonlySet<number> = pinned
 ): number[] {
@@ -1214,18 +940,9 @@ export function rephaseToPins(
 	return out;
 }
 
-/**
- * How close two segments must come to their own internal cohesion to count as the same
- * material. Below 1 because a repeat is never identical: a second chorus has a different
- * vocal take and usually an extra layer.
- */
+/** Relative self-cohesion needed for a repeat; below one permits changed vocals and extra layers. */
 const SAME_MATERIAL = 0.92;
-/**
- * And an absolute floor underneath it. The relative test alone is not enough: on a track whose
- * segments are internally loose, nine tenths of a low cohesion is a low bar, and everything
- * links into one group. Two passages that do not resemble each other this much are not the
- * same material however unlike themselves they each are.
- */
+/** Absolute similarity floor prevents low-cohesion passages from all matching each other. */
 const SAME_MATERIAL_FLOOR = 0.62;
 
 export interface SegmentGroup {
@@ -1235,13 +952,7 @@ export interface SegmentGroup {
 	group: number[];
 }
 
-/**
- * Which segments are the same material.
- *
- * Transitive closure is what turns a set of pairwise matches into "A B A B C B": if the
- * second chorus matches the first and the third matches the second, the third is a chorus
- * even if it never directly matched the first.
- */
+/** Transitive closure joins repeat groups even when only adjacent reprises directly match. */
 export function groupSegments(
 	sim: Float32Array,
 	n: number,
@@ -1274,13 +985,8 @@ export function groupSegments(
 	}
 
 	/**
-	 * How much a segment's own bars resemble each other, which is the level a different
-	 * segment has to reach to count as the same material.
-	 *
-	 * An absolute-ish reference, not a quantile of the pair distribution. A distribution cut
-	 * admits a roughly fixed top slice whatever the content, so it can never answer "this
-	 * track has no repeated material" and it fuses a uniform track into a single group; it can
-	 * also land above 1.0, at which point a track gets no repeats at all.
+	 * Compare cross-segment similarity with within-segment cohesion. Pair-distribution quantiles
+	 * would force repeats even on tracks without repeated material.
 	 */
 	const cohesion = (s: number): number => {
 		const from = bounds[s];
@@ -1307,12 +1013,10 @@ export function groupSegments(
 		for (let j = i + 1; j < count; j++) {
 			const aLen = bounds[i + 1] - bounds[i];
 			const bLen = bounds[j + 1] - bounds[j];
-			// Segments of very different lengths are rarely the same thing, and letting them
-			// link is how a whole track collapses into one group.
+			// Reject large length mismatches so transitive repeat links cannot collapse the whole track.
 			if (Math.min(aLen, bLen) / Math.max(aLen, bLen) < 0.5) continue;
 			if (movementOf(i) !== movementOf(j)) continue;
-			// Two passages are the same material when they resemble each other nearly as much
-			// as each resembles itself.
+
 			const reference = Math.max(SAME_MATERIAL_FLOOR, ((self[i] + self[j]) / 2) * SAME_MATERIAL);
 			if (score(i, j) < reference) continue;
 			const ra = find(i);

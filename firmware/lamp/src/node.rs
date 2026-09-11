@@ -1,5 +1,4 @@
-//! The same loop the Pico build runs, written against this board's embassy-net: a datagram
-//! against the API channel, the 1 Hz report and the engine tick.
+//! Select between DDP, API commands, telemetry, and engine ticks on this board's network stack.
 
 use embassy_futures::select::{Either4, select4};
 use embassy_net::udp::{PacketMetadata, UdpSocket};
@@ -26,12 +25,10 @@ const IDENTITY: Identity<'static> = Identity {
 	http_port: HTTP_PORT,
 };
 
-/// Long enough to fold a slider drag into one write, short enough that a wall switch flipped
-/// right after a change still finds it saved.
+/// Debounce slider drags while saving soon enough for a following wall-switch power cut.
 const SAVE_DEBOUNCE: Duration = Duration::from_secs(2);
 
-/// The boot light, racing the join: the engine fades into the remembered state while the radio
-/// is still finding its feet.
+/// Fade into remembered light while the radio joins.
 pub async fn run_engine(fixture: &mut Fixture, engine: &mut Engine<{ Fixture::PIXELS }>) -> ! {
 	loop {
 		if let Some(out) = engine.tick(Instant::now().as_millis()) {

@@ -51,9 +51,7 @@
 	}
 
 	function barAt(t: number): number {
-		// Through the bar table, like every other reader of this grid. Hand-rolled against
-		// the median it disagreed with the markers drawn beside it on any track that drifts,
-		// and named the wrong bar entirely on one that changes tempo.
+		// Use the bar table so seeks match markers across drift and tempo changes.
 		return analysis ? Math.max(0, Math.floor(barAtTime(analysis.tempo, t))) : 0;
 	}
 
@@ -68,10 +66,7 @@
 		return { left: `${l.toFixed(3)}%`, width: `${w.toFixed(3)}%` };
 	}
 
-	/**
-	 * Where a new song starts inside this one. Absent on nearly every track, which is why it is
-	 * drawn as the exception rather than as another lane.
-	 */
+	/** Movement boundaries are exceptional, not another persistent lane. */
 	const cuts = $derived.by(() => {
 		const a = analysis;
 		if (!a || duration <= 0) return [];
@@ -90,8 +85,7 @@
 			at: clock(hoverAt),
 			kind: sectionAt(hoverAt),
 			bar,
-			// The tempo HERE. On a track assembled from several, the median is a tempo nothing
-			// in it is played at.
+			// Use the local tempo; a multi-movement track's median may describe none of it.
 			bpm: analysis ? bpmAt(analysis.tempo, bar).toFixed(0) : ''
 		};
 	});
@@ -140,8 +134,7 @@
 
 			<div class="veil" style:left={`${(played * 100).toFixed(3)}%`}></div>
 
-			<!-- Which slice the lanes below are showing. The scrubber itself stays whole: it is how
-			     you get anywhere in the track, and a zoomed seek bar cannot reach the rest of it. -->
+			<!-- Keep the scrubber global so the whole track stays reachable while lanes are zoomed. -->
 			{#if !isFullWindow(view)}
 				<div
 					class="window"
@@ -222,13 +215,11 @@
 		top: 0;
 		bottom: 0;
 	}
-	/* Two verses in a row are one colour, so without a seam they are one section. The rule is
-	   the background rather than a line over the ribbon: a gap reads at five pixels tall. */
+	/* Separate adjacent same-colour sections with a gap legible at five pixels high. */
 	.sec:not(:last-child) {
 		border-right: 1px solid var(--background);
 	}
-	/* Dim what has not played yet, rather than drawing a fill over what has: the section
-	   colours stay legible ahead of the playhead, which is the point of showing them. */
+	/* Dim the future instead of painting over played section colours. */
 	.veil {
 		position: absolute;
 		top: 50%;
@@ -249,9 +240,7 @@
 		border-radius: 3px;
 		pointer-events: none;
 	}
-	/* A new song inside the track: the biggest break there is, so it is the heaviest rule and
-	   the only one crossing the whole scrubber. Weight and reach rather than a colour, because
-	   every hue on this bar already belongs to a section. */
+	/* Movement seams cross the whole scrubber; colours already identify section kinds. */
 	.cut {
 		position: absolute;
 		top: 0;

@@ -125,8 +125,7 @@
 			/>
 		</Panel>
 
-		<!-- One effect is not a choice, and a picker with a single button says only that the
-		     fixture is limited. The lamp is a single pixel, so a wash is all it can be. -->
+		<!-- A single-effect fixture needs no picker. -->
 		{#if effects.length > 1}
 			<Panel icon="sparkles" label="Effect">
 				<Segmented

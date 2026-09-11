@@ -1,7 +1,6 @@
 use crate::ddp::Packet;
 
-/// The framebuffer, sized to the whole fixture rather than to this board's share of it. DDP
-/// offsets are device-local and start at zero, so one binary receives any host-side split.
+/// Fixture-sized buffer with device-local DDP offsets starting at zero; supports host-side splits.
 pub struct Frame<const BYTES: usize> {
 	buf: [u8; BYTES],
 	covered: usize,
@@ -14,8 +13,7 @@ impl<const BYTES: usize> Frame<BYTES> {
 		Self { buf: [0; BYTES], covered: 0, extent: 0, last_extent: 0 }
 	}
 
-	/// False when the packet addresses past the end of the buffer: the host is driving more
-	/// pixels than this build holds.
+	/// False when a packet addresses beyond this fixture's buffer.
 	pub fn apply(&mut self, p: &Packet<'_>) -> bool {
 		let end = p.offset + p.data.len();
 		if end > BYTES {
@@ -35,8 +33,8 @@ impl<const BYTES: usize> Frame<BYTES> {
 		&self.buf[..self.extent]
 	}
 
-	/// Closes the frame on PUSH. False means a middle packet never arrived. Both counters are per
-	/// frame, not high-water marks, so a host that shrinks its split does not read as torn forever.
+	/// PUSH closes the frame; false indicates missing coverage. Reset counters per frame so
+	/// shrinking host splits do not leave stale torn-frame reports.
 	pub fn close(&mut self) -> bool {
 		let whole = self.covered == self.extent;
 		self.last_extent = self.extent;

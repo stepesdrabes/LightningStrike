@@ -1,5 +1,4 @@
-//! The HTTP task and its bridge to the loop that owns the fixture. Two connections at a time is
-//! the concurrency limit, which is plenty for a control plane and spares the radio's rx slots.
+//! HTTP bridge with two connections, limiting radio receive-slot usage.
 
 use embassy_executor::Spawner;
 use embassy_net::Stack;
@@ -27,13 +26,7 @@ pub enum Request {
 /// Where one request's answer goes. One per listener, claimed at spawn and never shared.
 pub type Reply = Signal<CriticalSectionRawMutex, StateDto>;
 
-/// A request and the slot its answer belongs in.
-///
-/// The slot travels with the request because two connections are served at once, and a single
-/// shared mailbox pairs answers to requests only while there is one of each. With two in flight
-/// the loop's second answer was dropped on a full channel and that connection blocked until its
-/// socket timed out, so a colour tap that overlapped the controller's poll was lost and one of
-/// only two listeners was gone for the next five seconds.
+/// Each request carries its own reply slot so concurrent connections cannot exchange or lose answers.
 pub struct Envelope {
 	pub req: Request,
 	pub reply: &'static Reply,
@@ -89,8 +82,7 @@ impl room_api::Api for NodeApi {
 	}
 }
 
-/// Two listeners rather than one: the controller polls while it sends, and a board with a single
-/// socket drops the SYN of whichever arrives second.
+/// Two listeners allow controller polling and commands concurrently without dropping the second SYN.
 #[embassy_executor::task(pool_size = LISTENERS)]
 pub async fn httpd_task(stack: Stack<'static>, ip: &'static str, reply: &'static Reply) -> ! {
 	let mut rx = [0; 1024];
@@ -108,8 +100,7 @@ pub async fn httpd_task(stack: Stack<'static>, ip: &'static str, reply: &'static
 	}
 }
 
-/// Reads the address DHCP landed on once, so `/api/info` can report it. The controller needs it
-/// to know which subnet to look for the other lights on; see `apps/controller/src/lib/discover.ts`.
+/// Publish the DHCP address for controller subnet discovery; browsers cannot resolve .local to an IP.
 pub fn spawn(spawner: Spawner, stack: Stack<'static>) {
 	static IP: StaticCell<String<15>> = StaticCell::new();
 

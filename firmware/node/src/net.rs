@@ -33,8 +33,7 @@ async fn net_task(mut runner: embassy_net::Runner<'static, cyw43::NetDriver<'sta
 	runner.run().await
 }
 
-/// The only status the board can show without a console: solid means still joining, blinking
-/// means up.
+/// Status LED: solid joining, blinking online.
 #[embassy_executor::task]
 async fn heartbeat_task(mut control: cyw43::Control<'static>) {
 	loop {
@@ -45,8 +44,7 @@ async fn heartbeat_task(mut control: cyw43::Control<'static>) {
 	}
 }
 
-/// The console, the radio and DHCP, in that order, returning once the board has an address. The
-/// logger comes up first because its banner is how anyone learns the address.
+/// Start logging before radio/DHCP so the discovered address can be reported.
 pub async fn join(spawner: Spawner, board: Board, hostname: &str) -> embassy_net::Stack<'static> {
 	spawner.spawn(logger_task(Driver::new(board.usb, Irqs)).unwrap());
 
@@ -64,8 +62,7 @@ pub async fn join(spawner: Spawner, board: Board, hostname: &str) -> embassy_net
 
 	control.init(clm).await;
 
-	// Measured as a no-op with cyw43 0.7.0: PowerSave and None give the same idle-ping
-	// distribution. Kept for the day the driver honours it.
+	// cyw43 0.7.0 ignores this power-save setting; retain the request for drivers that honour it.
 	control.set_power_management(PowerManagementMode::None).await;
 
 	let mut dhcp = DhcpConfig::default();

@@ -10,13 +10,7 @@ import { INTENSITY, param } from './helpers.ts';
 const MELODY_LO = 0.3;
 const MELODY_HI = 0.85;
 
-/**
- * The melody as geometry: the loudest voice in the melodic range owns a position along
- * the ceiling beam - low notes by one end, high by the other - and a soft ribbon follows
- * it, colour riding the same position so a motif traces the same shape in the same place
- * every time it returns. The beam is the one strip with no architectural job, which makes
- * it the melody's home; the walls stay other layers' territory.
- */
+/** Map the strongest melodic band to a beam position so repeated motifs retrace a stable shape. */
 export const pitchRibbon: EffectDef = {
 	id: 'pitchRibbon',
 	name: 'Pitch Ribbon',
@@ -39,8 +33,7 @@ export const pitchRibbon: EffectDef = {
 		// A room with no beam still gets the ribbon, on the front wall's run.
 		const home = beam.length > 0 ? beam : Array.from({ length: g.count }, (_, i) => i);
 
-		// Position glides, level breathes: a melody that leaps should ARRIVE, not teleport,
-		// so the position follower is deliberately the slow one.
+		// Smooth position more slowly than level so pitch leaps arrive instead of teleporting.
 		const position = new Follower(0.12, 0.2);
 		const level = new Follower(0.03, 0.22);
 
@@ -53,9 +46,8 @@ export const pitchRibbon: EffectDef = {
 				const { f, p, palette, hueShift } = ctx;
 				out.fill(0);
 
-				// The loudest band inside the melodic range, found by scanning the range at
-				// the spectrum's own resolution. Argmax alone jitters between rivals, so the
-				// position follower is what turns detections into a drawn line.
+				// Scan at spectrum resolution, then smooth the argmax position to suppress
+				// rival-band jitter.
 				let bestU = 0.5;
 				let bestV = 0;
 				const steps = 12;
@@ -79,8 +71,7 @@ export const pitchRibbon: EffectDef = {
 					const d = (k - centre) / sigma;
 					const w = Math.exp(-d * d);
 					if (w < 0.02) continue;
-					// Colour by POSITION through the palette arc - the free axis - with the
-					// crest lifted toward glow so the line has a lit spine.
+					// Spatial palette colour and a glow crest give the ribbon a lit spine.
 					const slot = lerp(paletteArc(at), SLOT.glow, w * 0.4);
 					addSample(out, home[k], palette, slot + hueShift, w * gain);
 				}

@@ -6,16 +6,8 @@ import { MODEL_DIR } from './paths.ts';
 import type { DrumStream } from './drums.ts';
 
 /**
- * ADTOF Frame_RNN (Zehren, Alunno, Bientinesi 2023): a 3.6 MB CRNN that transcribes
- * kick/snare/hat from the full mix, no source separation. Exported to ONNX from the
- * community PyTorch port of the released checkpoint by `bench/export-adtof.py`; the
- * weights are CC BY-NC-SA, which is why the graph is a local optional file like the
- * other models and never committed or redistributed.
- *
- * Measured against the hand-built DSP on the labelled fixtures before it was allowed to
- * replace anything (`drums.test.ts` and `bench/drumprobe.ts`): the model decides WHICH
- * frames are drums, the broadband onset curve still decides exactly WHERE, and the
- * pattern quantiser still verifies both - the same division of labour the DSP path uses.
+ * ADTOF Frame_RNN (Zehren, Alunno, Bientinesi 2023), exported by bench/export-adtof.py.
+ * CC BY-NC-SA weights stay local and optional. The model classifies hits; broadband onsets place them.
  */
 const MODEL_FILE = 'adtof_frame_rnn.onnx';
 
@@ -41,11 +33,8 @@ export interface AdtofOnsets {
 }
 
 /**
- * The training frontend's triangular filterbank, reproduced exactly: log-spaced target
- * frequencies snapped to their nearest FFT bin, deduplicated to strictly increasing,
- * then one triangle per interior bin, each normalised to unit area. Any deviation here
- * is a model fed data it was never trained on, so the construction mirrors the Python
- * line by line rather than being "equivalent".
+ * Match the training filterbank exactly: snap log-spaced frequencies to unique ascending FFT
+ * bins, then use unit-area triangles at interior bins.
  */
 function buildFilterbank(): { filters: Float32Array; nBins: number; fftBins: number } {
 	const fftBins = FRAME_SIZE / 2;
@@ -103,10 +92,7 @@ function hannSymmetric(size: number): Float32Array {
 	return w;
 }
 
-/**
- * The port's madmom-style peak picking: activation above its own trailing average,
- * local maximum inside a small window, groups within `combine` merged to their best.
- */
+/** madmom-style peaks: exceed the trailing average, win a local window, and merge nearby groups. */
 function pickActivationPeaks(
 	act: Float32Array,
 	threshold: number
@@ -165,16 +151,7 @@ interface Ort {
 	Tensor: TensorCtor;
 }
 
-/**
- * Resolve onnxruntime-node at runtime, out of a bundler's reach - the seam `beatthis.ts` and
- * `genreModel.ts` already open, and for the same reason.
- *
- * A static import is analysable, and a bundler that inlines the package rewrites the require
- * of its native addon into a stub that throws. Here that is silent rather than loud: `ingest`
- * catches it, logs a fallback and analyses the kit with the band-flux detector instead, so a
- * build that lost the drum model still produces a show - one whose kick and snare streams the
- * picker, the hit placer and every `taste.kit` filter then read as the truth.
- */
+/** Load the native addon through createRequire so bundlers cannot replace it with a throwing stub. */
 function loadOrt(): Ort {
 	const require = createRequire(import.meta.url);
 	return require('onnxruntime-node') as Ort;
@@ -202,8 +179,7 @@ export class Adtof {
 		if (!existsSync(path)) return null;
 		const ort = loadOrt();
 		const session = await ort.InferenceSession.create(path, {
-			// One analysis at a time, always: the beat tracker already takes every core it
-			// is offered, and two saturating graphs are slower than the same two in turn.
+			// Serialise inference: competing graphs saturate CPU and slow each other.
 			intraOpNumThreads: 0
 		});
 		return new Adtof(session, ort.Tensor);
@@ -247,8 +223,7 @@ export class Adtof {
 		const stream = (c: number): DrumStream => {
 			const activation = classActivation(c);
 			const { frames: peaks, heights } = pickActivationPeaks(activation, THRESHOLDS[c]);
-			// Levels against the track's own strong hits, like the DSP path's levelsOf, so
-			// ring sizes mean the same thing whichever detector produced them.
+			// Normalise against strong track-local hits so model and DSP hit sizes agree.
 			const sorted = peaks.map((i) => heights[i]).sort((a, b) => a - b);
 			const top = sorted.length > 0 ? sorted[Math.floor(sorted.length * 0.9)] || 1 : 1;
 			const scale = top > 1e-9 ? 1 / top : 0;

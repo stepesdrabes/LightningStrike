@@ -1,14 +1,8 @@
 import type { LayerRole, Params } from '../contracts/effect.ts';
 
-export interface SceneLayer {
+interface SceneLayer {
 	effect: string;
-	/**
-	 * Overrides the role's own budget.
-	 *
-	 * The budget exists to stop four additive layers summing past white in a drop. A scene has two,
-	 * so the beds here are free to take rather more of it than 0.45, and a bed whose field is mostly
-	 * shade has to.
-	 */
+	/** Two-layer scenes can spend more than the four-layer show's bed opacity budget. */
 	opacity?: number;
 	params?: Params;
 }
@@ -18,29 +12,13 @@ export interface AmbientScene {
 	/** Shown in the interface, so it has to say what the room will look like. */
 	name: string;
 	layers: Partial<Record<LayerRole, SceneLayer>>;
-	/**
-	 * Needs something playing to look like anything, so it is never offered to an empty room.
-	 *
-	 * The rest are self-driven off the idle grid and take the music into account only when there is
-	 * some. That split is what lets the resting room and lounge share one pool.
-	 */
+	/** Requires measured audio; excluded from rest, whose grid has no spectrum. */
 	needsMusic?: boolean;
 }
 
 /**
- * The looks the room rests in, and the ones lounge plays a track with.
- *
- * A scene is a bed and one texture, which is the shape of a quiet cue and for the same reason: the
- * bed is the room and the texture is what stops it being a photograph. Most are pairings of effects
- * the catalog already had - the calm half of it has never had anything to ask for it outside an
- * intro.
- *
- * The beds run at or above their catalog defaults and the textures well below. That is not a taste
- * about brightness, it is the arithmetic: a cue's bed has four more layers over it and these have
- * one, so a bed turned down here is a bed turned down twice and the room arrives at byte 20.
- *
- * Ordered so neighbours are unalike: the picker walks the list rather than sampling it freely, so
- * two consecutive scenes never share a bed.
+ * Bed-plus-texture scenes. Beds keep their gain because fewer layers support them here.
+ * Neighbours have different beds because the picker walks this order.
  */
 export const AMBIENT_SCENES: readonly AmbientScene[] = [
 	{
@@ -95,9 +73,7 @@ export const AMBIENT_SCENES: readonly AmbientScene[] = [
 		id: 'nightfield',
 		name: 'Night field',
 		layers: {
-			// Both of these spend most of their field below `base`, where the palette is a shade
-			// rather than a colour, so at the role's own budget they light half the room the rest of
-			// the pool does and the room dims every time the picker reaches one.
+			// Raise shade-heavy beds to match the pool's delivered brightness.
 			bed: { effect: 'nebula', opacity: 0.85, params: { intensity: 0.85, scale: 0.3, surge: 0.3 } },
 			accent: { effect: 'discoBall', opacity: 0.34, params: { intensity: 0.58, density: 0.35 } }
 		}
@@ -138,8 +114,7 @@ export const AMBIENT_SCENES: readonly AmbientScene[] = [
 		name: 'Bloom',
 		needsMusic: true,
 		layers: {
-			// Lower than the pool's other beds on purpose: this is the one effect in it written to
-			// open up through a chorus, and at their level it opens past what lounge is for.
+			// Reduce this chorus-opening bed so its peak stays within lounge's level.
 			bed: { effect: 'chorusBloom', params: { intensity: 0.56 } },
 			accent: { effect: 'vocalGlow', opacity: 0.46, params: { intensity: 0.62, width: 0.55 } }
 		}

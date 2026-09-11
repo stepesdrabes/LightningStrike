@@ -3,14 +3,7 @@ import { join } from 'node:path';
 import type { Show, TrackContext } from '@mv/core';
 import { CACHE_DIR } from '@mv/analysis';
 
-/**
- * How alike the shows are, within each genre family - which is how a listener actually
- * meets them: a night of house tracks whose rooms all reach for the same four effects is
- * "the same every song" however diverse the corpus-wide table looks.
- *
- * Per family: the mean pairwise Jaccard similarity of the effect-id sets (1 = identical
- * vocabularies), and the share of tracks whose peak master is the family's commonest.
- */
+/** Measure within-family effect-set Jaccard similarity and the most-common peak master's share. */
 const metas = (await readdir(CACHE_DIR)).filter((f) => f.endsWith('.meta.json'));
 
 interface Row {

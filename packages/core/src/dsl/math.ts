@@ -18,17 +18,7 @@ export function smoothstep(edge0: number, edge1: number, v: number): number {
 	return t * t * (3 - 2 * t);
 }
 
-/**
- * Spread a 0..1 sweep across the lit part of the palette, base through accent and back.
- *
- * What an effect reaches for when it wants variety rather than one colour, and the answer to
- * why six effects were calling `hsv2rgb` with hues of their own: the spectrum is the only
- * continuous colour space an effect has unless something hands it one, and the show's own hues
- * are that space. Sampling the whole ring would not do, because `deep` and `accentDeep` are
- * near-black by design and a sweep through them flickers dark twice a cycle.
- *
- * Ping-pongs rather than wraps, so a rotating look has no seam where accent jumps back to base.
- */
+/** Ping-pong through base..accent, avoiding the near-black end slots and a wrap seam. */
 export function paletteArc(u: number): number {
 	const t = frac(u) * 2;
 	return SLOT.base + (t <= 1 ? t : 2 - t) * (SLOT.accent - SLOT.base);
@@ -39,12 +29,7 @@ export function alphaFor(dt: number, tau: number): number {
 	return tau <= 0 ? 1 : 1 - Math.exp(-dt / tau);
 }
 
-/**
- * Asymmetric one-pole follower: fast attack, slow release.
- *
- * Rules of thumb: kick 0/0.12-0.25, bass 0.010/0.15-0.25, mid 0.018/0.20-0.35,
- * air 0.010/0.08-0.15, energy 0.05/0.40-0.80. Release around 0.6 * beatPeriod.
- */
+/** Asymmetric follower, attack/release in seconds. Typical release: 0.6 * beatPeriod. */
 export function envelope(
 	current: number,
 	target: number,

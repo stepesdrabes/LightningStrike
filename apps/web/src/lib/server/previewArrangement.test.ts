@@ -86,9 +86,7 @@ describe('applyHandSections', () => {
 	});
 
 	it('rewrites the per-bar section column the player reads', () => {
-		// The player builds every frame's `section` from this column, not from the span
-		// table, so a preview that left it alone ran the new cues against effects that still
-		// saw the old arrangement - the room's report was that the preview did nothing.
+
 		const preview = applyHandSections(analysis(), HAND)!;
 		expect(preview.bars[0].section).toBe('intro');
 		expect(preview.bars[8].section).toBe('drop');
@@ -113,8 +111,7 @@ describe('applyHandSections', () => {
 	});
 
 	it('drops a boundary whose time is not a number', () => {
-		// The judgement is data written elsewhere; a NaN here used to produce NaN spans, most
-		// of the track covered by no section, and a show composed entirely as one outro.
+
 		const bad = [HAND[0], { ...HAND[1], startTime: Number.NaN }, HAND[2]];
 		const preview = applyHandSections(analysis(), bad)!;
 		expect(preview).not.toBeNull();
@@ -123,9 +120,7 @@ describe('applyHandSections', () => {
 	});
 
 	it('puts a bar line where a boundary was deliberately placed off one', () => {
-		// Bars run every 2 s here and beats every 0.5 s, so 17 s is a beat that is not a bar
-		// line - the fine drag. The preview must not round it: it cuts the grid there, the
-		// way the next analysis will, so the section starts exactly where it was drawn.
+
 		const fine = [
 			{ kind: 'intro', startTime: 0, endTime: 17, startBar: 0, endBar: 8.5 },
 			{ kind: 'drop', startTime: 17, endTime: 48, startBar: 8.5, endBar: 24, offGrid: true },
@@ -134,15 +129,12 @@ describe('applyHandSections', () => {
 		const preview = applyHandSections(analysis(), fine)!;
 		const drop = preview.sections[1];
 		expect(drop.startTime).toBeCloseTo(17, 3);
-		// And it really is a bar line of the previewed grid, so the cue that opens the section
-		// opens on it too.
+
 		expect(preview.tempo.barTimes[drop.startBar]).toBeCloseTo(17, 3);
 	});
 
 	it('leaves the boundaries after a deliberate cut where they were drawn', () => {
-		// The cut re-counts bars from the mark, so the outro drawn on a bar line at 48 falls off
-		// the new phase. It comes back at 48 because the map says a section starts there, and
-		// every bar line past it is the untouched grid - one gesture must move one boundary.
+
 		const fine = [
 			{ kind: 'intro', startTime: 0, endTime: 17, startBar: 0, endBar: 8.5 },
 			{ kind: 'drop', startTime: 17, endTime: 48, startBar: 8.5, endBar: 24, offGrid: true },
@@ -156,9 +148,7 @@ describe('applyHandSections', () => {
 	});
 
 	it('keeps the cuts the cached grid already carries', () => {
-		// A track whose bar table is already piecewise - a listener edit the room confirmed, or
-		// a movement mark. Re-deriving the table from a uniform walk loses those, which moved
-		// boundaries BEFORE the new cut on the owner's own map.
+
 		const piecewise = analysis();
 		const at = piecewise.tempo.barTimes.indexOf(12);
 		piecewise.tempo.barTimes = [
@@ -178,8 +168,7 @@ describe('applyHandSections', () => {
 	});
 
 	it('rounds the same boundary when it was not deliberate', () => {
-		// No flag: an older map's off-bar boundary is a beat-snapping artefact, and moving bar
-		// lines to those would re-grid maps whose grids the room has already confirmed.
+
 		const incidental = [
 			{ kind: 'intro', startTime: 0, endTime: 17, startBar: 0, endBar: 8.5 },
 			{ kind: 'drop', startTime: 17, endTime: 48, startBar: 8.5, endBar: 24 },

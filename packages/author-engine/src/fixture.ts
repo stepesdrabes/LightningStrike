@@ -1,15 +1,8 @@
 import type { BarRow, SectionSpan, TrackAnalysis } from '@mv/core';
 
 /**
- * A synthesised arrangement with an exact grid, for the tests in this package.
- *
- * Shared rather than copied into each test file: the planner, the linter and the measurement
- * all have to agree about the same track, and three fixtures that drift apart would let two of
- * them pass against a third's idea of the arrangement.
- *
- * Boundaries sit on the 4-bar grid because the analyser guarantees that, and the engine reads
- * it as given. The void is the one exception: it is phrase-terminal, so it starts wherever the
- * silence does and it is the drop after it that has to land on the grid.
+ * Shared planner/linter/measurement fixture. Void starts may be off-phrase; their drop ends
+ * are on-grid.
  */
 const PLAN: [number, number, SectionSpan['kind']][] = [
 	[0, 8, 'intro'],
@@ -103,10 +96,8 @@ export function fixture(bpm = 128, drift = 0): TrackAnalysis {
 			meterConfidence: 0.9,
 			ambiguous: false,
 			alternativeBpm: [],
-			// `drift` jitters each bar a few per cent either way, which is what a real grid does
-			// and what a smooth ramp does not: the caps are read off this table, and a planner
-			// that sizes a hit at one bar and places it at another only fails where neighbouring
-			// bars fall on OPPOSITE sides of a cap.
+			// Jitter puts neighboring bars on opposite sides of duration caps, exposing placement-time
+			// mismatches.
 			barTimes: Array.from({ length: 129 }, (_, i) => barTimeOf(i))
 		},
 		key: { tonic: 9, name: 'A minor', mode: 'minor', confidence: 0.8 },

@@ -1,6 +1,5 @@
-# One-off dev-time export: ADTOF-pytorch Frame_RNN checkpoint -> ONNX.
-# Never shipped, never committed to the repo; the exported graph carries the upstream
-# weights' CC-BY-NC-SA licence and is fetched/loaded like the other optional models.
+# Development export: ADTOF-pytorch Frame_RNN -> optional local ONNX.
+# Upstream weights are CC-BY-NC-SA; do not commit or redistribute them.
 import json
 import sys
 
@@ -35,8 +34,7 @@ torch.onnx.export(
 )
 print('exported adtof_frame_rnn.onnx')
 
-# The exact filterbank the model was trained behind, saved for the TS port to assert
-# against: centre/edge FFT-bin indices per triangular filter, after the unique-bin dedup.
+# Save the training filterbank for TS parity, including deduplicated FFT-bin triangles.
 proc = create_adtof_processor()
 fb = proc.filterbank  # [n_filters, n_fft_bins]
 np.save('adtof_filterbank.npy', fb)

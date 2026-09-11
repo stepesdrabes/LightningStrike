@@ -1,7 +1,7 @@
 import { applyBiquad, lowpass } from './dsp/filters.ts';
 
 /** Samples per second of the pan and width curves. A sixteenth at 175 bpm is 86 ms. */
-export const STEREO_FPS = 25;
+const STEREO_FPS = 25;
 
 export interface StereoImage {
 	fps: number;
@@ -12,16 +12,8 @@ export interface StereoImage {
 }
 
 /**
- * Where the sound is sitting across the room, over time.
- *
- * This is the one thing a mono downmix destroys rather than blurs, and it is the whole point
- * of the trick this exists for: a chopped vocal thrown hard left and right on every sixteenth
- * is the most recognisable gesture in the genre, and it is invisible to every other feature
- * here because the sum of the two channels does not move at all.
- *
- * Measured over 200 Hz to 6 kHz. Below that a mix is mono by convention, because the bass
- * would otherwise pull a cutting lathe or a club rig off centre; above it, cymbals are wide
- * on nearly every record and would swamp what the vocal is doing.
+ * Measure stereo position over 200 Hz-6 kHz: bass is normally mono, while wide cymbals above
+ * that range would swamp vocal movement. Mono features cannot observe left/right exchanges.
  */
 export function analyseStereo(
 	left: Float32Array,

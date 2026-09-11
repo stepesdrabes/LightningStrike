@@ -15,12 +15,7 @@
 		max?: number;
 		step?: number;
 		width?: string;
-		/**
-		 * A CSS background for the track, replacing the filled-to-the-thumb gradient.
-		 *
-		 * For the sliders where the value IS a colour: filling one of those to the thumb says the
-		 * hue at 200 degrees is more of something than the hue at 100, which it is not.
-		 */
+		/** Custom CSS track background for colour sliders, whose hues are not increasing quantities. */
 		track?: string;
 		ariaLabel: string;
 		/** For owners that keep the value somewhere a two-way binding cannot reach. */
@@ -57,8 +52,7 @@
 	.slider::-webkit-slider-runnable-track {
 		height: 4px;
 		border-radius: 999px;
-		/* The filled portion is the track itself rather than a second element, so the thumb
-		   cannot drift away from the boundary between filled and empty. */
+		/* Use the track background for fill so its boundary stays aligned with the thumb. */
 		background: var(
 			--track,
 			linear-gradient(to right, var(--foreground) var(--pct), var(--muted) var(--pct))

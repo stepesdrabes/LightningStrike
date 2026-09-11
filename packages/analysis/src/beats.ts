@@ -14,19 +14,15 @@ export interface BeatGrid {
 	confidence: number;
 }
 
-/** How much the bar-grouping test is allowed to overrule the tempogram. Swept, then fixed. */
+/** Tuned bar-grouping weight relative to tempogram evidence. */
 const COHERENCE_WEIGHT = 1;
 
-export interface BeatOptions {
+interface BeatOptions {
 	/** Constrain the search to within 6% of a known tempo. */
 	bpmHint?: number;
 }
 
-/**
- * How strongly a constant grid at (period, phase) is supported by the onset curve: the mean
- * onset strength landing on its beats, measured only over the stretch where the track is
- * actually playing so a long silent outro cannot dilute it.
- */
+/** Mean onset support on grid beats within active audio; long silent tails must not dilute it. */
 function gridSupport(
 	odf: Float32Array,
 	fps: number,
@@ -67,12 +63,7 @@ function bestPhase(
 	return { phase: best, support: bestSupport };
 }
 
-/**
- * Refine a seed tempo into the best constant grid, coarse to fine.
- *
- * Resolution matters more than it looks: at 150 bpm over four minutes a 0.1 bpm error walks
- * the grid off the music by 40% of a beat, so the last pass has to resolve a thousandth.
- */
+/** Refine tempo to 0.001 bpm; small period errors accumulate into substantial phase drift. */
 function refineGrid(
 	odf: Float32Array,
 	fps: number,
@@ -148,14 +139,7 @@ function autocorrelation(a: readonly number[], lag: number): number {
 	return den > 1e-12 ? num / den : 0;
 }
 
-/**
- * How strongly a candidate's beats organise into bars of three or four.
- *
- * This is the tie-breaker the tempogram cannot supply. A grid at three times the real tempo
- * explains the onsets about as well as the true one, because it lands on every triplet, but
- * its beats do not group: nothing recurs every three or four of them. Asking that question
- * separates 63 from 190 where no prior narrow enough to do it would leave 174 alone.
- */
+/** Bar grouping breaks tempo ties: triplets may match onsets while failing to recur every 3 or 4 beats. */
 function barCoherence(
 	odf: Float32Array,
 	fps: number,
@@ -183,12 +167,8 @@ function activeSpan(odf: Float32Array, fps: number): [number, number] {
 }
 
 /**
- * Spread of the local tempo over 16-beat windows, as a fraction of the median. A programmed
- * track sits under half a percent; anything played to a click stays under two; a live take
- * without one runs well past that.
- *
- * Measured on the tracked sequence rather than on the grid, because the grid cannot bend by
- * construction and would always report zero.
+ * Local tempo spread as a fraction of its median, measured over 16 tracked beats. A fitted grid
+ * cannot bend and would always report zero.
  */
 function tempoSpread(times: Float64Array): number {
 	const win = 16;
@@ -216,11 +196,8 @@ export function detectBeats(
 	const candidates = tempoCandidates(odf, fps, minBpm, maxBpm);
 	if (candidates.length === 0) return fallbackGrid(duration, (minBpm + maxBpm) / 2);
 
-	// Grid support cannot arbitrate between octaves: half the grid points of a half-tempo
-	// reading land on the strongest beats of the real one, so support rises monotonically as
-	// the tempo halves and would pick 69 for every 138 track. The tempogram's salience, which
-	// already carries the tempo prior, decides instead, weighted by whether the resulting
-	// beats group into bars.
+	// Use prior-weighted tempogram salience and bar grouping for octave selection. Grid support
+	// alone favours progressively halved tempos.
 	const shortlist = candidates
 		.slice(0, 4)
 		.filter((c) => c.salience > candidates[0].salience * 0.5);
@@ -239,11 +216,7 @@ export function detectBeats(
 	}
 	if (!best) return fallbackGrid(duration, (minBpm + maxBpm) / 2);
 
-	// No octave correction beyond the prior. Comparing the beats against the midpoints between
-	// them looks like it should settle half-versus-double, and it does not: swept over 243
-	// annotated tracks, every threshold pair tried lost accuracy against leaving the
-	// tempogram's answer alone, because at a true tempo the midpoints still carry 45 to 75
-	// per cent of the beats' strength and the two cases overlap.
+	// Midpoint onset strength does not resolve octave ambiguity; keep the prior's reading.
 	const period = 60 / best.bpm;
 	const phase = ((best.phase % period) + period) % period;
 
@@ -255,10 +228,7 @@ export function detectBeats(
 
 	const beats = drifting ? Float64Array.from(dp.times) : constantBeats(phase, period, duration);
 
-	// Two independent doubts, and the smaller wins. The grid can land squarely on every onset
-	// and still be at the wrong metrical level, which is the error that actually happens: the
-	// margin term is what says so, and it is what should send a caller looking for a published
-	// tempo rather than trusting this one.
+	// Use the weaker of fit and metrical margin: accurate onset alignment can still have the wrong octave.
 	const reference = mean(odf, Math.round(from * fps), Math.round(to * fps)) || 1e-9;
 	const support = Math.max(0, Math.min(1, (best.support / reference - 1) / 3));
 	const margin = best.score > 0 ? Math.max(0, Math.min(1, 1 - runnerUp / best.score)) : 0;

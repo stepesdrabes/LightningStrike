@@ -10,11 +10,7 @@
 	} = $props();
 </script>
 
-<!--
-	The app's other booleans are segmented pickers, which is right for a choice between two named
-	things - a backend, a vocabulary. This is for the other kind: a thing that is simply on or off,
-	where naming the off state costs a word that says nothing.
--->
+
 <button
 	class="switch"
 	class:on={checked}
@@ -41,7 +37,7 @@
 	.switch:hover {
 		background: var(--hover);
 	}
-	/* The accent, spent on a state that is genuinely live: the room is being lit by this. */
+
 	.switch.on {
 		background: var(--live);
 		box-shadow: inset 0 0 0 1px #00000038;

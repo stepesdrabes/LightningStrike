@@ -7,7 +7,7 @@
 		title,
 		children
 	}: {
-		variant?: 'muted' | 'outline' | 'live' | 'ok' | 'warn' | 'bad' | 'solid';
+		variant?: 'muted' | 'outline' | 'live' | 'warn';
 		/** Explicit background, for the section-kind chips that carry the show's own colours. */
 		colour?: string;
 		title?: string;
@@ -41,26 +41,13 @@
 		border-color: var(--border);
 		color: var(--muted-foreground);
 	}
-	.solid {
-		background: var(--foreground);
-		color: var(--primary-foreground);
-		font-weight: 600;
-	}
 	.live {
 		background: #ff6a1a1f;
 		color: var(--live);
 	}
-	.ok {
-		background: #4ade801f;
-		color: var(--ok);
-	}
 	.warn {
 		background: #fbbf241f;
 		color: var(--warn);
-	}
-	.bad {
-		background: #f871711f;
-		color: var(--bad);
 	}
 	.tinted {
 		color: #0d0d0fdb;

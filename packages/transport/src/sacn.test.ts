@@ -4,9 +4,8 @@ import type { LedFrame } from '@mv/core';
 import { SACN_PIXELS_PER_UNIVERSE, createSacnSink, sacnMulticastHost } from './sacn.ts';
 
 /**
- * The three nested PDUs each carry their own length, and a receiver that disagrees with one of
- * them drops the packet without saying why. Everything here is read back off a real socket
- * rather than from the encoder, because "the bytes I meant to write" is not the question.
+ * Validate all three nested PDU lengths from received bytes; a receiver silently drops
+ * inconsistent lengths.
  */
 function frameOf(pixels: number, fill: (i: number) => number): LedFrame {
 	const rgb = new Uint8Array(pixels * 3);

@@ -5,11 +5,7 @@ import { alphaFor, clamp, lerp } from '../dsl/math.ts';
 import { BeatHold } from '../dsl/env.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-/**
- * The hip-hop head-nod: the room's weight sits on the front wall for beats one and two
- * and eases to the back for three and four. The move is the ease - a teleport would read
- * as a cut, and half a beat is about the time a head actually takes to swing.
- */
+/** Ease front-to-back over half a beat so the shift reads as a head-nod rather than a cut. */
 export const halftimeBounce: EffectDef = {
 	id: 'halftimeBounce',
 	name: 'Halftime Bounce',
@@ -25,8 +21,7 @@ export const halftimeBounce: EffectDef = {
 	},
 	params: [INTENSITY, param('width', 'Lobe width', 0.3, 0.15, 0.6)],
 	create(g) {
-		// ny is normalised by the room's longest side, so the depth axis covers only part of
-		// 0..1; spanned here so the lobe's two seats are the actual walls.
+		// Expand fixture-normalized depth so the lobe reaches both walls.
 		let lo = Infinity;
 		let hi = -Infinity;
 		for (let i = 0; i < g.count; i++) {
@@ -34,8 +29,7 @@ export const halftimeBounce: EffectDef = {
 			if (g.ny[i] > hi) hi = g.ny[i];
 		}
 		const span = hi - lo || 1;
-		// The passage's own level, latched on the beat: `f.energy` is beat-resolution data
-		// the player interpolates per frame, so a brightness multiplied by it slides.
+		// Latch interpolated beat energy before applying it to brightness.
 		const passage = new BeatHold(0.45);
 		let seat = Number.NaN;
 
@@ -54,8 +48,7 @@ export const halftimeBounce: EffectDef = {
 
 				const level = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
 				const snare = f.snareEnv;
-				// The backbeat widens and brightens the lobe rather than moving it: the snare is
-				// an emphasis on the nod, not a second nod.
+				// The snare widens the current nod instead of starting another.
 				const width = p.width + snare * 0.15;
 				const gain = (0.14 + p.intensity * 0.43) * clamp(0.35 + level * 0.65) * (0.75 + snare * 0.5);
 

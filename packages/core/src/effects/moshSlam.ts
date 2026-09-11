@@ -23,8 +23,7 @@ export const moshSlam: EffectDef = {
 		peakReserved: false,
 		activity: 1,
 		character: 'impact',
-		// 'kick', not 'any': a clap backbeat with the kick out is exactly the passage this
-		// used to pound through, and a unison white slam is a kick gesture, not a snare one.
+		// Require kicks so clap-only suspensions do not trigger whole-room slams.
 		kit: 'kick'
 	},
 	params: [INTENSITY, param('beatsPerSlam', 'Beats per slam', 2, 0.5, 4, 0.5)],
@@ -33,11 +32,9 @@ export const moshSlam: EffectDef = {
 		// Fixed per-pixel texture, so a full-on frame is not a flat card.
 		const tex = new Float32Array(g.count);
 		for (let i = 0; i < g.count; i++) tex[i] = 0.9 + 0.1 * hash01(i * 11);
-		// The passage's own level, latched on the beat: `f.energy` is beat-resolution data the
-		// player interpolates per frame, so a brightness multiplied by it slides continuously.
+		// Latch interpolated beat energy before applying it to brightness.
 		const passage = new BeatHold(0.4);
-		// The chug grid keeps the timing; the kit grants permission to strike. Without this
-		// the slams pound straight through a sung verse or a suspension with the drums out.
+		// Grid timing needs kit permission to rest during drumless passages.
 		const kit = new Presence();
 		let lastStep = -1;
 
@@ -64,9 +61,8 @@ export const moshSlam: EffectDef = {
 				const floor = 0.06 * gain;
 
 				for (let i = 0; i < g.count; i++) {
-					// One ramp from the room's colour up to white, so the slam cools in one
-					// family; a cut from white to the base at a threshold was a second flash,
-					// in colour, on the way down from every punch.
+					// Cool through one continuous hue family; thresholded colour changes would
+					// flash again on decay.
 					const slot = lerp(SLOT.base, SLOT.white, clamp(v * 1.4 - 0.2));
 					// A punch with a little weight behind it: v^1.5 keeps the hard front and
 					// leaves the slam in the room for a third of a beat rather than a frame.

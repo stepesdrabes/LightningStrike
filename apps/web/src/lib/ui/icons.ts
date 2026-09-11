@@ -1,14 +1,7 @@
-/**
- * One place decides which Lucide glyph stands for which idea in this app.
- *
- * Call sites name the concept - `retry`, `playNext`, `bands` - rather than the drawing, so
- * changing a glyph is one line here instead of a search across every component. Deep
- * per-icon imports rather than the barrel, which re-exports every icon Lucide ships.
- */
+/** Map app concepts to Lucide glyphs; deep imports avoid the full icon barrel. */
 import AudioLines from 'lucide-svelte/icons/audio-lines';
 import Check from 'lucide-svelte/icons/check';
 import ChevronDown from 'lucide-svelte/icons/chevron-down';
-import ChevronLeft from 'lucide-svelte/icons/chevron-left';
 import ChevronRight from 'lucide-svelte/icons/chevron-right';
 import ChevronUp from 'lucide-svelte/icons/chevron-up';
 import Lamp from 'lucide-svelte/icons/lamp';
@@ -24,7 +17,6 @@ import Plus from 'lucide-svelte/icons/plus';
 import QrCode from 'lucide-svelte/icons/qr-code';
 import Radio from 'lucide-svelte/icons/radio';
 import RotateCcw from 'lucide-svelte/icons/rotate-ccw';
-import Scale from 'lucide-svelte/icons/scale';
 import Search from 'lucide-svelte/icons/search';
 import Shuffle from 'lucide-svelte/icons/shuffle';
 import Star from 'lucide-svelte/icons/star';
@@ -45,7 +37,6 @@ export const GLYPHS = {
 	bolt: Zap,
 	check: Check,
 	chevronDown: ChevronDown,
-	chevronLeft: ChevronLeft,
 	chevronRight: ChevronRight,
 	chevronUp: ChevronUp,
 	lounge: Lamp,
@@ -61,7 +52,6 @@ export const GLYPHS = {
 	qr: QrCode,
 	radio: Radio,
 	retry: RotateCcw,
-	scale: Scale,
 	search: Search,
 	shuffle: Shuffle,
 	star: Star,

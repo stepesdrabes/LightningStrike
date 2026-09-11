@@ -1,9 +1,4 @@
-/**
- * The one place `fetch` is called.
- *
- * Behind an interface so discovery and the send queue can be tested without a network or a
- * board: everything above this file takes a `Net` and never reaches for the global.
- */
+/** Inject networking so discovery and queued edits can be tested without a board. */
 
 export interface Net {
 	/** Resolves to the parsed JSON body, or null for any failure at all. */
@@ -35,9 +30,7 @@ export const browserNet: Net = {
 		try {
 			const res = await fetch(url, {
 				method: 'POST',
-				// text/plain keeps this a simple request. The API reads the body as JSON whatever
-				// the type says, and application/json would add a preflight round trip to a board
-				// that serves one connection at a time.
+				// text/plain avoids a CORS preflight on the board's serial HTTP server; it still parses JSON.
 				headers: { 'content-type': 'text/plain' },
 				body,
 				signal: AbortSignal.timeout(timeoutMs)

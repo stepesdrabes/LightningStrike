@@ -10,12 +10,7 @@ const FRONT_THETA = 0.75;
 /** Ring-units of white crest riding the wavefront. */
 const CREST = 0.03;
 
-/**
- * The euphoric arrival: one wave from front-centre around both sides of the ring at once,
- * meeting at the back, glow to white at the crest and a glow-filled room behind it. Grand
- * and continuous by construction - nothing in here flickers, the only movement is the
- * front itself and the slow relax after it.
- */
+/** Continuous wavefront and slow relaxation make the arrival a lift rather than a flash. */
 export const tideBloom: EffectDef = {
 	id: 'tideBloom',
 	name: 'Tide Bloom',
@@ -28,8 +23,7 @@ export const tideBloom: EffectDef = {
 		maxBars: 2,
 		peakReserved: false,
 		activity: 0.2,
-		// A tide is a lift by definition; on a slam peak it reads as the punch going
-		// missing - the A/B round's one regression was exactly this draw.
+		// Reserve this lift for bloom peaks; slam peaks require an impact.
 		peakStyle: 'bloom'
 	},
 	params: [
@@ -38,8 +32,7 @@ export const tideBloom: EffectDef = {
 		param('sustain', 'Relax bars', 2, 0.5, 4, 0.5)
 	],
 	create(g) {
-		// Front-centre found in perim space from the geometry, so the two wavefronts cover
-		// equal metres and meet at the back of the room at the same moment.
+		// Derive front-centre from geometry so both waves cover equal metres and meet together.
 		let frontPerim = 0;
 		let best = Infinity;
 		for (let i = 0; i < g.count; i++) {
@@ -50,9 +43,8 @@ export const tideBloom: EffectDef = {
 				frontPerim = g.perim[i];
 			}
 		}
-		// Flood distance per LED: ring distance from the front for the walls, then on past
-		// the meeting point along the beam from its back end, so the tide rolls off the
-		// back wall onto the beam instead of the beam popping on as a separate fixture.
+		// Continue flood distance from the back wall along the beam so the fixture arrives
+		// continuously.
 		const reach = new Float32Array(g.count);
 		let maxReach = 0;
 		for (let i = 0; i < g.count; i++) {
@@ -79,8 +71,7 @@ export const tideBloom: EffectDef = {
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
 
-				// A chorus is the song vocabulary's drop; arming on the literal kind alone would
-				// leave a pop peak carrying this and never firing it.
+				// Arm on drop class so choruses also fire.
 				if (sectionBase(f.section) === 'drop' && f.downbeat) {
 					const impact = f.timeSinceDrop < 0.3;
 					if ((impact || f.phraseStart) && armedFor !== f.barIndex) {
@@ -105,8 +96,7 @@ export const tideBloom: EffectDef = {
 				const relaxT = (p.sustain * period * 4) / Math.max(0.05, motion);
 				const relax = smoothstep(0, 1, (age - floodDone) / relaxT);
 
-				// The crest is the event and the body is a room lit behind it: held under full so
-				// the crest reads as white against it rather than as white on white.
+				// Hold the flooded body below full so the white crest remains visible.
 				const gain = 0.35 + p.intensity * 0.7;
 				const bodySlot = lerp(SLOT.glow, SLOT.base, relax);
 				const body = lerp(0.6, 0.34, relax) * gain;

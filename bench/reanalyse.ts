@@ -16,21 +16,15 @@ import { Adtof } from '../packages/analysis/src/adtof.ts';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 
 /**
- * Re-analyse every cached track in place, keeping ids and audio.
- *
- * Deliberately not ingest(): that treats a cache path as a new local file and re-keys the
- * track. The model is loaded once for the whole corpus, which is most of the per-track cost.
+ * Reanalyze cached tracks without re-keying them through ingest; reuse the model across the
+ * corpus.
  */
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7);
-/**
- * Skip tracks whose analysis already carries the current version, so an interrupted
- * corpus regeneration resumes where it stopped instead of starting over.
- */
+/** Skip current-version tracks so interrupted regeneration resumes. */
 const skipCurrent = process.argv.includes('--skip-current');
 /**
- * Ignore the hand-drawn maps beside the cache, so a mapped track can be SCORED against its
- * own map. The app adopts a map wholesale, which would otherwise make `bench/mapscore.ts`
- * measure the adoption rather than the analyser and quietly end the model eval.
+ * Ignore hand maps during evaluation; adopting ground truth would measure copying, not
+ * analysis.
  */
 const noHandMaps = process.argv.includes('--no-hand-maps');
 

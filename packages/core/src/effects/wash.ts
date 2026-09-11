@@ -24,8 +24,7 @@ export const wash: EffectDef = {
 	},
 	params: [INTENSITY, param('breath', 'Breath', 0.45), param('drift', 'Drift', 0.06, 0, 0.4)],
 	create() {
-		// `f.energy` is beat-resolution data whatever it is passed through, so this only ever
-		// says how loud the passage is. Slow on both sides, so it reads as the room settling.
+		// Smooth beat energy on both sides so passage level settles slowly.
 		const passage = new Follower(0.1, 0.7);
 		const lean = new Follower(0.1, 0.4);
 		let level = 0;
@@ -38,27 +37,22 @@ export const wash: EffectDef = {
 			render(out, ctx) {
 				const { f, g, p, palette } = ctx;
 				const breathe = Math.pow(sinewave(f.barPhase), 1.8);
-				// The floor is high because the cue's own intensity already says the passage is
-				// quiet. A bed that dims itself as well is dimmed twice, and two multiplications
-				// of a number under one is how an intro reached byte zero. Raised from 0.55 with
-				// GAMMA, so it emits the light it was chosen for rather than the number.
+				// Keep a high floor because cue intensity already dims quiet passages.
+				// Retune authoring values with gamma to preserve delivered light.
 				const heard = passage.update(f.energy, f.dt);
 				const target = clamp(0.59 + 0.41 * heard) * (0.36 + p.intensity * 0.85);
 				level = envelope(level, target, f.dt, 0.08, 0.5);
 
 				const bright = level * lerp(1 - p.breath, 1, breathe);
-				// Where the music sits pushes the gradient round the room, so a passage that opens
-				// up moves the wash rather than only brightening it.
+				// Spectral position moves the gradient around the room.
 				const tilt = lean.update(spectralTilt(f), f.dt);
 				const phase = (f.barIndex + f.barPhase) * p.drift * ctx.motion + tilt * 0.4;
 
 				for (let i = 0; i < g.count; i++) {
 					const along = ringU(g, i);
 					const grad = sinewave(frac(along * 0.5 - phase));
-					// Inside `base..glow` rather than starting a third of the way up `deep..base`. The
-				// old span put the dark side of the ring in the x12.5 brightness step, so a bed
-				// whose job is to fill a room spent a third of it near black; this one is the
-				// saturation move, which costs no light and is what a gradient is supposed to be.
+					// Use base..glow, the nearly constant-flux saturation span, so the gradient
+					// keeps the room lit.
 				const u = lerp(SLOT.deep, SLOT.glow, 0.52 + 0.4 * grad) + ctx.hueShift;
 					setSample(out, i, palette, u, bright);
 				}

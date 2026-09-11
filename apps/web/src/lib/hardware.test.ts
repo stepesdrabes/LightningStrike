@@ -12,16 +12,13 @@ import {
 	type DeviceTelemetry
 } from './hardware.ts';
 
-// The exact line firmware/wire/src/hello.rs formats, asserted against this same text there.
-// The trailing http token arrived in 0.2; the parser reads tokens independently, so the 0.1
-// line without it must keep parsing too.
+// Shared firmware/hello.rs fixture; the HTTP token is optional for 0.1 firmware.
 const HELLO =
 	'room-node host room-frame fw 0.2.0 up 42s px 720 ddp 4048 stats 4049 leds sk6812 http 80';
 
 const withLeds = (leds: string) => HELLO.replace('leds sk6812', `leds ${leds}`);
 
-// The exact line firmware/wire/src/stats.rs formats, asserted against this same text there,
-// plus the shorter one docs/FIRMWARE.md documents.
+// Shared firmware/stats.rs fixture plus the shorter docs/FIRMWARE.md sample.
 const STATS =
 	'up 42s  720 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  late 0/0/0  ' +
 	'asm 2.1 ms  led 210 us  seqgap 0  bad 0  oob 0  torn 0';
@@ -36,11 +33,6 @@ describe('the output stage', () => {
 		expect(isOutputBrightness(1)).toBe(true);
 	});
 
-	/**
-	 * Both ends are where they are for a reason the room paid for: below 2 the mids sit level with
-	 * the hits and nothing lands, and at 2.8 every input under a tenth quantises to black, so slow
-	 * fades stop fading. A stored value outside them is refused rather than used.
-	 */
 	it('keeps the exponent inside what a room can be lit at', () => {
 		expect(isContrast(CONTRAST_MIN)).toBe(true);
 		expect(isContrast(CONTRAST_MAX)).toBe(true);
@@ -81,12 +73,10 @@ describe('parseIdentity', () => {
 		const kind = (leds: string) => lightsRoom(parseIdentity(withLeds(leds), 'h'));
 		expect(kind('ws2815')).toBe(true);
 		expect(kind('lamp')).toBe(true);
-		// Both of these receive the whole fixture and light none of it, so the panel has to
-		// keep saying the room is dark rather than reading `monitor` as an output.
+
 		expect(kind('stub')).toBe(false);
 		expect(kind('monitor')).toBe(false);
-		// A build can carry several outputs at once, and one of them being dark says nothing
-		// about the board, so the answer is about the list rather than about its first entry.
+
 		expect(kind('monitor+lamp')).toBe(true);
 		expect(kind('stub+monitor')).toBe(false);
 		expect(lightsRoom(null)).toBe(false);

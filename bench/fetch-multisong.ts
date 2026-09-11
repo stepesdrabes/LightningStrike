@@ -1,16 +1,9 @@
-// The multi-song test corpus: records that are several songs stitched together, and the
-// hard negatives that merely change tempo or feel inside one song.
-//
-//   node bench/fetch-multisong.ts            # fetch what is missing, track beats, write expect.json
-//
-// Audio comes through the app's own search path (YouTube Music art tracks, so a clean
-// release rather than a live cut), lands in bench/corpus/multisong/audio, and the beat
-// model's output is cached beside the other corpora in bench/corpus/.beats so
-// `bench/movements.ts --set=multisong` reads it without loading the graph again.
-//
-// The expectations are public knowledge, not annotations: approximate seconds where a
-// listener hears a different song begin, and which tracks must NOT split. They are what the
-// detector is scored against, at a tolerance of a few seconds either way.
+// Fetch stitched-song examples and single-song negatives through YouTube Music art-track
+// search.
+// node bench/fetch-multisong.ts
+// Cache audio/expectations under bench/corpus/multisong and model beats under
+// bench/corpus/.beats.
+// Expected seams are approximate listening targets, not frame-accurate annotations.
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { decodeAudio, downloadAudio } from '../packages/analysis/src/decode.ts';

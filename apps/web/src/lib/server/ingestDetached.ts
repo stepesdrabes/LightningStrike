@@ -4,17 +4,8 @@ import { Worker } from 'node:worker_threads';
 import { ingest, workspaceRoot, type IngestOptions, type IngestResult } from '@mv/analysis';
 
 /**
- * Ingest on a worker thread, so minutes of DSP cannot freeze the server.
- *
- * The pipeline is synchronous CPU work end to end, and on the main thread it blocked every
- * request, the queue stream and the hardware renderer while a track analysed. The worker is
- * the plain Node source file in dev and a rolldown-built copy named by MV_INGEST_WORKER in
- * the bundled app; with neither present the in-process call remains, which is the behaviour
- * the app always had.
- *
- * One ingest at a time, wherever it was asked from. The queue runner already serialises its
- * own work, but the re-read route arrives independently, and two beat models at once are
- * slower than the same two in sequence - and racing writers on one track's cache files.
+ * Serialize all ingest callers and use a worker to keep DSP off the server thread. Dev uses
+ * source; bundles use MV_INGEST_WORKER; missing workers retain in-process fallback.
  */
 let inFlight: Promise<unknown> = Promise.resolve();
 
@@ -40,8 +31,7 @@ function ingestInWorker(source: string, opts: IngestOptions): Promise<IngestResu
 				// Only the serialisable options cross the boundary; progress comes back as messages.
 				opts: { force: opts.force, metricalLevel: opts.metricalLevel, artwork: opts.artwork }
 			},
-			// Workers inherit the parent's node flags by default, and flags meant for the
-			// server (an inspector port, an eval input mode) break or collide in the child.
+			// Do not inherit server inspector/eval flags that can break or collide in a worker.
 			execArgv: []
 		});
 		let sawMessage = false;
@@ -58,11 +48,8 @@ function ingestInWorker(source: string, opts: IngestOptions): Promise<IngestResu
 			else if (m.type === 'done' && m.result) finish(() => resolve(m.result as IngestResult));
 			else if (m.type === 'error') finish(() => reject(new Error(m.message ?? 'ingest failed')));
 		});
-		// A worker that dies before its first message never started the pipeline - a build
-		// whose worker file exists but cannot load, for instance - and the only wrong answer
-		// there is failing every ingest forever. Fall back to in-process, once, exactly as if
-		// the file had been missing. After the first message the pipeline is genuinely
-		// running and a crash is a real error to surface.
+		// Fall back once if the worker fails before its first message. Later crashes are pipeline
+		// failures.
 		worker.on('error', (e) => {
 			if (!sawMessage) finish(() => resolve(ingest(source, opts)));
 			else finish(() => reject(e));

@@ -5,7 +5,6 @@ import {
 	buildBriefPrompt,
 	buildRepairPrompt,
 	buildRevisePrompt,
-	buildShowPrompt,
 	buildSystemPrompt
 } from './prompt.ts';
 import { allowedFlashes } from '@mv/author-engine';
@@ -15,11 +14,10 @@ import {
 	looksRejected,
 	summariseResult,
 	toolLabel,
-	type AuthorEvent,
 	type OnAuthorEvent
 } from './events.ts';
 
-export interface AuthorOptions {
+interface AuthorOptions {
 	/** Which backend authors the show. Claude when absent. */
 	provider?: AuthorProvider;
 	/** Overrides the provider's model, for pinning a specific snapshot. */
@@ -34,15 +32,9 @@ export interface AuthorOptions {
 	/** Called after `reanalyse`, so the caller can persist the corrected grid. */
 	onAnalysis?: (analysis: TrackAnalysis, reason: string) => void;
 	onEvent?: OnAuthorEvent;
-	/**
-	 * A show to revise rather than replace. The engine's draft already covers every bar and
-	 * lints clean, so handing it over spends the model on interpretation instead of on
-	 * bookkeeping it is worse at.
-	 */
-	draft?: Show;
 }
 
-export interface AuthorResult {
+interface AuthorResult {
 	show: Show;
 	brief: string;
 	/** The grid the show is addressed against; the agent may have corrected it. */
@@ -120,14 +112,11 @@ async function run(
 	return out.trim();
 }
 
-/**
- * Two passes, mirroring how designers actually work. Deciding the palette and what is
- * reserved for the peak in the same breath as cue-level detail is how peak-reservation gets
- * lost, so the brief is settled first and then executed.
- */
-export async function authorShow(
+/** Settle the brief first so cue-level decisions cannot spend the reserved peak early. */
+export async function reviseShow(
 	analysis: TrackAnalysis,
 	geometry: Geometry,
+	draft: Show,
 	opts: AuthorOptions = {}
 ): Promise<AuthorResult> {
 	const emit: OnAuthorEvent = opts.onEvent ?? (() => {});
@@ -135,7 +124,7 @@ export async function authorShow(
 		analysis,
 		geometry,
 		opts.audioPath,
-		opts.draft,
+		draft,
 		opts.context
 	);
 	session.onAnalysis = (next, reason) => {
@@ -185,7 +174,7 @@ export async function authorShow(
 	emit({
 		type: 'phase',
 		phase: 'build',
-		label: opts.draft ? 'Revising the cue list' : 'Building the cue list'
+		label: 'Revising the cue list'
 	});
 
 	// From the grid the build pass actually addresses: a reanalyse in the research pass may
@@ -194,9 +183,7 @@ export async function authorShow(
 
 	await run(
 		query({
-			prompt: opts.draft
-				? buildRevisePrompt(session.analysis, brief, flashAllowance)
-				: buildShowPrompt(session.analysis, brief, flashAllowance),
+			prompt: buildRevisePrompt(session.analysis, brief, flashAllowance),
 			options: {
 				model,
 				systemPrompt,
@@ -213,10 +200,8 @@ export async function authorShow(
 		names
 	);
 
-	// A build pass that ends without submitting has usually done nearly all of the work: the
-	// effects are registered on the session and the cue list exists somewhere in a turn that ran
-	// out. Throwing that away costs the whole run, so it gets one more pass with the tool log in
-	// front of it. Once, because a second failure is a different problem.
+	// Retry once with the existing session and tool log so registered effects survive an
+	// incomplete build.
 	if (!session.submitted) {
 		emit({ type: 'phase', phase: 'repair', label: 'Recovering the show' });
 		await run(
@@ -252,15 +237,3 @@ export async function authorShow(
 		log: session.log
 	};
 }
-
-/** Hand the agent a finished show to revise. The engine writes that show; this improves it. */
-export function reviseShow(
-	analysis: TrackAnalysis,
-	geometry: Geometry,
-	draft: Show,
-	opts: Omit<AuthorOptions, 'draft'> = {}
-): Promise<AuthorResult> {
-	return authorShow(analysis, geometry, { ...opts, draft });
-}
-
-export type { AuthorEvent };

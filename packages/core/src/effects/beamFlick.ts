@@ -14,15 +14,7 @@ interface Flick {
 	slot: number;
 }
 
-/**
- * The beam is the room's exclamation mark: it should mostly rest, then move decisively.
- * Kicks streak it centre-out, snares flick it ends-in.
- *
- * The pair of heads leans toward wherever the mix is sitting, so a vocal thrown hard left and
- * right on every sixteenth throws the beam with it. That is a bias on a movement the effect
- * was already making, not a position: mapping pan straight onto the beam gets a rig that
- * lurches every time a pad happens to be wide.
- */
+/** Bias the kick/snare streaks with pan instead of mapping pan directly onto the beam. */
 export const beamFlick: EffectDef = {
 	id: 'beamFlick',
 	name: 'Beam Flick',
@@ -75,8 +67,7 @@ export const beamFlick: EffectDef = {
 				// Floored divisor: at motion near zero the streak should cross the beam slowly
 				// rather than stall on it forever.
 				const travel = Math.max(0.1, p.travelBeats * f.beatPeriod) / Math.max(0.2, motion);
-				// A fifth of a strip carrying a transient's whole budget: at the old gain the beam
-				// averaged nearly a hundred bytes under a groove while the walls sat at twenty.
+				// Reduce gain because one beam concentrates the transient role's whole budget.
 				const gain = 0.2 + p.intensity * 0.3;
 				const half = beam.count / 2;
 				// Only as far as the mix is actually wide: a mono passage stays centred.
@@ -93,8 +84,7 @@ export const beamFlick: EffectDef = {
 					const posA = (fl.outward ? half + dist : dist) + lean;
 					const posB = (fl.outward ? half - dist : beam.count - 1 - dist) + lean;
 					const c = sample(palette, fl.slot + hueShift, gain * (1 - u * 0.6));
-					// Two and a half pixels of sigma: a head one pixel wide is a hot point, and
-					// from under the frame a point does not read as a streak.
+					// A 2.5-pixel sigma reads as a streak rather than a hot point.
 					stampOnStrip(out, g.count, beam, posA, 2.4, c);
 					stampOnStrip(out, g.count, beam, posB, 2.4, c);
 				}

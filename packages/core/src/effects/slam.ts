@@ -5,14 +5,8 @@ import { fillSolid } from '../dsl/buffer.ts';
 import { Edge, INTENSITY, param } from './helpers.ts';
 
 /**
- * Masters are driven by the show's `hits`, not by the music: the player sets `trigger`
- * while a hit is live. That keeps punctuation on the timeline where the linter can audit
- * it, instead of firing off whatever the audio happens to do.
- *
- * A short hold at white, then an exponential tail, in one colour. The hold is what makes
- * it a blow rather than a blip. The owner's verdict, twice: a slam must not cycle between
- * colours - not white to accent, not accent to base. Only its level moves; the cue's own
- * layers are the colour the room comes back to.
+ * The player arms timeline hits through trigger. Hold then decay in one colour;
+ * hue changes during the tail would turn a slam into another palette event.
  */
 const HOLD_SECONDS = 0.06;
 

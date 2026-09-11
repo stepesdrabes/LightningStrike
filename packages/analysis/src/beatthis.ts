@@ -6,25 +6,9 @@ import { RealFft, hannWindow } from './dsp/fft.ts';
 import { MODEL_DIR } from './paths.ts';
 
 /**
- * Beat This! (Foscarin, Schlüter & Widmer, ISMIR 2024) through onnxruntime.
- *
- * Measured against the in-repo tracker on the same 100 annotated GTZAN tracks and the same
- * metrics: beat F 0.884 against 0.781, CMLt 0.805 against 0.627, downbeat F 0.722 against
- * 0.498. Re-derive with `node bench/beatscore.ts` - these figures once outlived the harness
- * that produced it and spent a while as a claim nothing could check. That downbeat figure is
- * the reason it is here - the hand-built path tops out around 0.64 even with perfect
- * weights, because the bar phase is 97% of its headroom and no reweighting of band
- * energies reaches it.
- *
- * What it does NOT decide is the metrical level. On this project's own repertoire it and the
- * local tracker disagree about the tempo octave on seven of fifteen tracks, and a listening
- * test split those two each: it halves confidently on dense hip-hop, which is exactly where a
- * kick on every beat removes the cues it leans on. `metricalLevel.ts` makes that call instead.
- *
- * The feature contract is exact. An `ffmpeg -ac 1` downmix is wrong here: it is
- * energy-preserving, lands a factor of root two hot, and `log1p(1000 x)` turns a gain into a
- * shape change rather than an offset, which moves beats. `decode.ts` averages the two channels,
- * which is what the reference does.
+ * Beat This! (Foscarin, Schlüter & Widmer, ISMIR 2024); benchmark: bench/beatscore.ts.
+ * metricalLevel.ts judges the tempo octave. Match the frontend exactly, including arithmetic
+ * channel averaging: ffmpeg -ac 1 runs sqrt(2) hot and changes the log1p feature shape.
  */
 
 const N_FFT = 1024;
@@ -37,44 +21,28 @@ const LOG_MULTIPLIER = 1000;
 /** Maxima over +/- 3 frames, which at 50 fps is the +/- 70 ms the paper picks. */
 const PEAK_RADIUS = 3;
 
-/** The rate the model was trained at. Happens to be this repo's analysis rate too. */
-export const BEATTHIS_RATE = 22050;
-
 const MODEL_HOST = 'https://huggingface.co/musetric/beat-this-onnx/resolve/main';
 const FILES = [
 	{
 		name: 'beat_this.onnx',
-		sha256: '078572af6ca47741e06a82d09525d13c793eaa8e311a8cf15e831dcd7e73f218',
-		bytes: 83143431
+		sha256: '078572af6ca47741e06a82d09525d13c793eaa8e311a8cf15e831dcd7e73f218'
 	},
 	{
 		name: 'mel-filterbank.bin',
-		sha256: '1ee975d96f44ccf2c3bfe37825c1c1f0b089f5703c7a12a84b1f0a3bce004533',
-		bytes: 262656
+		sha256: '1ee975d96f44ccf2c3bfe37825c1c1f0b089f5703c7a12a84b1f0a3bce004533'
 	}
 ] as const;
 
-/**
- * Where the weights live. Not in the repo: 79 MB of model does not belong in git, and it is
- * the same kind of artefact as the audio the cache already holds.
- */
-export function modelDir(): string {
-	return MODEL_DIR;
-}
-
-export function modelsPresent(): boolean {
-	return FILES.every((f) => existsSync(join(modelDir(), f.name)));
+function modelsPresent(): boolean {
+	return FILES.every((f) => existsSync(join(MODEL_DIR, f.name)));
 }
 
 /**
- * Fetch the weights once, verifying the published digest.
- *
- * The digest is the point: this is a third party's conversion of the upstream MIT checkpoint,
- * so the bytes are pinned rather than trusted. Written to a temporary name and renamed, so an
- * interrupted download cannot leave a half-file that passes the existence check.
+ * Verify pinned model digests and rename completed temporary files so interrupted downloads
+ * cannot pass existence checks.
  */
-export async function ensureModels(onProgress?: (msg: string) => void): Promise<void> {
-	const dir = modelDir();
+async function ensureModels(): Promise<void> {
+	const dir = MODEL_DIR;
 	mkdirSync(dir, { recursive: true });
 
 	for (const file of FILES) {
@@ -82,12 +50,9 @@ export async function ensureModels(onProgress?: (msg: string) => void): Promise<
 		if (existsSync(path)) {
 			const have = createHash('sha256').update(readFileSync(path)).digest('hex');
 			if (have === file.sha256) continue;
-			onProgress?.(`${file.name} failed its digest, refetching`);
 		}
 
-		onProgress?.(`fetching ${file.name} (${(file.bytes / 1e6).toFixed(1)} MB)`);
-		// Bounded for the same reason the genre model's fetch is: a hung connection inside
-		// the ingest queue wedges every track behind it.
+		// Bound downloads so one hung connection cannot wedge the ingest queue.
 		const res = await fetch(`${MODEL_HOST}/${file.name}`, { signal: AbortSignal.timeout(300_000) });
 		if (!res.ok) throw new Error(`${file.name}: ${res.status} ${res.statusText}`);
 		const buf = Buffer.from(await res.arrayBuffer());
@@ -102,7 +67,7 @@ export async function ensureModels(onProgress?: (msg: string) => void): Promise<
 	}
 }
 
-export interface BeatThisResult {
+interface BeatThisResult {
 	/** Beat times, seconds. */
 	beats: number[];
 	/** Downbeat times, a subset of `beats`. */
@@ -110,13 +75,11 @@ export interface BeatThisResult {
 }
 
 /**
- * log1p(1000 * mel) on a magnitude spectrogram, matching torchaudio's `LogMelSpect`.
- *
- * `center=True` with reflect padding, so frame f is centred on sample f*hop. Reflecting rather
- * than zero-padding only changes the two edges, and the first downbeat lives at one of them.
+ * Match torchaudio LogMelSpect: log1p(1000 * mel magnitude), centred reflect padding.
+ * Frame f centres on f * hop; edge padding affects the first downbeat.
  */
-export function logMelSpectrogram(mono: Float32Array): { frames: number; data: Float32Array } {
-	const raw = readFileSync(join(modelDir(), 'mel-filterbank.bin'));
+function logMelSpectrogram(mono: Float32Array): { frames: number; data: Float32Array } {
+	const raw = readFileSync(join(MODEL_DIR, 'mel-filterbank.bin'));
 	const fb = new Float32Array(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));
 	const bins = N_FFT / 2 + 1;
 	if (fb.length !== bins * MEL_BINS) {
@@ -212,16 +175,7 @@ interface Ort {
 	Tensor: TensorCtor;
 }
 
-/**
- * Resolve onnxruntime-node at runtime, out of a bundler's reach.
- *
- * A plain `import('onnxruntime-node')` is statically analysable, and a bundler that inlines it
- * rewrites the require of its native `.node` addon into a stub that throws. Ingest catches
- * that and quietly falls back to the in-repo tracker, so a bundled build loses Beat This and
- * says nothing about it: the same audio came out at confidence 0.36 bundled against 1.00 from
- * source. `createRequire` with a bare specifier is opaque to that analysis, so the addon is
- * found the same way in every build.
- */
+/** Load the native addon through createRequire so bundlers cannot replace it with a throwing stub. */
 function loadOrt(): Ort {
 	const require = createRequire(import.meta.url);
 	return require('onnxruntime-node') as Ort;
@@ -233,14 +187,11 @@ export class BeatThis {
 	private session!: Session;
 	private Tensor!: TensorCtor;
 
-	/**
-	 * `file` is for the bench alone: an alternative checkpoint exported to the same graph, so
-	 * a swap can be measured rather than argued. Only the shipped name is ever fetched.
-	 */
+	/** Bench-only checkpoint override. Downloads always use the shipping model name. */
 	static async create(file = 'beat_this.onnx'): Promise<BeatThis> {
 		if (file === 'beat_this.onnx' && !modelsPresent()) await ensureModels();
 		const ort = loadOrt();
-		const session = await ort.InferenceSession.create(join(modelDir(), file), {
+		const session = await ort.InferenceSession.create(join(MODEL_DIR, file), {
 			executionProviders: ['cpu'],
 			graphOptimizationLevel: 'all'
 		});
@@ -254,7 +205,7 @@ export class BeatThis {
 		await this.session.release?.();
 	}
 
-	/** `mono` must be at BEATTHIS_RATE and be the arithmetic mean of the channels. */
+	/** 22050 Hz mono, the arithmetic mean of the channels. */
 	async run(mono: Float32Array): Promise<BeatThisResult> {
 		const { frames, data } = logMelSpectrogram(mono);
 		const starts = chunkStarts(frames);

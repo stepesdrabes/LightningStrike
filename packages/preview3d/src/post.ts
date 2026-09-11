@@ -9,13 +9,7 @@ import {
 	ToneMappingMode
 } from 'postprocessing';
 
-/**
- * Bloom then ACES, both in HDR.
- *
- * LED values are pushed above 1.0 so the tone mapper rolls them into a blown-out core with
- * coloured fringes, which is what a camera sees looking at an LED. Without it they read as flat
- * stickers.
- */
+/** Bloom precedes ACES in HDR so bright LEDs retain colored fringes around a white core. */
 export function createComposer(
 	renderer: THREE.WebGLRenderer,
 	scene: THREE.Scene,

@@ -1,16 +1,12 @@
-// Compose and lint every track in a cache. The gate judged-after cannot be: it found
-// the round-2 ship-blocker (a hit the linter refused deletes the whole show, and the
-// app fails DARK). Run over the owner's library before any handover.
-//
-//   node bench/lintsweep.ts [cacheDir]   # default: the desktop cache
+// Compose and lint every cached track to catch shows the app would reject.
+// node bench/lintsweep.ts [cacheDir]
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { BUILT_IN_EFFECTS } from '@mv/core';
 import { composeShow, lintShow } from '@mv/author-engine';
 
-const cache =
-	process.argv[2] ?? join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache(process.argv[2]);
 const effects = new Map(BUILT_IN_EFFECTS.map((e) => [e.id, e]));
 
 let ok = 0;

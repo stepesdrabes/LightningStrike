@@ -86,10 +86,6 @@ describe('discover', () => {
 		expect(net.asked).toContain('192.168.0.57');
 	});
 
-	/**
-	 * The case the `ip` field in `/api/info` exists for: opened at a name, a browser has no way
-	 * to know what subnet it is on, so the first light found has to say.
-	 */
 	it('takes the subnet from the board when the page was opened at a name', async () => {
 		const net = fakeNet({
 			'room-bounce.local': info('room-bounce', '192.168.4.20'),
@@ -112,11 +108,6 @@ describe('discover', () => {
 		expect(found).toHaveLength(1);
 	});
 
-	/**
-	 * A board on DHCP moves within its network, not off it, so yesterday's address is still a
-	 * good answer to "which subnet". This is what makes a second launch work when the app is
-	 * opened at a name and the light has been reassigned.
-	 */
 	it('sweeps the subnet of a remembered address that no longer answers', async () => {
 		const net = fakeNet({ '192.168.9.31': info('room-bounce', '192.168.9.31') });
 

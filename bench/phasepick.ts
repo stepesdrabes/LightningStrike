@@ -1,25 +1,17 @@
-// Which beat is "one"? The owner hears Safir's chorus arriving sub-bar late of the
-// grid ("starts ~1:06, should be ~1:07" - three rounds of presses on the same instant),
-// and model downbeats cannot adjudicate at low meterConfidence (phaseprobe showed they
-// just re-derive the shipped fit). This asks the record itself: at every bar line, find
-// the strongest onset within the bar and histogram WHICH BEAT it lands on, weighted by
-// its strength. A right-phased grid piles the mass on beat 0; a half-bar flip piles it
-// on beat 2. Also printed per section start, where the question actually gets heard.
-//
-//   MV_CACHE_DIR=... node bench/phasepick.ts <trackId>
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+// Histogram the strongest onset's beat within each bar, weighted by strength, globally and at
+// section starts.
+// Beat-0 mass supports the current phase; beat-2 mass suggests a half-bar offset.
+// MV_CACHE_DIR=<cache> node bench/phasepick.ts <trackId>
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
 import { extractFeatures } from '../packages/analysis/src/features.ts';
 import { measureLoudness } from '../packages/analysis/src/loudness.ts';
 
 const id = process.argv[2];
 if (!id) throw new Error('usage: node bench/phasepick.ts <trackId>');
-const cache = process.env.MV_CACHE_DIR ?? join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
-const beatsPath = join(import.meta.dirname, 'corpus/.beats', `judged-${id}.json`);
-if (!existsSync(beatsPath)) throw new Error(`no cached beats at ${beatsPath} - run earlybars first`);
-const { beats } = JSON.parse(readFileSync(beatsPath, 'utf8')) as { beats: number[] };
+const cache = benchmarkCache();
 
 const files = readdirSync(cache);
 const audioFile = files.find((x) => x.startsWith(`${id}.`) && !x.includes('.json') && !x.endsWith('.pcm'));

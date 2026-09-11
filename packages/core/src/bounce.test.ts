@@ -7,7 +7,6 @@ import { BounceLamp } from './bounce.ts';
 const PALETTE = makePalette({ base: 320, accent: 185 });
 const DT = 1 / 60;
 
-/** A room at a uniform level, which is what the lamp reduces. */
 function room(level: number, pixels = 720): Float32Array {
 	return new Float32Array(pixels * 3).fill(level);
 }
@@ -40,7 +39,6 @@ describe('the bounce lamp', () => {
 		expect(brightness(run(240, 0.9))).toBeGreaterThan(brightness(run(240, 0.28)));
 	});
 
-	/** Settle on a passage, then land one hit of the given strength. */
 	function onHit(strength: number): Uint8Array {
 		const lamp = new BounceLamp();
 		const out = new Uint8Array(3);
@@ -53,22 +51,18 @@ describe('the bounce lamp', () => {
 		return out.slice();
 	}
 
-	// The colour dies carry the punch, so this is the one that says the lamp answers the kit at all.
 	it('drives the colour to full scale on a hit and rests well below it', () => {
 		expect(brightness(onHit(1))).toBe(255);
 		expect(brightness(onHit(0))).toBeLessThan(160);
 	});
 
-	// Every hit has to move the lamp, not just the loud ones. A threshold on the board once decided
-	// this, and consecutive kicks in one groove came out answered and ignored.
+	// Every hit must move the lamp, including quiet kicks.
 	it('answers a quiet hit as well as a hard one', () => {
 		expect(brightness(onHit(0.2))).toBeGreaterThan(brightness(onHit(0)));
 		expect(brightness(onHit(1))).toBeGreaterThan(brightness(onHit(0.2)));
 	});
 
-	// The pixel carries no white of its own: the board reads the achromatic part for its standalone
-	// wash, and anything added here would pale the accent for nothing, since the show holds that
-	// fourth gate dark. A saturated palette must therefore stay saturated all the way to the wire.
+	// The show keeps the white gate dark; saturated accents must stay saturated on the wire.
 	it('never desaturates the accent to ask for white', () => {
 		for (const strength of [0, 0.2, 1]) {
 			const out = onHit(strength);
@@ -97,8 +91,7 @@ describe('the bounce lamp', () => {
 		expect(brightness(out)).toBeLessThan(hit);
 	});
 
-	// The firmware's white knee is a threshold on this channel, so a hue that arrived dimmer than
-	// another at the same level would flare on one show and not on the next.
+	// Hue must not change the strongest channel at a given level.
 	it('puts the same level on the wire whatever the accent hue is', () => {
 		const at = (accent: number) => {
 			const lamp = new BounceLamp();

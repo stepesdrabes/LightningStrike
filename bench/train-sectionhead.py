@@ -1,17 +1,9 @@
-# Dev-time training for the learned section labeller's temporal head (P6). Never shipped;
-# the winner is exported for the production ONNX path once grouped CV clears the bar.
+# Development training for the temporal section head, evaluated with track-grouped CV.
 #
 #   uv run --python 3.12 --with torch --with numpy python bench/train-sectionhead.py
 #
-# Reads bench/corpus/.musicfm/*.npz (extract-musicfm.py) + the two annotation sets, trains
-# a small transformer over the 8.33 Hz embeddings against the NINE lighting kinds, reports
-# 5-fold cross-validation grouped BY TRACK, then fits the final head on everything and
-# saves bench/corpus/.musicfm/sectionhead.pt + sectionhead.json.
-#
-# The bar it has to clear: the shipped rules measure 53.1% seven-way agreement on Harmonix
-# (structscore, 2026-08-12). Sony's linear probe on the same embeddings reports 68.1 on
-# song-form labels; SongFormer's temporal head shows the probe-to-head lift is real.
-import csv
+# Reads extract-musicfm.py's .npz embeddings and both annotation sets. Reports five-fold
+# CV, fits all tracks, and writes bench/corpus/.musicfm/sectionhead.pt + sectionhead.json.
 import json
 import re
 from pathlib import Path
@@ -99,11 +91,7 @@ def load_tracks():
 
 
 class SectionHead(nn.Module):
-    """Projection + 2-layer transformer + linear, over the whole track at 8.33 Hz.
-
-    The track-position channel is appended before projection: intro and outro are partly
-    POSITIONS, the rules always knew it, and the embeddings alone cannot see the clock.
-    """
+    """Two-layer transformer at 25/3 Hz; append position so intro/outro can observe the clock."""
 
     def __init__(self, dim=1024, width=256, classes=len(KINDS)):
         super().__init__()

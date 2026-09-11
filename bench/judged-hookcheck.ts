@@ -1,18 +1,15 @@
-// For each judged track with synced lyrics: compute the hook windows and lyric chorus
-// spans from the cached context (pure functions, no audio), and report where each
-// chorus/drop section start sits relative to them. Tests whether the v16 hook snap is the
-// early-boundary driver on the lyric tracks, and why lyric demotion did not fire where
-// naming is disputed.
+// Compare cached chorus/drop starts with synced-lyric hook windows and chorus spans, without
+// audio.
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import {
 	chorusSpansFromLyrics,
 	hookStarts,
 	spanOverlap
 } from '../packages/analysis/src/vocabulary.ts';
 
-const cache = join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache();
 const judgeDir = join(cache, 'judge');
 
 for (const f of readdirSync(judgeDir).filter((f) => f.endsWith('.json'))) {

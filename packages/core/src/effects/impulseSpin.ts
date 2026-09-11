@@ -7,11 +7,8 @@ import { ringU } from '../dsl/space.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
- * Rotation with momentum: every kick kicks the ring's angular velocity and viscous drag
- * coasts it between hits, so the room accelerates WITH the floor and glides when the
- * producer pulls the kick - motion that answers the music without a single hue moving.
- * The phase is integrated state, not a clock, which is why multiplying the velocity by
- * `motion` is legal here: pausing the music genuinely parks the wheel.
+ * Integrate kick-driven angular velocity with drag. Scaling velocity by motion is safe
+ * because this phase is state, not an absolute clock.
  */
 export const impulseSpin: EffectDef = {
 	id: 'impulseSpin',
@@ -47,9 +44,7 @@ export const impulseSpin: EffectDef = {
 				const { f, p, palette, hueShift, motion } = ctx;
 				const permission = presence.update(f.kickEnv, f.dt, f.beatPeriod);
 
-				// The impulse is per hit and sized by the hit; the units are laps per second.
-				// A four-on-the-floor at 128 bpm with default drag settles near a lap every
-				// two bars, which reads as driven rather than frantic.
+				// Impulse in laps/second. Defaults settle near one lap per two bars at 128 BPM.
 				if (f.kick) velocity += (0.1 + 0.14 * f.kickEnv) * permission;
 				const tau = lerp(1.4, 0.35, p.drag);
 				velocity *= Math.exp(-f.dt / tau);
@@ -61,11 +56,8 @@ export const impulseSpin: EffectDef = {
 
 				for (let i = 0; i < g.count; i++) {
 					const u = frac((ringU(g, i) - phase + 2) * lobes);
-					// A soft cosine lobe, its crest heated by how fast the wheel is actually
-					// turning: speed becomes brightness contrast, so coasting visibly relaxes.
-					// The crest never sharpens past a third power: at the fourth a full-speed
-					// wheel was three narrow blades, and a narrow blade turning fast is what a
-					// per-pixel shimmer reads as at the frame rate.
+					// Cap lobe sharpness at the third power so fast rotation remains broad
+					// enough to avoid shimmer.
 					const lobe = 0.5 - 0.5 * Math.cos(u * Math.PI * 2);
 					const crest = Math.pow(lobe, 2 + clamp(spin) * 1.2);
 					const slot = lerp(SLOT.deep, lerp(SLOT.base, SLOT.glow, clamp(spin)), crest);

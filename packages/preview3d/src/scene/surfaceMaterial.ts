@@ -4,7 +4,7 @@ import { LIGHTING } from '../lighting.ts';
 import type { LedTexture } from '../LedTexture.ts';
 import { SURFACE_VERTEX, surfaceFragment } from '../shaders/surface.ts';
 
-export interface SurfaceOptions {
+interface SurfaceOptions {
 	/** Albedo before any light reaches it. */
 	base: number;
 	/** Share of the Frame's global wash this surface takes, 0..1. */
@@ -18,15 +18,8 @@ export interface SurfaceOptions {
 }
 
 /**
- * Every surface in the room runs one shader that reads the fixtures out of the LED texture.
- *
- * There are no `THREE.Light`s in this scene at all, and a standard material added here renders
- * black. Per-LED PointLights are not an option: three.js forward-lights, so every light becomes a
- * uniform in every lit shader and twenty of them tanks the frame rate. Walking the runs in the
- * fragment shader is per-LED spill at zero extra draw calls.
- *
- * The falloff is the same physics for every surface, so `reflect` and the ambient share are all
- * that separate one from another.
+ * Integrate fixture spill in one shader; per-LED THREE.Lights would exhaust uniforms and frame
+ * time.
  */
 export class SurfaceFactory {
 	/** The Bounce Lamp's one pixel, 0..1, shared by its tube and by everything it lights. */

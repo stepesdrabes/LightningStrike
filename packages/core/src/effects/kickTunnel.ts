@@ -16,11 +16,6 @@ interface Ripple {
 	slot: number;
 }
 
-/**
- * The inverse shockwave: rings converge from the walls into the centre and brighten as
- * they focus. Alternating this with an outward wave keeps the kick vocabulary fresh for
- * a whole track.
- */
 export const kickTunnel: EffectDef = {
 	id: 'kickTunnel',
 	name: 'Kick Tunnel',
@@ -32,18 +27,15 @@ export const kickTunnel: EffectDef = {
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
-		// Nearly a whole-room striker: a ring converging on the centre crosses every strip at
-		// the same depth at the same moment, so each kick lights the whole frame at once,
-		// softened only by the ring's width. Rated a partial strike it paired with a rotation
-		// and a popping accent into the busiest cue of the corpus.
+		// Converging rings strike nearly the whole room simultaneously, so budget this as a
+		// full striker.
 		activity: 0.85,
 		kit: 'kick'
 	},
 	params: [INTENSITY, param('speed', 'Converge speed', 0.5), param('width', 'Ring width', 0.3)],
 	create(g) {
-		// The nearest LED to the room centre is a third of the way out, because every strip sits
-		// at the wall/ceiling junction. A ring converging through raw `g.dist` therefore leaves
-		// the room at four fifths of its life and the focus this effect exists for never lands.
+		// Normalize actual LED distances so the focus reaches the fixture rather than empty
+		// centre space.
 		const depth = new Float32Array(g.count);
 		let near = Infinity;
 		let far = 0;
@@ -71,8 +63,8 @@ export const kickTunnel: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
-				// Short on purpose: the rings are added into this buffer every frame, so a longer
-				// trail integrates into a brighter, busier room rather than a softer one.
+				// Keep trails short; repeated additive rings otherwise integrate into excess
+				// light.
 				fadeToBlack(out, f.dt, 0.045);
 
 				if (f.kick && f.t - lastSpawn > Math.max(0.05, f.beatPeriod * 0.3)) {
@@ -82,13 +74,13 @@ export const kickTunnel: EffectDef = {
 					r.alive = true;
 					r.t0 = f.t;
 					r.power = clamp(0.4 + f.kickEnv * 0.7 + f.bands[Band.Sub] * 0.3);
-					// One hue family, alternating saturation rather than hue: where two rings of
-					// different hues meet they sum into a colour the show never declared.
+					// Vary saturation within one hue family so overlapping rings remain
+					// on-palette.
 					r.slot = f.barIndex % 2 === 0 ? SLOT.base : SLOT.glow;
 				}
 
-				// Floor the divisor: at motion near zero the rings should converge SLOWLY, not
-				// freeze immortal at the walls.
+				// Floor the motion divisor so near-zero motion slows rings without making them
+				// immortal.
 				const life =
 					Math.max(0.15, f.beatPeriod * (0.9 - p.speed * 0.5)) / Math.max(0.2, motion);
 				const width = (0.06 + p.width * 0.2) * 1.5;
@@ -102,8 +94,8 @@ export const kickTunnel: EffectDef = {
 						core.fire(r.power);
 						continue;
 					}
-					// Radius shrinks 1 -> 0 across the room's own depth, brightening and heating
-					// toward white as it focuses.
+					// Shrink through the fixture's normalized depth, heating toward white at
+					// the focus.
 					const radius = 1 - u;
 					const amp = r.power * gain * (0.4 + 0.6 * u);
 					const slot = lerp(r.slot, SLOT.white, u * 0.6) + hueShift;

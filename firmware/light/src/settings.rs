@@ -1,5 +1,5 @@
-//! The remembered light as a fixed 12-byte blob. Additions go into the reserved bytes without a
-//! version bump; a relayout bumps it, and an unknown version reads as "use the defaults".
+//! Fixed 12-byte settings blob. Reserved-byte additions need no version bump; relayouts do.
+//! Unknown versions use defaults.
 
 use crate::state::{Colour, EffectKind, LightState, PowerOnPolicy};
 

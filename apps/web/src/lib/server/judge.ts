@@ -3,32 +3,20 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { CACHE_DIR } from '@mv/analysis';
 
-/**
- * One listening note, anchored to a moment rather than to the track as a whole.
- *
- * The bar is captured beside the time because the two answer different questions later: the
- * time replays the moment, the bar names the cue and the section the complaint is about.
- */
+/** Store time for replay and bar for cue/section attribution. */
 export interface MomentNote {
 	/** Seconds into the track when the mark was dropped. */
 	t: number;
 	/** The bar under the playhead at that moment; null when no analysis was loaded. */
 	bar: number | null;
-	/**
-	 * A hard hit belongs at (or was wrong at) this moment. Absent on a plain mark; the free
-	 * text says which way the complaint runs, the kind makes it minable.
-	 */
+	/** Marks a hard-hit judgement; text specifies whether the hit was wanted or misplaced. */
 	hit?: 'strobe' | 'slam' | 'blackout' | null;
 	text: string;
 }
 
 /**
- * One section of the owner's hand-drawn ground-truth map.
- *
- * Times are the authoritative coordinates: a re-analysis moves every bar, and the whole
- * point of a hand-drawn map is to outlive the grid it corrects. Bars are carried beside
- * them, computed on the grid named by the judgement's `analysisHash`, so a mining session
- * can read the map against the blob it was drawn over without redoing the arithmetic.
+ * Hand-map times remain authoritative across re-analysis. Bars are pinned to analysisHash for
+ * later measurement.
  */
 export interface JudgedSection {
 	/** Section vocabulary word; a plain string so old maps survive vocabulary changes. */
@@ -39,23 +27,15 @@ export interface JudgedSection {
 	startBar: number;
 	endBar: number;
 	/**
-	 * This section's start was placed BETWEEN bar lines on purpose (the editor's fine drag).
-	 *
-	 * It is the difference between "the ear says the change is here" and "the drag landed
-	 * near here": the grid moves to a deliberate mark, and rounds an incidental one. Absent
-	 * on every map drawn before the editor snapped to bars, which is why it is a flag rather
-	 * than something inferred from the times - those maps are full of beat-snapped boundaries
-	 * nobody meant as metrical statements.
+	 * Explicit fine-drag placement requests a grid correction. Do not infer this from legacy
+	 * beat-snapped maps.
 	 */
 	offGrid?: boolean;
 }
 
 /**
- * The owner's verdict on one track's show, written by the judge panel.
- *
- * `analysisHash` and `showSeed` pin the feedback to the exact artifacts that were heard:
- * a complaint about a show that has since been recomposed is history, not a bug report,
- * and without the pin the two are indistinguishable.
+ * Pin feedback to analysisHash and showSeed so later recomposition cannot masquerade as the
+ * reviewed show.
  */
 export interface Judgement {
 	trackId: string;
@@ -69,17 +49,11 @@ export interface Judgement {
 	/** The hand-drawn section map, when the owner has adjusted one; absent otherwise. */
 	sections?: JudgedSection[] | null;
 	/**
-	 * Seconds where a new song starts inside this one, for a track that is several stitched
-	 * together. Marked by hand because both automatic signals were measured and refused - a
-	 * local tempo step fires on a quarter of the library, and the spectral break at SICKO
-	 * MODE's own switch is smaller than that track's average moment.
+	 * Manual new-song boundaries, seconds; tempo and spectral changes alone are not reliable
+	 * movement evidence.
 	 */
 	movements?: number[] | null;
-	/**
-	 * Seconds near which the owner refused a movement the analyser found on its own. Kept
-	 * apart from the marks because a veto and a mark answer different questions, and the
-	 * analysis reads both.
-	 */
+	/** Rejected detected-movement locations, seconds; kept separate from positive marks. */
 	movementVetoes?: number[] | null;
 	analysisHash: string | null;
 	showSeed: number | null;
@@ -108,35 +82,12 @@ export async function readJudgements(): Promise<Judgement[]> {
 	return out.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
-/**
- * A judgement written over what is already on disk, without erasing what the writer did not
- * carry.
- *
- * Three writers share one file - the panel (rating, tags, notes, movements), the section
- * editor (the map) and the mining scripts - and each sends a whole judgement built from
- * whatever it happened to know. A field that simply is not there must therefore mean "leave
- * it", never "delete it": a hand-drawn map is an hour of listening, and it was possible to
- * lose one by pressing a star. Only an explicit `null` erases, which is what the discard
- * button sends.
- */
 /** A judgement write carries only the fields its writer owns; everything else is a patch. */
 export type JudgementPatch = Partial<Judgement> & { trackId: string };
 
 /**
- * A patch written over what is already on disk.
- *
- * Three writers share one file - the judge panel (rating, tags, notes, comment, movements),
- * the section editor (the map), and the mining scripts - and each knows only its own half.
- * So the rule is PATCH, not replace: a field that is absent means "leave it", a value means
- * "take it", and null means "erase it". An empty array is a value: it is how the panel says
- * the last movement mark is gone.
- *
- * The rule an earlier version used - keep the held value whenever the incoming array was
- * empty - looked equivalent and was not. It could not tell a writer that carried nothing
- * from a writer that carried a STALE something, and the client is full of long-lived
- * snapshots: a map redrawn in the editor was reverted by pressing a star, because the
- * panel's draft still held the map as it had been when the panel opened. Writers now send
- * only what they own, and this merge trusts absence rather than emptiness.
+ * Patch semantics: absent preserves, values replace, null erases. Empty arrays remove all
+ * entries; each writer sends only its own fields.
  */
 export function mergeJudgement(patch: JudgementPatch, held: Partial<Judgement> | null): Judgement {
 	const base: Partial<Judgement> = held ?? {};
@@ -162,13 +113,8 @@ export function mergeJudgement(patch: JudgementPatch, held: Partial<Judgement> |
 }
 
 /**
- * One write at a time per track, and never in place.
- *
- * The write is read-modify-write, so two requests racing lose one of the two edits - twenty
- * concurrent note adds left one note on disk when this was unguarded. And truncating the
- * real file means a crash mid-write leaves a torn one, which reads as no judgement at all
- * and invites the next save to write a blank over an evening's listening. A per-track queue
- * serialises, and a temp file renamed into place makes the swap atomic.
+ * Serialize read-modify-write per track to preserve concurrent edits; atomic rename prevents
+ * torn files.
  */
 const writing = new Map<string, Promise<void>>();
 
@@ -188,8 +134,7 @@ export async function writeJudgement(patch: JudgementPatch): Promise<void> {
 		await writeFile(temp, JSON.stringify(merged, null, '\t'));
 		await rename(temp, path);
 	});
-	// The queue holds the settled promise either way, so one failed write cannot wedge the
-	// track's writes forever.
+	// Settle the queue after failure so later writes can proceed.
 	writing.set(id, queued.catch(() => {}));
 	await queued;
 }

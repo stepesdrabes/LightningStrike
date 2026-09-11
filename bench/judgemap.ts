@@ -1,18 +1,14 @@
-// Score the analyser against the owner's hand-drawn ground truth. The judge editor
-// saves section maps (times authoritative, bars advisory) and typed hit marks into the
-// judgement files; this joins each against the cache's current analysis and composed
-// show, so "the model disagrees with the owner" becomes numbers per track. A readout,
-// not a gate - the maps are taste, and the room outranks every column here.
-//
-//   MV_CACHE_DIR=<cache> node bench/judgemap.ts
+// Compare current analysis and shows with owner-drawn maps and hit marks. Times are
+// authoritative.
+// MV_CACHE_DIR=<cache> node bench/judgemap.ts
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { BUILT_IN_EFFECTS, sectionBase } from '@mv/core';
 import type { SectionKind } from '@mv/core';
 import { composeShow } from '@mv/author-engine';
 
-const cache = process.env.MV_CACHE_DIR ?? join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache();
 const judgeDir = join(cache, 'judge');
 if (!existsSync(judgeDir)) throw new Error(`no judge dir at ${judgeDir}`);
 void BUILT_IN_EFFECTS;

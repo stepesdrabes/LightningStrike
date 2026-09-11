@@ -13,8 +13,3 @@ export function clock(seconds: number): string {
 export function titleCase(word: string): string {
 	return word.length === 0 ? word : word[0].toUpperCase() + word.slice(1);
 }
-
-/** YouTube's own still, which exists for every video and needs no extra probe. */
-export function youtubeThumb(id: string): string {
-	return `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
-}

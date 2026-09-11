@@ -3,13 +3,7 @@ import type { RoomSpec } from '@mv/core';
 import { LIGHTING } from '../lighting.ts';
 import type { SurfaceFactory } from './surfaceMaterial.ts';
 
-/**
- * The Bounce Lamp: a white diffuser with a strip inside it.
- *
- * So it is a surface before it is an emitter, and it gets the same shader as the walls with a
- * pale albedo and the strip's colour added on top. A tube drawn as emission alone is pure black
- * whenever the show is, which is the one thing a white plastic column never is.
- */
+/** The white diffuser reflects room light even while its own emitter is off. */
 export function buildBounceLamp(spec: RoomSpec, surfaces: SurfaceFactory): THREE.Mesh {
 	const b = spec.bounce;
 	const geo = new THREE.CylinderGeometry(b.diameter / 2, b.diameter / 2, b.height, 24, 1, true);

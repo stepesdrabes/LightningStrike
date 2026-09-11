@@ -12,10 +12,7 @@ const STATE = {
 	mode: 'smart'
 };
 
-/**
- * A board that serves one connection at a time: it records the bodies it was given and can be
- * told to drop the next few requests the way a busy board drops a SYN.
- */
+/** Serial board stub with configurable dropped requests. */
 function fakeBoard(options: { dropFirst?: number } = {}) {
 	let drop = options.dropFirst ?? 0;
 	const bodies: Patch[] = [];
@@ -63,10 +60,6 @@ describe('DeviceClient.send', () => {
 		expect(board.bodies).toEqual([{ brightness: 40 }]);
 	});
 
-	/**
-	 * The reason the queue exists: a drag emits a value per frame, and a board that serves one
-	 * connection at a time would be metres behind by the time a finger lifted.
-	 */
 	it('coalesces a drag into one request per round trip', async () => {
 		const board = fakeBoard();
 		const { c } = client(board.net);
@@ -79,10 +72,6 @@ describe('DeviceClient.send', () => {
 		expect(board.bodies.length).toBeLessThan(5);
 	});
 
-	/**
-	 * Coalescing must not turn into dropping: two different fields touched while a request is in
-	 * the air have to arrive together, not one instead of the other.
-	 */
 	it('folds everything queued during a request into a single follow-up', async () => {
 		const board = fakeBoard();
 		const { c } = client(board.net);

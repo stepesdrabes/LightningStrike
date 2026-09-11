@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { join } from 'node:path';
 import { sectionBase, type TrackContext } from '@mv/core';
 import { decodeAudio, publishedLevel } from '@mv/analysis';
@@ -11,15 +11,10 @@ import { hookStarts } from '../packages/analysis/src/vocabulary.ts';
 import type { DrumStream } from '../packages/analysis/src/drums.ts';
 
 /**
- * The hook-snap acceptance harness: reanalyse the judged tracks and hold each chorus-class
- * section start against the LRCLIB hook bars and the owner's marked complaint bars.
- *
- *   node bench/hooksnap.ts --label before
- *
- * Reads the DESKTOP cache (audio + context) read-only; never writes into it. Model outputs
- * are cached under bench/reports/hooksnap/ so re-runs cost the analysis alone. The bench
- * corpora cannot stand in here: structscore fetches no lyric contexts, so it is blind to
- * the one signal this mechanism runs on.
+ * Compare judged chorus starts with synced lyric hooks and owner targets.
+ * node bench/hooksnap.ts --label before
+ * Read the desktop cache without modifying it; cache model output in bench/reports/hooksnap.
+ * The annotated corpora lack lyric contexts and cannot test this signal.
  */
 
 interface Mark {
@@ -112,10 +107,7 @@ const flag = (n: string, d: string) => {
 };
 const label = flag('label', 'run');
 const only = flag('only', '');
-const cacheDir = flag(
-	'cache',
-	join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache')
-);
+const cacheDir = flag('cache', benchmarkCache());
 const modelCacheDir = join(import.meta.dirname, 'reports', 'hooksnap');
 await mkdir(modelCacheDir, { recursive: true });
 

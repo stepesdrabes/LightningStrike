@@ -2,12 +2,8 @@ import type { Spectrogram } from './dsp/spectrogram.ts';
 import { maxFilter, quantile, smooth } from './dsp/stats.ts';
 
 /**
- * SuperFlux (Böck & Widmer, DAFx 2013): spectral flux on a log-magnitude log-frequency
- * spectrogram, where the frame being subtracted is first passed through a maximum filter
- * across frequency. That one filter is the whole trick: vibrato and any slow glide move a
- * partial by a fraction of a band per frame and would otherwise read as a fresh onset in the
- * band it moves into, which is why plain spectral flux fires continuously on sustained
- * strings and on a detuned supersaw lead.
+ * SuperFlux (Böck & Widmer, DAFx 2013): max-filter the preceding log-frequency frame before
+ * subtracting it so vibrato and slow pitch glides do not become onsets.
  */
 export interface OnsetCurves {
 	fps: number;
@@ -21,11 +17,7 @@ export interface OnsetCurves {
 }
 
 const MAX_FILTER_BANDS = 1;
-/**
- * Half the analysis window, in frames. Differencing against the immediately preceding frame
- * measures mostly the window overlap rather than the music; half a window back is the
- * shortest lag at which the two frames see genuinely different audio.
- */
+/** Difference across half a window; adjacent-frame differences mostly measure window overlap. */
 const DIFF_FRAMES = 2;
 
 function bandRange(spec: Spectrogram, loHz: number, hiHz: number): [number, number] {
@@ -81,11 +73,7 @@ export function onsetStrength(spec: Spectrogram): OnsetCurves {
 	return { fps: spec.fps, frames, flux: out[0], low: out[1], mid: out[2], high: out[3] };
 }
 
-/**
- * Subtract a slow local mean and divide by the curve's own spread, so "0.5" means the same
- * thing in a sparse intro and in a wall-of-sound drop. Everything downstream thresholds
- * against this rather than against absolute flux.
- */
+/** Subtract local mean and scale by local spread so thresholds transfer between sparse and dense passages. */
 export function conditionCurve(curve: Float32Array, fps: number, windowSec = 1.5): Float32Array {
 	const n = curve.length;
 	const out = new Float32Array(n);
@@ -101,7 +89,7 @@ export function conditionCurve(curve: Float32Array, fps: number, windowSec = 1.5
 	return out;
 }
 
-export interface PeakOptions {
+interface PeakOptions {
 	/** A peak must be the maximum over this radius, in seconds. */
 	localMaxSec: number;
 	/** ... and exceed the moving mean over this radius by `delta`. */
@@ -117,11 +105,7 @@ export interface Peak {
 	strength: number;
 }
 
-/**
- * The standard onset peak picker: a local maximum that also clears an adaptive floor, with a
- * refractory gap. Reported strength is how far above the floor the peak reached, which is
- * what lets a caller keep only the confident ones later.
- */
+/** Adaptive-floor local maxima with a refractory gap. Strength is the excess above the floor. */
 export function pickPeaks(curve: Float32Array, fps: number, opts: PeakOptions): Peak[] {
 	const n = curve.length;
 	if (n === 0) return [];

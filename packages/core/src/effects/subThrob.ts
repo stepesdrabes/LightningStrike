@@ -8,11 +8,7 @@ import { Follower } from '../dsl/env.ts';
 import { bandBetween } from '../dsl/spectrum.ts';
 import { INTENSITY } from './helpers.ts';
 
-/**
- * A long release, so this tracks an 808's tail rather than a kick's snap. The glow
- * bleeds up into the beam only as the level rises, as if the bass were filling the room
- * from the walls inward; the darkness between notes is the point.
- */
+/** Long release follows an 808 tail. Beam spill grows with level; gaps between notes stay dark. */
 export const subThrob: EffectDef = {
 	id: 'subThrob',
 	name: 'Subwoofer Throb',
@@ -32,13 +28,7 @@ export const subThrob: EffectDef = {
 	params: [INTENSITY],
 	create(g) {
 		const buf = new Float32Array(g.count * 3);
-		/**
-		 * How much of the bottom end is harmonics rather than fundamental.
-		 *
-		 * A clean 808 is one colour; a distorted one has content an octave up and earns a second.
-		 * Slow, because the slots differ in luminance as well as in hue and a colour driven at
-		 * the speed of a note is a brightness driven at the speed of a note.
-		 */
+		/** Slowly measured bass harmonics earn a second hue without note-rate colour flashes. */
 		const grit = new Follower(0.2, 0.8);
 		let env = 0;
 
@@ -51,14 +41,8 @@ export const subThrob: EffectDef = {
 			render(out, ctx) {
 				const { f, p, palette, hueShift } = ctx;
 
-				// The spectrum rather than `f.bands`, which is a per-beat envelope and so cannot
-				// follow an 808's tail at all - it can only step once a beat and glide. The gain is
-				// 2.2 where the band read 1.5 because the two are not the same scale: a band
-				// envelope is normalised across the track, the spectrum is a fixed window under it.
-				//
-				// Only the rising path gets through the asymmetric envelope, so the attack is the
-				// one place frame-to-frame noise can reach the room. A tenth of a beat still lands
-				// on the note and leaves the jitter behind.
+				// Spectrum gain 2.2 compensates for its lower scale than band envelopes.
+				// A tenth-beat attack suppresses jitter while retaining the note.
 				const bottom = bandBetween(f, 0, 0.12);
 				env = envelope(
 					env,
@@ -77,15 +61,9 @@ export const subThrob: EffectDef = {
 						setPixel(buf, i, 0, 0, 0);
 						continue;
 					}
-					// The bass filling the room, made visible as colour rather than only as reach:
-					// the ring holds the room's own hue and what has climbed onto the beam arrives
-					// in the third, so the spread upward reads as the note opening out. How far it
-					// gets is how much grit the 808 has - a clean sine stays home.
-					//
-					// Spatial, not temporal. `deep` to `base` is one hue at two lightnesses, which
-					// is why this bed filled 95% of the room with a single colour; crossing to
-					// `third` is what makes it a colour at all, and doing it by POSITION adds no
-					// brightness movement of its own.
+					// Keep ring hue at base and spread toward third on the beam as harmonic
+					// grit grows.
+					// Spatial colour avoids adding a brightness modulation in time.
 					const climb = onRing ? 0 : clamp(reach * 1.2);
 					const slot = lerp(
 						lerp(SLOT.deep, SLOT.base, clamp(env * 1.25)),

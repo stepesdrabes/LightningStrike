@@ -7,31 +7,21 @@ import { MEL_BANDS, melSpectrogram96, resampleTo16k } from './dsp/mel.ts';
 import { MODEL_DIR } from './paths.ts';
 
 /**
- * Discogs-EffNet style classifier (Music Technology Group, UPF) through onnxruntime.
- *
- * Predicts 400 Discogs style activations from audio alone, which is what breaks the tie when
- * the metadata sources disagree or say nothing: the style strings it yields feed the same
- * mapGenres() vote as every other source. The weights are published by MTG/UPF under
- * CC BY-NC-SA 4.0, so they are for non-commercial use only.
- *
- * The graph holds only the EffNet; the 16 kHz mel frontend lives in dsp/mel.ts, and its
- * constants are part of the model contract.
+ * Discogs-EffNet (MTG/UPF): 400 style activations feed mapGenres. Weights are CC BY-NC-SA 4.0
+ * for non-commercial use. The 16 kHz frontend constants in dsp/mel.ts are model contracts.
  */
 
 const MODEL_NAME = 'discogs-effnet-bsdynamic-1.onnx';
 const MODEL_URL = `https://essentia.upf.edu/models/feature-extractors/discogs-effnet/${MODEL_NAME}`;
 const MODEL_BYTES = 18027718;
-/**
- * Essentia publishes no digest, so this one was computed from the 2026-08-10 download. It
- * pins every later fetch to the exact bytes the probe results were verified against.
- */
+/** Digest computed from the 2026-08-10 download; pin later fetches to the measured model bytes. */
 const MODEL_SHA256 = 'a280825b334797cf677939db8cd5762c0392aedd0ca6415dbc1cd083f045e43c';
 
 const STYLE_COUNT = 400;
 /** 128 frames x 96 bands per patch, hopped 62 frames: the geometry the model was trained on. */
 const PATCH_FRAMES = 128;
 const PATCH_HOP = 62;
-/** A style is set long before three minutes in; the cap bounds resample, mel and inference. */
+/** Cap classification duration to bound resampling, mel, and inference costs. */
 const MAX_SECONDS = 180;
 /** Ten keeps the result readable for a vote; the other 390 heads are noise floor. */
 const TOP_COUNT = 10;
@@ -444,16 +434,14 @@ export function genreModelPresent(): boolean {
 	return existsSync(join(MODEL_DIR, MODEL_NAME));
 }
 
-export async function ensureGenreModel(onProgress?: (msg: string) => void): Promise<void> {
+export async function ensureGenreModel(): Promise<void> {
 	mkdirSync(MODEL_DIR, { recursive: true });
 	const path = join(MODEL_DIR, MODEL_NAME);
 	if (existsSync(path)) {
 		const have = createHash('sha256').update(readFileSync(path)).digest('hex');
 		if (have === MODEL_SHA256) return;
-		onProgress?.(`${MODEL_NAME} failed its digest, refetching`);
 	}
 
-	onProgress?.(`fetching ${MODEL_NAME} (${(MODEL_BYTES / 1e6).toFixed(1)} MB)`);
 	// Bounded, because this runs inside the ingest queue: a connection that neither answers
 	// nor dies would wedge every later track behind it until a restart.
 	const res = await fetch(MODEL_URL, { signal: AbortSignal.timeout(120_000) });
@@ -472,17 +460,15 @@ export async function ensureGenreModel(onProgress?: (msg: string) => void): Prom
 	renameSync(tmp, path);
 }
 
-export interface GenreActivation {
+interface GenreActivation {
 	label: string;
 	/** Sigmoid activation 0..1. The 400 heads are independent, so scores do not sum to one. */
 	score: number;
 }
 
-export interface AudioGenreResult {
+interface AudioGenreResult {
 	/** Top style activations, mean-pooled over patches, descending. */
 	top: GenreActivation[];
-	/** The style strings (label with 'Genre---' prefix split into both parts) of the top 5, for mapGenres. */
-	styleStrings: string[];
 }
 
 interface OrtTensor {
@@ -503,7 +489,7 @@ interface Ort {
 	Tensor: TensorCtor;
 }
 
-/** Same trick as beatthis.ts: keep the native addon's require out of a bundler's reach. */
+/** Load the native addon through createRequire so bundlers cannot replace it with a throwing stub. */
 function loadOrt(): Ort {
 	const require = createRequire(import.meta.url);
 	return require('onnxruntime-node') as Ort;
@@ -585,7 +571,6 @@ export class GenreClassifier {
 			label: GENRE_STYLES[i],
 			score: sum[i] / n
 		}));
-		const styleStrings = top.slice(0, 5).map((a) => a.label.replace('---', ' '));
-		return { top, styleStrings };
+		return { top };
 	}
 }

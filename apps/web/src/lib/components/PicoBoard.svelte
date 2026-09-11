@@ -1,13 +1,12 @@
 <script lang="ts">
 	import type { LinkState } from '$lib/hardware.ts';
 
-	let { state, width = 168 }: { state: LinkState; width?: number } = $props();
+	let { state }: { state: LinkState } = $props();
+	const width = 168;
 
 	/**
-	 * The onboard LED is the only thing this board can say without a console attached, and
-	 * `heartbeat_task` in the firmware gives it two meanings: lit solid while it is still
-	 * trying to reach the network, a short blink once a second once it is up. Drawing it the
-	 * same way means the picture is reporting rather than decorating.
+	 * Match firmware heartbeat_task: solid while connecting, brief one-second heartbeat when
+	 * online.
 	 */
 	const led = $derived(
 		state === 'searching'
@@ -18,12 +17,7 @@
 	);
 </script>
 
-<!--
-	A Pico W from above, at its real proportions: 51 x 21 mm, twenty castellated pads a side,
-	micro USB at the top, the RP2040 in the middle and the CYW43439 with its meandered antenna
-	at the bottom. Drawn rather than photographed so it themes with everything else and costs
-	no bytes.
--->
+<!-- Pico W top view at 51 x 21 mm proportions, with twenty pads per side. -->
 <svg viewBox="0 0 204 84" {width} height={width * (84 / 204)} role="img" aria-label="Raspberry Pi Pico W">
 	<rect x="6" y="1" width="192" height="82" rx="9" fill="#0e4a2c" />
 	<rect x="6" y="1" width="192" height="82" rx="9" fill="none" stroke="#1c6b41" stroke-width="1" />
@@ -64,8 +58,7 @@
 		stroke-width="2.4"
 		stroke-linecap="square" />
 
-	<!-- The onboard LED, on the CYW43 rather than a GPIO, which is why it says nothing before
-	     WiFi is up. -->
+	<!-- CYW43 owns the onboard LED, so it cannot report before WiFi starts. -->
 	<circle class="led {led}" cx="146" cy="16" r="3.4" />
 
 	<!-- Debug pads. -->

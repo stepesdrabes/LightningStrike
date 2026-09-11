@@ -1,8 +1,5 @@
 use crate::effects::scatter;
 
-/// Frames the fade-in takes to arrive, a few seconds at the strips' tick.
-pub const FADE: u32 = 200;
-
 /// Frames one point takes to rise and fall, and how bright it gets.
 const PULSE: u32 = 96;
 const PEAK: u32 = 70;
@@ -10,8 +7,7 @@ const PEAK: u32 = 70;
 const HUES: [[u8; 3]; 6] =
 	[[255, 55, 20], [255, 150, 30], [40, 255, 90], [30, 175, 255], [90, 80, 255], [220, 60, 200]];
 
-/// One scattered point of the idle twinkle: pixel `i` is the fixture-global index, `t` counts
-/// frames, `gain` is 0..256. Linear RGBW out, the white emitter dark.
+/// Fixture-global pixel i, frame count t, gain 0..256. Linear RGBW output with white dark.
 pub fn twinkle(i: u32, t: u32, gain: u32) -> [u16; 4] {
 	let h = scatter(i);
 	let period = PULSE * 5 + (h & 0x1ff);
@@ -36,8 +32,6 @@ fn dim(c: u8, level: u32) -> u16 {
 mod tests {
 	use super::*;
 
-	/// The 0.1 twinkle computed `c * level / 255` in u8; the widened value must land on the same
-	/// byte once quantized, or the boot look changes.
 	#[test]
 	fn top_byte_matches_the_old_maths() {
 		for i in [0u32, 1, 7, 299, 300, 599, 600, 719] {

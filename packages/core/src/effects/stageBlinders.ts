@@ -10,14 +10,8 @@ import { INTENSITY, param } from './helpers.ts';
 const HOLD = 0.05;
 
 /**
- * The slam is instant but the decay is filament physics: white-hot cooling through amber.
- * That cooldown is why tungsten blinders feel warm and LEDs feel cold.
- *
- * Struck by the kit, not by the grid. The downbeat's hit gets the full blinder; every other
- * kick or snare that lands hard enough gets an answer sized by how hard, and the room is dark
- * again between them. On the beat grid this fired the whole room to white four times a bar
- * through every drop of fifty-one shows, which was both the brightest thing in the room and
- * the reason nothing else in it could read as a hit.
+ * Kit-driven hits keep the room dark between events; the grid alone would overfill every drop.
+ * Hold briefly, then cool like a filament within one hue family.
  */
 export const stageBlinders: EffectDef = {
 	id: 'stageBlinders',
@@ -26,8 +20,7 @@ export const stageBlinders: EffectDef = {
 	blurb: 'Tungsten blinders: the downbeat hit at full, the hard hits between it answered, cooling white to amber.',
 	taste: {
 		energy: 4,
-		// No 'breakdown': a stripped passage lit by blinder slams is the documented failure
-		// the mustCarry rule exists for, and this effect once caused it.
+		// Exclude breakdowns; this event cannot carry a stripped passage.
 		sections: ['groove', 'build', 'drop'],
 		minBars: 1,
 		maxBars: 16,
@@ -57,7 +50,7 @@ export const stageBlinders: EffectDef = {
 				const env = Math.max(f.kickEnv, f.snareEnv);
 				const playing = kit.update(env, f.dt, f.beatPeriod);
 
-				// A hit lands only once per third of a beat, so a roll is one blow, not a strobe.
+				// Limit to one hit per third of a beat so rolls do not become strobes.
 				if ((f.kick || f.snare) && f.t - lastHit > f.beatPeriod * 0.34 && playing > 0.08) {
 					const strength = f.downbeat ? 1 : env > 0.45 ? p.answer * clamp(0.4 + 0.6 * env) : 0;
 					if (strength > 0) {
@@ -68,9 +61,8 @@ export const stageBlinders: EffectDef = {
 						}
 					}
 				}
-				// The tail is half a beat, 200 to 300 ms at club tempos, which is how long a
-				// 500 to 1000 W lamp takes to go dark: a filament, not a shutter. A third of a
-				// beat read as aggressive in the room.
+				// A half-beat tail (~200-300 ms at club tempos) approximates a large tungsten
+				// filament.
 				if (held > 0) held -= f.dt;
 				else level *= Math.exp(-f.dt / Math.max(0.04, f.beatPeriod * 0.5));
 				if (level < 0.004) {
@@ -79,12 +71,11 @@ export const stageBlinders: EffectDef = {
 					return;
 				}
 
-				// Cools white to the room's own bright read and no further: a hit is one colour
-				// family, and a cool-down that reached the third hue was a colour change on
-				// every blinder.
+				// Cool only to the bright base read; crossing third would add a hue change on
+				// every hit.
 				const slot = lerp(SLOT.white, SLOT.glow, (1 - level) * 0.8);
-				// Past one on purpose: an accent's budget is 0.55, and a blinder that arrives
-				// under white is a lamp.
+				// Exceed one before mixing to reach white through the accent role's 0.55
+				// opacity.
 				fillSolid(out, g.count, sample(palette, slot + hueShift, level * (0.8 + p.intensity * 1.1)));
 			}
 		};

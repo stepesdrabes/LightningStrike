@@ -1,7 +1,6 @@
 [workspace]
 members = ["api", "light", "node", "wire"]
-# The lamp is its own workspace: a different target, and cargo would otherwise unify features
-# across architectures.
+# Separate lamp workspace prevents feature unification across different chip targets.
 exclude = ["lamp"]
 resolver = "3"
 

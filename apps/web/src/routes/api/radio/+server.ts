@@ -4,13 +4,7 @@ import { isLocal } from '$lib/server/access.ts';
 import { autopilot } from '$lib/server/autopilot.ts';
 import type { RequestHandler } from './$types';
 
-/**
- * What to play next, from YouTube Music's own reading of a track.
- *
- * Loopback only. Note the asymmetry with /api/search, which is deliberately open because the
- * guest page searches: this is a host surface, and opening it later is easy where closing it
- * later would take something away.
- */
+/** Radio suggestions are host-only; guest search uses /api/search. */
 const WATCH_ID = /^[A-Za-z0-9_-]{11}$/;
 
 export const GET: RequestHandler = async (event) => {
@@ -18,8 +12,7 @@ export const GET: RequestHandler = async (event) => {
 
 	const seed = event.url.searchParams.get('seed');
 	const limit = Math.max(1, Math.min(30, Number(event.url.searchParams.get('limit') ?? 12)));
-	// Validated out here: `error` throws, and inside the try it would be caught and reported as
-	// an upstream failure rather than as the bad request it is.
+	// Validate outside the try so request errors are not reclassified as upstream failures.
 	if (seed !== null && !WATCH_ID.test(seed)) error(400, 'not a track id');
 
 	try {

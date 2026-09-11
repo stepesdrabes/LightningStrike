@@ -171,10 +171,7 @@ describe('sections', () => {
 	});
 
 	it('leaves no section start one bar off the phrase grid', () => {
-		// A boundary within a bar of the grid is a rounding error and is snapped onto it. One
-		// further out is where the music actually moved, and dragging it back costs more than it
-		// buys: on 374 annotated tracks an unconditional snap was 1.7 points of boundary F0.5.
-		// The linter accepts an analysed section start for the same reason, so the two agree.
+		// Snap only within one bar; more distant boundaries may be real off-grid changes.
 		const anchor = analysis.tempo.phraseAnchorBar;
 		const nearMiss = analysis.sections
 			.filter((s) => s.startBar > 0)
@@ -258,10 +255,7 @@ describe('onsets', () => {
 	});
 
 	it('finds most of the snares', () => {
-		// The weakest of the three, and the literature agrees: a snare shares its noise burst
-		// with a hat and its body with a bass note, and every published system without a neural
-		// net scores it well below kick and hat. This bar is where the detector actually sits,
-		// so it catches a regression without claiming an accuracy it does not have.
+		// Snare spectra overlap hats and bass. This floor pins measured DSP accuracy, below kick/hat recall.
 		expect(fMeasure(fixture.snare, analysis.onsets.snare.times, 0.05).recall).toBeGreaterThan(0.6);
 	});
 
@@ -408,13 +402,8 @@ describe('degenerate input', () => {
 
 describe('grid locking', () => {
 	it('keeps every drum onset within a sixteenth of the real beat grid', () => {
-		// Near the grid, deliberately not on it. Snapping a detected hit to the nearest
-		// sixteenth moves it by up to half a slot, which is 58 ms at 130 bpm and reads as a
-		// late flash however good the detection was. The grid decides whether a hit is real and
-		// where a missing one goes; it does not correct one that was heard.
-		//
-		// Measured against the tracked beats rather than a constant period, because those are
-		// what the music is actually on.
+		// Detected hits keep their timing; only missing hits use grid slots. Compare against tracked
+		// beats so tempo drift does not masquerade as timing error.
 		const beats = analysis.beats;
 		expect(beats.length).toBeGreaterThan(8);
 
@@ -579,8 +568,7 @@ describe('artwork', () => {
 
 describe('the ring-out', () => {
 	it('ends a track that finishes inside its loudest section with an outro', () => {
-		// A drop that pounds to two bars from the end, then only the pad ringing out - the
-		// arrangement that used to hold the full drop stack through the decay.
+
 		const rings = synthesise(128, [
 			{ bars: 4, kick: 0, snare: 0, hat: 0, bass: 0, pad: 0.6, riser: false },
 			{ bars: 8, kick: 0.9, snare: 0.7, hat: 0.5, bass: 0.7, pad: 0.5, riser: false },
@@ -598,17 +586,14 @@ describe('the ring-out', () => {
 		});
 		const last = a.sections.at(-1)!;
 		expect(last.kind).toBe('outro');
-		// And it begins after the last kick, not before it: the room winds down with the
-		// record, it does not cut the final hits off.
+
 		expect(a.bars[last.startBar].t).toBeGreaterThanOrEqual(rings.kick.at(-1)! - 0.05);
 	});
 });
 
 describe('trailing silence', () => {
 	it('ends as an outro, never as a void', () => {
-		// A void is the held breath before a drop; silence after the last note is the record
-		// being over, and a room holding a deliberate blackout instruction through it reads as
-		// a fault rather than an ending.
+		// Trailing silence is an ending, not a held-breath blackout.
 		const fades = synthesise(128, [
 			{ bars: 4, kick: 0, snare: 0, hat: 0, bass: 0, pad: 0.6, riser: false },
 			{ bars: 8, kick: 0.9, snare: 0.7, hat: 0.5, bass: 0.7, pad: 0.5, riser: false },
@@ -630,12 +615,7 @@ describe('trailing silence', () => {
 });
 
 describe('re-reading a settled grid', () => {
-	/**
-	 * `reanalyse` re-runs the whole analysis rather than editing the stored table, because the
-	 * section kinds decide where events and moments are placed. That is only safe while feeding
-	 * the settled grid back reproduces it exactly: if this ever drifts, a re-read at a corrected
-	 * metrical level would silently change more than the level it was asked to change.
-	 */
+	/** A full reanalysis given its settled grid must reproduce it exactly; correction must not drift. */
 	it('reproduces itself from its own beats and bar times', () => {
 		const again = analyzeTrack({
 			mono: fixture.mono,
@@ -688,10 +668,7 @@ describe('marked movements', () => {
 		expect(analysis.movements).toBeUndefined();
 	});
 
-	// A press carries a second or two of reaction lag, and the handover forbids reading any
-	// sub-bar meaning from a mark. So the mark chooses the bar and the model's own downbeats
-	// choose the beat inside it: SICKO MODE's switch is marked at 60.5 s and belongs at 60.38,
-	// which no rounding of the mark alone can reach.
+	// Reaction lag makes movement marks bar-level evidence; model downbeats supply the exact beat.
 	it('places a movement on the model downbeat rather than on the pressed beat', () => {
 		const period = 60 / fixture.bpm;
 		const beats = Array.from({ length: Math.floor(fixture.duration / period) }, (_, i) => i * period);
@@ -712,8 +689,7 @@ describe('marked movements', () => {
 		const blind = analyzeTrack({ ...base, beats });
 		const barOf = (a: ReturnType<typeof analyzeTrack>) => barTimeAt(a.tempo, a.movements![1].startBar);
 		expect(barOf(guided)).toBeCloseTo(beats[trueDownbeat], 2);
-		// And the same call without the downbeat stream lands on the pressed beat instead,
-		// which is the behaviour this exists to replace.
+		// Without model downbeats, the marked beat is the fallback.
 		expect(barOf(blind)).toBeCloseTo(beats[trueDownbeat + 1], 2);
 	});
 
@@ -732,9 +708,7 @@ describe('marked movements', () => {
 	});
 
 	it('keeps the seam even where both sides read as the same material', () => {
-		// Marked INSIDE the fixture's 16-bar drop, so both sides are the same kind and the
-		// same repeat group - the one case the merge inside arrange() is written to fuse,
-		// and the case that made the whole movement machinery inert until it was guarded.
+		// Mark inside one repeated drop so same-kind merging must explicitly preserve the movement seam.
 		const mid = barTimeAt(analysis.tempo, fixture.stageBars[5] + 8);
 		const marked = withMovement(mid);
 		const bar = marked.movements![1].startBar;

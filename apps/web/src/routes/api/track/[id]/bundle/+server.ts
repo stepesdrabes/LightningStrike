@@ -4,13 +4,7 @@ import { analysisPath, isValidId, readContext, readMeta, showPath } from '@mv/an
 import type { Show, TrackAnalysis } from '@mv/core';
 import type { RequestHandler } from './$types';
 
-/**
- * Everything the player needs to light the room for one track, in one request.
- *
- * Split across three endpoints it was three round trips on every track change, and the show
- * arriving after the analysis meant a frame or two rendered against a grid it was not
- * addressed to.
- */
+/** Return analysis and show together to avoid rendering cues against a mismatched grid. */
 export const GET: RequestHandler = async ({ params }) => {
 	if (!isValidId(params.id)) error(400, 'invalid track id');
 

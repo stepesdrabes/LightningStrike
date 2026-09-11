@@ -3,13 +3,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import QrCode from './QrCode.svelte';
 
-	/**
-	 * Shut by default, and remembered.
-	 *
-	 * The code is worth scanning once at the start of a night and is dead weight for the rest
-	 * of it, while the queue above it is the thing being read all evening. Open it and it stays
-	 * open, because a room that keeps taking new arrivals wants it there.
-	 */
+	/** Remember the invitation's open state; default closed to preserve queue space. */
 	const REMEMBER = 'mv.invite.open';
 	let open = $state(false);
 
@@ -33,8 +27,7 @@
 		</button>
 
 		{#if open}
-			<!-- Wide enough for a phone held over the desk. Clicking it opens the same code large
-			     enough to read from across the room. -->
+
 			<button class="code" onclick={() => (room.open = true)} title="Show the code full size">
 				<QrCode value={room.info.url} fluid />
 			</button>

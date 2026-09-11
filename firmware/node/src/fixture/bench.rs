@@ -12,22 +12,18 @@ use crate::irq::Irqs;
 
 pub const KIND: &str = "sk6812";
 
-/// Addresses on the line, not LEDs: a 12 V part that groups three LEDs to one driver makes a 5 m
-/// reel 100, a per-LED part makes it 300, and the ruler step of the selftest says which. 300 is
-/// the permissive error, since over-counting only costs wire time where under-counting rejects
-/// every region the app can point at.
+/// Address count, not LED count: grouped 12 V reels may have 100 drivers versus 300 per-LED.
+/// Selftest measures density; over-counting costs wire time while under-counting rejects host regions.
 const ADDRESSES: usize = 300;
 
-/// Well under full scale: every emitter lit across the whole run is this strip's peak draw, and
-/// the wire between supply and strip is the first thing a bench rig gets wrong.
+/// Low selftest duty limits peak all-emitter draw and protects imperfect bench supply wiring.
 const PROBE: u8 = 96;
 
 /// Only the ratio between the two trim frames carries information.
 const TRIM_PROBE: u8 = 160;
 
-/// 5 m of RGBWW on one data line, on a table. A reel does not come labelled, so the selftest
-/// reads three things off it by eye: byte order, addresses per metre and the white ratio. After
-/// that it is an ordinary fixture; point the app at a single run rather than the whole room.
+/// Five-metre RGBWW bench fixture. Selftest measures byte order, address density, and white
+/// ratio before normal single-run playback.
 pub struct Fixture {
 	line: RgbwPioWs2812<'static, PIO1, 0, ADDRESSES, Rgbw>,
 	buf: [RGBW<u8>; ADDRESSES],
@@ -55,8 +51,7 @@ impl Fixture {
 		let mut pio = Pio::new(p.PIO1, Irqs);
 		let program = PioWs2812Program::new(&mut pio.common);
 
-		// `Rgbw` is the driver's identity packing, so `SLOTS` stays the only place the real order
-		// lives.
+		// Driver Rgbw packing is identity; SLOTS alone records measured wire order.
 		let line = RgbwPioWs2812::with_color_order(
 			&mut pio.common,
 			pio.sm0,
@@ -79,10 +74,8 @@ impl Fixture {
 		(fixture, board, Store { flash: p.FLASH, dma: p.DMA_CH1 })
 	}
 
-	/// Byte order: bytes 0, 1, 2, 3 alone, 1.5 s each, and the colours in that order are `SLOTS`.
-	/// Density: bright marks per metre, one is 100 addresses and three is 300. Continuity: one
-	/// pixel down the run. Trim: R+G+B, then white alone, same duty. The first three write raw
-	/// bytes, so a wrong `SLOTS` cannot make them unreadable.
+	/// Selftest: raw bytes 0/1/2/3 identify SLOTS; metre marks distinguish 100/300 addresses;
+	/// a moving pixel checks continuity; equal-duty RGB/W compares trim. Raw writes bypass SLOTS.
 	pub async fn selftest(&mut self) {
 		for byte in 0..4 {
 			let mut bytes = [0u8; 4];
@@ -134,7 +127,7 @@ impl Fixture {
 		self.write().await;
 	}
 
-	pub async fn blank(&mut self) {
+	async fn blank(&mut self) {
 		self.buf.fill(BLACK);
 		self.write().await;
 	}

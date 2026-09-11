@@ -46,9 +46,8 @@
 		judged?: number;
 		total?: number;
 		/**
-		 * Where a new song starts inside this one. Held by the page rather than in the draft
-		 * below, because the section lane draws and removes the same marks: two drafts of one
-		 * list is how a chip removed in one place comes back from a debounce in the other.
+		 * The page owns shared movement marks so lane edits cannot be undone by this panel's
+		 * debounce.
 		 */
 		movements?: number[];
 		/** Where the analysis says the songs change, seconds, with how it knows. */
@@ -71,11 +70,7 @@
 		onclose: () => void;
 	} = $props();
 
-	/**
-	 * The failure vocabulary. Fixed rather than free-form so a hundred judgements aggregate
-	 * into "31 tracks flagged sections" instead of a hundred spellings of the same complaint.
-	 * The free text and the moment notes carry everything the chips cannot.
-	 */
+	/** Fixed failure tags aggregate consistently; free text and moment notes carry detail. */
 	const TAGS = [
 		'sections wrong',
 		'boundary off',
@@ -108,19 +103,12 @@
 	let draft = $state<Judgement>(fresh());
 	let loadedFor = $state<string | null>(null);
 
-	// Re-seat the draft when the track changes - after flushing anything still waiting on the
-	// debounce, which belongs to the track being left. Without the flush a rating given in
-	// the last half second of a song was written against the NEXT song, or lost: the timer
-	// fired after the draft had already been replaced, and auto-advance makes that routine.
+	// Flush debounced edits before changing tracks so they cannot be lost or applied to the next song.
 	$effect(() => {
 		if (trackId === loadedFor) return;
 		flushSave();
 		loadedFor = trackId;
-		// Over a fresh one, because what arrives here is the page's optimistic merge of the
-		// patches written so far, and a patch carries only its writer's own fields. A track
-		// whose first write was a movement mark or a map has no `notes` at all, and reading
-		// through the hole threw out of the effect - which left the panel seated on the track
-		// it was leaving.
+		// Merge with defaults because optimistic judgement patches may omit panel fields.
 		draft = judgement
 			? { ...fresh(), ...judgement, notes: (judgement.notes ?? []).map((n) => ({ ...n })) }
 			: fresh();
@@ -129,13 +117,8 @@
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
 	/**
-	 * What the panel owns, and nothing else.
-	 *
-	 * The map belongs to the section editor and the movement marks to the page, since the lane
-	 * edits those too. The panel used to send its whole draft, which carried whatever
-	 * `sections` the judgement had when the panel opened - so a map redrawn afterwards was
-	 * reverted by the next star, and a discard was undone by a debounce still in flight.
-	 * Absent means "leave it" to the merge on the other side.
+	 * Send only panel-owned fields. Omitted section maps and movement marks must survive server
+	 * merging.
 	 */
 	function panelPatch(): JudgementPatch {
 		const d = $state.snapshot(draft) as Judgement;
@@ -205,11 +188,7 @@
 		queueSave();
 	}
 
-	/**
-	 * Where a new song starts inside this one. The analysis gives what follows its own
-	 * downbeat, its own levels and its own look, which is why this is a mark of its own
-	 * rather than a note: it changes the show rather than describing it.
-	 */
+	/** Movement marks change the analysis grid and show; moment notes only describe them. */
 	function markMovement() {
 		const t = Math.round(position * 10) / 10;
 		// Two marks within half a second are one mark pressed twice.
@@ -221,11 +200,7 @@
 		onmovements(movements.filter((_, i) => i !== index));
 	}
 
-	/**
-	 * Every seam the room plays: the analysis's own findings, the marks it has adopted, and any
-	 * mark it has not heard yet (a re-analysis is a play away). A finding is refused rather
-	 * than deleted, since the analysis would only find it again.
-	 */
+	/** Combine adopted seams with pending marks; persist refusals to prevent rediscovery. */
 	const seams = $derived.by(() => {
 		const out: { t: number; source: 'auto' | 'mark'; note: string; pending: boolean; index: number }[] = detected.map(
 			(d) => ({ ...d, pending: false, index: -1 })
@@ -237,12 +212,7 @@
 		return out.sort((a, b) => a.t - b.t);
 	});
 
-	/**
-	 * Where the grid's own bar lengths say the tempo changed - offered as candidates, never
-	 * applied. The measurement is trustworthy (the bar table is built from tracked beats);
-	 * what it cannot know is whether a tempo change is a NEW SONG or the same one breathing,
-	 * and that is the listener's call. An ordinary track produces none of these.
-	 */
+	/** Offer tempo changes as candidates; the listener decides whether they start a new song. */
 	const candidates = $derived(
 		tempoChanges.filter(
 			(t) => !movements.some((m) => Math.abs(m - t) < 2) && !detected.some((d) => Math.abs(d.t - t) < 8)

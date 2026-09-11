@@ -1,10 +1,4 @@
-/**
- * Every light the app has found, and which one is on screen.
- *
- * The board is the authority: an edit is applied locally so the control moves under the finger,
- * and then overwritten by whatever the board answers. A poll does the same for changes made
- * somewhere else - another phone, a show starting, a wall switch.
- */
+/** Apply edits optimistically, then reconcile from board replies and polls. */
 
 import { DeviceClient, type Link } from './client.ts';
 import { discover, type Found } from './discover.ts';
@@ -15,9 +9,9 @@ import { displayName, type DeviceInfo, type LightState, type Patch } from './pro
 const POLL_MS = 4000;
 const REMEMBERED_KEY = 'lightningstrike.controller.hosts';
 
-export type Phase = 'searching' | 'ready' | 'empty';
+type Phase = 'searching' | 'ready' | 'empty';
 
-export class Device {
+class Device {
 	info = $state<DeviceInfo | null>(null);
 	state = $state<LightState | null>(null);
 	link = $state<Link>('idle');
@@ -54,19 +48,14 @@ export class Device {
 		return this.info?.effects ?? [];
 	}
 
-	/**
-	 * Applied locally first so the control answers the finger, then corrected by the board.
-	 * Every field here is one the board echoes back, so a rejected value cannot stick.
-	 */
 	apply(patch: Patch): void {
 		if (this.state) this.state = { ...this.state, ...patch };
 		this.client.send(patch);
 	}
 
 	/**
-	 * Skipped while an edit is in the air. The board has two listeners and the reply to that edit
-	 * carries fresher state than this would, so a poll laid across a tap only takes a listener
-	 * away from it.
+	 * An edit's reply carries fresher state; do not consume a board listener with a concurrent
+	 * poll.
 	 */
 	async poll(): Promise<void> {
 		if (this.client.busy) return;
@@ -113,13 +102,7 @@ export class Room {
 		void this.selected?.poll();
 	}
 
-	/**
-	 * Files a board under its name rather than the address it answered on.
-	 *
-	 * A rescan reaches the same light at a name it resolved under last time and at the address it
-	 * holds now, so address alone would list it twice; and a light that moved on DHCP has to
-	 * replace its old entry rather than sit beside a dead one.
-	 */
+	/** Match firmware names so DHCP changes and name/IP aliases replace the same device. */
 	private absorb(found: Found): Device {
 		const sameHost = this.devices.find((d) => d.host === found.host);
 		if (sameHost) return sameHost;
@@ -178,10 +161,7 @@ export class Room {
 		return true;
 	}
 
-	/**
-	 * Only the light on screen is polled, and only while the page is being looked at. A phone in
-	 * a pocket has no business waking a board once a second.
-	 */
+	/** Poll only the selected light while the page is visible. */
 	watch(): () => void {
 		const tick = (): void => {
 			if (document.visibilityState === 'visible') void this.selected?.poll();

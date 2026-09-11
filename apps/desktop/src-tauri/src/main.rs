@@ -12,16 +12,8 @@ use tauri::{WebviewUrl, WebviewWindowBuilder};
 #[cfg(target_os = "macos")]
 const TOP_BAR_HEIGHT: f64 = 56.0;
 
-/// Where the controls start, and how much room they need.
-///
-/// macOS puts them near the top of a 28pt title bar; this bar is twice that, so left alone they
-/// ride high above the wordmark beside them.
-///
-/// `y` is not the button's top edge, which is what makes this a number rather than a formula.
-/// tao resizes the title bar container to `button height + y` and moves only each button's x,
-/// leaving them wherever AppKit had laid them out inside it - so they end up higher than `y` by
-/// however much padding that container carries, and nothing publishes that figure. Set by eye
-/// against the 56pt bar, so that the circles sit on the same line as the wordmark beside them.
+/// Align controls with the 56pt app bar by eye: tao sets container height to button height + y but
+/// preserves AppKit's unpublished vertical padding.
 #[cfg(target_os = "macos")]
 const TRAFFIC_LIGHT_X: f64 = 20.0;
 #[cfg(target_os = "macos")]
@@ -39,15 +31,12 @@ fn main() {
 		.setup(|app| {
 			let handle = app.handle().clone();
 
-			// Both of these are bounded and quick, and the initialization script needs the second
-			// one before the window exists. Everything slow happens after the window is on screen.
+			// Gather only bounded work before creating the window.
 			let path = env::resolve_path();
 			let missing = env::missing_tools(&path);
 			let started = server::spawn(&handle, &path);
 
-			// The splash, not the server: a window the user can see comes first, and the sidecar
-			// is navigated to when it answers.
-			// Only the macOS block below reassigns it.
+			// Show the splash before starting the server. Only macOS reassigns this builder.
 			#[cfg_attr(not(target_os = "macos"), allow(unused_mut))]
 			let mut builder =
 				WebviewWindowBuilder::new(&handle, "main", WebviewUrl::App("index.html".into()))
@@ -60,21 +49,17 @@ fn main() {
 			#[cfg(target_os = "macos")]
 			{
 				use tauri::{LogicalPosition, TitleBarStyle};
-				// Overlay puts the page under the title bar; without hiding the title as well,
-				// the window's own name is drawn straight through the app's top bar.
+				// Hide the native title so it does not overlap the app bar under the overlay.
 				builder = builder
 					.title_bar_style(TitleBarStyle::Overlay)
 					.hidden_title(true)
 					.traffic_light_position(LogicalPosition::new(TRAFFIC_LIGHT_X, TRAFFIC_LIGHT_Y));
 			}
 
-			// A failure from here on aborts the process before `RunEvent::Exit` can run, so the
-			// sidecar has to be ended on the way out or it survives an app that never opened.
+			// A build failure bypasses RunEvent::Exit, so stop the sidecar explicitly.
 			let window = builder.build().inspect_err(|_| server::stop(&handle))?;
 
-			// Fullscreen takes the controls away, so the bar should stop holding a gap for them.
-			// Pushed as a custom property rather than an event the page subscribes to: this is
-			// one number the shell knows and the page only ever reads.
+			// Fullscreen hides window controls; update their reserved space through a CSS property.
 			#[cfg(target_os = "macos")]
 			{
 				let follow = window.clone();
@@ -90,9 +75,7 @@ fn main() {
 				});
 			}
 
-			// Before anything is drawn in it, so the first frame is already at the display's rate.
-			// WKWebView is the only one that needs asking; `PlatformWebview::inner` is its own
-			// accessor and does not exist elsewhere.
+			// Lift the cap before the first frame. PlatformWebview::inner is macOS-only.
 			#[cfg(target_os = "macos")]
 			{
 				let _ = window.with_webview(|webview| {
@@ -104,8 +87,7 @@ fn main() {
 
 			window.show().inspect_err(|_| server::stop(&handle))?;
 
-			// From here nothing blocks the run loop. The window is up, so a slow start reads as a
-			// slow start and a failed one has somewhere to say so.
+
 			match started {
 				Err(message) => {
 					let _ = window.eval(failed(&message));
@@ -134,9 +116,7 @@ fn main() {
 		})
 		.build(tauri::generate_context!())
 		.expect("error while building LightningStrike")
-		// The sidecar is a separate process and does not go away on its own. Without this the
-		// server survives the window that started it, keeps its DDP loop running and carries on
-		// lighting the room, and the next launch starts a second one beside it.
+		// Stop the separate sidecar so closing the app also stops DDP output.
 		.run(|app, event| {
 			if let tauri::RunEvent::Exit = event {
 				server::stop(app);
@@ -149,11 +129,7 @@ fn set_inset(inset: f64) -> String {
 	format!("document.documentElement.style.setProperty('--traffic-inset', '{inset}px')")
 }
 
-/// Hand the page what only the shell knows, before any of its own script runs.
-///
-/// A global rather than an IPC call so the first paint already has it: the top bar has to
-/// reserve space for the traffic lights on the very first frame, and a round trip would show
-/// the layout moving.
+/// Inject shell hints before first paint to avoid shifting the traffic-light inset.
 fn shell_hints(missing_tools: &[&'static str]) -> String {
 	let missing = serde_json::to_string(missing_tools).unwrap_or_else(|_| "[]".into());
 	format!(

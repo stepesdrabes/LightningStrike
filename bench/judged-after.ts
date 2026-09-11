@@ -1,9 +1,7 @@
-// After a re-analysis of the judged tracks in a scratch cache, diff the new section
-// tables against the judged round's snapshot: phantom same-kind share, section counts,
-// per-track tables for the named tracks, and recomposed cue bars.
-//
-//   node bench/judged-after.ts <scratch-cache-dir>
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+// Compare a scratch reanalysis with the judged snapshot: boundary tables, phantom splits and
+// cue bars.
+// node bench/judged-after.ts <scratch-cache-dir>
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { composeShow } from '@mv/author-engine';
 

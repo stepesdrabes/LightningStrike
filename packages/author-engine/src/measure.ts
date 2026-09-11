@@ -3,17 +3,10 @@ import { EffectRegistry, Mixer, ShowPlayer, barTimeAt } from '@mv/core';
 import { MAX_VOID_BARS } from './lint.ts';
 
 /**
- * What a finished show actually delivers to the LEDs.
- *
- * The linter judges a show against the grid and the craft rules without ever rendering it, so a
- * show can lint clean and still hand the room a black intro or a drop indistinguishable from the
- * groove before it. This plays it through the same `ShowPlayer` and `Mixer` the wire is fed from
- * and reports what came out, in bytes: gamma 2.2 sends an authoring value of 0.2 to byte 8 and
- * 0.6 to byte 84, so the authoring domain cannot answer whether a passage is visible.
- *
- * Reported per cue rather than per section, because the cue is what an author can change.
+ * Per-cue measurements from the actual player and mixer. Visibility is measured after byte
+ * encoding.
  */
-export interface CueReading {
+interface CueReading {
 	bar: number;
 	endBar: number;
 	/** The cue's own label, which may disagree with the detector's. */
@@ -22,18 +15,11 @@ export interface CueReading {
 	level: number;
 	/** Share of LEDs above byte 8, roughly where a pixel stops reading as off in a dark room. */
 	lit: number;
-	/**
-	 * The dimmest strip's mean against the brightest strip's, 0 to 1.
-	 *
-	 * Not mean absolute deviation across the frame, which cannot tell structure from patchiness:
-	 * a bright beam over dark walls scores high on it. This asks the question a five-strip room
-	 * actually poses - is any wall being left out - and a flat wash scores 1.
-	 */
+	/** Dimmest/brightest strip mean, 0..1; unlike pixel variance, this detects an unlit wall. */
 	spread: number;
 	/**
-	 * Mean (max-min)/max over lit pixels: how much colour the room actually receives, 0 grey
-	 * to 1 fully saturated. The Hunt effect makes dim cues read greyer than their bytes say,
-	 * so a QUIET section delivering low chroma is the "flat" complaint in numbers.
+	 * Mean (max-min)/max over lit pixels, 0 grey to 1 saturated. Dim cues need chroma to offset
+	 * the Hunt effect.
 	 */
 	chroma: number;
 	/** Movement across a phrase, with frame-rate shimmer already removed. */
@@ -42,49 +28,29 @@ export interface CueReading {
 	ripple: number;
 }
 
-export interface HitReading {
+interface HitReading {
 	bar: number;
 	kind: Show['hits'][number]['kind'];
 	/** False when the room never did what the hit asked inside its own span. */
 	fired: boolean;
 }
 
-export interface ShowReading {
+interface ShowReading {
 	fps: number;
 	cues: CueReading[];
 	/** Mean delivered byte in the drops against the mean in the intro, outro and breakdowns. */
 	contrast: number;
 	hits: HitReading[];
-	/**
-	 * Bars the room is dark in without having been asked to be.
-	 *
-	 * A void and a blackout are both explicit instructions to cut the light, so neither is
-	 * reported while it stays inside the length the craft rules allow: this is for the bar
-	 * nobody meant to lose.
-	 */
+	/** Unrequested dark bars, excluding valid voids and blackouts. */
 	darkBars: number[];
-	/**
-	 * Frames where the room's overall colour jumped further than a designed show moves,
-	 * outside the bars where a cue or hit licenses the jump.
-	 *
-	 * The caps come from the one generative system whose output human judges could not tell
-	 * from a designer's, which needed exactly this constraint to get there: smoothness inside
-	 * sections, jumps only at events. A high count is the "assembled, not designed" tell.
-	 */
+	/** Frames exceeding color/level jump caps outside cue changes and punctuation. */
 	hueJumps: number;
 	levelJumps: number;
 }
 
 /** Where a pixel stops reading as off in a dark room. */
 const VISIBLE = 8;
-/**
- * Two references per pixel, which is what separates the two complaints a room actually gets.
- *
- * One high-pass cannot: subtracting a single running mean keeps everything faster than its time
- * constant, so a shimmer and a swell land in the same number. The fast average removes the
- * shimmer, leaving `drift` as what moved between roughly 0.3 and 2 Hz - a phrase - and the
- * residual against that same fast average is `ripple`, the shimmer on its own.
- */
+/** Fast and slow averages separate phrase movement (~0.3-2 Hz) from frame-scale shimmer. */
 const FAST_TAU = 0.08;
 const SLOW_TAU = 0.5;
 
@@ -102,14 +68,10 @@ interface Accumulator {
 	n: number;
 }
 
-export interface MeasureOptions {
+interface MeasureOptions {
 	/**
-	 * Frames per second. 60 is the wire rate and the default.
-	 *
-	 * Halving it halves the cost and is not the same picture: the slew, the flash limiter and
-	 * every envelope in an effect integrate per frame, so a passage that flickers renders up to
-	 * a fifth dimmer at 30. A still cue agrees within a byte. Use the cheap rate to look at
-	 * levels and coverage, never to judge how a drop reads.
+	 * Frames/second, default 60. Lower rates change integrated envelopes and levels; use 60 to
+	 * judge motion.
 	 */
 	fps?: number;
 }
@@ -167,10 +129,8 @@ export function measureShow(
 	const aSlow = 1 - Math.exp(-dt / SLOW_TAU);
 	let first = true;
 
-	// Per-frame jump caps on the room's overall look, from the generative system whose output
-	// judges could not tell from a designer's: at its 10 Hz, 100 degrees of hue and 20% of
-	// intensity per step, converted to this frame rate. Jumps are licensed at cue changes and
-	// while punctuation is live, exactly as that system licensed them at musical events.
+	// Scale the reference 10 Hz caps (100 degrees hue, 20% intensity per step) to this rate;
+	// events are exempt.
 	const HUE_CAP = (100 / (0.1 * fps)) * 1.0;
 	const LEVEL_CAP = (0.2 / (0.1 * fps)) * 255;
 	let hueJumps = 0;
@@ -312,13 +272,7 @@ export function measureShow(
 	};
 }
 
-/**
- * Hue of an accumulated colour, degrees, or NaN when it is too grey to carry one.
- *
- * The chroma floor is load-bearing: a room split between two hues averages toward grey,
- * where the hue of the mean flips wildly while nobody in the room sees any colour change
- * at all. Below a tenth of the accumulated level the reading abstains rather than jitters.
- */
+/** Hue in degrees, or NaN below 10% chroma where an almost-grey mean would jitter. */
 function meanHue(r: number, g: number, b: number): number {
 	const max = Math.max(r, g, b);
 	const min = Math.min(r, g, b);
@@ -369,19 +323,7 @@ function cueIndexPerBar(cues: Show['cues'], bars: number): Int32Array {
 	return out;
 }
 
-/**
- * Bars where darkness is the instruction rather than the fault.
- *
- * Three ways it can be asked for: a void the analysis measured, a void the cue itself declares -
- * which is what zeroes the house floor, so it is the instruction that actually produces the dark
- * room - and every bar a blackout touches. The held breath before a drop is a blackout on the
- * last bar of a build, and reporting it as a room accidentally lost is how a measurement teaches
- * an author to undo the strongest move in the vocabulary.
- *
- * A cue-declared void is only excused as far as `MAX_VOID_BARS`, which is where the linter
- * starts calling it too long anyway. Past that the two instruments agree rather than one of them
- * repeating the other, and a groove mislabelled `void` still shows up as the black room it is.
- */
+/** Excuse measured voids, cue voids up to MAX_VOID_BARS, and bars touched by blackouts. */
 function darknessAskedFor(analysis: TrackAnalysis, show: Show, cues: Show['cues']): Uint8Array {
 	const out = new Uint8Array(analysis.bars.length);
 	for (const span of analysis.sections) {

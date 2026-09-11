@@ -22,13 +22,7 @@ function loaded(): RoomDirector {
 }
 
 describe('RoomDirector', () => {
-	/**
-	 * The regression guard for everything else in this file.
-	 *
-	 * Splitting the mixer and putting a second one beside it is only safe if a room that is playing
-	 * a show is byte for byte the room that was playing it before any of this existed. Not close:
-	 * identical, because the wire is bytes and a show is deterministic.
-	 */
+	/** Show playback must remain byte-identical to the standalone mixer. */
 	it('renders a playing show exactly as the plain mixer path does', () => {
 		const d = loaded();
 		const mixer = new Mixer(g);
@@ -47,7 +41,6 @@ describe('RoomDirector', () => {
 	it('holds the show through an ordinary gap between tracks', () => {
 		const d = loaded();
 		for (let i = 0; i < 60 * 4; i++) d.update(i / 60, 1 / 60, PLAYING);
-		// Two seconds of nothing playing, which is a fetch and a decode, not an evening ending.
 		for (let i = 0; i < 60 * 2; i++) d.update(4, 1 / 60, STOPPED);
 		expect(d.ambience).toBe(0);
 		expect(d.resting).toBe(false);
@@ -66,19 +59,13 @@ describe('RoomDirector', () => {
 			if (arrived < 0 && d.ambience >= 1) arrived = i / 60;
 		}
 		expect(d.ambience).toBe(1);
-		// The grace, then the dissolve. Anything much faster is a room that dips between tracks.
 		expect(arrived).toBeGreaterThan(6.5);
 		expect(arrived).toBeLessThan(8.5);
 	});
 
 	/**
-	 * The handover must never be darker than either end of it.
-	 *
-	 * Two things conspired to make it so. The blend was arithmetic, in a domain that is not linear
-	 * in light, so two looks lighting different walls each arrived at a fifth of their own output
-	 * halfway across. And the show kept animating while its clock was stopped, so what was being
-	 * faded out was itself swinging between 28 and 79 bytes. Together the room dropped to 60% of
-	 * its own resting brightness in the middle of a dissolve that was supposed to be invisible.
+	 * A handover must stay at least as bright as either endpoint, including when the show is
+	 * paused.
 	 */
 	it('never dips below either end of a handover', () => {
 		const d = loaded();
@@ -97,8 +84,7 @@ describe('RoomDirector', () => {
 		let rested = 0;
 		for (let i = 0; i < 60 * 12; i++) {
 			d.update(40, 1 / 60, STOPPED);
-			// Measured against the far end as it arrives, not against a sample taken later: the
-			// scene goes on living once it has the room, and that is not part of the handover.
+			// Compare the arriving endpoint; later ambient animation is outside the handover.
 			if (d.ambience >= 1) {
 				rested = mean();
 				break;
@@ -115,27 +101,16 @@ describe('RoomDirector', () => {
 		const d = loaded();
 		for (let i = 0; i < 60 * 20; i++) d.update(20 + i / 60, 1 / 60, PLAYING);
 
-		// A second to let the drum envelopes run out, which is the one thing that SHOULD still move:
-		// a kick caught mid-flash by a pause has to finish rather than be held there.
+		// Allow one second for a paused hit envelope to finish.
 		for (let i = 0; i < 60; i++) d.update(40, 1 / 60, STOPPED);
 		const settled = Float32Array.from(d.showMix.frame);
 
-		// After that, nothing. A paused show is a stopped clock and a running one at once - `t`
-		// freezes, `dt` does not - so every phase accumulator in every effect would carry on.
+		// After envelopes settle, paused effects must stop integrating dt.
 		for (let i = 0; i < 60 * 2; i++) d.update(40, 1 / 60, STOPPED);
 		expect(Array.from(d.showMix.frame)).toEqual(Array.from(settled));
 	});
 
-	/**
-	 * The room must not remember when it was.
-	 *
-	 * The output chain used to carry a photosensitivity limiter that kept a one-second sliding
-	 * window of absolute timestamps, and `t` here is the TRACK position. A new track starting at
-	 * zero could therefore never expire the last one's entries: measured, the room sat at 38% of
-	 * its own brightness through forty-five seconds of total darkness, and then snapped back to
-	 * full the moment the new track's clock passed the old one's - which is what a flash on a track
-	 * change looked like. Nothing downstream of the blend may read absolute time again.
-	 */
+	/** The output chain must not depend on absolute track time, which resets on track changes. */
 	it('is not dimmed by a track change taking the clock backwards', () => {
 		const mean = (d: RoomDirector) => {
 			let sum = 0;
@@ -145,18 +120,15 @@ describe('RoomDirector', () => {
 			return sum / (d.bytes.length / 3);
 		};
 
-		// One that has been playing a while and then had the clock thrown back to zero.
 		const used = loaded();
 		for (let i = 0; i < 60 * 60; i++) used.update(i / 60, 1 / 60, PLAYING);
 		used.load(analysis, show);
 		for (let i = 0; i < 60 * 5; i++) used.update(i / 60, 1 / 60, PLAYING);
 
-		// And one that has only ever seen those five seconds.
 		const fresh = loaded();
 		for (let i = 0; i < 60 * 5; i++) fresh.update(i / 60, 1 / 60, PLAYING);
 
-		// Not identical - the effects have their own running phases - but the same room. The bug
-		// this guards put them a factor of two and a half apart.
+		// Effect phases may differ; delivered brightness should remain comparable.
 		expect(mean(used)).toBeGreaterThan(mean(fresh) * 0.8);
 		expect(mean(used)).toBeLessThan(mean(fresh) * 1.25);
 	});
@@ -179,7 +151,6 @@ describe('RoomDirector', () => {
 		const d = loaded();
 		for (let i = 0; i < 60 * 4; i++) d.update(i / 60, 1 / 60, PLAYING);
 		for (let i = 0; i < 60 * 2; i++) d.update(4 + i / 60, 1 / 60, LOUNGE);
-		// A pause would still be inside its grace here and showing the show.
 		expect(d.ambience).toBeGreaterThan(0.15);
 	});
 
@@ -187,7 +158,6 @@ describe('RoomDirector', () => {
 		const d = loaded();
 		for (let i = 0; i < 60 * 30; i++) d.update(0, 1 / 60, { ...LOUNGE, playing: false });
 		expect(d.ambience).toBe(1);
-		// No snap back to a show nobody is listening to: the grace is already spent.
 		d.update(0, 1 / 60, STOPPED);
 		expect(d.ambience).toBeGreaterThan(0.99);
 	});
@@ -202,9 +172,7 @@ describe('RoomDirector', () => {
 	it('lights the room when there is no show at all, without waiting out the grace', () => {
 		const d = new RoomDirector(g, new EffectRegistry());
 		const state: DirectorState = { playing: false, hasShow: false, lounge: false, rest: true };
-		// Opening the app to an empty queue: there is no gap between tracks to bridge, so the room
-		// starts arriving straight away rather than sitting dark for the first two and a half
-		// seconds of it.
+		// An empty queue has no inter-track gap to bridge.
 		for (let i = 0; i < 60; i++) d.update(0, 1 / 60, state);
 		expect(d.ambience).toBeGreaterThan(0);
 
@@ -221,15 +189,13 @@ describe('RoomDirector', () => {
 		let f = d.update(0, 1 / 60, PLAYING);
 		for (let i = 0; i < 60 * 40; i++) f = d.update(40, 1 / 60, STOPPED);
 		expect(d.resting).toBe(true);
-		// The scrubber, the cue highlight and the readout all still mean the track.
 		expect(f.t).toBe(40);
 		expect(f.barIndex).toBeGreaterThan(10);
 	});
 
 	it('never emits a non-finite or negative byte across a whole handover', () => {
 		const d = loaded();
-		// Scanned and reported once rather than asserted per byte: a frame is 3960 of them and this
-		// walks eleven hundred frames, and four and a half million assertions is a minute of test.
+		// Aggregate failures to avoid millions of per-byte assertions.
 		let bad = '';
 		const walk = (frames: number, state: DirectorState, t: number, tag: string) => {
 			for (let i = 0; i < frames; i++) {

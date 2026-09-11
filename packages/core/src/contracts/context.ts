@@ -1,22 +1,11 @@
 /**
- * What the track IS, as far as free metadata can say: resolved identity, genre family,
- * published tempo, synced lyrics. Gathered once at ingest from keyless web APIs, cached
- * beside the analysis, and absent-tolerant throughout - every field can be null and the
- * pipeline still runs, so an offline ingest degrades to exactly what it was before this
- * existed.
- *
- * Lives in core because the author-engine reads it and core is the only package it may
- * import. The implementation that fills it lives in the analysis package, which is the
- * one place with network access.
+ * Optional track identity, genre, tempo and lyrics from keyless services, cached at ingest.
+ * Core owns the contract; analysis fills it. Missing metadata must not block the pipeline.
  */
 
 export const CONTEXT_VERSION = 3;
 
-/**
- * The lighting vocabulary of genres, not the record shop's. Each family names a distinct
- * way a room is lit - a palette discipline, a flash budget, a blackout grammar - so two
- * genres that are lit the same way share a family however far apart the music sits.
- */
+/** Lighting families group genres with shared palette, flash and blackout treatment. */
 export type GenreFamily =
 	| 'techno'
 	| 'house'
@@ -48,17 +37,12 @@ export interface TrackContext {
 	/** Which step settled the identity: 'ytmeta', 'odesli', 'deezer', 'titleparse'. */
 	resolvedBy: string | null;
 	isrc: string | null;
-	/**
-	 * A published tempo, bpm, or null. A hypothesis rather than an answer: it settles a
-	 * metrical-level coin toss, it never overrides a grid that already agrees with it.
-	 */
+	/** Published BPM, used to settle metrical-level ambiguity. */
 	publishedBpm: number | null;
 	/** Raw genre strings as the sources gave them, for the inspector and for re-mapping. */
 	/**
-	 * Genre names from METADATA sources only (Discogs, Deezer, YouTube). The audio
-	 * classifier's labels live in `audioGenres`, never here: mixing them let a context
-	 * re-vote read the model's own echo back as evidence, so the vote could never change
-	 * its mind (Get Lucky wore "ballad" for a week on its own reflection).
+	 * Metadata-only genres. Keep classifier labels in audioGenres so re-votes cannot reuse
+	 * the model's own output as independent evidence.
 	 */
 	genres: string[];
 	/** The audio classifier's own top labels, kept apart from the metadata's - see `genres`. */

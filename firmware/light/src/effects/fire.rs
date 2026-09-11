@@ -1,15 +1,12 @@
 use crate::effects::scatter;
 
-/// Sparks per 1024 pixels per tick; with the 0..7 cooling this settles near an ember to every
-/// ten pixels, glow between them carried by the diffusion.
+/// Sparks per 1024 pixels per tick; 0..7 cooling yields roughly one ember per ten pixels.
 const SPARK_PER_1024: u32 = 2;
 
 /// Heat white-hot enough to reach the white emitter directly.
 const WHITE_HOT: u32 = 235;
 
-/// An ember field along the run: heat decays, neighbours share it, sparks reignite it. The tint
-/// is the flame body, so the default amber reads as fire and any other colour is that colour
-/// burning. On one pixel the diffusion is a no-op and what remains is a candle.
+/// Tinted diffusing ember field; on one pixel diffusion is a no-op, leaving a candle.
 pub fn render(out: &mut [[u16; 4]], heat: &mut [u8], t: u32, tint: [u16; 4], env: u32) {
 	let n = out.len().min(heat.len());
 	if n == 0 {

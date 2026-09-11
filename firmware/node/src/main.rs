@@ -18,8 +18,7 @@ use room_light::engine::Engine;
 use crate::fixture::Fixture;
 use crate::persist::Persist;
 
-// A panic reboots and reprints the banner, which is what tells it apart from a WiFi drop. cyw43
-// has open panics on a bad password and on rejoining while already associated.
+// Panic reboot reprints the banner, distinguishing it from WiFi loss; cyw43 may panic during joining.
 use panic_reset as _;
 
 #[embassy_executor::main]

@@ -9,11 +9,7 @@ import { INTENSITY } from './helpers.ts';
 /** Shockwaves in flight at once. Three outlives a bar of four-on-the-floor at any tempo. */
 const SHOTS = 3;
 
-/**
- * Every kick launches a shockwave from one corner of the room, the corners taken in turn,
- * the front racing both ways around the perimeter and dying as it spreads. The room answers
- * the kit as geometry rather than as brightness: where the wave IS is the beat.
- */
+/** Rotate corner launches so the kit moves geometry around the room. */
 export const kickCannon: EffectDef = {
 	id: 'kickCannon',
 	name: 'Kick Cannon',
@@ -33,8 +29,7 @@ export const kickCannon: EffectDef = {
 	},
 	params: [INTENSITY],
 	create(g) {
-		// Ring positions of the four launch corners. Fixed rather than derived from strip
-		// geometry: the effect owns its own compass and stays identical in any room.
+		// Fixed launch coordinates keep the effect's compass identical across geometries.
 		const origins = [0.125, 0.375, 0.625, 0.875];
 		const radius = new Float32Array(SHOTS).fill(2);
 		const life = new Float32Array(SHOTS);
@@ -61,8 +56,7 @@ export const kickCannon: EffectDef = {
 					next = (next + 1) % SHOTS;
 				}
 
-				// The front crosses the half-ring in about a beat, so at any tempo the wave from
-				// one kick has left the room before the next one lands.
+				// Cross the half-ring in about one beat so consecutive kicks stay distinct.
 				const speed = (0.5 / Math.max(0.1, f.beatPeriod)) * ctx.motion;
 
 				fadeToBlack(out, f.dt, 0.05);
@@ -80,8 +74,7 @@ export const kickCannon: EffectDef = {
 						const u = ringU(g, i);
 						const raw = Math.abs(u - from[s]);
 						const dist = Math.min(raw, 1 - raw);
-						// A leading edge half a metre wide and a short tail: a blow, not a glow,
-						// and not a tracer either.
+						// A half-metre leading edge and short tail read as a blow.
 						const band = clamp(1 - Math.abs(dist - radius[s]) / 0.085);
 						if (band <= 0) continue;
 						const v = band * band;

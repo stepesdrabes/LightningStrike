@@ -1,9 +1,6 @@
 /**
- * The icons the app uses, as raw SVG bodies.
- *
- * Lucide geometry (ISC), copied rather than imported: `lucide-svelte` would pull a component per
- * icon into a bundle that has to fit in a microcontroller's flash, and this app needs nine of
- * them. Drawn on the 24x24 grid with a 2px round stroke, which is what makes them a set.
+ * Lucide geometry (ISC), inlined to fit the controller's flash budget. Uses a 24x24 grid and
+ * 2px round strokes.
  */
 
 export type IconName = keyof typeof ICONS;
@@ -22,8 +19,7 @@ export const ICONS = {
 	offline:
 		'<path d="M12 20h.01"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/><path d="M5 12.859a10 10 0 0 1 5.17-2.69"/><path d="M19 12.859a10 10 0 0 0-2.007-1.523"/><path d="M2 8.82a15 15 0 0 1 4.177-2.643"/><path d="M22 8.82a15 15 0 0 0-11.288-3.764"/><path d="m2 2 20 20"/>',
 	spinner: '<path d="M21 12a9 9 0 1 1-6.219-8.56"/>',
-	check: '<path d="M20 6 9 17l-5-5"/>',
-	chevron: '<path d="m6 9 6 6 6-6"/>'
+	check: '<path d="M20 6 9 17l-5-5"/>'
 } as const;
 
 /** One icon per effect the firmware ships; anything newer falls back to the generic one. */

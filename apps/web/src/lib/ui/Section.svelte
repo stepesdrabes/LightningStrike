@@ -3,22 +3,15 @@
 
 	let {
 		title,
-		action,
 		children
 	}: {
-		title?: string;
-		action?: Snippet;
+		title: string;
 		children: Snippet;
 	} = $props();
 </script>
 
 <section>
-	{#if title || action}
-		<header>
-			{#if title}<h2>{title}</h2>{/if}
-			{#if action}<span class="action">{@render action()}</span>{/if}
-		</header>
-	{/if}
+	<header><h2>{title}</h2></header>
 	{@render children()}
 </section>
 
@@ -41,10 +34,5 @@
 		font-weight: 600;
 		color: var(--foreground);
 		letter-spacing: -0.005em;
-	}
-	.action {
-		margin-left: auto;
-		display: inline-flex;
-		align-items: center;
 	}
 </style>

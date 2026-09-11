@@ -6,11 +6,7 @@ import { PulseEnv } from '../dsl/env.ts';
 import { setPixel } from '../dsl/buffer.ts';
 import { INTENSITY } from './helpers.ts';
 
-/**
- * Alternating half-room flashes make the SPEED legible where a single flashing wall
- * would smear. Each flash is small and half-room, so even a 13 Hz blast beat keeps the
- * perceived full-field rate safe.
- */
+/** Alternating half-room flashes keep rapid hits spatially distinct. */
 export const doubleKickGatling: EffectDef = {
 	id: 'doubleKickGatling',
 	name: 'Double-Kick Gatling',
@@ -47,8 +43,7 @@ export const doubleKickGatling: EffectDef = {
 					side = -side;
 					(side > 0 ? envR : envL).fire(clamp(0.5 + f.kickEnv * 0.6));
 				}
-				// Six tenths of a beat: a blast beat still reads as separate rounds, and each
-				// one leaves the way a lamp does rather than a shutter.
+				// A six-tenths-beat decay separates rounds while avoiding shutter-like endings.
 				const vl = envL.decay(f.dt, f.beatPeriod, 0.6);
 				const vr = envR.decay(f.dt, f.beatPeriod, 0.6);
 				if (vl < 0.004 && vr < 0.004) {
@@ -65,9 +60,8 @@ export const doubleKickGatling: EffectDef = {
 					}
 					// Hot core out at the side walls, falling toward the centre line.
 					const reach = clamp(Math.abs(g.x[i]) * 0.55 + 0.45);
-					// One colour family cooling from white through the bright read: a hard
-					// cut from white to the base at a threshold was a second flash, in colour,
-					// on the way down from every round.
+					// Cool within one hue family; a thresholded white-to-base change would
+					// flash again during decay.
 					const slot = lerp(SLOT.glow, SLOT.white, clamp((v - 0.15) / 0.6));
 					setSample(out, i, palette, slot + hueShift, v * reach * gain);
 				}

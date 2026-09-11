@@ -1,20 +1,12 @@
 /**
- * The four routes a light serves, as types.
- *
- * The mirror of `firmware/light/src/api.rs` and `firmware/api/src/lib.rs`, duplicated here on
- * purpose rather than imported: this app ships inside the board's own flash and must not reach
- * into a package the browser bundle has no business carrying. `apps/web/src/lib/types.ts` keeps
- * its server types the same way, and for the same reason.
- *
- * Every parser here is a tolerant reader, matching the firmware's own stance: a field this build
- * does not know is ignored, and a missing one reads as absent rather than throwing. This app is
- * older than the next firmware by construction.
+ * Mirror the firmware API without browser imports. Parsers ignore unknown fields and tolerate
+ * missing optional fields for firmware compatibility.
  */
 
-export type Power = 'on' | 'off';
+type Power = 'on' | 'off';
 export type Policy = 'restore' | 'always-on';
 /** Read-only. `party` is entered by DDP arriving, never by a control in here. */
-export type Mode = 'smart' | 'party' | 'party-muted';
+type Mode = 'smart' | 'party' | 'party-muted';
 
 export interface LightState {
 	power: Power;
@@ -62,13 +54,7 @@ function num(v: unknown, fallback = 0): number {
 	return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
 }
 
-/**
- * What makes a reply one of ours.
- *
- * The scan knocks on every address on the subnet, so this is the only thing standing between a
- * light and a printer that happens to answer with JSON. A name and a DDP port together are
- * specific enough that nothing else on a home network produces them by accident.
- */
+/** A name and DDP port distinguish boards from unrelated JSON servers on the subnet. */
 export function parseInfo(value: unknown): DeviceInfo | null {
 	const o = record(value);
 	if (!o) return null;
@@ -106,11 +92,7 @@ export function parseState(value: unknown): LightState | null {
 	};
 }
 
-/**
- * The names the room calls these boards, keyed by the hostnames the firmware compiles in
- * (`Fixture::HOSTNAME`). An unknown board keeps its hostname rather than being renamed to
- * something invented.
- */
+/** Names keyed by firmware Fixture::HOSTNAME; unknown boards retain their hostname. */
 const NAMES: Record<string, string> = {
 	'room-bounce': 'Bounce Lamp',
 	'room-frame': 'The Frame',

@@ -1,31 +1,17 @@
-// The boundary ground truth scored by TIME instead of by bar number.
-//
-//   node bench/phasegrid.ts                 # A = one phase per track, B = the phase walk
-//   node bench/phasegrid.ts --cost=8        # sweep what a restart costs
-//
-// `earlybars.ts` scores the same seams by bar, which is right for every change that keeps
-// the bar count and wrong for any change that does not. A downbeat-phase restart renumbers
-// every bar after it, so a target that named the right instant yesterday names its
-// neighbour today: measured on Killing In the Name, one "WORSE" row was the SAME INSTANT to
-// the millisecond (142.18 s both sides) and another was the boundary moving 0.64 s while
-// its number moved 1. Neither fact is visible to a bar-numbered scorer.
-//
-// So this runs the same analysis twice in one process - A pins the track to a single phase
-// (`phaseResetCost: Infinity`, the grid that shipped before the walk), B lets it restart -
-// converts each target's true bar to a time on A's own grid, and asks which side puts a
-// boundary nearer that moment. Read this and earlybars together: earlybars still owns every
-// change that does not re-phase, and it is the stricter of the two where it applies.
+// Compare single-phase and restartable grids against frozen targets in time, since rephasing
+// renumbers bars.
+// node bench/phasegrid.ts [--cost=8]
+// Convert target bars through the single-phase baseline; earlybars.ts remains the bar-domain
+// comparison.
 import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
 import { BeatThis } from '../packages/analysis/src/beatthis.ts';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { TARGETS } from './targets.ts';
 
-const cache =
-	process.env.MV_CACHE_DIR ??
-	join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache();
 const beatsDir = join(import.meta.dirname, 'corpus/.beats');
 mkdirSync(beatsDir, { recursive: true });
 const cost = Number(process.argv.find((a) => a.startsWith('--cost='))?.slice(7) ?? NaN);

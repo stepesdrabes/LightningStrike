@@ -13,21 +13,15 @@ use static_cell::StaticCell;
 
 pub const KIND: &str = "lamp";
 
-/// 13 bits is the LEDC ceiling at this frequency (80 MHz APB), and still 32x finer than the
-/// strip's own drivers; wire values are 16-bit, shifted down at the last step.
+/// 13-bit LEDC ceiling at 80 MHz APB; shift 16-bit values only at the output boundary.
 const MAX_DUTY: u32 = (1 << 13) - 1;
 
-/// Per-channel scale, 256 unity. White sits at a quarter because the strip's two phosphor
-/// emitters outrun the three colour dies several times over; the selftest's last two steps show
-/// the real ratio. Err low, and pull this channel down first if the supply is short.
-///
-/// This is the STANDALONE trim. A wash asks for a colour and must get that colour, so its white
-/// is held down to where adding it cannot pale the mix.
+/// Standalone trim, 256 unity. White phosphors overpower RGB and pale colours, so use
+/// quarter scale; compare selftest RGB/W steps at raw duty. Reduce white first under supply limits.
 const TRIM: [u32; 4] = [256, 256, 256, 64];
 
-/// The Bounce Lamp on its own brain: one pixel on an analog RGBW strip, four low-side MOSFET
-/// gates on LEDC PWM. R GPIO3, G GPIO4, B GPIO5, W GPIO6 - the C3's strapping pins 2, 8 and 9
-/// stay untouched, and a wrong colour order is a moved wire, which `--features selftest` shows.
+/// One analog RGBW pixel: LEDC MOSFET gates on GPIO3/4/5/6. Avoid C3 strapping pins 2/8/9.
+/// selftest reveals wiring order.
 pub struct Fixture {
 	r: channel::Channel<'static, LowSpeed>,
 	g: channel::Channel<'static, LowSpeed>,
@@ -69,9 +63,8 @@ impl Fixture {
 		let ledc = LEDC_CELL.init(Ledc::new(pins.ledc));
 		ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
 
-		// About 1.9 kHz, like the Pico build: above flicker, far from the frame rate. If low
-		// duties read non-linear, lower this rather than TRIM; the RC slew limiter on each gate
-		// is the suspect.
+		// ~1.9 kHz avoids flicker. For nonlinear low duties, lower PWM frequency first; gate RC slew
+		// can be responsible without requiring a colour-trim change.
 		let lstimer = TIMER_CELL.init(ledc.timer::<LowSpeed>(timer::Number::Timer0));
 		lstimer
 			.configure(timer::config::Config {
@@ -106,19 +99,14 @@ impl Fixture {
 		}
 	}
 
-	/// Off by default, so the boot look is the engine's fade into the remembered state and a
-	/// power cut is not announced to the room. `--features selftest` plays R, G, B, then R+G+B and
-	/// W alone, two seconds each with a dark beat between: the first three say which gate is which,
-	/// and the last two are the [`TRIM`] measurement at raw duty, so a wrong trim cannot hide a
-	/// wiring fault. It runs before the radio, so it delays the join by its own length.
+	/// Optional raw-duty R/G/B/RGB/W boot sequence, two seconds per step, for wiring and trim checks.
+	/// Defaults skip it to preserve the remembered fade. Runs before the radio and delays joining.
 	pub async fn selftest(&mut self) {
 		#[cfg(feature = "selftest")]
 		{
-			/// Long enough to name a colour and write it down. At half a second the five steps
-			/// were past before you could tell which one you were looking at, which is the job.
+			/// Long enough to identify and record each colour.
 			const STEP_MS: u64 = 2000;
-			/// A dark beat between steps, so the two whites at the end read as two events rather
-			/// than one long one. Short, because those two are meant to be compared by eye.
+			/// Separate RGB and phosphor white with a short dark beat for visual comparison.
 			const GAP_MS: u64 = 300;
 			const ON: u16 = u16::MAX;
 
@@ -133,8 +121,7 @@ impl Fixture {
 		}
 	}
 
-	/// The engine's one pixel, linear RGBW with the white already derived; only the trim is
-	/// applied here.
+	/// Linear RGBW engine output; white is derived upstream, trim applies here.
 	pub async fn show(&mut self, out: &[[u16; 4]]) {
 		let Some(px) = out.first() else {
 			return;
@@ -147,16 +134,8 @@ impl Fixture {
 		);
 	}
 
-	/// The show's one pixel, on the three colour dies alone. **The white gate stays dark.**
-	///
-	/// It was driven for an evening, from the achromatic part of the wire, and the phosphors are
-	/// simply the wrong emitter for this job: they outnumber the dies here, so any share of them
-	/// large enough to see is large enough to pale the accent, and their weight against a hue
-	/// depends on which die that hue is - one gate against one die. `bounce.ts` sends a saturated
-	/// pixel now and the level carries everything.
-	///
-	/// The standalone wash still uses all four through [`TRIM`]: a light asked for warm white must
-	/// be able to make warm white. This is only what a show gets.
+	/// Show output uses RGB only: the stronger white phosphors pale its saturated accent.
+	/// Standalone warm-white washes still use all four emitters through TRIM.
 	pub async fn present(&mut self, pixels: &[u8]) {
 		let Some(px) = pixels.get(..3) else {
 			return;

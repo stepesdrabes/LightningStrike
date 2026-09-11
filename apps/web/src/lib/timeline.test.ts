@@ -249,8 +249,7 @@ describe('the time window', () => {
 	it('buckets onsets across the window, not across the track', () => {
 		const times = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 		const zoomed = densityColumns(times, 10, 5, { start: 0.5, end: 1 });
-		// Five seconds of the track across five columns: one onset each, and nothing folded in
-		// from the half that is off-screen.
+
 		expect(Array.from(zoomed)).toEqual([1, 1, 1, 1, 1]);
 		const whole = densityColumns(times, 10, 5);
 		expect(Array.from(whole).reduce((a, b) => a + b, 0)).toBe(10);

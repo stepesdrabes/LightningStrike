@@ -33,7 +33,7 @@ import { KICK_BURSTS, allowedFlashes, profileFor, type GenreProfile } from './ge
 import { choosePalette } from './palette.ts';
 import { EffectPicker } from './select.ts';
 
-export interface EngineOptions {
+interface EngineOptions {
 	/** Built-ins by default; pass a superset to let generated effects be chosen too. */
 	effects?: readonly EffectDef[];
 	/** Overrides the seed taken from the analysis hash. */
@@ -44,46 +44,22 @@ export interface EngineOptions {
 	context?: TrackContext | null;
 }
 
-/**
- * No cue holds the room longer than this before something has to change.
- *
- * Two phrases, not four. At sixteen a long groove held one look for a minute at 120 bpm, which
- * is most of the reason a show that reaches for half the catalog still feels like it reaches
- * for none of it: the variety was there and the room never got to it.
- */
+/** Eight bars keeps a look from occupying an entire long groove. */
 const MAX_CUE_BARS = 8;
 /**
- * The stub tolerance below lets a section run to twelve bars as one cue, which is 22 s at
- * 128 bpm and 48 s at 60, where the owner heard Melanz's first chorus as one look held too
- * long. Past this many seconds the twelve split into the eight and the stub - the statement,
- * then the lift. The eight-bar ceiling itself does not move: bringing it down at slow tempos
- * turned five looks into nine on the same track, which is the over-effecting he warned of.
+ * Split an overlong cue plus stub past 30 seconds, retaining the eight-bar ceiling at slow
+ * tempos.
  */
 const MAX_CUE_S = 30;
 /** A stub is a cue of its own only when it lasts long enough to read as one: a two-bar tag. */
 const MIN_STUB_S = 6;
 /** Matches the linter: punctuation inside this many bars spends the biggest card too early. */
 const SETTLE_BARS = 16;
-/**
- * Kicks per beat at which a passage counts as measurably pounding - four-on-the-floor
- * territory. One constant for every consequence it has (the peak's slam treatment, a slot's
- * slam treatment, and the energy band its looks are drawn from), because two thresholds
- * meaning one thing is how they come to disagree.
- */
+/** Kicks/beat threshold shared by slam treatment and the effect energy-band override. */
 const POUNDING_KICK = 0.8;
-/**
- * Kicks per beat from which a loud passage is the kick's: the kit answer is picked before
- * the accent and gets the hit budget. Under it the phrase gesture leads.
- */
+/** Kicks/beat threshold above which the kit layer gets first claim on the activity budget. */
 const KIT_LEADS = 0.6;
-/**
- * A strobe into a drop, in beats, and the longest it may run in seconds at any tempo.
- *
- * Half a bar, a whole one into the peak. Two bars was the passage rather than the announcement:
- * heard in the room as "the strobe is too long", and at a bar the flashes still say what they
- * are for before the downbeat says it louder. The linter's own cap in `HIT_RULES` stays wider,
- * for an agent that wants the whole bar an ordinary drop is allowed.
- */
+/** Strobe duration in beats, capped in seconds. The linter allows a wider authoring range. */
 const STROBE_BEATS = 2;
 const PEAK_STROBE_BEATS = 4;
 const STROBE_MAX_S = 1.5;
@@ -111,23 +87,13 @@ interface Slot {
 	movement: number;
 	/** True for the slot that opens a second or later song: the beat switch itself. */
 	arrival: boolean;
-	/**
-	 * True for the one slot that opens the loudest passage of a song that does not hold the
-	 * track's peak: each song of a medley gets a biggest moment of its own, short of the one
-	 * the whole show reserves.
-	 */
+	/** Opens a medley song's loudest passage when that song does not own the whole-track peak. */
 	movementPeak: boolean;
 }
 
 /**
- * A show from the analysis alone: no model, no network, and the same bytes every time for
- * the same track.
- *
- * The taste metadata on the effects and the rules in the linter already encode most of what a
- * lighting designer would decide, so this does not need judgement so much as bookkeeping:
- * cover every bar, hold back in the build, spend the biggest look inside the peak, and do not
- * play the same trick twice running. What it cannot do is interpret - it has no idea what the
- * song is about - which is exactly the part left for `author-ai` to revise.
+ * Compose deterministically from analysis and taste metadata; author-ai revises the
+ * interpretation.
  */
 export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): Show {
 	const effects = opts.effects ?? BUILT_IN_EFFECTS;
@@ -143,13 +109,8 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 	// The allowance governs the effects as well as the hits: a family that has earned no
 	// flashes does not get blinder slams by the accent door instead.
 	const flashes = allowedFlashes(analysis, opts.context);
-	// vocalGlow answers "the voice", which post-revert means the mid band: on a track with
-	// no singing that is a glow named after something absent. The vocal column is nonzero
-	// only where synced lyrics put words - but LRCLIB has no sync coverage for much of the
-	// owner's corpus (Czech rap most of all), so an empty column means "unknown", not
-	// "instrumental". Only an explicit instrumental flag forbids the glow; unknown allows
-	// it, because most of what a music player plays is sung and the mid band is an honest
-	// approximation of a voice that is really there.
+	// Missing synced lyrics means unknown, not instrumental. Only positive instrumental evidence
+	// vetoes vocalGlow.
 	const lyricsKnown = (opts.context?.lyrics?.length ?? 0) > 0;
 	const sung = lyricsKnown
 		? analysis.bars.some((b) => (b.vocal ?? 0) > 0.05)
@@ -160,11 +121,8 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		{ vetoCharacter: flashes === 0 }
 	);
 	const palette = choosePalette(analysis, rng, opts.artHue, profile);
-	// A track that is several songs gets a palette per song, each drawn from that song's own
-	// tempo and key and kept a clear step from the one before: the switch is the biggest
-	// thing on such a record, and a room that keeps its colour through it has not noticed.
-	// Blobs written before spans existed carry bar numbers here; they are read as no movements
-	// at all, since the version bump re-analyses them before the app composes anything.
+	// Each medley song gets its own palette. Ignore legacy numeric movement entries until
+	// reanalysis.
 	const movements: readonly MovementSpan[] = (analysis.movements ?? []).filter(
 		(m): m is MovementSpan => typeof m === 'object' && m !== null && typeof m.startBar === 'number'
 	);
@@ -173,20 +131,11 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		const m = movements[k];
 		palettes.push(choosePalette(analysis, rng, null, profile, { bpm: m.bpm, key: m.key, awayFrom: palettes[k - 1].base }));
 	}
-	// A signature is the family's vocabulary, not every sentence. Listed plainly, the
-	// preference put impulseSpin in 30 of 34 house shows and the owner's word for it was
-	// OVERUSED - and merit alone kept it at 80% with the preference gone, because a
-	// mid-energy kick-driven rhythm is near-eligible in every pool. So each show draws a
-	// seed-stable half of the list, and the UNDRAWN half is avoided at full weight for
-	// the night: a signature look is either this show's vocabulary or it rests, which is
-	// what makes the fiftieth listen contain shows that never reach for it at all. The
-	// family's own avoid list is not sampled - a foreign gesture is foreign every night.
+	// Draw half the signatures per show and avoid the rest, so rerolls can omit a familiar look
+	// entirely.
 	const signatures = profile.signatures.filter(() => rng.float() < 0.5);
-	// The kick-burst family reads as ONE gesture however many files it spans - the owner
-	// named four of its members in one complaint ("they all look very similar and the
-	// effect is so common"). Each show draws at most one member; the rest are foreign for
-	// the night, and one show in seven goes burst-free entirely. Same mechanism as the
-	// signature draw, because it is the same disease: presence arithmetic, not taste.
+	// Choose at most one similar kick-burst effect per show, with one extra draw for no burst at
+	// all.
 	const drawnBurst = KICK_BURSTS[Math.floor(rng.float() * (KICK_BURSTS.length + 1))];
 	// Excluded, not merely avoided: in the loud slots the family saturates, an avoided
 	// burst at energy distance zero still outscored honest alternatives two bands away,
@@ -199,11 +148,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 
 	const peakSpan = peakSection(analysis.sections);
 
-	// What the peak arrival is marked with. The genre's answer by default - but a bloom
-	// family's peak that measurably pounds has earned the slam anyway: 0.8 kicks a beat is
-	// four-on-the-floor territory, and a soft bloom on top of it reads as the rig missing
-	// the biggest moment of the night. Light the record that is playing, not the genre card.
-	// Swell families are never overridden: their peak is a rise by definition.
+	// Pounding peaks may upgrade bloom to slam; swell families always keep their rise.
 	const peakKick = peakSpan
 		? drumDensity(analysis, peakSpan.startBar, peakSpan.endBar).kick
 		: 0;
@@ -219,10 +164,8 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 			: null;
 	if (peakMaster) picker.reserve(peakMaster.id);
 
-	// A master effect is a moment, not a look: they are written to hold the room for a bar or
-	// two and the linter says so. The peak therefore gets a short cue carrying the burst and a
-	// second one right behind it for the rest of the section, which is how a desk would run it.
-	// A swell peak carries no burst at all: rnb and ballads bloom into their biggest passage.
+	// Give a peak master a short burst cue; the following cue carries the sustained look. Swells
+	// have no burst.
 	const slots = buildSlots(
 		analysis,
 		profile.peak === 'swell' ? 0 : (peakMaster?.taste.maxBars ?? 0),
@@ -275,13 +218,8 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		// the producer pulled the kick out of. Per slot, not per section: the suspension is
 		// often only part of one.
 		const drums = drumDensity(analysis, slot.bar, slot.endBar);
-		// Aggression comes from the record, not the genre card - the law the slam override
-		// already follows, applied one layer up. A drop-class passage measuring 0.8 kicks a
-		// beat draws its LOOKS a band harder too, because the band otherwise comes from mean
-		// loudness and a heavily limited record has none to give: SOPHIE's Ponyboy pounds at
-		// 1.2 kicks a beat from its first bar and sat at band 3 of 5 in four of six sections,
-		// which the room heard as the show being too polite for the track. Swell families are
-		// exempt on the same grounds their punctuation is: a rise is not a blow.
+		// Kick density can raise the effect energy band when heavy limiting hides intensity
+		// differences.
 		const pounding =
 			profile.peak !== 'swell' &&
 			sectionBase(slot.section) === 'drop' &&
@@ -289,39 +227,19 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		// Every cue of the peak section, not only its opener: the burst cue borrows the
 		// second cue's look, and the whole passage is the one the picker must not soften.
 		const inPeak = slot.span === peakSpan;
-		// The master's activity counts only where its own picks stay under it: the burst that
-		// took the whole section. Otherwise the burst borrows the next cue's layers
-		// (`carryThePeak`), and charging a two-bar moment to the phrase that outlives it
-		// starved the peak - a soft transient in 42 of 74 peaks.
+		// Charge master activity only when it spans the section; short bursts borrow the following
+		// cue's layers.
 		if (peakMaster && slot.peak && slot.of === 1) busy += peakMaster.taste.activity ?? 0;
 		// The bed a repeat shares is the one its FIRST cue opened with; interior cues pick freely,
 		// or a long section would hold one look for its whole length again by another route.
 		const bedEnergy = Math.min(slot.energy, 0.75);
-		// A quiet section is a bed and one texture, so the bed genuinely is the room.
-		// The quiet three. Every layer in one of these has to be able to hold a room on its own,
-		// because there are only two of them and nothing else is running: a breakdown was drawing
-		// from the same accent pool as a drop, which is how a passage with the drums taken out
-		// ended up lit by stage blinders.
+		// With only a bed and texture, each quiet-section layer must be able to carry the room.
 		const bare =
 			slot.section === 'intro' || slot.section === 'outro' || slot.section === 'breakdown';
-		// Every drop-class floor has to hold the room, not only the peak's: the other
-		// layers there are the spikiest things in the catalog - slams and kick rings with
-		// darkness between events - and a texture bed under them measured whole dark bars
-		// the first time the seed reshuffled that way. The peak-only version of this rule
-		// was the same lesson learned half-way.
+		// Drop beds must carry the room through the darkness between transient hits.
 		const carrier = bare || slot.span === peakSpan || sectionBase(slot.section) === 'drop';
-		// An ending is a release, not a scene change: no documented practice makes the
-		// ENTRY into an outro an event, and the judged word for the fresh-look version was
-		// "cut in way too aggresively". The outro keeps the bed the room was already
-		// wearing and everything else leaves - the change IS the thinning. Fresh draws
-		// only when there is nothing to inherit, or the inherited bed cannot hold a room
-		// alone (beds are written to sit under something).
-		// A breakdown that follows a breakdown keeps the bed too. The segmenter cuts a long
-		// stripped passage into its phrases, each a section of its own, and a fresh bed on
-		// each one is four looks in thirty bars where the record holds one: Immaterial's
-		// owner heard "a bit of mess in the breakdown sections". The accent is what may
-		// still move, and only every other cue (below), so the passage breathes without
-		// being re-staged.
+		// Outros inherit a carrying bed so the ending thins instead of changing looks.
+		// Adjacent breakdowns also retain their bed and vary the accent every second cue.
 		const last = cues.length > 0 ? cues[cues.length - 1] : undefined;
 		const continued = slot.section === 'breakdown' && last?.section === 'breakdown';
 		const inheritedBed =
@@ -338,17 +256,8 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 
 			case 'intro':
 			case 'outro':
-				// One texture over the bed, as a breakdown gets, and it has to be one that carries.
-				// A bed is written to sit UNDER something, so a cue whose other layer contributes
-				// nothing asks the dimmest thing in the system to hold the room alone.
-				//
-				// This used to be unfiltered, because requiring it once left most of these cues
-				// with no accent at all: only a single accent in the catalog qualified. There are
-				// now enough that the rule can be what it should always have been.
-				//
-				// An outro wearing an inherited bed that can hold the room takes nothing new at
-				// all: the thinning is the gesture, and a fresh texture would be the look-change
-				// the inheritance exists to prevent.
+				// Quiet textures must carry; an outro with a carrying inherited bed introduces no new
+				// texture.
 				if (
 					inheritedBed &&
 					effects.find((e) => e.id === inheritedBed.effect)?.taste.carries !== false
@@ -359,27 +268,15 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 				break;
 
 			case 'breakdown':
-				// A slow look over the bed, always. A breakdown lit by a bed and one still field
-				// measured a shimmer of 0.9 bytes over the corpus against a groove's 4.0 and an
-				// intro's 0.7, which the owner heard as "almost zero effects energy". The budget
-				// for a breakdown is half a groove's, so what fits here is a roll, a sweep or a
-				// slow chase and never a striker: the layer that still moves when the drums are
-				// out. Inherited through a run of breakdown cues with the bed, for the same
-				// reason the bed is.
+				// Breakdowns retain slow motion under their smaller activity budget, including while the
+				// kit is absent.
 				if (continued && last?.layers.rhythm) {
 					layers.rhythm = { ...last.layers.rhythm };
 					busy += activityOf(layers.rhythm);
 				} else {
 					add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
 				}
-				// A texture on top of the bed, always. This used to be a coin toss, on the grounds
-				// that a breakdown which keeps everything running is not a breakdown - but what it
-				// actually produced was a passage lit by one slow bed and nothing else, half the
-				// time. Taking the drums out is what makes a breakdown; taking the light out makes
-				// it look broken.
-				//
-				// Across a run of breakdown cues the accent moves every second cue: a cue that
-				// inherited the bed and follows one that changed its accent keeps that accent too.
+				// Keep a texture above the bed and change it only every second continued breakdown cue.
 				if (continued && last?.layers.accent && !breakdownHeld) {
 					layers.accent = { ...last.layers.accent };
 					breakdownHeld = true;
@@ -387,10 +284,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 				}
 				breakdownHeld = false;
 				add('accent', choose('accent', { drums, busy, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
-				// The kit, where the passage still has one. A breakdown with a beat under it is
-				// common in this repertoire and the room should be answering it; a genuinely
-				// stripped one has no onsets to answer and gets nothing, which is the difference
-				// the coin toss was reaching for and could not see.
+				// Answer a breakdown's kit only when measured onsets remain.
 				if (profile.transientEvery > 0 && kickDensity(analysis, slot) > 0.25) {
 					add('transient', choose('transient', { drums, busy, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
 				}
@@ -405,10 +299,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 
 			case 'groove':
 				add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
-				// The drum layer runs at the genre's cadence, never in every cue. Firing a light
-				// at every hit is the documented failure of audio-to-light mapping: it reads as
-				// mechanical however well timed it is, and leaving it out is what makes it land
-				// on return. A ballad leaves it out entirely; punk and funk barely rest it.
+				// Rest the drum layer at the genre's cadence so its return remains an event.
 				if (profile.transientEvery > 0 && grooveIndex % profile.transientEvery === profile.transientEvery - 1) {
 					add('transient', choose('transient', { drums, busy, role: 'transient', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
 				}
@@ -416,23 +307,11 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 				break;
 
 			case 'drop':
-				// The rhythm layer shares the group's identity the way the bed does: a second
-				// chorus whose VISIBLE layers look nothing like the first says the room is not
-				// listening, and without the group the novelty penalty actively pushes the
-				// repeat away from what the first one used.
+				// Use group identity so a returning chorus retains its visible rhythm.
 				add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
-				// The first appearance of material that returns holds its accent back, so the
-				// return ADDS something: escalation by vocabulary rather than by brightness,
-				// which prompt.ts warns is the cliche. The peak section and material that never
-				// returns get the full stack from the start.
-				//
-				// The transient and the accent share the activity budget, so whichever is picked
-				// first gets to be the hit layer and the other calms down. The floor decides: a
-				// passage the kick drives (four-on-the-floor and near it) leads with the kit
-				// answer and takes a bloom or a texture over it; a sung passage on a lighter
-				// beat leads with the phrase gesture - the blinder on the downbeat, the bloom on
-				// the backbeat - and takes a gentle kit answer. Fixed either way round, one of
-				// the two pools collapsed onto its one calm member across the whole corpus.
+				// Hold back the first nonfinal, nonpeak chorus accent so returns add vocabulary.
+				// Pick the kit first in kick-led passages; otherwise give the phrase gesture the activity
+				// budget.
 				const accentDue = !(slot.dropIndex === 0 && !slot.finalOfGroup && slot.span !== peakSpan);
 				const addAccent = () => {
 					if (!accentDue) return;
@@ -506,19 +385,10 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 	};
 }
 
+
 /**
- * One cue where each section starts, plus interior cues so nothing holds the room for more
- * than four phrases. The interior ones land on the phrase grid because the linter rejects a
- * section change anywhere else, and a cue that arrives off-phrase reads as wrong even when
- * nobody can say why.
- */
-/**
- * The record leaving is a gesture the room must follow. A ring-out or fade whose single
- * closing cue holds one level reads as the lights refusing to let go - every documented
- * ending practice tracks the decay (the round-2 endings research). Where the final bars
- * decline decisively, the closing look is stepped down WITH them: the same layers
- * throughout, which is the outro inheritance rule, only the level and the clock move.
- * A cold ending has no decline and is the button's business, not this pass's.
+ * Follow a decisive ending decay with the same layers and falling level/motion. Cold endings
+ * use the button.
  */
 function trackTheLeaving(cues: Show['cues'], analysis: TrackAnalysis): void {
 	if (cues.length === 0) return;
@@ -553,12 +423,8 @@ function trackTheLeaving(cues: Show['cues'], analysis: TrackAnalysis): void {
 }
 
 /**
- * The peak is the LAST statement of the loudest group, not the loudest single section.
- * The house craft holds the first statement back so every return adds, and every peak
- * complaint on file names a first statement: EARFQUAKE's corrected first chorus
- * outranked by mean, sat before SETTLE_BARS, and silently skipped the reserved master.
- * Kind is held alongside group because a degenerate grouping (everything group 0) must
- * not let the peak leak into an outro that merely shares the id.
+ * Reserve the last statement of the loudest group. Match kind too, since group 0 can span
+ * unrelated sections.
  */
 export function peakSection(sections: readonly SectionSpan[]): SectionSpan | null {
 	const top = sections.find((s) => s.energyRank === 1) ?? null;
@@ -618,17 +484,11 @@ function buildSlots(
 
 		while (bar < span.endBar) {
 			const remaining = span.endBar - bar;
-			// The peak's opening cue is only as long as the burst it carries, so a master effect
-			// written to hold the room for a bar is never asked to hold it for eight.
-			// Interior changes land on the phrase grid counted FROM THE SECTION'S OWN START:
-			// that is the grid the audience counts on, and on a track whose phase shifts
-			// mid-song it is the only phrase grid that exists at all.
+			// Size the peak opener to its master burst; place later cues on the section-relative phrase
+			// grid.
 			const burst = isPeak && index === 0 && peakMasterBars > 0;
-			// The burst takes the whole section when what would be left is under the two bars
-			// every bed and rhythm needs: a one-bar stub can hold nothing but a transient and an
-			// accent, and the burst then borrows that stub's look for the biggest moment of the
-			// night. A master held a bar longer than it asked for is a held look; a peak lit by
-			// two layers is a fault.
+			// Absorb a remainder shorter than two bars so the peak retains viable bed and rhythm
+			// layers.
 			let take = burst
 				? remaining - peakMasterBars < 2
 					? remaining
@@ -681,10 +541,8 @@ function barSecondsOf(analysis: TrackAnalysis, span: SectionSpan): number {
 }
 
 /**
- * How many of a section's `remaining` bars the next cue takes: the ceiling while more than
- * that and a phrase are left, else all of it. Leaving a stub shorter than a phrase behind is
- * worse than one long cue, so the last cue may run a phrase over the ceiling - unless at
- * this tempo it would hold past `MAX_CUE_S` and the stub is long enough to be a cue of its own.
+ * Avoid short trailing stubs unless the extended cue exceeds MAX_CUE_S and the stub lasts
+ * MIN_STUB_S.
  */
 function cueBars(remaining: number, barSeconds: number): number {
 	if (remaining > MAX_CUE_BARS + PHRASE_BARS) return MAX_CUE_BARS;
@@ -699,16 +557,8 @@ function clamp01(v: number): number {
 
 
 /**
- * `spread` widens the gap between the quiet sections and the loud ones, for a master with none
- * of its own left. It only ever pushes the quiet end down: the loud end is already at the top
- * of the range and the peak owns 1.0.
- *
- * Deliberately NOT corrected for how thin the stack is, though it was tried. Compensating a
- * one-layer cue back up to what a four-layer cue delivers takes the drop-to-quiet ratio from
- * 8.5x to 2.8x, which is the same contrast collapse the auto-exposure fix existed to undo. The
- * intro was black because two beds emitted a twentieth of what their peers did and the cue had
- * nothing else in it, and both of those are fixed where they were: in the effects, and in the
- * plan.
+ * Spread lowers quiet cues only. Compensating for thin stacks would erase drop-to-quiet
+ * contrast.
  */
 function intensityFor(slot: Slot, spread = 0, profile?: GenreProfile): number {
 	const base: Record<SectionKind, number> = {
@@ -718,10 +568,7 @@ function intensityFor(slot: Slot, spread = 0, profile?: GenreProfile): number {
 		// groove should read as the room playing, clearly above the room waking up.
 		groove: 0.72,
 		verse: 0.68,
-		// Not 0.42, for the reason the outro is not 0.32: gamma 2.2 leaves very little room
-		// under byte 10 to say anything in, and movement is delivered in bytes, so a passage
-		// held down there cannot react however reactive its layers are. A breakdown also sits
-		// mid-track with the room already warm, so it has less to prove than the intro does.
+		// Keep enough post-gamma level for visible motion in a breakdown.
 		breakdown: 0.54,
 		build: 0.62,
 		void: 0.05,
@@ -754,14 +601,7 @@ function intensityFor(slot: Slot, spread = 0, profile?: GenreProfile): number {
 	return Math.min(0.92, floor + slot.energy * 0.08 + climb + finale);
 }
 
-/**
- * How fast a cue's effects are allowed to move, which every effect multiplies its own speeds by.
- *
- * The quiet three are far below where they were. A passage with nothing happening in it should
- * look like the room holding its position, drifting over tens of seconds; at 0.6 an intro was
- * still moving fast enough to read as restless, and the light was answering noise in the
- * spectrum rather than anything in the music. The loud sections are untouched.
- */
+/** Quiet sections drift over tens of seconds; faster motion would expose spectrum noise. */
 function motionFor(slot: Slot, profile?: GenreProfile): number {
 	const base: Record<SectionKind, number> = {
 		intro: 0.28,
@@ -779,11 +619,7 @@ function motionFor(slot: Slot, profile?: GenreProfile): number {
 		outro: 0.24
 	};
 	const climb = slot.section === 'build' && slot.of > 1 ? (slot.index / (slot.of - 1)) * 0.2 : 0;
-	// An outro that is still the whole band playing is not a fade, and an intro that opens on the
-	// full arrangement is not a hush. These two carry the lowest motion in the table because they
-	// usually deserve it; where the passage is as loud as the track gets, that assumption throttles
-	// every speed its layers declare and lights a live room at a quarter speed. Energy is
-	// normalised within the track, so a genuinely quiet one is untouched.
+	// Loud intros/outros retain motion; their labels alone must not throttle a full arrangement.
 	const bookend = slot.section === 'intro' || slot.section === 'outro';
 	const lively = bookend ? (0.85 - base[slot.section]) * slot.energy : 0;
 	// The genre's clock. Scaled before rounding, and the quiet floor stands: a ballad's 0.5
@@ -792,16 +628,9 @@ function motionFor(slot: Slot, profile?: GenreProfile): number {
 	return Math.round(Math.max(0.15, base[slot.section] + climb + lively) * scale * 100) / 100;
 }
 
-/**
- * A drop and a void arrive on the downbeat; everything else can afford to be eased into. How
- * long depends on what came before: a breakdown after a drop is a collapse and wants two
- * beats, the same breakdown after a groove is a settling and wants eight.
- */
+/** Arrivals snap; eased sections depend on the preceding section's contrast. */
 function fadeFor(slot: Slot, profile?: GenreProfile): number {
-	// A swell family's biggest arrival is a rise, not a step - the planner reserves no master
-	// and plans no hits for it, so this ramp IS the arrival. Two bars of fade complete on the
-	// cue's own downbeat: the room lifts through the end of the verse and peaks exactly where
-	// the chorus lands, which is what a designer's swell is.
+	// A swell-family arrival uses a two-bar fade ending on the chorus downbeat.
 	if (profile?.peak === 'swell' && sectionBase(slot.section) === 'drop' && slot.index === 0) {
 		return 8;
 	}
@@ -822,12 +651,8 @@ function fadeFor(slot: Slot, profile?: GenreProfile): number {
 }
 
 /**
- * One colour identity, read six ways.
- *
- * The hues never change: base and accent are the track's, and every section varies only how
- * saturated and how deep they sit. That restraint is the point - a declared colour that drifts
- * from section to section stops being an identity, and the base/accent swap at a drop only
- * reads as an event because nothing else about the colour has moved all night.
+ * Vary saturation and depth while preserving hue identity, making the reserved inversion
+ * meaningful.
  */
 function paletteFor(
 	slot: Slot,
@@ -841,10 +666,7 @@ function paletteFor(
 	const third = show.third ?? accent;
 	/** A key change moves every hue the same step, so the identity rises without breaking. */
 	const lift = (h: number) => (h + 18) % 360;
-	// The Hunt effect: perceived colorfulness falls with luminance, so a dim cue rendered at
-	// reduced saturation reads grey rather than hushed. The quiet sections therefore get MORE
-	// chroma as the intensity drops, never less - stage practice's saturated "night", not a
-	// pale one - and the hush stays where it belongs, in shade, white and the intensity itself.
+	// Counter the Hunt effect by adding chroma as intensity falls.
 	const hunt = Math.min(1, sat * (1 + 0.35 * (1 - intensity)));
 
 	switch (slot.section) {
@@ -857,11 +679,8 @@ function paletteFor(
 				: { base: third, accent: base, third: accent, sat: Math.min(1, sat * 1.05), shade };
 
 		case 'chorus':
-			// A chorus owns the song's signature colour: the base stays put all song and the
-			// room simply blooms in it - saturation up, whites up, no inversion. The FINAL
-			// chorus is the one allowed the drop's inversion, which is how it outranks every
-			// earlier one without being a byte brighter - and when the track lifts a key into
-			// it, the swapped identity rotates a step upward with the song.
+			// Only the final chorus inverts the palette; a key lift rotates that identity with the
+			// song.
 			return slot.finalOfGroup
 				? lifted
 					? {
@@ -902,11 +721,8 @@ function paletteFor(
 }
 
 /**
- * Which of an effect's params a cue may draw differently, and from what. Repeated entries
- * weight a choice; the effect's own default is what an undrawn instance still shows.
- *
- * Only the looks that read as the same look at every setting are listed: the point is that
- * a rotating spiral with one arm the other way is still the spiral, not a different effect.
+ * Parameter choices preserve the effect's identity. Repeated entries weight the draw;
+ * omissions keep defaults.
  */
 const VARIETY: Record<string, Record<string, readonly number[]>> = {
 	vortex: { barsPerRev: [1, 2, 2, 4], arms: [1, 2, 2, 3], dir: [1, 1, -1], twist: [0.15, 0.4, 0.7, 0.95] },
@@ -920,14 +736,7 @@ const VARIETY: Record<string, Record<string, readonly number[]>> = {
 	snapSplit: { hold: [0.6, 0.75, 0.9] }
 };
 
-/**
- * Parameters an effect cannot pick for itself, because they depend on what the track is doing
- * rather than on what the effect is.
- *
- * Only where the analysis genuinely knows better than the default. An effect's defaults are
- * its author's opinion, and overriding them from here on anything else would be guessing with
- * extra steps.
- */
+/** Override defaults only where track measurements determine the parameter. */
 function paramsFor(
 	def: EffectDef,
 	slot: Slot,
@@ -964,10 +773,7 @@ function paramsFor(
 			bars++;
 		}
 		const hatsPerBeat = bars > 0 ? hats / bars / Math.max(1, analysis.tempo.beatsPerBar) : 0;
-		// The two keys are opposite units and MUST stay separate mappings: `perBeat` counts
-		// events per beat, `cycleBeats` counts beats per cycle. Writing the rate number into
-		// the period param is how sineRoll ran at four times its designed speed on every
-		// sparse track.
+		// perBeat is events/beat; cycleBeats is beats/cycle. Their rate mappings are inverses.
 		if (hasRate) clampTo('perBeat', hatsPerBeat >= 3 ? 4 : hatsPerBeat >= 1.5 ? 2 : 1);
 		if (hasPeriod) clampTo('cycleBeats', hatsPerBeat >= 1.5 ? 4 : 8);
 	}
@@ -1011,17 +817,8 @@ function noteFor(slot: Slot): string {
 }
 
 /**
- * The peak's burst rides on the peak's look rather than replacing it with a one-bar one.
- *
- * That opening cue is only as long as the master effect holds the room, which is a bar. Almost
- * nothing in the catalog is legal in a bar - no rhythm effect at all - so picking layers for it
- * drew from a pool of one or none, and the biggest moment of the show came out as a bed that
- * emits nothing, no kit, and whatever single accent happened to be short enough. Deterministic,
- * so it happened in every show.
- *
- * A burst is a moment on top of a look, not a look. Taking the one the section goes on to hold
- * means the room does not drop out underneath the hit, and the master is still the only thing
- * that changes when it lands.
+ * A short peak burst borrows the following cue's look, keeping viable layers beneath its
+ * master.
  */
 function carryThePeak(cues: Cue[], at: number): void {
 	if (at < 0) return;
@@ -1036,13 +833,8 @@ function carryThePeak(cues: Cue[], at: number): void {
 }
 
 /**
- * A cue that lit nothing inherits the bed of the one before it.
- *
- * The one-bar outro a ring-out carve leaves is real: every bed in the catalog wants two
- * bars, so its pick comes back empty and the last bar of the night goes black - which reads
- * as a fault, not an ending. The look it winds down FROM is the honest fill; the outro's own
- * intensity, motion and fade already say the rest. Voids are exempt: their darkness is the
- * instruction.
+ * Short nonvoid cues inherit a bed when no effect meets minBars; the cue still controls its
+ * own decay.
  */
 function inheritWhereEmpty(cues: Cue[]): void {
 	for (let i = 1; i < cues.length; i++) {
@@ -1053,10 +845,7 @@ function inheritWhereEmpty(cues: Cue[]): void {
 	}
 }
 
-/**
- * A build must run fewer layers than the drop it leads into. Lighting strips in parallel with
- * the music: a build reintroduces at the drop, it does not add before it.
- */
+/** Builds leave layers out so the drop can reintroduce them. */
 function stripBuilds(cues: Cue[]): void {
 	for (let i = 0; i < cues.length - 1; i++) {
 		if (cues[i].section !== 'build') continue;
@@ -1078,18 +867,8 @@ function countLayers(cue: Cue): number {
 }
 
 /**
- * The bar before a drop-class arrival dips instead of peaking.
- *
- * "Darkest immediately before brightest" is the most reliable contrast gesture a designer
- * has, and until now it existed only as the held-breath blackout: budget-gated, build-only,
- * so a verse running straight into a chorus never got any approach shaping at all. This is
- * the free version - a one-bar cue inside the preceding section, same bed so the layer run
- * survives, everything above it removed, the level pulled down - and the drop's own snap
- * cut (fadeBeats 0) then fires out of a hollow instead of out of the loudest bar so far.
- *
- * Builds keep their climb: the held breath is theirs when the budget allows, and dipping a
- * ramp that exists to rise reads as a stumble. Swell families are shaped the other way, by
- * the two-bar fade in `fadeFor`.
+ * Dim the existing look before drop-class arrivals. Builds keep climbing; swells use fadeFor
+ * instead.
  */
 function shapeApproaches(cues: Cue[], profile: GenreProfile): void {
 	if (profile.peak === 'swell') return;
@@ -1103,12 +882,8 @@ function shapeApproaches(cues: Cue[], profile: GenreProfile): void {
 		// A short predecessor has no room to give a bar away.
 		if (opener.bar - prev.bar < 3) continue;
 		if (!prev.layers.bed) continue;
-		// The breath dims the rig; it does not strike the set. The first version stripped
-		// the look to its bed, and the owner located two "starts 2-4 beats early" marks
-		// exactly on the dip bar: a re-staged room reads as the next section arriving,
-		// however dim. The full look stays; only the level exhales - down by mid-bar
-		// (fadeBeats 2), then HELD hollow, so the slam fires out of a breath instead of
-		// out of a scene change.
+		// Keep the full look through the breath; changing its stack would read as an early section
+		// arrival.
 		cues.splice(i, 0, {
 			bar: opener.bar - 1,
 			section: prev.section,
@@ -1122,16 +897,7 @@ function shapeApproaches(cues: Cue[], profile: GenreProfile): void {
 	}
 }
 
-/**
- * One look per track that belongs to no section, planted midway through the longest steady
- * passage.
- *
- * Judged against human designers, the axis rule-built shows lose worst on is surprise - the
- * fiftieth listen knows every move before it lands. A single stranger, once, is the smallest
- * honest answer: the seed keeps it the same stranger every time, the accent slot keeps it
- * opacity-bounded, and planting it mid-passage keeps it away from every structural moment
- * the show is already spending real cards on.
- */
+/** A single seeded wildcard adds surprise mid-passage, away from structural arrivals. */
 function plantWildcard(
 	cues: Cue[],
 	slots: Slot[],
@@ -1160,10 +926,8 @@ function plantWildcard(
 		if (role !== 'accent' && spec) busy += byId.get(spec.effect)?.taste.activity ?? 0;
 	}
 
-	// The wildcard's freedom is from the SECTION vocabulary and nothing else. It still may
-	// not be a flash or a blow - a strobe as the one surprise in a rap verse reads as a
-	// fault, not a stranger - and it still may not answer a kit stream the passage does not
-	// have, which is the same honesty every ordinary pick obeys.
+	// Wildcards bypass section eligibility only; flash/impact and silent-kit exclusions still
+	// apply.
 	const def = picker.pick({
 		role: 'accent',
 		section: host.section,
@@ -1182,18 +946,8 @@ function plantWildcard(
 }
 
 /**
- * Punctuation. The part that puts hands on the show.
- *
- * Every drop slams on its downbeat, and the phrases inside the loud passages are answered with
- * colour. What happens at most once is the flash: one strobe or one blackout in the whole show,
- * never both and never twice.
- *
- * That is a correction rather than a preference. This used to strobe out of every build, cut to
- * black before every drop and strobe again on alternate phrases inside them, on the grounds that
- * the move is the vocabulary rather than the surprise. On a four-minute rock track it produced
- * five strobes and two blackouts, and past the second one the room has said the only thing a
- * flash says. Spent once, on the biggest moment that can hold it, it is the loudest thing in the
- * show again.
+ * Plan punctuation against the shared genre allowance, reserving flashes for the strongest
+ * arrivals.
  */
 function planHits(
 	analysis: TrackAnalysis,
@@ -1202,13 +956,7 @@ function planHits(
 	allowance: number,
 	peakTreatment: GenreProfile['peak'] = profile.peak
 ): Hit[] {
-	/**
-	 * The aggression override, per slot: a bloom-family drop that measurably pounds takes
-	 * slam treatment for its punctuation, exactly as the peak already did. The peak's
-	 * version fixed Galantis; a listening note then missed the strobe on the FIRST drop of
-	 * a house track whose every drop is four-on-the-floor - same evidence, same answer,
-	 * light the record that is playing. Swell families stay swells everywhere.
-	 */
+	/** Apply the peak's kick-density slam override to ordinary drops too; swells remain swells. */
 	const treatFor = (slot: Slot) => {
 		if (slot.peak) return peakTreatment;
 		if (
@@ -1252,11 +1000,8 @@ function planHits(
 		const beat = barsBack * beatsPerBar - beats;
 		return beat > 0 ? { bar, beat } : { bar };
 	};
-	// A strobe is lit for exactly as long as it is held, so it is counted in beats and capped in
-	// seconds: half a bar into an ordinary drop, a bar into the peak, and never past the cap at
-	// any tempo. Measured over the span the hit will OCCUPY, ending on the drop's downbeat, with
-	// the same function the linter checks it with: sizing it against one bar and placing it at
-	// another is how a show came back failing its own linter on a drifting grid.
+	// Cap strobe seconds across the actual occupied bars, since neighboring bars may differ on a
+	// drifting grid.
 	const strobeBeats = (endBar: number, want: number) => {
 		let beats = Math.min(want, HIT_RULES.strobe.maxBars * beatsPerBar);
 		while (beats > 0) {
@@ -1266,14 +1011,7 @@ function planHits(
 		}
 		return beats;
 	};
-	/**
-	 * Strobes and blackouts share one allowance for the whole show, scaled by genre and by
-	 * how hard the track actually goes: a techno night earns several, a ballad none.
-	 *
-	 * Counted together because they are the same gesture from the audience's side: the room
-	 * stops being a room and becomes an event. Whatever the budget, each one still needs a
-	 * moment big enough to hold it - the allowance is a ceiling, never a quota.
-	 */
+	/** Strobes and blackouts share one allowance. It is a ceiling, not a quota. */
 	let flashes = 0;
 	const spendFlash = (hit: Hit): boolean => {
 		if (flashes >= allowance) return false;
@@ -1323,15 +1061,9 @@ function planHits(
 		});
 	}
 
-	// The button: a track that ends cold inside loud material gets its last downbeat
-	// marked - hold the look, hit the final bar, and the show is OVER rather than merely
-	// out of bars. Theatre practice, and the judged word for its absence was "no outro".
-	// Only for cold endings: a carved outro or a quiet tail is a release already, and a
-	// button on top of a decay is a hit after the band has left. Placed BEFORE the
-	// flashes and the phrase punctuation, because everything later yields through its own
-	// clear() - placed last, a routine phrase bump two bars out suppressed the one hit
-	// the ending exists for. Kit honesty as everywhere, and anthem honesty too: a chorus
-	// that arrives by lift ends by lift, so only slam treatments slam the button.
+	// A cold loud ending gets a final downbeat button. Place it before routine punctuation so it
+	// takes priority;
+	// quiet tails already release, and bloom endings keep bloom treatment.
 	const last = analysis.sections[analysis.sections.length - 1];
 	if (last && peakTreatment !== 'swell') {
 		const lastBars = Math.max(1, last.endBar - last.startBar);
@@ -1355,10 +1087,7 @@ function planHits(
 		}
 	}
 
-	// The peak first, then by how loud the passage is, so the flashes land on the biggest
-	// moments that can hold them rather than on whichever drop happens to come first.
-	// Ordering by bar instead put it on the opening drop of a track whose third one was
-	// the point.
+	// Spend flashes on the peak first, then on the strongest remaining arrivals.
 	const byImportance = [...dropOpeners].sort(
 		(a, b) => Number(b.peak) - Number(a.peak) || a.span.energyRank - b.span.energyRank || a.bar - b.bar
 	);
@@ -1370,13 +1099,8 @@ function planHits(
 		// a card spent on saying so again.
 		if (!before || before.section === 'void') continue;
 
-		// Strobe first, because it is the bigger of the two - except where the genre marks its
-		// peaks with light rather than with flash, where a strobe into a chorus is a rig
-		// malfunction however well placed. Those families keep the held-breath blackout only -
-		// unless the peak itself pounds hard enough to have earned the slam treatment, which
-		// brings the strobe into IT with it.
-		// A bar of the preceding section stays clear, so the strobe reads as the end of a
-		// passage rather than as the passage.
+		// Prefer strobes only for slam treatments, leaving a clear bar beforehand so the flash
+		// remains punctuation.
 		const room = (before.endBar - before.bar - 1) * beatsPerBar;
 		const runFor = strobeBeats(slot.bar, Math.min(slot.peak ? PEAK_STROBE_BEATS : STROBE_BEATS, room));
 		const start = endingAt(slot.bar, runFor);
@@ -1394,11 +1118,8 @@ function planHits(
 			continue;
 		}
 
-		// The held breath: black ending exactly ON the drop downbeat, and only as many beats of
-		// it as read as a breath rather than as a fault. The fallback rather than the partner -
-		// at a tempo too slow to strobe inside the cap, silence is the gesture still available -
-		// and it wants a build behind it, because holding a breath needs something to hold it
-		// out of.
+		// A held-breath blackout is the build-only fallback when a strobe cannot fit; it ends on the
+		// drop.
 		if (before.section !== 'build' || before.endBar - before.bar < 2) continue;
 		const heldBeats = blackBeats(slot.bar - 1, 1);
 		if (heldBeats > 0) {
@@ -1421,11 +1142,8 @@ function planHits(
 		}
 	}
 
-	// The peak section keeps hitting. One slam on the arrival and thirty seconds of steady
-	// wash is how the biggest passage of the night ends up reading SMALLER than an ordinary
-	// drop; every other phrase inside it lands another, where the floor is actually kicking.
-	// Slams are free of the flash budget, capped so the peak punctuates without turning into
-	// a drum machine, and placed before the colour floods so the spacing rule yields to them.
+	// Peak phrase slams require kicks, have their own cap, and take spacing priority over color
+	// floods.
 	const peakSlot = slots.find((s) => s.peak);
 	if (peakSlot && peakTreatment === 'slam') {
 		const span = peakSlot.span;
@@ -1442,15 +1160,7 @@ function planHits(
 		}
 	}
 
-	// Inside the loud passages, on the phrase. A drop that slams once on its downbeat and then
-	// runs eight bars of steady wash is the definition of a show going flat: the genre
-	// punctuates all the way through, and the genre also says how often - a techno floor is
-	// answered every phrase, a ballad never.
-	//
-	// Colour only. This used to alternate a flood with a strobe, which is where most of a show's
-	// strobes came from: three or four of them inside the drops, none of which was the one the
-	// build had been pointing at. A flood is the same size of gesture reached without spending
-	// the card the whole show is saving.
+	// Phrase punctuation uses color floods so sustained loud passages do not spend extra flashes.
 	let phraseIndex = 0;
 	for (const slot of slots) {
 		if (profile.bumpEvery === 0) break;
@@ -1458,10 +1168,7 @@ function planHits(
 		if (kind !== 'drop' && kind !== 'groove') continue;
 		if (slot.bar < SETTLE_BARS) continue;
 		if (slot.energy < 0.55) continue;
-		// Energy is normalised within the track, so a ballad's loudest passage reads as high as
-		// a techno drop's. Kick density is not: four to the floor is about one a beat and a
-		// ballad is a quarter of that, which is the difference between a room that should be
-		// strobing and one that should not.
+		// Kick density compares absolute activity across tracks; normalized energy does not.
 		if (kickDensity(analysis, slot) < 0.6) continue;
 
 		// Denser in the loud sections, on the phrase grid counted from the section's own
@@ -1482,15 +1189,8 @@ function planHits(
 		}
 	}
 
-	// A cymbal crash is a hit the arrangement already contains, and the analyser has been
-	// tagging them all along with nothing reading the tag. Outside a drop downbeat, which has a
-	// slam of its own, one is worth a bump: it is the one moment the room can answer something
-	// the track did rather than something the grid predicted.
-	//
-	// Budgeted, because crashes are tagged on ~6% of all bars and answering every clear one
-	// put eight bumps on a four-minute rap track: the one moment the room answers the track
-	// became the thing the room always does. The loudest few, spaced at least two phrases
-	// apart, scaled by how densely the genre already punctuates.
+	// Answer the loudest crashes outside drop starts, capped by genre and spaced two phrases
+	// apart.
 	const dropStarts = new Set(
 		analysis.sections.filter((s) => sectionBase(s.kind) === 'drop').map((s) => s.startBar)
 	);

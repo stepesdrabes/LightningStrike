@@ -16,11 +16,8 @@ interface Pyro {
 }
 
 /**
- * Columns of fire-textured light at the room's corners on the biggest hits only. The
- * flicker is a noise field read along the column, so neighbouring pixels lick together the
- * way a flame does; a phase hashed per pixel made every LED flicker on its own, which from
- * the floor is grain rather than fire. The colour climbs the palette's heat ladder toward
- * white at the tip.
+ * Read coherent noise along each column so neighbouring pixels flicker as flame, not
+ * independent grain.
  */
 export const pyroBursts: EffectDef = {
 	id: 'pyroBursts',
@@ -71,8 +68,8 @@ export const pyroBursts: EffectDef = {
 
 				const life = Math.max(0.3, p.lifeBeats * f.beatPeriod) / Math.max(0.2, motion);
 				const gain = 0.5 + p.intensity * 1.0;
-				// Noise features per second along the column. A flame licks a few times a
-				// second; faster than that it aliases against the frame clock into grain.
+				// Noise features/second; keep flame motion below rates that alias against the
+				// frame clock.
 				const flick = f.t * 3 * motion;
 
 				for (const b of bursts) {

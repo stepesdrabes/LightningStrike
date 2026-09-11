@@ -75,10 +75,8 @@ describe('darkness is reported where it is not asked for', () => {
 });
 
 describe('frame rate', () => {
-	// Every envelope and the whole output chain integrate per frame, so a flash shorter than a
-	// frame renders dimmer at 30 fps than at 60, and where it lands depends on where the frame
-	// boundary fell. A still cue has nothing to sample differently, so it has to agree - and if
-	// it stopped agreeing, the measurement would be reading the frame rate rather than the show.
+	// A still cue must agree at both rates; only frame-integrated motion should depend on
+	// sampling.
 	const half = measureShow(show, analysis, effects, geometry, { fps: 30 });
 
 	it('agrees with the wire rate wherever the room is not flickering', () => {
@@ -90,11 +88,7 @@ describe('frame rate', () => {
 	});
 
 	it('reads a flickering cue within two bytes at half the wire rate', () => {
-		// Every strike in the catalog holds past a frame and leaves the way a lamp does, so a
-		// hit's brightness no longer depends on the frame boundary. It used to: a flash under
-		// a frame read dimmer at 30 fps, which is the reason the wire rate became the default.
-		// The default stays the wire's; this pins that nothing has gone back to flashing
-		// under a frame.
+		// Strikes hold past a frame, keeping hit brightness stable across frame boundaries.
 		const flickering = reading.cues
 			.map((c, i) => ({ c, half: half.cues[i] }))
 			.filter(({ c }) => c.ripple > 8);

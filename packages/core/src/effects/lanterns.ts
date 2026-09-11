@@ -12,15 +12,8 @@ import { INTENSITY, param } from './helpers.ts';
 const LAMPS = 5;
 
 /**
- * Soft pools of light that wander the perimeter and settle, the way lamps sit round a bar.
- *
- * Each has its own wander period, its own breathing period and its own place on the palette, all
- * hashed from its index, so no two are ever in step and a seek reproduces every one of them. The
- * periods are deliberately not related by a whole number: five lamps on a common clock is a chase.
- *
- * Sparse by design, so it declares `carries: false` and always rides a bed. The beam takes the mean
- * of the lamps as an even spill rather than a sixth pool, because the ceiling is where a room's
- * light bounces and not where a lamp stands.
+ * Hash unequal wander and breath periods so lamps never align into a chase.
+ * Sparse pools require a bed; the beam receives their even mean as bounced light.
  */
 export const lanterns: EffectDef = {
 	id: 'lanterns',
@@ -53,16 +46,15 @@ export const lanterns: EffectDef = {
 			// Never a whole-number ratio between any two, so the set never lines up.
 			wander[k] = 0.0031 + hash01(k * 17 + 2) * 0.0043;
 			breath[k] = 0.021 + hash01(k * 53 + 9) * 0.031;
-			// Most of them are the room's own colour; one takes the third, which is what makes a
-			// row of lamps read as a room somebody furnished rather than as a fixture.
+			// Keep most lamps in the base hue and one in the third.
 			slot[k] = hash01(k * 71 + 3) < 0.25 ? SLOT.third : lerp(SLOT.base, SLOT.glow, hash01(k * 13));
 		}
 		const pos = new Float32Array(LAMPS);
 		const level = new Float32Array(LAMPS);
 		const onBeam = new Uint8Array(g.count);
 		for (let i = 0; i < g.count; i++) onBeam[i] = g.perim[i] < 0 ? 1 : 0;
-		// One band per lamp, spread across the spectrum. Slow on the way down, because a lamp that
-		// drops with every gap in the mix is a meter and the point of this is that it is furniture.
+		// Give each lamp a spectral slice with a slow release so musical gaps do not turn it
+		// into a meter.
 		const voices = Array.from({ length: LAMPS }, () => new Follower(0.09, 0.55));
 		let phase = 0;
 
@@ -86,9 +78,8 @@ export const lanterns: EffectDef = {
 				let mean = 0;
 				for (let k = 0; k < LAMPS; k++) {
 					pos[k] = home[k] + (sinewave(phase * wander[k] + hash01(k * 7)) - 0.5) * roam;
-					// Each lamp turns up a little for its own part of the mix. Centred on unity so
-					// the room stays lit through a passage with nothing in it: this shades the
-					// lamps, it does not switch them on.
+					// Unity-centred spectral modulation shades lamps without switching them
+					// off.
 					const voice = voices[k].update(bandAt(f, k / (LAMPS - 1)), f.dt);
 					const breathing = 0.52 + 0.48 * sinewave(phase * breath[k] + hash01(k * 23));
 					level[k] = breathing * gain * (1 + listen * (voice - 0.35));
@@ -99,8 +90,7 @@ export const lanterns: EffectDef = {
 				const twoSigmaSq = 2 * sigma * sigma;
 				for (let i = 0; i < g.count; i++) {
 					if (onBeam[i]) {
-						// Bounce, not a lamp. Dim and even, and it is what keeps the ceiling from
-						// reading as switched off in a room whose walls clearly are not.
+						// Dim, even beam spill reads as bounced light.
 						addSample(out, i, palette, SLOT.base + hueShift, mean * 0.3);
 						continue;
 					}

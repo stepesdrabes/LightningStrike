@@ -1,22 +1,11 @@
 import { readLibrary } from '@mv/analysis';
 import type { NewItem } from '$lib/queueModel.ts';
 
-/**
- * The one way a row enters the queue.
- *
- * The host, the guest page and the radio all add tracks, and the two that existed first had
- * each grown their own copy of this and already drifted apart. Autopilot would have been a
- * third.
- */
+/** Shared queue admission for host, guest and radio. */
 
 /**
- * Keep only what a request is allowed to say about a track.
- *
- * Built field by field rather than spread: `auto` marks a row the radio chose, and a body that
- * could set it would let anyone dress their own pick up as one. `authored` is left out for a
- * sharper reason - a row claiming to be authored starts `ready`, so nothing is ever fetched
- * for it, and the deck reaches a track with no audio and no show. `genre` is not a request's
- * to make either: it is what the enrichment heard, not what the sender says it is.
+ * Whitelist request fields: callers cannot assert radio ownership, authored readiness or
+ * analysed genre.
  */
 export function fromRequest(item: NewItem, addedBy?: string): NewItem {
 	return {
@@ -30,12 +19,7 @@ export function fromRequest(item: NewItem, addedBy?: string): NewItem {
 	};
 }
 
-/**
- * Fill in what the cache already knows.
- *
- * A track that is analysed and has a show is ready the moment it is queued, so nothing is
- * fetched for it. `authored` is set here and nowhere else, because it is what decides that.
- */
+/** Only cache evidence may mark a row authored and ready without preparation. */
 export async function enrichFromLibrary(items: NewItem[]): Promise<NewItem[]> {
 	if (items.length === 0) return items;
 	const library = await readLibrary();
@@ -43,9 +27,7 @@ export async function enrichFromLibrary(items: NewItem[]): Promise<NewItem[]> {
 
 	return items.map((item) => {
 		const hit = item.trackId ? byId.get(item.trackId) : undefined;
-		// Current, not merely present: a stale-version analysis is silently wrong and a
-		// stale engine show never hears an engine fix, so those rows go through prepare
-		// again rather than playing whatever an older build left behind.
+		// Require current analysis and engine versions before skipping preparation.
 		const cached = hit?.analysed && hit.current && hit.authored !== 'none' ? hit : undefined;
 		return {
 			...item,

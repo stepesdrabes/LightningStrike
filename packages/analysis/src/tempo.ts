@@ -4,22 +4,14 @@ export const MIN_BPM = 55;
 export const MAX_BPM = 215;
 
 /**
- * Where the prior sits, and how wide it is in octaves on each side.
- *
- * Not a genre guess so much as a perceptual one: listeners tap around 120, so when the
- * evidence is equally good at 75 and 150 the faster reading is the one people would clap
- * along to. Swept over 85 GTZAN tracks and 158 GiantSteps ones, alongside the bar-grouping
- * weight in `beats.ts`; the two interact, and a prior wide enough to keep 174 bpm safe on its
- * own is not needed once something else is asking whether the beats form bars.
- *
- * The width is kept symmetric for the same reason. An asymmetric one scored the same on
- * Acc1 and was harder to justify.
+ * Log-normal tactus prior, centred near 120 bpm. Width and bar-grouping weight were tuned
+ * together on GTZAN/GiantSteps; keep the width symmetric.
  */
 const PRIOR_BPM = 120;
 const PRIOR_OCTAVES_BELOW = 0.6;
 const PRIOR_OCTAVES_ABOVE = 0.6;
 
-export interface TempoCandidate {
+interface TempoCandidate {
 	bpm: number;
 	/** Tempogram strength, 0..1 relative to the strongest candidate. */
 	salience: number;
@@ -32,12 +24,8 @@ function logPrior(bpm: number): number {
 }
 
 /**
- * A tempogram from two views of the same curve, multiplied together.
- *
- * Autocorrelation answers "does this curve repeat at this lag", which is strong at a tempo
- * and at every multiple of it. The Fourier magnitude answers "is there energy at this rate",
- * which is strong at a tempo and at every divisor of it. Their product keeps only what both
- * agree on, which is most of what separates 128 from 64 and 256 without any hand-tuning.
+ * Multiply autocorrelation and Fourier tempograms: their multiple/divisor ambiguities cancel
+ * where only one representation supports a tempo.
  */
 export function tempogram(
 	odf: Float32Array,
@@ -100,12 +88,8 @@ export function tempogram(
 }
 
 /**
- * Peaks of the tempogram, prior-weighted, strongest first.
- *
- * Only peaks the tempogram actually found. Adding each one's half, double and third as
- * further candidates is the obvious thing to do and it makes the result worse: those
- * multiples arrive carrying almost the salience of their parent, so whatever picks between
- * candidates ends up choosing an octave on evidence the tempogram never offered.
+ * Use only observed tempogram peaks. Adding relatives with inherited salience invents
+ * evidence for octave selection.
  */
 export function tempoCandidates(
 	odf: Float32Array,
@@ -139,7 +123,7 @@ export function tempoCandidates(
 	return peaks.slice(0, 6).map((p) => ({ bpm: p.bpm, salience: p.salience / best }));
 }
 
-export interface BeatTrack {
+interface BeatTrack {
 	/** Beat times in seconds. */
 	times: Float64Array;
 	/** Mean conditioned onset strength landing on a beat; the tracker's own confidence. */
@@ -148,11 +132,8 @@ export interface BeatTrack {
 }
 
 /**
- * Ellis' dynamic-programming beat tracker (2007). It maximises, over every possible beat
- * sequence at once, the total onset strength collected at beats minus a penalty for beat
- * spacings that stray from the target period. The DP is what makes it robust: a bar of
- * silence costs a little and is stepped over, where a greedy tracker loses the phase and
- * never gets it back.
+ * Ellis (2007) DP beat tracking maximises onset support minus period deviation. Global
+ * sequence scoring preserves phase through silence.
  */
 export function trackBeats(
 	odf: Float32Array,

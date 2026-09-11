@@ -22,12 +22,7 @@ function segLength(s: { start: Vec3; end: Vec3 }): number {
 	return Math.hypot(s.end[0] - s.start[0], s.end[1] - s.start[1], s.end[2] - s.start[2]);
 }
 
-/**
- * Every run on the frame faces the floor, so `normal` is the same for all five.
- *
- * A run is told from its neighbours by the axis it spans, not by where it points. Ask
- * `stripAxis` for that rather than reading a component of this.
- */
+/** All runs face down. Use stripAxis, not normal, to distinguish their axes. */
 const DOWN: Vec3 = [0, 0, -1];
 
 function stripSpecs(spec: RoomSpec): StripSpec[] {
@@ -80,8 +75,7 @@ function stripSpecs(spec: RoomSpec): StripSpec[] {
 		}
 	];
 
-	// Pushed after the ring, so everything off the perimeter sits at the tail of the buffer
-	// and a corner that runs off the last side cannot walk into it.
+	// Keep non-perimeter LEDs at the buffer tail so wrapped corners cannot reach the beam.
 	const o = f.crossOffset;
 	raw.push(
 		f.crossAxis === 'y'
@@ -131,13 +125,10 @@ export function buildGeometry(spec: RoomSpec = DEFAULT_ROOM): Geometry {
 	const perim = new Float32Array(count).fill(-1);
 	const normal = new Float32Array(count * 3);
 
-	// Against the fixture, never against the pergola. See the note on `Geometry`.
 	const f = spec.fixture;
 	const extent = Math.max(f.width, f.depth);
 	const halfDiag = Math.hypot(f.width / 2, f.depth / 2);
-	// Head height under the frame rather than the frame's own plane. On its plane `dist` would
-	// collapse onto `r`, because every LED is coplanar, and the two projections would be the
-	// same look under two names.
+	// Use head height so dist differs from radial distance on the coplanar frame.
 	const centreZ = f.height / 2;
 	const maxDist3 = Math.hypot(halfDiag, centreZ);
 
@@ -213,23 +204,10 @@ export function buildGeometry(spec: RoomSpec = DEFAULT_ROOM): Geometry {
 	};
 }
 
-/**
- * How far either side of a corner that corner reaches, in metres.
- *
- * A board driving part of the fixture is given a corner because a metre each way is roughly what
- * reads as "this corner" rather than "this side", and at 60 LED/m it is 120 pixels, which is
- * enough of a sample for a percentile to mean something.
- */
+/** Metres on each side of a corner; 120 pixels at 60 LED/m gives a useful percentile sample. */
 const CORNER_REACH_M = 1;
 
-/**
- * Cut `count` LEDs out of a ring of `ringLen` starting at `ringStart`, centred on `centre`.
- *
- * The ring wraps and the frame does not, so this returns two spans when the cut straddles the
- * seam. Wrapping is modulo the ring rather than modulo the whole frame: the perimeter is the
- * ring, and anything off it (the beam) sits after the perimeter in the buffer and must not be
- * walked into by a corner that ran off the end of a side.
- */
+/** Return two spans across the ring seam; wrapping must exclude the beam at the buffer tail. */
 function ringSpans(ringStart: number, ringLen: number, centre: number, count: number): LedSpan[] {
 	const len = Math.min(count, ringLen);
 	const from = (((centre - Math.floor(len / 2)) % ringLen) + ringLen) % ringLen;
@@ -241,13 +219,7 @@ function ringSpans(ringStart: number, ringLen: number, centre: number, count: nu
 	];
 }
 
-/**
- * Two runs named for a corner, in the order a person says them.
- *
- * The ring is walked N, E, S, W, so taking the pair in walk order yields "ES" and "WN", which
- * read as mistakes. Compass names put the latitude first. Runs named anything else fall back
- * to walk order rather than inventing one.
- */
+/** Compass names put latitude first; custom run names keep walk order. */
 function cornerLabel(a: StripSpec, b: StripSpec): string {
 	const [p, q] = [runLabel(a), runLabel(b)];
 	return q === 'N' || q === 'S' ? `${q}${p}` : `${p}${q}`;
@@ -262,23 +234,13 @@ function region(id: string, name: string, spans: LedSpan[]): RoomRegion {
 	return { id, name, spans, count: spans.reduce((n, s) => n + s.ledCount, 0) };
 }
 
-/**
- * The parts of the room a single device can be pointed at.
- *
- * A device fed the whole frame shows the whole room, which for anything that reduces the frame
- * to one value means it shows the room's average and nothing about where light is. Fed one
- * corner instead, the same device is somewhere: a sweep crossing the room arrives at it, and a
- * beat that moves a hundredth of the whole fixture moves a sixth of this one.
- */
+/** Device regions preserve spatial gestures when a fixture reduces its input to one value. */
 export function roomRegions(g: Geometry): RoomRegion[] {
 	const out: RoomRegion[] = [region('all', 'Whole room', [{ firstLed: 0, ledCount: g.count }])];
 	const ring = g.strips.filter((s) => s.inPerimeter);
 
-	// The perimeter as it is wired rather than as it is drawn. A 5 m reel reaches one long run and
-	// one short one, so an output drives a pair and a bring-up has to be able to point at exactly
-	// what is built so far. Two spans rather than one, because contiguity is a property of how
-	// `stripSpecs` happens to lay the ring out and not something a region should assume. The beam
-	// is its own reel and is already a region below.
+	// A 5 m reel covers one long and one short run. Return both spans without assuming
+	// buffer contiguity; the beam has its own region.
 	for (let i = 0; i + 1 < ring.length; i += 2) {
 		const [a, b] = [ring[i], ring[i + 1]];
 		out.push(

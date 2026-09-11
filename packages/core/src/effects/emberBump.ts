@@ -9,19 +9,8 @@ import { sinewave } from '../dsl/wave.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
- * A punch that costs no light: the room rests one step desaturated and each kick pulls it to
- * full saturation.
- *
- * Measured over 24 hues through the real ramp, `base` to `glow` is x1.03 in flux and x0.86 in
- * peak channel - a SATURATION move at constant light, not the brightness step the other two
- * spans are. So walking `glow -> base` on a hit raises the peak channel by a sixth, adds
- * perceived brightness through Helmholtz-Kohlrausch, and delivers the same total light as the
- * frame before it. Nothing in the room gets brighter, so the eye's adaptation state never
- * shifts and the hundredth kick lands exactly as hard as the first - which is the failure mode
- * every whole-room level pulse in the catalog has and cannot avoid.
- *
- * This is the one legitimate walk of the slot over TIME in the system, and it is legitimate
- * only inside `base..glow`. Crossing toward white would be a x2.66 flux jump: a flash.
+ * Kick-driven glow -> base resaturation changes perceived brightness with nearly constant flux.
+ * Keep temporal movement inside base..glow; crossing white would add a flash.
  */
 export const emberBump: EffectDef = {
 	id: 'emberBump',
@@ -35,8 +24,7 @@ export const emberBump: EffectDef = {
 		maxBars: 32,
 		peakReserved: false,
 		activity: 0.1,
-		// The whole gesture answers the kick, so a passage the producer pulled it out of would
-		// leave this sitting at rest saturation saying nothing.
+		// Requires kicks; without them the whole gesture is absent.
 		kit: 'kick'
 	},
 	params: [INTENSITY, param('lag', 'Front-to-back lag', 0.5)],
@@ -70,20 +58,18 @@ export const emberBump: EffectDef = {
 				if (f.kick) hit.fire(clamp(0.45 + f.kickEnv * 0.55) * playing);
 				const v = hit.decay(f.dt, f.beatPeriod, 0.75 / Math.max(0.05, motion));
 
-				// Where the room's weight sits, from what is playing rather than how loud it is.
-				// This is a POSITION, so it may follow the music freely.
+				// Use spectral position to place the room's weight.
 				const centre = tilt.update(clamp(0.5 + spectralTilt(f) * 0.5), f.dt);
 				const level = 0.16 + p.intensity * 0.17;
 
 				for (let i = 0; i < g.count; i++) {
-					// The back of the room re-saturates a few tens of milliseconds after the
-					// front, so the bump reads as sweeping the room rather than as one switch.
+					// Lag the back by tens of milliseconds so resaturation sweeps through the
+					// room.
 					const lagged = clamp(v - depth[i] * 0.18 * p.lag);
 					// Saturation, NOT lightness. The only span where a fast signal is safe.
 					const slot = lerp(SLOT.glow, SLOT.base, lagged);
-					// A shallow two-lobe shape so the layers under this keep their structure: a
-					// perfectly flat rhythm layer at opacity 0.8 would wash the bed out. Varies
-					// by POSITION and by a slow follower, never by the hit.
+					// A shallow, slowly moving spatial shape preserves the bed under the rhythm
+					// layer.
 					const u = ringU(g, i);
 					const shape = 0.82 + 0.18 * sinewave(u + centre);
 					setSample(out, i, palette, slot + hueShift, level * shape);

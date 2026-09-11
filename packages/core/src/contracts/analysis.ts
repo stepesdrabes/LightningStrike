@@ -17,33 +17,19 @@ export interface TempoGrid {
 	phraseAnchorBar: number;
 	barsPerPhrase: number;
 	/**
-	 * False when the track's tempo moves enough that one period cannot describe it.
-	 *
-	 * It is a description of the music, not a switch: `barTimes` is the authority either way,
-	 * so nothing downstream has to branch on this and nothing downstream may.
+	 * False when tempo variation exceeds one-period fit. Descriptive only; barTimes is always
+	 * authoritative.
 	 */
 	constant: boolean;
 	/** 0..1, separately from `confidence`: the beat grid can be certain and the meter not. */
 	meterConfidence: number;
-	/**
-	 * True when half, double or three-against-two is defensible on the same evidence.
-	 *
-	 * Metrical level is the one thing neither tracker can be trusted with on this repertoire:
-	 * the two disagree on seven of fifteen cached tracks and a listening test split those two
-	 * all. This is a well-calibrated flag rather than a defect, and the answer is to ask, which
-	 * a listener settles in seconds and the cache then keeps.
-	 */
+	/** True when another metrical level is similarly plausible; listener review can settle it. */
 	ambiguous: boolean;
 	/** Readings a listener might prefer instead, most plausible first. */
 	alternativeBpm: number[];
 	/**
-	 * Start time of every bar, seconds, plus the end of the last one: length is barCount + 1.
-	 *
-	 * This is the only thing that says where a bar is. The scalars above reconstruct it exactly
-	 * only when the tempo never moves, and a track whose tempo moves by a per cent or two
-	 * accumulates whole beats of error over four minutes, which is why they are not used for it.
-	 * `bars[].t` is written from this array rather than alongside it, so the two cannot drift
-	 * apart.
+	 * Authoritative bar start times in seconds plus the final end, length barCount + 1.
+	 * bars[].t is derived from this array so the two cannot drift.
 	 */
 	barTimes: number[];
 }
@@ -70,11 +56,7 @@ export type EventTag =
 	| 'bass_out'
 	| 'filter_sweep'
 	| 'vocal_in'
-	/**
-	 * The final drop-class section arrives a semitone or two above the earlier statements of
-	 * the same energy class - the classic pop lift. Tagged on its first bar; the planner
-	 * answers it with the one palette move the colour identity sanctions beyond the swap.
-	 */
+	/** Final drop-class return lifts by one or two semitones; tagged on its first bar. */
 	| 'key_change';
 
 /** One row per bar. This is the granularity every cue is authored at. */
@@ -91,10 +73,7 @@ export interface BarRow {
 	kicks: number;
 	snares: number;
 	hats: number;
-	/**
-	 * 0..1, the share of the bar under a synced lyric line. Zero wherever no lyrics were
-	 * found, so an offline ingest carries a column of zeros rather than a different shape.
-	 */
+	/** Lyric coverage, 0..1. Zero when no synced lyrics were found. */
 	vocal: number;
 	events: EventTag[];
 }
@@ -111,28 +90,17 @@ export interface SectionSpan {
 	peakEnergy: number;
 	/** 1 = the biggest section in the track. Makes "which moment is the peak" a fact. */
 	energyRank: number;
-	/**
-	 * Which material this is. Sections sharing an id are the same passage of the song, so a
-	 * show can light every chorus alike without being told which ones those are. Negative when
-	 * the section was carved out rather than detected, such as a void.
-	 */
+	/** Same-material group ID; negative for carved sections such as voids. */
 	group: number;
 	/** Index of the first section carrying this group, or null when this is that one. */
 	repeatOf: number | null;
-	/**
-	 * Which song of a stitched track this section belongs to, indexing `movements`. Absent on
-	 * a track that is one song, which is nearly all of them.
-	 */
+	/** Index into movements for stitched tracks; absent for one-song tracks. */
 	movement?: number;
 }
 
 /**
- * One song of a track that is several: a beat switch, a medley, a suite.
- *
- * Found by the analyser (a tempo step with material that stops recurring, a beatless
- * interlude between two songs, a restarted count into new material in a new key) or marked by
- * the listener; either way the song gets its own count of one, its own energy scale, its own
- * sections, and the show re-stages at its first bar.
+ * One movement of a stitched track, detected or listener-marked.
+ * Each has its own count, energy scale and sections; the show re-stages at its first bar.
  */
 export interface MovementSpan {
 	startBar: number;
@@ -147,33 +115,18 @@ export interface MovementSpan {
 	note: string;
 }
 
-/**
- * One drum's hits.
- *
- * Times and levels are one object rather than two arrays on the analysis, because the only
- * thing that makes a level meaningful is which hit it belongs to, and two sibling arrays that
- * have to stay index-aligned eventually do not.
- */
+/** One drum's aligned onset times and strengths. */
 export interface OnsetStream {
 	/** Onset times, seconds, ascending. */
 	times: number[];
 	/**
-	 * How hard each hit was struck, 0..1 against the track's own strongest, index-aligned with
-	 * `times`. A hit completed from the pattern rather than heard carries the pattern's own
-	 * confidence, so it is never the loudest thing in the bar.
+	 * Strength, 0..1 against the track's strongest, aligned with times.
+	 * Pattern-completed hits carry pattern confidence.
 	 */
 	levels: number[];
 }
 
-/**
- * Energy and band levels at beat resolution, 0..100, aligned with `TrackAnalysis.beats`.
- *
- * Per bar was too coarse for anything an effect modulates with. Between 12% and 43% of the
- * true band-envelope variance lives inside the bar and was unreachable, and interpolating
- * between per-bar means also led the audio by half a bar, which is a whole second at 120 bpm.
- * The bar table still carries the same fields, because that is the granularity a cue is
- * authored at and a show is read at; this is the granularity the light moves at.
- */
+/** Energy and band levels, 0..100 at beat resolution, aligned with TrackAnalysis.beats. */
 export interface Envelopes {
 	/** One per beat. */
 	energy: number[];
@@ -182,23 +135,9 @@ export interface Envelopes {
 }
 
 /**
- * A log-spaced spectrum per frame: the whole of what is playing, not a four-band summary.
- *
- * Stored as bytes in one base64 string because this is by far the largest thing in the file. A
- * four-minute track is a quarter of a million values, which as JSON numbers would be a megabyte
- * on its own and, pretty-printed the way the rest of the analysis is, a quarter of a million
- * lines.
- *
- * A fixed 30 dB window against one shared reference per band: 1.0 means "as loud as this track's
- * loud passages get", 0.0 means 30 dB under it. NOT per-band normalised - stretching each band
- * across its own whole-track range made every band read near full whenever it was near its own
- * maximum, so a drop arrived as a flat plateau with nothing left to react with, and it destroyed
- * the relative height between bands that is what makes a spectrum look like music rather than
- * like twenty independent meters. Quiet section kinds are lifted by at most 6 dB, so they keep
- * some articulation of their own without arriving at a drop's.
- *
- * This is therefore NOT the same kind of number as `Envelopes.bands`, which stays normalised per
- * band across the track. The bands say how LOUD; the spectrum says what SHAPE.
+ * Log-spaced per-frame spectrum, byte-encoded in Base64 to keep the analysis compact.
+ * A fixed 30 dB window preserves relative band heights; quiet sections gain at most 6 dB.
+ * Unlike Envelopes.bands, individual bands are not stretched across their own track-wide range.
  */
 export interface SpectrumTrack {
 	fps: number;
@@ -217,10 +156,7 @@ export interface Moment {
 	note: string;
 }
 
-/**
- * Where the sound sits across the room, over time. Sampled rather than per-bar because the
- * gesture worth reacting to - a vocal thrown hard left and right - moves on every sixteenth.
- */
+/** Frame-sampled stereo image so between-beat pan gestures survive. */
 export interface StereoImage {
 	fps: number;
 	/** -1 hard left, +1 hard right. */
@@ -242,48 +178,26 @@ export interface TrackAnalysis {
 	bars: BarRow[];
 	sections: SectionSpan[];
 	/**
-	 * How many sections the segmenter emitted BEFORE same-material consolidation. The
-	 * fragmentation trust gate reads this one: a wrong-grid wreck chops into homogeneous
-	 * same-kind runs, which is exactly what consolidation merges, and a wreck must not
-	 * merge its way past the lounge routing that exists to catch it. Absent on analyses
-	 * older than v17.
+	 * Section count before same-material consolidation, used by gridTrust so merges cannot hide
+	 * fragmentation. Absent before analysis v17.
 	 */
 	rawSectionCount?: number;
-	/**
-	 * Fingerprint of the hand-drawn section map this analysis adopted, absent when it read
-	 * none. It is what lets a map take effect the moment it is drawn: the analysis is
-	 * otherwise kept while its version is current, so a map drawn on a current blob would
-	 * wait for the next version bump to be heard - and a map redrawn after a listen would
-	 * never be heard at all. Ingest compares this against the judgement beside the cache and
-	 * re-analyses on any difference, a map deleted included.
-	 */
+	/** Adopted hand-map fingerprint. Ingest reanalyses on any difference, including deletion. */
 	handMap?: string;
 	/**
-	 * The songs of a track that is several stitched together - SICKO MODE's beat switches,
-	 * Melanz's three records. Absent on a track that is one song, which is nearly all of
-	 * them; present with two or more spans otherwise, tiling the bar table. Each span starts
-	 * on a bar line by construction: a movement is a grid cut, so the bar table starts a new
-	 * bar exactly there.
+	 * Two or more movement spans tiling the bar table; absent for one-song tracks.
+	 * Each movement starts on a bar line.
 	 */
 	movements?: MovementSpan[];
 	moments: Moment[];
 	/** Every tracked beat, seconds. Exact even where the constant grid is only a fit. */
 	beats: number[];
 	/**
-	 * The tracker's own downbeats, seconds, when a model ran; absent when none did.
-	 *
-	 * A strict subset of `beats` (verified across the cached corpus to the sample), and about
-	 * 900 bytes on a four-minute track against the spectrum's 400 KB. Stored because the bar
-	 * table is a DECISION made from these, and without them nothing downstream can ask whether
-	 * that decision was right, re-run the phase walk at another price, or A/B a grid without
-	 * loading a 79 MB graph again.
+	 * Model downbeats in seconds, a strict subset of beats. Retained for grid review without
+	 * rerunning the model; absent when no model ran.
 	 */
 	downbeats?: number[];
-	/**
-	 * The tracker's beats and downbeats before the grid repair wrote over any of them:
-	 * what `beats` was made from. A bench or probe that starts from `beats` repairs a repaired
-	 * stream and reports a seam the app never has to find.
-	 */
+	/** Unrepaired tracker beats/downbeats, retained so probes test the same input as the app. */
 	heard?: { beats: number[]; downbeats: number[] };
 	envelopes: Envelopes;
 	spectrum: SpectrumTrack;
@@ -297,8 +211,8 @@ export interface TrackAnalysis {
 	/** EBU R128 loudness range, LU. */
 	loudnessRange: number;
 	/**
-	 * Peak minus integrated loudness, LU. Under about 8 the master is heavily limited, so
-	 * per-bar level barely moves and a show has to take its dynamics from somewhere else.
+	 * Peak minus integrated loudness, LU. Below ~8, limiting leaves little per-bar level
+	 * variation.
 	 */
 	peakToLoudness: number;
 }

@@ -9,13 +9,8 @@ import { INTENSITY, param } from './helpers.ts';
 const HOLD = 0.05;
 
 /**
- * The frame's four runs as four blocks, struck in turn: one wall snaps to white on the beat
- * and cools while the next one waits its turn, the beam taking the downbeat. Nothing glides
- * and nothing travels; what moves is which block is lit, which is the oldest chase there is
- * and the one this rectangle is built for.
- *
- * Timing is the grid's and permission is the kit's: the strikes are sized by the kick and
- * rest with it, so a suspension is a room holding its breath rather than a metronome.
+ * Grid-timed wall strikes use kit presence for strength and permission, resting during
+ * suspensions.
  */
 export const blockChase: EffectDef = {
 	id: 'blockChase',
@@ -41,7 +36,6 @@ export const blockChase: EffectDef = {
 	create(g) {
 		const walls = g.strips.filter((s) => s.inPerimeter);
 		const beam = g.strips.find((s) => !s.inPerimeter) ?? null;
-		// Which block each LED belongs to: the walls in ring order, the beam last.
 		const block = new Uint8Array(g.count);
 		for (let k = 0; k < walls.length; k++) {
 			for (let i = 0; i < walls[k].count; i++) block[walls[k].offset + i] = k;
@@ -94,7 +88,7 @@ export const blockChase: EffectDef = {
 					}
 				}
 
-				// The cool-down is a musical length, so the block is dark again before its next turn.
+				// Cool within a musical duration before the next strike.
 				const tail = Math.max(0.03, f.beatPeriod * per * 0.5) / Math.max(0.05, motion);
 				const k = Math.exp(-f.dt / tail);
 				for (let b = 0; b < level.length; b++) {
@@ -108,8 +102,7 @@ export const blockChase: EffectDef = {
 				const rest = 0.1 * gain;
 				for (let i = 0; i < g.count; i++) {
 					const v = level[block[i]];
-					// White at a full strike, cooling through glow to the base within the beat; a
-					// softer kick stops in the bright read rather than blinding on every step.
+					// Cool white through glow to base; softer kicks stop short of white.
 					const slot = lerp(SLOT.base, SLOT.white, clamp(v * 1.15));
 					setSample(out, i, palette, slot + hueShift, rest + v * gain);
 				}

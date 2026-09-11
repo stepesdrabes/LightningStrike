@@ -32,7 +32,7 @@ export function setPixel(buf: Float32Array, i: number, r: number, g: number, b: 
 	buf[o + 2] = b;
 }
 
-/** Every pixel to one colour. The whole-room flash, written once. */
+/** Fill every pixel with one colour. */
 export function fillSolid(buf: Float32Array, count: number, rgb: readonly number[]): void {
 	for (let i = 0; i < count; i++) {
 		const o = i * 3;
@@ -68,11 +68,8 @@ export function addPixelF(
 }
 
 /**
- * Additive gaussian blob at a sub-pixel position.
- *
- * Pass `lo`/`hi` when stamping into the global buffer: strips are concatenated, so a
- * blob near the end of the west wall would otherwise bleed into the ceiling beam, which
- * are nowhere near each other in the room.
+ * Clip gaussian blobs with lo/hi when strips share a buffer, or wall ends can bleed onto the
+ * beam.
  */
 export function stampGaussian(
 	buf: Float32Array,

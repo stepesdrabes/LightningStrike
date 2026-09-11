@@ -12,11 +12,7 @@ import { beatRelease, INTENSITY, param } from './helpers.ts';
 
 const MAX_EMBERS = 32;
 
-/**
- * A fixed flock whose wind speed and flicker rate rise with the build: a lazy scatter of
- * coals at rest, a stream around the whole room by the drop. Every ember's character is
- * a hash of its index, so a seek reproduces the flock exactly.
- */
+/** Hash each ember's character so the build-driven flock remains reproducible on seeks. */
 export const emberStorm: EffectDef = {
 	id: 'emberStorm',
 	name: 'Ember Storm',
@@ -47,8 +43,7 @@ export const emberStorm: EffectDef = {
 			flickPhase[e] = hash01(e * 31);
 			hot[e] = hash01(e * 3) < 0.7 ? 0 : 1;
 		}
-		// The passage's own level, latched on the beat: `f.energy` is beat-resolution data the
-		// player interpolates per frame, so a gain multiplied by it slides continuously.
+		// Latch interpolated beat energy before applying it to gain.
 		const passage = new BeatHold(0.45);
 		const tint = new BeatHold(0.15);
 		let windPos = 0;
@@ -69,22 +64,18 @@ export const emberStorm: EffectDef = {
 				const tension = clamp(
 					Math.max(f.buildProgress, passage.update(f.energy, f.beat, f.dt, f.beatPeriod) * 0.5)
 				);
-				// From a lazy drift at 16 bars per lap to a gale at 4. Never wrapped: each ember's
-				// place is `windPos` times its own drift, so subtracting a whole lap here would
-				// teleport the whole flock.
+				// Never wrap windPos: per-ember drift factors would turn a lap subtraction into
+				// a teleport.
 				const barsPerLap = 16 - tension * 12;
 				windPos += (f.dt / Math.max(0.4, barsPerLap * 4 * f.beatPeriod)) * motion;
-				// One and a half to four flickers per beat. Taken off the wind position it ran
-				// near 25 Hz, which at 60 fps is aliasing rather than an ember; at six per beat
-				// a drop's flock was a field of blinking points.
+				// Keep flicker to 1.5-4 cycles/beat; faster rates alias or read as blinking
+				// points.
 				flickPos += (f.dt / f.beatPeriod) * (1.5 + tension * 2.5) * motion;
 
 				const at = tint.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const count = Math.floor(MAX_EMBERS * (0.4 + p.count * 0.6));
 				const gain = (0.16 + p.intensity * 0.34) * clamp(0.3 + tension * 0.7);
-				// One hue family at a time, walked by where the mix is sitting. Two slots from
-				// opposite ends of the palette drifting over each other's trails sum to a colour
-				// the show never declared, which is what put a quarter of this off palette.
+				// Use one hue family so overlapping trails cannot mix undeclared colours.
 				const coal = paletteArc(at);
 				const glowing = lerp(coal, SLOT.white, 0.5);
 

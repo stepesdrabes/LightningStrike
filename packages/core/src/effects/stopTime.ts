@@ -7,11 +7,8 @@ import { ringU } from '../dsl/space.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
- * The stop-time cut, half of hip-hop stagecraft: while the kit plays, a heavy pattern
- * crawls the ring; when the producer cuts the beat the picture FREEZES mid-stride and
- * dims, and the re-entry snaps it bright and moving in the same frame. The freeze is the
- * gesture - a room that keeps drifting through a stop-time was not listening, and one
- * that blacks out heard silence instead of suspense.
+ * Freeze and dim the current pattern when the kit leaves; resume immediately on re-entry.
+ * Holding the picture preserves suspense instead of implying silence.
  */
 export const stopTime: EffectDef = {
 	id: 'stopTime',
@@ -52,8 +49,8 @@ export const stopTime: EffectDef = {
 				if (live && !wasPlaying) snap.fire(1);
 				wasPlaying = live;
 
-				// The crawl advances only while the beat is there: the freeze IS the phase
-				// holding still. Speed in ring laps per beat, scaled by the cue's motion.
+				// Advance phase only with kit presence; speed is ring laps/beat scaled by
+				// motion.
 				if (live) {
 					const laps = (0.06 + p.stride * 0.1) / Math.max(0.05, f.beatPeriod);
 					phase = frac(phase + laps * f.dt * Math.max(0.05, motion));
@@ -67,9 +64,8 @@ export const stopTime: EffectDef = {
 
 				for (let i = 0; i < g.count; i++) {
 					const u = frac(ringU(g, i) - phase);
-					// Three heavy lobes with hard leading edges - a pattern with a stride,
-					// not a wash - kept in one hue family so the freeze reads as light
-					// stopping rather than colour changing.
+					// Keep a heavy, single-family pattern so the freeze reads as movement
+					// stopping.
 					const tri = Math.abs(frac(u * 3) - 0.5) * 2;
 					const lobe = Math.pow(1 - tri, 3);
 					const slot = lerp(SLOT.deep, SLOT.glow, clamp(lobe + flash * 0.5));

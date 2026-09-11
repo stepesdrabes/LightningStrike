@@ -7,11 +7,8 @@ import { Presence } from '../dsl/env.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
- * Every drum voice owns a fixed home, like a band on a stage: the kick lives in the four
- * corners, the snare at the centre of the ceiling beam, the hats along its ends. After
- * four bars the mapping is learned and the room reads as musicians in their places -
- * which is what the per-voice `Presence` protects: a voice that leaves the arrangement
- * has its spot go dark instead of flashing on ghosts.
+ * Fixed drum positions make the mapping learnable; per-voice Presence darkens seats when
+ * an instrument leaves the arrangement.
  */
 export const kitStage: EffectDef = {
 	id: 'kitStage',
@@ -29,8 +26,7 @@ export const kitStage: EffectDef = {
 	},
 	params: [INTENSITY, param('spotSize', 'Spot size', 0.4)],
 	create(g) {
-		// Corner LEDs: the perimeter positions where the strip id changes. Beam positions
-		// from the strips outside the perimeter.
+		// Find corners from strip-ID changes and the beam from off-perimeter strips.
 		const corners: number[] = [];
 		const perim: number[] = [];
 		for (let i = 0; i < g.count; i++) if (g.perim[i] >= 0) perim.push(i);
@@ -95,9 +91,7 @@ export const kitStage: EffectDef = {
 				for (const c of corners) {
 					spot(out, c, size, SLOT.base, kickAmp, palette, hueShift);
 				}
-				// The snare answers from the middle of the ceiling, a step brighter in the
-				// same family - the backbeat sits above the room. Its presence scales the
-				// seat like the hats' does, so a passage the snare left goes dark there.
+				// Gate the brighter centre-beam snare seat by its own presence.
 				spot(
 					out,
 					beamMid,
@@ -107,8 +101,7 @@ export const kitStage: EffectDef = {
 					palette,
 					hueShift
 				);
-				// Hats tick at the beam's ends in near-white, small and fast: cymbals are
-				// texture, not weight, so their presence window is deliberately short.
+				// Use a shorter presence window for fast, light hat texture at the beam ends.
 				for (const e of beamEnds) {
 					spot(out, e, size * 0.5, SLOT.white, clamp(f.hatEnv * 0.55) * gain * hat, palette, hueShift);
 				}

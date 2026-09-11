@@ -3,15 +3,8 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	plugins: [sveltekit()],
-	// lucide-svelte ships uncompiled .svelte files. Left external, the SSR pass hands them to
-	// Node, which has no idea what a .svelte file is; bundling them lets the Svelte plugin
-	// compile them first.
-	//
-	// ssr.external does not work for a native addon reached through a linked workspace
-	// package, which is why beatthis.ts resolves onnxruntime-node with createRequire instead.
+	// Bundle Lucide so the Svelte plugin compiles its .svelte sources before Node SSR.
 	ssr: { noExternal: ['lucide-svelte'] },
-	// Bound to every interface so a phone on the same network can reach the queue. The queue
-	// is server state precisely so that people in the room can add to it from their own
-	// devices, and that is impossible from localhost only.
+	// Allow phones on the LAN to reach the shared queue.
 	server: { port: 5180, host: true }
 });

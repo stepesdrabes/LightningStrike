@@ -1,4 +1,4 @@
-import type { EffectDef, LayerRole } from '../contracts/effect.ts';
+import type { EffectDef } from '../contracts/effect.ts';
 
 import { ambientDrift } from './ambientDrift.ts';
 import { anthemWash } from './anthemWash.ts';
@@ -203,10 +203,6 @@ export class EffectRegistry {
 		return this.byId.get(id) ?? null;
 	}
 
-	has(id: string): boolean {
-		return this.byId.has(id);
-	}
-
 	add(def: EffectDef): void {
 		this.byId.set(def.id, def);
 	}
@@ -215,13 +211,5 @@ export class EffectRegistry {
 	clearGenerated(): void {
 		const builtIn = new Set(BUILT_IN_EFFECTS.map((d) => d.id));
 		for (const id of [...this.byId.keys()]) if (!builtIn.has(id)) this.byId.delete(id);
-	}
-
-	all(): EffectDef[] {
-		return [...this.byId.values()];
-	}
-
-	forRole(role: LayerRole): EffectDef[] {
-		return this.all().filter((d) => d.role === role);
 	}
 }

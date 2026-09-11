@@ -8,15 +8,11 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
-/// Long enough to cover a cold start where the OS is paging the runtime in, short enough that
-/// a genuinely broken sidecar reports rather than hangs.
+/// Allow cold runtime startup while bounding failures.
 const READY_TIMEOUT: Duration = Duration::from_secs(20);
 const POLL_EVERY: Duration = Duration::from_millis(40);
 
-/// What distinguishes a renamed copy of the app, or nothing for the original.
-///
-/// Read off the bundle rather than from a setting so the choice survives a double-click:
-/// naming the copy is the whole of the configuration.
+/// Use the bundle name to isolate renamed app copies without additional configuration.
 fn bundle_suffix() -> Option<String> {
 	let exe = std::env::current_exe().ok()?;
 	let bundle = exe
@@ -32,41 +28,22 @@ pub struct Server {
 	pub port: u16,
 }
 
-/// The running sidecar, held so that quitting can end it.
-///
-/// Nothing else owns it: the handle `spawn` returns kills the process on request but not on
-/// drop, so letting it fall out of scope leaves a Node server that outlives the window,
-/// reparented to init and still streaming DDP at the room. That is not a leaked handle, it is
-/// a room that keeps lighting after the app is gone.
+/// Retain the sidecar handle for explicit shutdown; dropping it leaves Node and DDP running.
 struct Sidecar(Mutex<Option<CommandChild>>);
 
-/// Start the bundled Node server. Returns as soon as the process exists, not when it answers.
-///
-/// The waiting is `wait_ready`, deliberately apart: this runs on the thread that owns the
-/// window, and the sidecar takes seconds to come up. Doing both here is what left the app with
-/// no window at all until the server was serving, which macOS reports as not responding.
-///
-/// The port is chosen here rather than fixed, so the app never collides with a dev server on
-/// 5180 or with a second copy of itself. It binds every interface on purpose: the queue is
-/// server state precisely so that phones in the room can add to it.
+/// Spawn without waiting on the window thread. Use a free port to avoid other instances and bind
+/// the LAN for phone guests.
 pub fn spawn(app: &AppHandle, path: &str) -> Result<Server, String> {
 	let port = free_port()?;
 
 	let entry = resource(app, "server/index.js")?;
 	let models = resource(app, "models")?;
-	// The bundle is read-only and code-signed, so everything the app writes lives beside its
-	// preferences instead. `paths.ts` reads both of these.
-	// Two copies of this app share one bundle identifier, so by default they share one library
-	// - which makes comparing two builds impossible without wiping between them, and a
-	// comparison is how every real question about the room has been settled. A copy renamed on
-	// the way into /Applications gets a library of its own, so "LightningStrike (B).app" can
-	// hold a different show for the same track and be judged beside the original. An inherited
-	// MV_CACHE_DIR still wins, for a session driving the comparison itself.
+	// Keep writable data outside the signed bundle. Renamed app copies get separate libraries; an
+	// inherited MV_CACHE_DIR still wins.
 	let cache = match std::env::var_os("MV_CACHE_DIR") {
 		Some(dir) => PathBuf::from(dir),
 		None => {
-			// Local rather than roaming: the same directory on macOS, and on Windows the one
-			// that is not synced to a domain profile. A library is gigabytes of cached audio.
+			// Use local storage on Windows so cached audio does not roam with a domain profile.
 			let data = app
 				.path()
 				.app_local_data_dir()
@@ -91,9 +68,7 @@ pub fn spawn(app: &AppHandle, path: &str) -> Result<Server, String> {
 		.env("MV_MODEL_DIR", models)
 		.env("NODE_ENV", "production");
 
-	// The bundled ingest worker, so analysis runs off the server's main thread in the app
-	// exactly as it does in dev. Optional on purpose: an older bundle without the file
-	// still starts, it just ingests in-process the way it always did.
+	// Use the bundled worker when present; older bundles retain in-process ingest.
 	if let Ok(worker) = resource(app, "server/ingest-worker.mjs") {
 		sidecar = sidecar.env("MV_INGEST_WORKER", worker);
 	}
@@ -101,8 +76,7 @@ pub fn spawn(app: &AppHandle, path: &str) -> Result<Server, String> {
 	let (mut rx, child) = sidecar.spawn().map_err(|e| format!("cannot start server: {e}"))?;
 	app.manage(Sidecar(Mutex::new(Some(child))));
 
-	// The child outlives this function, so its output has to be drained or the pipe fills and
-	// the server blocks on its own logging. Forwarded to stderr, where `tauri dev` shows it.
+	// Drain child output to prevent logging from filling the pipe and blocking the server.
 	tauri::async_runtime::spawn(async move {
 		while let Some(event) = rx.recv().await {
 			match event {
@@ -121,20 +95,14 @@ pub fn spawn(app: &AppHandle, path: &str) -> Result<Server, String> {
 	Ok(Server { port })
 }
 
-/// Wait until the sidecar answers, off the thread that owns the window.
-///
-/// `spawn_blocking` rather than an async sleep loop: the wait below is a blocking connect with a
-/// blocking sleep between tries, and putting that on an async worker is what it is for.
+/// Run blocking connect/retry work off the window thread.
 pub async fn wait_ready(port: u16) -> bool {
 	tauri::async_runtime::spawn_blocking(move || wait_until_listening(port))
 		.await
 		.unwrap_or(false)
 }
 
-/// End the sidecar. Idempotent, because both the failed-start path and the exit path call it.
-///
-/// The queue is written beside its file and renamed, so there is no half-written state to
-/// protect here and a signal is enough.
+/// Both failed startup and normal exit call this; queue writes use atomic rename.
 pub fn stop(app: &AppHandle) {
 	let Some(sidecar) = app.try_state::<Sidecar>() else {
 		return;
@@ -145,8 +113,7 @@ pub fn stop(app: &AppHandle) {
 	}
 }
 
-/// A connect rather than an HTTP request: the question is only whether the listener is up,
-/// and the first route to answer would need the app running anyway.
+/// A TCP connection suffices to check whether the sidecar is listening.
 fn wait_until_listening(port: u16) -> bool {
 	let addr = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
 	let deadline = Instant::now() + READY_TIMEOUT;
@@ -159,11 +126,7 @@ fn wait_until_listening(port: u16) -> bool {
 	false
 }
 
-/// Ask the OS for a free port by binding zero, then release it.
-///
-/// There is a race between releasing and the server binding, which is unavoidable without
-/// passing a socket to a child that expects a port number. In practice nothing else on the
-/// machine is racing for an ephemeral port in that window.
+/// Binding port zero finds a free port; releasing it before Node binds leaves an unavoidable race.
 fn free_port() -> Result<u16, String> {
 	TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
 		.and_then(|l| l.local_addr())
@@ -182,11 +145,7 @@ fn resource(app: &AppHandle, rel: &str) -> Result<std::path::PathBuf, String> {
 	Ok(simplified(path))
 }
 
-/// Windows' verbatim `\\?\C:\...` form, back to the plain one.
-///
-/// Tauri resolves a resource through `canonicalize`, which on Windows always answers verbatim,
-/// and Node cannot run a main module from one: it reads the prefix as a UNC share and ends up
-/// calling lstat on `C:` alone. Nothing resolved here is near the length that needs the prefix.
+/// Strip Windows verbatim-path prefixes: Node misreads them as UNC shares for main modules.
 #[cfg(windows)]
 fn simplified(path: PathBuf) -> PathBuf {
 	dunce::simplified(&path).to_path_buf()

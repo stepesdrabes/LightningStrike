@@ -71,7 +71,7 @@ import {
 	toSongVocabulary
 } from './vocabulary.ts';
 
-export interface AnalyzeInput {
+interface AnalyzeInput {
 	mono: Float32Array;
 	/** Both channels, when the caller has them. Without these there is no stereo image. */
 	left?: Float32Array;
@@ -84,99 +84,45 @@ export interface AnalyzeInput {
 	title: string;
 	/** Constrain the tempo search to within 6% of a known value. */
 	bpmHint?: number;
-	/**
-	 * Re-read the beats at a different metrical level: 2 doubles the tempo, 0.5 halves it, 1.5
-	 * reads three where the tracker read two. Applied to whatever grid is used, so it corrects
-	 * the model and the in-repo tracker alike.
-	 */
+	/** Metrical multiplier for either tracker: 2 doubles tempo, 0.5 halves it, 1.5 reads three for two. */
 	metricalLevel?: number;
-	/**
-	 * Beat and downbeat times from a tracker that has already run, seconds.
-	 *
-	 * Passed in rather than fetched here because the model is asynchronous and this is not, and
-	 * because the caller is the right place to decide whether a 79 MB graph is worth loading.
-	 * When absent the in-repo tracker runs instead, so the pipeline still works with no model
-	 * on disk.
-	 */
+	/** External beat/downbeat times, seconds. Supplied by an async caller; absent uses the DSP tracker. */
 	beats?: readonly number[];
 	downbeats?: readonly number[];
-	/**
-	 * Kick/snare/hat streams from the drum model, when the caller ran it. The band-flux
-	 * detector runs instead when absent, so the pipeline still works with no model on
-	 * disk. Model times are re-placed on the broadband onset curve exactly as the DSP
-	 * detections are: whichever detector answers WHICH, the grid's own curve answers WHERE.
-	 */
+	/** Optional model drum streams; absent uses band-flux DSP. Broadband onsets place model hits. */
 	drums?: { kick: DrumStream; snare: DrumStream; hat: DrumStream };
-	/**
-	 * What the track is, from free metadata: genre family for the section vocabulary, synced
-	 * lyrics for chorus location. Optional, and an empty context changes nothing.
-	 */
+	/** Optional genre family and synced lyrics for section vocabulary and chorus location. */
 	context?: TrackContext;
-	/**
-	 * False disables the compound-meter octave guard. Set internally when the guard has
-	 * already fired, so a re-read cannot recurse.
-	 */
+	/** False prevents recursive compound-meter correction after the octave guard fires. */
 	octaveGuard?: boolean;
-	/**
-	 * Structure-stage dials, for the bench to sweep against annotated corpora. Shipping code
-	 * never passes this; the defaults ARE the tuned values, and they are tuned there rather
-	 * than argued about here.
-	 */
+	/** Bench-only structure tuning; shipping callers use the measured defaults. */
 	tuning?: StructureTuning;
 	/** Labelling-stage dials, same contract as `tuning`. */
 	labels?: LabelTuning;
-	/**
-	 * What a downbeat-phase restart costs, same contract as `tuning`: a bench dial, never
-	 * passed by shipping code. `Infinity` pins the track to one phase for its whole length,
-	 * which is the grid that shipped before the walk existed and so is the A side of any A/B.
-	 */
+	/** Bench-only phase restart cost. Infinity holds one phase for the whole track. */
 	phaseResetCost?: number;
 	/**
-	 * Per-frame section posteriors from the learned labeller (MusicFM + section head),
-	 * when the caller ran it. Replaces the rules' kind assignment and the lyric
-	 * promote/demote - the head is measurably better at exactly that call - while the
-	 * DP boundaries, the carves, the hook snap and the settled-bars gate all still
-	 * apply: positions and silence are facts, and facts outrank predictions.
+	 * Optional learned labels replace rules and lyric promotion/demotion. Boundaries, carves,
+	 * hook snaps, and the settled-bars gate still apply.
 	 */
 	sectionPosteriors?: SectionPosteriors;
-	/**
-	 * Moments, seconds, where the record inserts half a bar: the grid absorbs each as one
-	 * SHORT bar ending at the cut, so every mark the listener made lands on a bar line
-	 * and pre-arrival gestures keep their true length. This is the owner-supplied form of
-	 * the half-bar class, and it outranks the automatic detector the same way a
-	 * listener's metrical correction outranks the trackers.
-	 */
+	/** Listener grid cuts, seconds. Each becomes a short bar ending at the cut. */
 	gridCuts?: readonly number[];
 	/**
-	 * The internal boundaries of a hand-drawn section map, seconds. Cuts are derived from
-	 * the residues these carry against the uniform grid - a map drawn over a correct grid
-	 * implies nothing - so a caller with a map does not need to know the meter. Explicit
-	 * `gridCuts` win when both are given.
+	 * Hand-map internal boundaries, seconds; derive cuts from uniform-grid residues. Explicit
+	 * gridCuts take precedence.
 	 */
 	sectionMapBoundaries?: readonly number[];
-	/**
-	 * A hand-drawn section map, adopted wholesale: its boundaries snap onto the grid and its
-	 * kinds are the section table, in place of the DP's own reading. See `handSections.ts`
-	 * for why a mapped track is decided by the listener and what still runs on it.
-	 */
+	/** Hand-drawn boundaries and kinds, adopted after snapping to the grid. */
 	handSections?: readonly HandSection[];
 	/**
-	 * Where the listener says a new song starts inside this one, seconds. The analyser finds
-	 * movements on its own (see `movements.ts`); a mark adds one it missed, and outranks a
-	 * detection within a few seconds of it.
-	 *
-	 * Each becomes a grid cut, so the new song starts its bar count on its own downbeat
-	 * instead of inheriting the old song's phase; a section boundary that nothing may
-	 * consolidate away; and the edge of an energy-normalisation span, so a quiet movement is
-	 * levelled against itself rather than against the loud one next to it.
+	 * Listener-marked song starts, seconds; override nearby detections. Each starts a new grid phase,
+	 * protected section boundary, and energy-normalisation span.
 	 */
 	movements?: readonly number[];
 	/** Seconds near which the listener refused a detected movement, so it stays refused. */
 	movementVetoes?: readonly number[];
-	/**
-	 * A sink a bench may pass to read the evidence the structure pass decided on; the
-	 * analysis writes into it and never reads it. Nothing shipped passes one.
-	 */
+	/** Bench-only output sink; analysis never reads it. */
 	probe?: {
 		arrivals?: Float32Array;
 		physical?: Float32Array;
@@ -211,8 +157,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// how correlated the channels are.
 	const loudness = measureLoudness(input.mono, sampleRate);
 
-	// Normalise before anything else, so a threshold means the same thing on a track mastered
-	// in 1996 as on one mastered last week.
+	// Normalise first so detector thresholds transfer across mastering levels.
 	const mono = Float32Array.from(input.mono);
 	const gain = Math.pow(10, (TARGET_LUFS - loudness.integrated) / 20);
 	if (Number.isFinite(gain) && Math.abs(gain - 1) > 0.01) {
@@ -236,9 +181,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		relevel(grid, input.metricalLevel);
 	}
 
-	// The tracker's level flips undone and its beatless stretches written over, before
-	// anything reads a bar: Melanz's third song was read at 143 bpm for a third of its
-	// length, and its spoken intro at 250. What the repair found also proposes the seams.
+	// Repair level flips and beatless stretches before building bars; retain repair evidence for seams.
 	const repair = repairGrid(grid.beats, input.downbeats ?? []);
 	if (repair.repairedSeconds > 0) {
 		grid = gridFromBeats(Array.from(repair.beats), features.odf, features.curves.fps);
@@ -253,18 +196,13 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		grid.beats,
 		duration
 	);
-	// A tracker that emits downbeats has already answered the question `detectMeter` asks, and
-	// answers it far better: 0.722 downbeat F against 0.498 on the same 100 annotated tracks.
+	// Prefer model downbeats when available; use DSP meter as fallback.
 	const meter =
 		(downbeats.length > 2 ? meterFromDownbeats(grid.beats, downbeats) : null) ??
 		detectMeter(beatFeatures);
 
-	// Three beats to a bar above 130 bpm is not a fast waltz, it is compound time heard at
-	// the subdivision: a 6/8 ballad notated at the eighth reads as ~150 in 3, and every
-	// beat-derived time constant then runs at eighth-note nervousness. Re-read at the dotted
-	// quarter - the pulse a listener actually taps - once, and only when nobody upstream
-	// (a listener's correction, a published-tempo re-level) has already chosen a level.
-	// Catalogues cannot settle this one: Deezer publishes the same fast level.
+	// Uncorrected 3-beat meter above 130 bpm may be compound time counted in eighths. Re-read
+	// once at the dotted-quarter pulse unless a listener or published tempo already set the level.
 	if (
 		(input.octaveGuard ?? true) &&
 		input.metricalLevel === undefined &&
@@ -273,15 +211,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	) {
 		return analyzeTrack({ ...input, metricalLevel: 1 / 3, octaveGuard: false });
 	}
-	// A uniform grid cannot serve a track that inserts half a bar - Safir sat at meter
-	// confidence 0.52 through three correct uniform fixes while the owner kept hearing
-	// "still early". LISTENER-supplied cuts are the only trusted form of the correction:
-	// an automatic plateau detector was built, measured, and killed the same evening -
-	// the broadband onset vote cannot see a half-bar flip past a backbeat (snares are
-	// symmetric under it), it declined on the one track with verified edits and
-	// hallucinated one on a praised sentinel. Its postmortem lives in the round record;
-	// it may return only with an asymmetric voter, and behind the same instruments.
-	// Set below, once the walk has had its say on a track the listener has marked.
+	// Listener cuts absorb inserted beats as short bars. Broadband onset votes cannot establish
+	// half-bar changes because the backbeat is symmetric under that shift.
 	let barPhase = meter.phase;
 
 	let bars = null as ReturnType<typeof barSynchronous> | null;
@@ -303,28 +234,9 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 						barPhase
 					).map(beatAt)
 				: [];
-	// A new song does not inherit the old one's count of one. Marked movements are cuts for
-	// exactly the same reason listener-marked edits are, and through the same walk: the bar
-	// containing the switch is shortened so the switch itself lands on a bar line. Unlike a
-	// map's fine drag they do NOT hand the count back: the rest of the track belongs to the
-	// new song, so it keeps counting from the switch.
-	//
-	// WHICH beat, though, is not the listener's to supply: a press carries one to two seconds
-	// of reaction lag and the handover is explicit that no sub-bar meaning may be read from a
-	// mark. So the mark says which bar and the model's own downbeats say which beat inside it
-	// - `phaseSegments` walks the downbeat stream and its restarts are read here, within one
-	// bar of the mark and nowhere else. On SICKO MODE that lands the switch on 60.38 s where
-	// the owner marked 60.5, the kick/snare phase profile scores +1.024 for the same beat, and
-	// the shipped uniform grid was a beat late for the remaining 232 seconds of the track.
-	//
-	// Deliberately NOT applied off a mark. The unrestricted walk raises phase carry across the
-	// whole low-confidence cohort - Cigo 32% -> 66%, Safir 52% -> 87% - but re-bars those
-	// tracks, and `bench/phasegrid.ts` scores that at five worse against boundaries the room
-	// has praised. Carry is not a thing the room has ever heard. The walk is measurable there
-	// whenever it is worth re-opening; here it only sharpens an assertion already made.
-	// The seams the analyser finds on its own, judged from the material either side on a
-	// bar table phased by the unrestricted walk (a reset on one side must not read as new
-	// material), then a mark within reach outranks a detection and a veto refuses one.
+	// Movement marks identify a bar, not its exact beat: reaction lag makes sub-bar timing unreliable.
+	// Use nearby model downbeat restarts for the beat, and retain the new phase after the switch.
+	// Automatic seams use material measured on the phase-walk grid; nearby marks win and vetoes refuse.
 	const marks = (input.movements ?? []).filter((t) => Number.isFinite(t) && t > 0 && t < duration);
 	const vetoes = input.movementVetoes ?? [];
 	const witness = barSynchronousAt(beatFeatures, witnessBarLines(grid.beats, downbeats, meter.beatsPerBar));
@@ -346,22 +258,13 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 			: null;
 	const runs = phasing ? phaseRuns(phasing, grid.beats, downbeats, meter.beatsPerBar) : [];
 	if (phasing && movementTimes.length > 0) {
-		// A mark says the track is several records, so the FIRST one is owed its own count of
-		// one as much as the others are. SICKO MODE's carry is 70.8% on the meter's phase and
-		// 85.8% on the walk's. Anchored on the walk's segment at the first steady song, not its
-		// first segment: a spoken intro carries hallucinated downbeats the walk fits before
-		// restarting at the song, and the opening phase read there put Melanz's whole first song
-		// half a bar off.
+		// Anchor a medley's first song on its first steady phase run; spoken intros may hallucinate downbeats.
 		const firstSong = repair.songs.find((song) => song.seconds >= 20 && song.steady >= 0.7);
 		const at = firstSong ? firstSong.fromBeat + Math.floor((firstSong.toBeat - firstSong.fromBeat) / 2) : 0;
 		const covering = [...phasing].reverse().find((seg) => seg.startBeat <= at) ?? phasing[0];
 		barPhase = covering.phase;
 	} else if (runs.length > 0) {
-		// One song: the modal residue is right for nearly every track, and wrong for the one
-		// that opens on another phase for a minute and spends the rest on the modal one (FE!N),
-		// where the first solid run of the model's own downbeats is the count the record starts
-		// on. Read from the runs rather than the modal vote, so a wandering intro cannot
-		// outvote the song (Higher's first minute hedges two phases and reads its drops' one).
+		// Use the first supported phase run so a track's later modal phase cannot displace its opening.
 		barPhase = openingRun(runs)?.phase ?? barPhase;
 	}
 	const phaseLines = phasing
@@ -370,13 +273,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	const movementCuts = movementTimes.flatMap(({ t, exact }) => {
 		const mark = beatAt(t);
 		if (exact) {
-			// A seam the repair placed on a bar line is cut there: the walk counts beats across
-			// the rewritten pause and its lines there name nothing the record plays. But the
-			// incoming song's count of one is the model's downbeat, and a pickup written across a
-			// pause can miss it by a beat (ROCKSTAR's second half sat a beat early to its end,
-			// where the owner drew two boundaries a beat later): where the walk's next line is
-			// within a bar of the seam and not on it, the beats between are the pickup, cut as one
-			// short bar, and the count runs from the downbeat.
+			// After a repaired pause, a nearby incoming downbeat starts the song. Absorb preceding pickup
+			// beats as a short bar rather than inheriting an early phase.
 			const line = phaseLines.find((b) => b > mark && b - mark < meter.beatsPerBar);
 			return line !== undefined && !phaseLines.includes(mark) ? [mark, line] : [mark];
 		}
@@ -384,10 +282,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		if (inReach.length === 0) return [mark];
 		return [inReach.reduce((best, b) => (Math.abs(b - mark) < Math.abs(best - mark) ? b : best))];
 	});
-	// Where the record moves its bar line inside one song, read from the model's own downbeats
-	// under the strictness `acceptedRestarts` documents: a solid run on a new residue that the
-	// run before did not already carry and that a half-bar hesitation does not explain. Off
-	// under a hand-drawn map, whose off-grid boundaries already say where the grid is cut.
+	// Accept supported within-song phase restarts unless a hand map already defines grid cuts.
 	const walkCuts = input.handSections ? [] : acceptedRestarts(runs, meter.beatsPerBar, movementCuts);
 	if (input.probe) input.probe.phase = { runs, cuts: walkCuts, opening: barPhase };
 	const drawn = (input.handSections ?? []).slice(1);
@@ -407,15 +302,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	}
 	bars ??= barSynchronous(beatFeatures, meter.beatsPerBar, barPhase);
 
-	// Detection before structure, because a boundary is refined onto the bar the kit returns
-	// at. Only the QUANTISE step needs to know which bars repeat which, and it still runs
-	// after the segmentation it depends on.
-	//
-	// The model takes only the streams it is measurably better at. Kick and snare are its
-	// strong classes; its hi-hat is its published weak one (rhythm-game annotations blur
-	// hats into cymbals), and on a first real track it heard 0.5 hats/beat where the band
-	// flux heard the 8th-note pattern - and the hat stream is what paces every subdivision
-	// param, so a sparse misreading would slow half the catalog's flicker.
+	// Detect drums before refining boundaries; quantisation waits for repeat groups.
+	// Use model kick/snare only: ADTOF hats are a weak class and would thin subdivision patterns.
 	const dspDrums = detectDrums(features.spec, { beatPeriod: grid.beatPeriod, odf: features.odf });
 	const detected = input.drums
 		? {
@@ -426,10 +314,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		: dspDrums;
 	const rawKicks = countPerBar(detected.kick.times, bars.time, bars.count);
 
-	// Synced lyrics become timing data: per-bar coverage, computed BEFORE structure because
-	// the voice arriving is boundary evidence - the chorus starts where the hook sings, and
-	// the instrumental pickup a bar before it is what the energy step alone lands on. Pure
-	// arithmetic over what ingest already cached; an offline track carries zeros throughout.
+	// Compute lyric coverage before structure so voice entrances can contribute boundary evidence.
 	const vocal = new Float64Array(bars.count);
 	const lyricLines = input.context?.instrumental ? null : (input.context?.lyrics ?? null);
 	if (lyricLines && lyricLines.length > 0) {
@@ -508,10 +393,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// boundary without getting a vote over everyone else's.
 	const movePinned = new Set(moves.filter((m) => m.score >= tuning.pinScore).map((m) => m.to));
 	stage('pins', [...movePinned]);
-	// A boundary the segmenter got right from birth records no move, so it earned no pin,
-	// and the phrase snap downstream was free to round it off the very arrival it stands
-	// on - Vitej's last drop shipped a bar early, on a kickless bar, exactly this way.
-	// Physics-only and at stayPinScore, not pinScore: see the tuning docblock.
+	// Pin decisive boundaries even if the segmenter placed them correctly; otherwise phrase
+	// snapping could move an unmodified arrival.
 	const physical = arrivalStrengths(bars, rawKicks, null, null, settle, tuning.settleWeight, tuning.settleGate, tuning.bassWeight, tuning.kitMinKicks);
 	// A decisive arrival inside a long segment is a restatement the segmenter cannot see.
 	const roughSplit = splitAtArrivals(rough, physical, tuning.splitAtArrival);
@@ -521,21 +404,13 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// A boundary the guard kept on the grid has an arrival next door, so it pins as a stay
 	// does: it votes for no phase, and no merge may read it as a seam nothing arrives on.
 	for (const b of held) if (rough.includes(b)) pinned.add(b);
-	// The pinned arrivals know the track's phrase phase; boundaries that had only mush to
-	// stand on are re-read onto it. This is what was arriving a bar early at the top of a
-	// track whose own drop later proved where the phrases actually sit.
-	// A drawn map replaces the whole chain above at its output: the boundaries become the
-	// owner's, and grouping then reads THEM against the same self-similarity, so repeats are
-	// still measured rather than guessed at from matching lengths.
+	// Rephase weak boundaries from arrival pins. A hand map replaces this output; repeat groups
+	// are still measured against its adopted boundaries.
 	const hand = input.handSections
 		? handSectionBars(input.handSections, bars.time, bars.count)
 		: null;
-	// The bar each marked movement starts on. Exact rather than nearest: the cut above made
-	// the switch a bar line, so a movement that does not land on one means the mark and the
-	// grid disagree, and the nearest bar is the only reading left.
-	// A movement start is the hardest boundary in a track: it is where the record changes.
-	// Pinned so no phrase snap drags it, and forced into the table so the segmenter cannot
-	// miss it - on the DP path only, since a map has already said where every boundary goes.
+	// Movement starts are forced, pinned boundaries on the DP path. Prefer exact bar matches
+	// from grid cuts, with nearest-bar fallback if mark and grid disagree.
 	for (const b of movementBars) pinned.add(b);
 	const dpBounds = rephaseToPins(rough, pinned, bars.count, tuning, movePinned);
 	// The singer's phrase grid, where the lyrics prove one and the table sits a bar ahead of
@@ -609,14 +484,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		}
 	}
 
-	// The vocabulary is chosen per track, after labelling: the structural machinery only
-	// knows energy classes, and whether a loud repeated passage is a drop or a chorus is a
-	// fact about the genre, not about the waveform. Song-family tracks re-read drop/groove
-	// as chorus/verse, and synced lyrics then settle which loud section is THE chorus.
-	//
-	// None of it runs on a map: the words are the owner's, already in the vocabulary they
-	// heard the track in, and every pass here exists to decide what the map has decided.
-	// Song by song, since a rap record stitched to a house record speaks both vocabularies.
+	// Choose vocabulary per movement after labelling; genre selects club/song and lyrics locate hooks.
+	// A hand map already supplies both labels and boundaries.
 	if (!hand) {
 		const spans = input.context?.lyrics?.length ? chorusSpansFromLyrics(input.context.lyrics, duration) : [];
 		const barTime = (bar: number) => bars.time[Math.max(0, Math.min(bars.count, bar))];
@@ -644,11 +513,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		}
 	}
 
-	// Only after the vocabulary settles which segments are chorus-class does the hook get
-	// its say on WHERE they start. Then events are re-placed from the final table:
-	// arrange() emitted them while every boundary was still where the energy alone put
-	// it, and a drop downbeat left at a bar its section has moved off - or been demoted
-	// off - fires the show's biggest cue in the wrong section.
+	// Place hooks after vocabulary, then regenerate events so each fires in its final section.
 	const arrivals = arrivalStrengths(bars, rawKicks, vocal, hooks, settle, tuning.settleWeight, tuning.settleGate, tuning.bassWeight, tuning.kitMinKicks);
 	const fills = fillBars(bars);
 	if (input.probe) {
@@ -687,15 +552,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 					tuning.pickupGuard ? offGridMoveGuard(bars, rawKicks, tuning.kitMinKicks, tuning.quietImpactPhysics) : undefined
 				)
 			: [];
-	// The last structural word: seams between same-kind sections that nothing arrives on
-	// are DP artefacts, and each one downstream is a cue change and a punctuated false
-	// arrival. Read with the same evidence the refiner uses, after every pass that can
-	// move or rename a boundary has had its say - and forbidden from undoing any of them:
-	// the pinned arrivals and the bars the hook snap just placed are not up for review.
-	//
-	// A drawn seam is not an artefact, whatever arrives on it: Ponyboy's map puts two drop
-	// blocks back to back, which is the shape the room asked for and precisely what this
-	// pass would fuse.
+	// Consolidate only after every boundary and vocabulary pass. Pins, hook placements, and drawn
+	// seams survive even when adjacent sections have the same kind.
 	stage('hooks', plan.segments.map((seg) => seg.startBar));
 	const rawSectionCount = plan.segments.length;
 	const preConsolidation = plan.segments.map((s) => ({ ...s }));
@@ -711,13 +569,9 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	stage('final', plan.segments.map((seg) => seg.startBar));
 	placeEvents(plan.segments, plan.bands, kicks, snares, bars.count, plan.events);
 
-	// One array decides where every bar is. `bars[].t` is written from it below rather than
-	// computed alongside it, because two independent copies of the same timing is exactly how
-	// the grid and the bar table came to disagree by eight beats on a track that speeds up.
+	// Use one timing array for both tempo.barTimes and bars[].t to prevent grid disagreement.
 	const barTimes = Array.from(bars.time.subarray(0, bars.count + 1), round3);
 
-	// The 'vocal_in' events, off the coverage column computed before the structure stage:
-	// the one thing the room most visibly answers in a song is when the voice arrives.
 	const vocalIn = new Set<number>();
 	if (lyricLines && lyricLines.length > 0) {
 		let silentBars = 2;
@@ -731,13 +585,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		}
 	}
 
-	// The pop lift: the final statement of the loudest material arrives a semitone or two up.
-	// Read across the same energy class - the last drop-class section against the pooled
-	// earlier ones - so a bridge that wanders somewhere harmonic cannot fake it, and only
-	// when both readings are confident: a chroma correlation under 0.55 is a guess, and a
-	// palette answering a guessed modulation is worse than one answering nothing.
-	// Read off the PRE-consolidation table: a merged final statement can span both keys,
-	// which drags its correlation under the confidence bar on exactly the songs that lift.
+	// Detect final-chorus modulation against earlier drop-class material with confident keys.
+	// Use pre-consolidation spans so a merge across the key change cannot dilute its correlation.
 	const keyChangeBars = new Set<number>();
 	for (const [from, to] of movementSpans) {
 		const dropish = preConsolidation.filter(
@@ -791,11 +640,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		});
 	}
 
-	// On the whole-file scale, because these two are what `energyRank` sorts, and a rank is a
-	// comparison ACROSS the track by definition. Two movements each levelled against
-	// themselves both reach 1.0, so ranking on the per-movement column hands the peak - the
-	// one look the catalog reserves - to whichever song has the tighter distribution rather
-	// than to the loudest passage. Identical on a track with no movement marked.
+	// Rank energy across movements on the whole-file scale; independently normalised songs each
+	// reach 1.0 and cannot establish the overall peak.
 	const sections: SectionSpan[] = plan.segments.map((s, index) => {
 		let sum = 0;
 		let peak = 0;
@@ -840,16 +686,11 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 			sections[s.index].energyRank = i + 1;
 		});
 
-	// The light moves at beat resolution, not bar resolution. Same arithmetic, finer grid: a
-	// per-bar mean hides between 12% and 43% of the band envelope's true variance, and reading
-	// it by interpolating between bar centres also leads the audio by half a bar.
+	// Beat envelopes preserve within-bar variance; interpolating bar means also leads audio by half a bar.
 	const beatCount = Math.max(0, beatFeatures.count);
 	const beatDb = bandLevels(features.spec, beatFeatures.time, beatCount);
-	// Levelled within each movement, exactly as the bar table's own energy is. They are the
-	// same measurement at two resolutions, so a track where one is levelled per movement and
-	// the other across the whole file has cues written against one idea of loud and light
-	// driven by another - and only on the tracks a mark exists for, which is the worst place
-	// for them to disagree. The spans are in beats here because that is what this call counts.
+	// Normalise beat envelopes within the same movements as bar energy so cue planning and
+	// rendering agree on relative level. These span coordinates are beats.
 	const movementBeats = movementBars.map((b) => {
 		const t = bars.time[b];
 		let best = 0;
@@ -867,8 +708,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		movementBeats
 	);
 
-	// Assessed on the grid that is actually shipping, so a track corrected once does not keep
-	// offering the correction it already took.
+	// Assess the final grid so accepted metrical corrections are not offered again.
 	const level = assessMetricalLevel(
 		Array.from(grid.beats),
 		features.odf,
@@ -965,15 +805,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	};
 }
 
-/**
- * Re-read the same beats at a different metrical level, in place.
- *
- * A half-time reading is a subset of the true beats and a double-time reading is a superset, so
- * neither is a re-detection: the phase the tracker found is the reliable part and only how many
- * beats there are to a bar is in doubt. Resampling in beat-index space covers the two-against-
- * three case as well, which a half/double control alone cannot repair and which is exactly what
- * a listening test caught on one of the cached tracks.
- */
+/** Resample in beat-index space to preserve tracker phase at half, double, or 2:3 metrical levels. */
 function relevel(grid: BeatGrid, level: number): void {
 	const source = grid.beats;
 	const last = source.length - 1;
@@ -996,11 +828,8 @@ function relevel(grid: BeatGrid, level: number): void {
 }
 
 /**
- * A grid from beat times somebody else found.
- *
- * `constant` reports whether one period would describe the whole track, which is a description
- * of the music rather than a switch: `barTimes` is the authority either way. The threshold is
- * generous because a tracked sequence always has a little jitter that a fitted grid cannot.
+ * barTimes remains authoritative even when constant is true. Allow tracked-beat jitter when
+ * reporting whether one period describes the track.
  */
 function gridFromBeats(beats: readonly number[], odf: Float32Array, fps: number): BeatGrid {
 	const times = Float64Array.from(beats);
@@ -1028,11 +857,8 @@ function gridFromBeats(beats: readonly number[], odf: Float32Array, fps: number)
 }
 
 /**
- * Beats per bar and phase from a downbeat list, by the commonest spacing along the beats.
- *
- * Null when the spacing is degenerate - after a metrical re-read the model's downbeats can
- * land on every new beat, which says nothing about bars - so the caller falls back to the
- * evidence-based meter, which is what places a compound track's bars on its actual ones.
+ * Infer meter/phase from modal downbeat spacing. Degenerate spacing after metrical resampling
+ * returns null so the caller can use DSP meter evidence.
  */
 function meterFromDownbeats(beats: Float64Array, downbeats: readonly number[]): Meter | null {
 	const indexOf = (t: number): number => {
@@ -1061,20 +887,12 @@ function meterFromDownbeats(beats: Float64Array, downbeats: readonly number[]): 
 		}
 	}
 	if (best === 0) return null;
-	// A downbeat every 8 or 6 beats is a 4- or 3-beat bar heard at double length, which is
-	// what a metrical-level correction produces: doubling the beats doubles the model's
-	// downbeat spacing, and an 8-beat bar is not a meter this repertoire has. Folding keeps
-	// the phase valid because a downbeat 8 beats apart is still on the 4-beat grid. A
-	// downbeat every 2 beats is the other half of the same hedge: on a slow record the model
-	// alternates 2 and 4 (Thinkin Bout You at 65, 1.8 s against 3.7 s), real 2/4 barely
-	// exists in this repertoire, and a 2-beat bar halves every phrase the engine writes to.
-	// Read in four; the vote below settles which half the 4-beat downbeats favour.
+	// Fold 8/6-beat downbeat gaps to 4/3 after metrical correction. Read 2-beat gaps in four: slow
+	// records often alternate 2 and 4, and a two-beat bar would halve every authored phrase.
 	if (beatsPerBar === 8 || beatsPerBar === 12) beatsPerBar = 4;
 	else if (beatsPerBar === 6) beatsPerBar = 3;
 	else if (beatsPerBar === 2) beatsPerBar = 4;
 
-	// The phase the most downbeats already agree with, which is the only thing a residue class
-	// can mean once the spacing is fixed.
 	const votes = new Int32Array(beatsPerBar);
 	for (const i of indices) votes[((i % beatsPerBar) + beatsPerBar) % beatsPerBar]++;
 	let phase = 0;
@@ -1084,13 +902,7 @@ function meterFromDownbeats(beats: Float64Array, downbeats: readonly number[]): 
 	return { beatsPerBar, phase, confidence: Math.max(0, Math.min(1, votes[phase] / total)) };
 }
 
-/**
- * A model stream with its times moved onto the broadband onsets the grid was fitted to.
- *
- * Same physics as the DSP path: the kick's own curve peaks late because a long window
- * cannot localise a low event, and a model trained on those spectrograms inherits the
- * bias. Hats stay put upstream - their transients are wideband and already on time.
- */
+/** Align model hits to broadband onsets, removing the low-band window's timing bias. */
 function snapStream(
 	stream: DrumStream,
 	odf: Float32Array,

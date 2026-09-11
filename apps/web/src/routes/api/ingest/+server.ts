@@ -7,14 +7,7 @@ import type { Show } from '@mv/core';
 import { ingestDetached } from '$lib/server/ingestDetached.ts';
 import type { RequestHandler } from './$types';
 
-/**
- * Resolve, download if needed, analyse, and light the room.
- *
- * The engine show is composed here rather than on request because it costs under a
- * millisecond and there is no reason for the room to sit dark while somebody decides whether
- * to spend a model on it. An existing show for the same grid is left alone: it may be one
- * Claude has already revised, and overwriting that would throw the work away.
- */
+/** Prepare an engine show immediately, preserving an existing authored show on the same grid. */
 export const POST: RequestHandler = async ({ request }) => {
 	const { source, metricalLevel } = (await request.json()) as {
 		source?: string;
@@ -28,8 +21,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const result = await ingestDetached(source.trim(), { metricalLevel });
 
-		// A corrected grid is a different show: every cue is addressed by bar and the bars have
-		// moved, so keeping the old one would leave the whole night pointing at the wrong music.
+		// Recompose on a corrected grid because every cue is bar-addressed.
 		let show: Show | null = null;
 		try {
 			if (metricalLevel === undefined) {
@@ -63,8 +55,7 @@ export const POST: RequestHandler = async ({ request }) => {
 			fromCache: result.fromCache
 		});
 	} catch (e) {
-		// yt-dlp and ffmpeg messages are the useful part; pass them through rather than hiding
-		// them behind a generic 500.
+		// Preserve yt-dlp and ffmpeg error details for diagnosing ingest failures.
 		error(502, (e as Error).message);
 	}
 };

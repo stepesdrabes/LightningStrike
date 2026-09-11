@@ -79,9 +79,8 @@ export const meterBuild: EffectDef = {
 
 				const warm = tilt.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const gain = 0.7 + p.intensity * 1.5;
-				// The fill itself may bleach toward white - that is the build arriving, and it is the
-				// point of the effect. The spectral term may not: it only walks base..glow, because a
-				// walk crossing white turns the spectrum into a brightness control.
+				// Build progress may bleach toward white; spectral tint stays within
+				// base..glow.
 				const body = lerp(lerp(SLOT.base, SLOT.glow, clamp(warm)), SLOT.white, clamp(fill * fill * 0.6));
 
 				fillBar(out, ring.map, ring.length, fill, palette, body, hueShift, gain);

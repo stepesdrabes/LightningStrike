@@ -23,12 +23,10 @@ const IDENTITY: Identity<'static> = Identity {
 	http_port: HTTP_PORT,
 };
 
-/// Long enough to fold a slider drag into one write, short enough that a wall switch flipped
-/// right after a change still finds it saved.
+/// Debounce slider drags while saving soon enough for a following wall-switch power cut.
 const SAVE_DEBOUNCE: Duration = Duration::from_secs(2);
 
-/// The boot light, racing the join: the engine fades into the remembered state while the radio
-/// is still finding its feet.
+/// Fade into remembered light while the radio joins.
 pub async fn run_engine(fixture: &mut Fixture, engine: &mut Engine<{ Fixture::PIXELS }>) -> ! {
 	loop {
 		if let Some(out) = engine.tick(Instant::now().as_millis()) {
@@ -38,9 +36,8 @@ pub async fn run_engine(fixture: &mut Fixture, engine: &mut Engine<{ Fixture::PI
 	}
 }
 
-/// The whole program after bringup: one loop selecting a datagram against the 1 Hz report and
-/// the engine tick. Everything runs in the one thread-mode executor because embassy-net requires
-/// all its tasks at the same priority.
+/// One loop handles datagrams, telemetry, and engine ticks. embassy-net requires tasks at
+/// one priority, so all use the thread-mode executor.
 pub async fn run(
 	stack: Stack<'static>,
 	fixture: &mut Fixture,
@@ -53,8 +50,7 @@ pub async fn run(
 		Fixture::HOSTNAME
 	);
 
-	// A frame is several back-to-back datagrams and cyw43 only holds four, so the socket absorbs
-	// the burst the driver cannot.
+	// Socket buffering absorbs frame bursts beyond cyw43's four datagram slots.
 	let mut rx_meta = [PacketMetadata::EMPTY; 16];
 	let mut rx_buffer = [0; 8192];
 	let mut tx_meta = [PacketMetadata::EMPTY; 4];
@@ -105,8 +101,7 @@ pub async fn run(
 				stats.packets += 1;
 				stats.bytes += n as u32;
 
-				// Only a loss signal while this board is the sole DDP target: the host's counter
-				// spans every target, so a split fixture strides rather than steps.
+				// Sequence gaps indicate loss only for one DDP target; a split host counter strides between boards.
 				if last_seq != 0 && p.seq != ddp::next_seq(last_seq) {
 					stats.seq_gaps += 1;
 				}
@@ -134,8 +129,7 @@ pub async fn run(
 						stats.torn += 1;
 					}
 
-					// Both network spans end at `now`, the moment PUSH arrived, so what the
-					// fixture costs cannot leak into them.
+					// End network timing at PUSH arrival so fixture-write cost cannot leak into it.
 					let gap = last_push.map_or(0, |t| (now - t).as_micros() as u32);
 					let assembled = frame_start.map_or(0, |t| (now - t).as_micros() as u32);
 					stats.on_frame(gap, assembled, led);
@@ -172,8 +166,7 @@ pub async fn run(
 				reported = now;
 				report_at = now + Duration::from_secs(1);
 			}
-			// The smart light: everything that is not the stream, including the return to it
-			// ending. While the stream owns the fixture the tick renders nothing.
+
 			Either4::Fourth(_) => {
 				let now = Instant::now();
 				if let Some(out) = engine.tick(now.as_millis()) {

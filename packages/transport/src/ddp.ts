@@ -10,7 +10,6 @@ const MAX_DATA = 1440;
 const FLAG_VER1 = 0x40;
 const FLAG_PUSH = 0x01;
 const TYPE_RGB24 = 0x0b;
-const TYPE_RGBW32 = 0x1b;
 const ID_DISPLAY = 1;
 
 export interface DdpTarget {
@@ -23,9 +22,8 @@ export interface DdpTarget {
 	deviceFirstLed?: number;
 }
 
-export interface DdpOptions {
+interface DdpOptions {
 	targets: readonly DdpTarget[];
-	rgbw?: boolean;
 }
 
 export function createDdpSink(opts: DdpOptions): LedSink {
@@ -33,16 +31,9 @@ export function createDdpSink(opts: DdpOptions): LedSink {
 	let seq = 1;
 	const stats: LedSinkStats = { framesSent: 0, framesDropped: 0, bytesSent: 0 };
 
-	const type = opts.rgbw ? TYPE_RGBW32 : TYPE_RGB24;
-
 	/**
-	 * The last target belonging to each device, keyed by where it lives.
-	 *
-	 * One host and port is one device however the fixture is cut up: a region that wraps the
-	 * perimeter reaches a single board as two targets, because the ring wraps and the frame does
-	 * not. PUSH means "present what you have", so a device receiving it twice in a frame presents
-	 * once with only part of the frame written and tears. Only the final packet to each device
-	 * carries it.
+	 * Only the final packet per host/port carries PUSH, including when wrapping regions split one
+	 * device into targets.
 	 */
 	const deviceKey = (t: DdpTarget) => `${t.host}:${t.port ?? DDP_PORT}`;
 	const lastForDevice = new Map<string, number>();
@@ -89,7 +80,7 @@ export function createDdpSink(opts: DdpOptions): LedSink {
 					// and a 1320-LED frame tears three ways.
 					packet[0] = FLAG_VER1 | (isLast ? FLAG_PUSH : 0);
 					packet[1] = seq;
-					packet[2] = type;
+					packet[2] = TYPE_RGB24;
 					packet[3] = ID_DISPLAY;
 					packet.writeUInt32BE(deviceStart + sent, 4);
 					packet.writeUInt16BE(len, 8);

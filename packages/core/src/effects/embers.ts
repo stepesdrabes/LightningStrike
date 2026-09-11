@@ -8,10 +8,7 @@ import { spectralTilt, spectrumFocus } from '../dsl/spectrum.ts';
 import { BeatHold } from '../dsl/env.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-/**
- * Every pixel derives its twinkle phase and speed from a hash of its index against the
- * shared bar clock: zero per-pixel state, perfectly reproducible after a seek.
- */
+/** Hash pixel phases against the bar clock so seeks reproduce twinkle without per-pixel state. */
 export const embers: EffectDef = {
 	id: 'embers',
 	name: 'Embers',
@@ -37,12 +34,10 @@ export const embers: EffectDef = {
 			h1[i] = hash01(i);
 			h2[i] = hash01(i * 7 + 13);
 		}
-		// `f.energy` is beat-resolution data the player interpolates per frame, so a brightness
-		// multiplied by it slides continuously between the beats.
+		// Latch interpolated beat-energy readings before brightness modulation.
 		const passage = new BeatHold(0.45);
 		const spread = new BeatHold(0.3);
-		// True sample and hold: the hue split moves whole embers between two of the show's
-		// colours, and a glide would slide some of them across the arc in between.
+		// Hold hue choices without glide so embers never cross unchosen intermediate hues.
 		const lean = new BeatHold(0);
 		let level = 0;
 
@@ -59,17 +54,15 @@ export const embers: EffectDef = {
 
 				const heard = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
 				level = envelope(level, clamp(0.2 + heard), f.dt, 0.2, 1.2);
-				// How many embers are alight at once follows how narrow the spectrum is, and which
-				// of them take the third hue follows where it sits. Both latched: the population
-				// may change on a beat, an ember's own brightness may not.
+				// Latch spectral population and hue choices while each ember keeps its own
+				// twinkle.
 				const focus = spread.update(spectrumFocus(f), f.beat, f.dt, f.beatPeriod);
 				const split = 0.4 + lean.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod) * 0.35;
 				const duty = (0.1 + p.pool * 0.3) * (0.5 + 0.5 * level) * (0.8 + focus * 0.6);
 				const gain = 0.6 + p.intensity * 1.1;
 				// Clock in bars, so the twinkle tempo breathes with the track.
 				const clock = (f.barIndex + f.barPhase) * 0.5 * motion;
-				// A dim floor under the sparks so the gaps are not pure black. It does not hold a
-				// room on its own, which is what `carries: false` above says out loud.
+				// A dim floor softens gaps but does not make this a carrying layer.
 				const bed = 0.38 * (0.55 + 0.45 * level);
 
 				for (let i = 0; i < g.count; i++) {
@@ -82,9 +75,8 @@ export const embers: EffectDef = {
 						v = u < 0.25 ? u / 0.25 : 1 - (u - 0.25) / 0.75;
 						v *= v;
 					}
-					// Pools in the lit half of the base hue rather than down at `deep`, whose own
-					// value is a tenth: an ember drawn there is scaled to nothing however hard the
-					// twinkle flares, so a third of the field could never light at all.
+					// Keep embers above deep so the palette's near-black shade cannot erase
+					// their light.
 					const slot = h2[i] < split ? lerp(SLOT.base, SLOT.glow, h1[i]) : SLOT.third;
 					setSample(buf, i, palette, slot + hueShift, bed + v * gain * (0.3 + 0.7 * h1[i]));
 				}

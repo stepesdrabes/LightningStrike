@@ -39,10 +39,8 @@ describe('fill and concentration', () => {
 });
 
 describe('palette fidelity', () => {
-	// The column exists to catch an effect computing a colour instead of addressing one, and it
-	// has to be able to fail or it is a check that never fires. It reported eleven offenders in
-	// the catalog while it compared delivered hue against declared degrees, which the rainbow
-	// ramp does not deliver; every one of those was addressing SLOT correctly.
+	// Palette fidelity must reject foreign hues while accepting colours emitted by the actual
+	// ramp.
 	it('passes an effect that addresses colour by slot', () => {
 		const c = measure(
 			'probeSlot',

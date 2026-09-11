@@ -14,13 +14,7 @@ const PLAN: [number, number, SectionSpan['kind']][] = [
 	[72, 80, 'outro']
 ];
 
-/**
- * A whole track, exactly enough of one to drive a player.
- *
- * `core` cannot reach `author-engine`, where the tests upstream of this keep theirs, and copying
- * that one would be copying an arrangement designed to exercise a planner. What the director needs
- * from a track is a grid, some sections and a spectrum with something in it.
- */
+/** Player fixture kept in core so its tests do not import the upstream author-engine. */
 export function fixtureAnalysis(bpm = 120): TrackAnalysis {
 	const beatPeriod = 60 / bpm;
 	const barLength = beatPeriod * 4;
@@ -76,7 +70,6 @@ export function fixtureAnalysis(bpm = 120): TrackAnalysis {
 	const spectrum = new Uint8Array(frames * SPECTRUM_BANDS);
 	for (let i = 0; i < frames; i++) {
 		for (let b = 0; b < SPECTRUM_BANDS; b++) {
-			// Something that moves, deterministically, and stays inside a byte.
 			spectrum[i * SPECTRUM_BANDS + b] = (i * 7 + b * 29) % 200;
 		}
 	}
@@ -130,7 +123,6 @@ export function fixtureAnalysis(bpm = 120): TrackAnalysis {
 	};
 }
 
-/** One cue per section, all on the same pair of layers. Enough for the player to have work. */
 export function fixtureShow(analysis: TrackAnalysis): Show {
 	return {
 		version: SHOW_VERSION,
@@ -140,8 +132,7 @@ export function fixtureShow(analysis: TrackAnalysis): Show {
 		brief: 'fixture',
 		authoredBy: 'engine',
 		palette: { base: 200, accent: 30, third: 240, sat: 0.94, shade: 0.08 },
-		// A wash and one sweep is a thin show; at 0.8 it sat under the resting scenes once the
-		// catalog's levels came onto one ladder, and the handover test needs a show to hand over.
+		// Keep the fixture show brighter than the resting scenes for the handover test.
 		defaults: { intensity: 1, motion: 1, fadeBeats: 2 },
 		generatedEffects: [],
 		cues: analysis.sections.map((s) => ({

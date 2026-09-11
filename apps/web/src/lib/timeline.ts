@@ -1,6 +1,6 @@
 import { LAYER_ROLES, barTimeAt, beatPeriodAt, type LayerRole, type Show, type TrackAnalysis } from '@mv/core';
 
-export interface TimelineSection {
+interface TimelineSection {
 	index: number;
 	kind: string;
 	start: number;
@@ -9,7 +9,7 @@ export interface TimelineSection {
 	lines: string[];
 }
 
-export interface TimelineCue {
+interface TimelineCue {
 	bar: number;
 	start: number;
 	end: number;
@@ -19,7 +19,7 @@ export interface TimelineCue {
 	lines: string[];
 }
 
-export interface TimelineMarker {
+interface TimelineMarker {
 	kind: 'strobe' | 'blackout' | 'slam' | 'bump';
 	start: number;
 	/** Where the hit stops. A two-bar strobe has to read as longer than a one-bar one. */
@@ -36,21 +36,13 @@ export interface Timeline {
 
 const EMPTY: Timeline = { sections: [], cues: [], markers: [] };
 
-/**
- * The show as a set of spans on one time axis, with the text each one shows on hover.
- *
- * Kept out of the component so the arithmetic can be tested: every span here is derived from
- * a bar index through the tempo grid, and an off-by-one in that is invisible on screen until
- * somebody notices the strobe marker sitting a bar after the strobe.
- */
+/** Convert bar-indexed show spans to a shared time axis for rendering and tests. */
 export function buildTimeline(
 	analysis: TrackAnalysis | null,
 	show: Show | null,
 	duration: number
 ): Timeline {
 	if (!analysis || duration <= 0) return EMPTY;
-
-	const beatPeriod = analysis.tempo.beatPeriod;
 
 	const sections: TimelineSection[] = analysis.sections.map((s) => ({
 		index: s.index,
@@ -67,8 +59,7 @@ export function buildTimeline(
 
 	if (!show) return { sections, cues: [], markers: [] };
 
-	// A cue runs until the next one starts, so the list has to be in bar order before the ends
-	// can be read off it. The show is not required to store them sorted.
+	// Sort cues before deriving their ends; authored shows may store them out of order.
 	const sorted = [...show.cues].sort((a, b) => a.bar - b.bar);
 	const cues: TimelineCue[] = sorted.map((cue, i) => {
 		const next = sorted[i + 1];
@@ -89,9 +80,7 @@ export function buildTimeline(
 
 	const markers: TimelineMarker[] = show.hits
 		.map((h) => {
-			// Sized at the bar the hit lands on, the way the player sizes it. Off the track
-			// median, a 4-beat hit on SICKO MODE's fast movement drew 3.09 s where the room
-			// runs it 1.76 s - the marker and the flash disagreed by 75%.
+			// Use the local bar's beat duration so markers match the player across tempo changes.
 			const local = beatPeriodAt(analysis.tempo, h.bar);
 			const start = barTimeAt(analysis.tempo, h.bar) + (h.beat ?? 0) * local;
 			return {
@@ -111,13 +100,7 @@ export function buildTimeline(
 	return { sections, cues, markers };
 }
 
-/**
- * The cue holding the room at a given bar, or undefined before the first one starts.
- *
- * A search rather than a reverse-and-find: nothing requires a show to store its cues in bar
- * order, and an agent's show is whatever JSON the model wrote. Taking the last one that starts
- * at or before the bar is only the live cue if the list happens to be sorted.
- */
+/** Search unsorted cues for the latest start at or before this bar. */
 export function activeCue(show: Show | null, bar: number): Show['cues'][number] | undefined {
 	if (!show) return undefined;
 	let best: Show['cues'][number] | undefined;
@@ -127,14 +110,7 @@ export function activeCue(show: Show | null, bar: number): Show['cues'][number] 
 	return best;
 }
 
-/**
- * The slice of the track the lanes are showing, as fractions of its duration.
- *
- * A window rather than a zoom level and a scroll offset, because every question the lanes ask
- * is about a range: which cues are in it, where the playhead sits inside it, how many onset
- * columns to bucket across it. Kept here with the rest of the arithmetic so it can be tested -
- * an off-by-one in a position is invisible until somebody notices a marker a bar late.
- */
+/** Visible track interval, as fractions of duration; shared by every timeline lane. */
 export interface TimeWindow {
 	start: number;
 	end: number;
@@ -168,18 +144,12 @@ function place(start: number, span: number): TimeWindow {
 	return { start: from, end: from + width };
 }
 
-/**
- * Zoom about a point, keeping whatever is under it under it.
- *
- * `minSpan` is the caller's, because the floor worth having is musical rather than numeric: a
- * few bars, which is a different number of seconds on every track.
- */
+/** Keep the anchor fixed while zooming; the caller sets a musically useful minimum span. */
 export function zoomAt(w: TimeWindow, at: number, factor: number, minSpan: number): TimeWindow {
 	const span = windowSpan(w);
 	const floor = Math.max(1e-4, Math.min(1, minSpan));
 	const next = Math.max(floor, Math.min(1, span * factor));
-	// The anchor keeps its position across the window, so the point under the pointer does not
-	// drift while zooming toward it.
+
 	const relative = span > 0 ? (at - w.start) / span : 0.5;
 	return place(at - relative * next, next);
 }
@@ -197,13 +167,7 @@ export function follow(w: TimeWindow, at: number, margin = 0.12): TimeWindow {
 	return place(at - span / 2, span);
 }
 
-/**
- * Onsets counted into one bucket per pixel column, for a lane too short to draw them singly.
- *
- * The range is the window's rather than the track's: at eight bars across the lane, bucketing
- * the whole track and drawing a slice of it would put every column of the zoomed view in one
- * pixel of the source.
- */
+/** Bucket onsets per visible pixel, using the window's time range rather than the whole track. */
 export function densityColumns(
 	times: readonly number[],
 	duration: number,

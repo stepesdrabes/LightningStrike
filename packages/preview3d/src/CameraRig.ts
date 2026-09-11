@@ -14,10 +14,7 @@ const GLIDE_OFFSET = new THREE.Vector3();
 const GLIDE_AT = new THREE.Spherical();
 const UP_Y = new THREE.Vector3(0, 1, 0);
 
-/**
- * How long a preset takes to arrive. Long enough to read as the room turning rather than as a
- * cut, short enough that somebody comparing two angles is not waiting on it.
- */
+/** Seconds for a visible but responsive preset glide. */
 const GLIDE_SECONDS = 0.55;
 
 /** A little air past the room's own extent, so a bloom halo is not clipped by the frame. */
@@ -37,13 +34,8 @@ function shortestTurn(delta: number): number {
 }
 
 /**
- * A move in orbit coordinates rather than in world ones.
- *
- * Interpolating the position directly would send the camera along a chord, and a chord cuts
- * inside its own arc: Orbit to Top falls from 7.4 m out to 6.0 and back to 8.3, so the room swells
- * about a quarter larger halfway through a move that should only be a turn. Turning the azimuth
- * and the elevation instead holds the distance, which is the path a hand on the mouse would have
- * taken anyway.
+ * Interpolate in orbit coordinates; a world-space chord would swell the room midway through a
+ * turn.
  */
 interface Glide {
 	from: THREE.Spherical;
@@ -62,13 +54,7 @@ export class CameraRig {
 	private canvas = { width: 1, height: 1 };
 	private viewport: Viewport = { x: 0, y: 0, width: 1, height: 1 };
 
-	/**
-	 * Which preset the camera is still sitting on, or null once it has been orbited.
-	 *
-	 * A preset re-frames itself when the window changes shape; a camera the user has moved does
-	 * not, because being pulled back to a canned distance on the next resize is the room fighting
-	 * them.
-	 */
+	/** Active preset, or null after manual orbiting. Only presets refit on resize. */
 	private framed: CameraView | null = 'orbit';
 	private glide: Glide | null = null;
 
@@ -104,11 +90,7 @@ export class CameraRig {
 		this.controls.update();
 	}
 
-	/**
-	 * Move to a preset, going round the room rather than through it.
-	 *
-	 * Pressing the same preset twice arrives at once, which doubles as a way to cut a move short.
-	 */
+	/** Pressing the same preset again completes its glide immediately. */
 	setView(view: CameraView): void {
 		const arrived = this.framed === view;
 		this.framed = view;
@@ -157,13 +139,7 @@ export class CameraRig {
 		this.controls.dispose();
 	}
 
-	/**
-	 * Where a preset ends up, without touching the live camera.
-	 *
-	 * `top` is deliberately a few degrees off vertical. OrbitControls derives azimuth from
-	 * `camera.up`, which is +z here, so a camera directly overhead sits at polar angle zero where
-	 * azimuth is undefined and the first drag snaps wildly.
-	 */
+	/** Tilt top view off vertical to avoid OrbitControls' undefined azimuth at polar angle zero. */
 	private poseFor(view: CameraView, pos: THREE.Vector3, target: THREE.Vector3): void {
 		const s = this.spec;
 		switch (view) {
@@ -237,17 +213,7 @@ export class CameraRig {
 		if (g.t >= 1) this.glide = null;
 	}
 
-	/**
-	 * Shear the frustum so the viewport is the window, without moving the camera.
-	 *
-	 * The obvious alternative - translate the whole rig until the room sits over the viewport - is
-	 * wrong here, and expensively so: a world-space shift displaces near geometry further on
-	 * screen than far, so correcting for it means backing off, which enlarges the shift, which
-	 * means backing off again. Measured across the real layouts it settles with the room at under
-	 * half the height it should have. An off-axis projection has no such feedback: the camera
-	 * stays on the axis through the room and only the projection is off-centre, which is the same
-	 * construction a window onto a scene uses on any multi-display wall.
-	 */
+	/** Shear the frustum onto the viewport; translating the camera would distort near/far framing. */
 	private applyProjection(): void {
 		const { width, height } = this.canvas;
 		const v = this.viewport;
@@ -268,16 +234,8 @@ export class CameraRig {
 	}
 
 	/**
-	 * Push the camera along its own sight line until the whole room is inside the frustum.
-	 *
-	 * Both screen axes, not just the vertical one the FOV is defined on: at a wide, short viewport
-	 * the limit is height and at a narrow one it is width, which is why a fixed distance cropped
-	 * the room whenever the drawer opened or a rail was collapsed.
-	 *
-	 * Solved per corner rather than from the bounding box's extent, because the two are not the
-	 * same answer: the corner nearest the camera subtends the largest angle and is rarely the one
-	 * furthest off-axis. Bounding both and adding them backs off about 20% too far, which shows up
-	 * as the room shrinking on the ordinary window it used to fit.
+	 * Fit both viewport axes per room corner; independent extent bounds would move the camera too
+	 * far away.
 	 */
 	private fit(pos: THREE.Vector3, target: THREE.Vector3): void {
 		const s = this.spec;

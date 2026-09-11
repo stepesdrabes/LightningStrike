@@ -1,25 +1,21 @@
 <script lang="ts">
 	let {
 		value,
-		min = 0,
-		max = 255,
 		disabled = false,
 		oninput
 	}: {
 		value: number;
-		min?: number;
-		max?: number;
 		disabled?: boolean;
 		oninput: (value: number) => void;
 	} = $props();
 
-	const pct = $derived(((value - min) / (max - min)) * 100);
+	const pct = $derived((value / 255) * 100);
 </script>
 
 <input
 	type="range"
-	{min}
-	{max}
+	min={0}
+	max={255}
 	{value}
 	{disabled}
 	style:--pct="{pct}%"
@@ -43,8 +39,7 @@
 		opacity: 0.4;
 	}
 
-	/* Chrome and Safari will not accept a selector list that mentions the other engine's
-	   pseudo-element, so the two tracks and the two thumbs are written out separately. */
+	/* Separate pseudo-element selectors: each browser rejects the other engine's selector. */
 	input::-webkit-slider-runnable-track {
 		height: 6px;
 		border-radius: 999px;

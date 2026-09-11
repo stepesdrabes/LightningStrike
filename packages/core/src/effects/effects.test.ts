@@ -8,9 +8,7 @@ import { runGate, scriptFrames } from './gate.ts';
 
 const g = buildGeometry(DEFAULT_ROOM);
 
-// One gate run per effect, shared by the per-effect blocks and the aggregate below. The gate
-// renders a 21-bar journey at 60 fps, so a second full pass over the catalog is half a minute
-// of duplicate work inside a single test's timeout.
+// Reuse each expensive gate journey for individual assertions and the catalog aggregate.
 const GATE = new Map(BUILT_IN_EFFECTS.map((d) => [d.id, runGate(d, g)] as const));
 
 describe.each(BUILT_IN_EFFECTS.map((d) => [d.id, d] as const))('%s', (_id, def) => {
@@ -38,11 +36,7 @@ it('every effect emits light', () => {
 	expect(dark).toEqual([]);
 });
 
-/**
- * How much of the room an effect lights, and how much of that is in the brightest tenth of the
- * pixels. Run through the mixer rather than off the effect's own buffer, so it is gamma and the
- * output chain that decide what counts as lit.
- */
+/** Measure delivered coverage and concentration through the mixer, including gamma. */
 function coverage(def: (typeof BUILT_IN_EFFECTS)[number]): {
 	fill: number;
 	top10: number;
@@ -70,8 +64,7 @@ function coverage(def: (typeof BUILT_IN_EFFECTS)[number]): {
 			const i = k * 3;
 			const v = Math.max(mixer.bytes[i], mixer.bytes[i + 1], mixer.bytes[i + 2]);
 			pixels++;
-			// Byte 24, not byte 8: gamma 2.2 leaves byte 8 barely distinguishable from off, and
-			// a spotlight in a black room scores full marks against it.
+			// Byte 24 is visibly lit; byte 8 is too close to off for coverage checks.
 			if (v >= 24) lit++;
 			levels.push(v);
 			total += v;
@@ -94,10 +87,7 @@ function coverage(def: (typeof BUILT_IN_EFFECTS)[number]): {
 		}
 	}
 
-	// Dimmest wall against brightest. Neither `fill` nor `top10` can see a field that lights
-	// half the room perfectly evenly and leaves the other half dark, which is what a waterline
-	// or a front-of-room spotlight does and what a photograph of an intro showed as a bright
-	// beam over near-black walls.
+	// Compare dimmest and brightest walls to catch evenly lit half-rooms missed by fill/top10.
 	let dimmest = Infinity;
 	let brightest = 0;
 	for (const v of perStrip) {
@@ -111,24 +101,14 @@ function coverage(def: (typeof BUILT_IN_EFFECTS)[number]): {
 	};
 }
 
-/**
- * `carries` is what the planner trusts when it picks the one texture over a bed in a quiet cue,
- * so an effect claiming it and not meaning it is not a documentation slip: it is a dark room.
- * Three accents claimed it by omission and could not, and one of them was what lit an intro as
- * a single bright wall with the rest of the room at byte 20.
- */
+/** Validate carries claims because quiet cues rely on them for coverage. */
 it('every effect claiming to carry a room can actually fill one', () => {
-	// Beds and accents only: those are the two layers a quiet cue is made of, and the only two
-	// the planner ever asks to carry. A transient is a one-shot by definition and a master is
-	// fired by punctuation the gate script does not contain.
+	// Only beds and accents are asked to carry quiet cues.
 	const liars = BUILT_IN_EFFECTS.filter(
 		(d) => (d.role === 'bed' || d.role === 'accent') && d.taste.carries !== false && d.id !== 'blackout'
 	)
 		.map((d) => ({ id: d.id, role: d.role, ...coverage(d) }))
-		// A bed IS the room in a quiet cue, so what it owes is evenness: a third of its light in
-		// a tenth of the pixels means the rest of the room is the dark between the bright parts,
-		// which is what a photograph of an intro showed. An accent sits on top of a bed, so it is
-		// held to reaching the room rather than to filling it evenly.
+		// Beds owe even fill; accents above them owe spatial reach.
 		.filter((r) =>
 			r.role === 'bed'
 				? r.top10 > 0.32 || r.fill < 0.22 || r.balance < 0.35
@@ -142,8 +122,7 @@ it('every effect claiming to carry a room can actually fill one', () => {
 });
 
 it('offers more than one carrying accent for the passages that need one', () => {
-	// A quiet cue is a bed and one texture, and the planner requires that texture to carry.
-	// With a single candidate every intro in every show gets the same one.
+	// Require multiple carrying accents so quiet cues have a choice.
 	for (const section of ['intro', 'outro', 'breakdown'] as const) {
 		const pool = BUILT_IN_EFFECTS.filter(
 			(d) => d.role === 'accent' && d.taste.carries !== false && d.taste.sections.includes(section)
@@ -187,12 +166,8 @@ it('ids are unique', () => {
 
 describe('output stage', () => {
 	it('drives an LED for the eye, not for a monitor', () => {
-		// The exponent is gamma, not 1/gamma. An LED is linear in PWM duty and the eye is not,
-		// so half-brightness is about 22 per cent duty. Encoding the sRGB way round drives it at
-		// 73 per cent and every show comes out pale.
-		// Against MASTER rather than 255, because the dimmer is a scale on the encoder's output
-		// and not a change of curve: what this pins is the exponent's direction, which shows up
-		// as half-brightness landing near a fifth of full scale rather than near three quarters.
+		// Verify gamma direction against MASTER-scaled full output; LED PWM needs gamma, not
+		// its reciprocal.
 		const full = Math.round(255 * MASTER);
 		const buf = Float32Array.from([1, 0.5, 0.25, 0, 0, 0]);
 		const out = new Uint8Array(6);
@@ -216,7 +191,7 @@ describe('output stage', () => {
 	});
 
 	it('keeps deep shades reachable rather than crushing them to black', () => {
-		// The reason for 2.2 over Adafruit's 2.8, which puts everything under 0.1 on zero.
+		// Retain deep shades needed by slow fades.
 		const buf = Float32Array.from([0.1, 0.15, 0.2]);
 		const out = new Uint8Array(3);
 		quantize(buf, out, 2.2);

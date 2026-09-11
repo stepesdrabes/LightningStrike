@@ -5,11 +5,8 @@ import { MusicFm, MusicFmHead, MUSICFM_RATE, melSpectrogram } from '../packages/
 import { MODEL_DIR } from '../packages/analysis/src/paths.ts';
 
 /**
- * Numeric parity for the TS MusicFM port, against the probe vectors the export script
- * saved (bench/export-musicfm.py). Three seams, checked separately so a failure names
- * its culprit, then one whole corpus track against the embedding the head trained on.
- *
- *   node bench/musicfm-parity.ts
+ * Compare the TS MusicFM stages and one corpus track with export-musicfm.py probe vectors.
+ * node bench/musicfm-parity.ts
  */
 const PROBE_DIR = join(import.meta.dirname, 'corpus', '.musicfm');
 
@@ -56,10 +53,8 @@ const post = await head.label({ frames: t, data: headIn });
 console.log(`head: ${t} frames, posterior max err ${maxErr(post, headOutRef).toExponential(2)}`);
 await head.close();
 
-// --- 3. the encoder graph, via the full embed() walk on the probe window ---------------
-// The probe wav is exactly one 30 s window, so embed()'s kept tokens are the reference
-// hidden states pooled by 3. The reference is fp32 torch and the shipped graph is int8,
-// so the meaningful number is per-frame cosine similarity, not absolute error.
+// Compare encoder tokens by cosine similarity: reference Torch is fp32, the shipped graph is
+// int8.
 const model = await MusicFm.create();
 if (!model) {
 	console.log('encoder absent from models/: run bench/export-musicfm.py first');

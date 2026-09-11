@@ -31,8 +31,7 @@ export function asDirectLink(query: string): Candidate | null {
 	const q = query.trim();
 	if (!q || !URL_LIKE.test(q)) return null;
 
-	// A YouTube link carries its id in the query string or the path, and knowing it up front
-	// means the row can show the real thumbnail before anything is fetched.
+	// Extract the YouTube id before fetching so direct links can show a thumbnail immediately.
 	let id = '';
 	try {
 		const url = new URL(q);
@@ -67,8 +66,7 @@ export function libraryToCandidate(entry: LibraryEntry): Candidate {
 		id: entry.id,
 		source: entry.webpageUrl || entry.source,
 		title: entry.title,
-		// Tracks ingested from YouTube Music carry the act here; older ones carry the channel
-		// that uploaded them, which is the best the rip ever knew.
+		// Older rips have uploader metadata in place of the catalogue artist.
 		artist: entry.uploader,
 		album: null,
 		thumbnail: entry.thumbnail,
@@ -87,13 +85,7 @@ export function suggestionToCandidate(
 	return { ...resultToCandidate(result, known), origin: 'radio' };
 }
 
-/**
- * A search hit, told whether it is already in the cache.
- *
- * The catalogue does not know what this machine has played, and a track that is already
- * downloaded and analysed is a different proposition from one that costs a minute of work, so
- * the row has to say which it is.
- */
+/** Mark cached hits so search distinguishes prepared tracks from new downloads. */
 export function resultToCandidate(
 	result: SearchResult,
 	known?: Map<string, LibraryEntry>
@@ -115,12 +107,8 @@ export function resultToCandidate(
 }
 
 /**
- * Rank cached tracks against a query.
- *
- * Substring rather than fuzzy: the library is a few dozen tracks the user chose themselves,
- * so they are typing something they remember rather than groping for it, and a fuzzy matcher
- * at this size mostly produces surprises. A title hit outranks an artist hit, and a prefix
- * outranks a hit in the middle, which is enough to put the obvious answer first.
+ * Rank remembered library titles by substring: title before artist, prefix before interior
+ * match.
  */
 export function filterLibrary(entries: LibraryEntry[], query: string, limit = 6): LibraryEntry[] {
 	const q = query.trim().toLowerCase();

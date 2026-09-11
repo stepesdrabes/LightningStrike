@@ -73,8 +73,7 @@ describe('mergeJudgement', () => {
 	});
 
 	it('does not let a stale panel draft revert a redrawn map', () => {
-		// The panel opened when the map was MAP, the editor then redrew it, and a star lands
-		// afterwards. The panel carries no sections at all, so the redraw stands.
+
 		const onDisk = held({ sections: REDRAWN });
 		const merged = mergeJudgement(fromPanel({ rating: 4 }), onDisk);
 		expect(merged.sections).toEqual(REDRAWN);
@@ -97,8 +96,7 @@ describe('mergeJudgement', () => {
 	});
 
 	it('lets the panel delete its last movement mark', () => {
-		// An empty array is a VALUE from the field's owner, not "carried nothing" - the
-		// earlier rule restored the mark from disk and it could never be removed.
+
 		expect(mergeJudgement(fromPanel({ movements: [] }), held()).movements).toEqual([]);
 	});
 

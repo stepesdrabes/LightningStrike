@@ -98,11 +98,8 @@ describe('genre-shaped shows', () => {
 			expect(slam?.taste.peakStyle ?? 'slam').toBe('slam');
 			expect(bloom?.taste.peakStyle ?? 'bloom').toBe('bloom');
 		}
-		// And the pools are what the round decided, member by member, so a new master or a
-		// nature change is a deliberate edit here rather than a silent reshuffle: blooms
-		// arrive as light (tideBloom, chromaBurst's burst is the generic biggest thing),
-		// slams as impact - silhouette's withheld centre and shutterCut's hard frames
-		// belong to the impact side only.
+		// Pin peak pools explicitly so adding a master cannot silently switch bloom and impact
+		// treatments.
 		const eligible = (peak: 'slam' | 'bloom') =>
 			BUILT_IN_EFFECTS.filter(
 				(e) =>
@@ -149,10 +146,8 @@ describe('genre-shaped shows', () => {
 	});
 
 	it('a signature seasons the family, it does not define every show', () => {
-		// The drift this guards: with the preference applied every show, impulseSpin sat in
-		// 30 of 34 house shows and the owner called it overused. The per-show sampling
-		// should leave a meaningful share of shows without any given signature, while the
-		// effect stays reachable. Deterministic seeds, so the band is stable.
+		// Signature sampling must allow omission across deterministic seeds while keeping each
+		// effect reachable.
 		let withSpin = 0;
 		const runs = 60;
 		for (let seed = 1; seed <= runs; seed++) {

@@ -15,8 +15,7 @@ async fn net_task(mut runner: Runner<'static, Interface>) -> ! {
 	runner.run().await
 }
 
-/// The join is a task rather than a phase: the controller reconnects for the lamp's whole life,
-/// which the Pico build never had.
+/// Keep joining/reconnecting as a lifetime task.
 #[embassy_executor::task]
 async fn connection_task(mut controller: WifiController<'static>) -> ! {
 	loop {

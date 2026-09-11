@@ -1,15 +1,6 @@
 import type { TrackAnalysis } from './contracts/analysis.ts';
 
-/**
- * Whether the analysed grid deserves an authored show, and why not when it does not.
- *
- * Some tracks defeat the analyser - a wrong metrical level reads a pop song in 2/4, every
- * downstream judgement inherits the broken grid, and the show comes out as thirty-five cues
- * over twenty-three sections, changing looks every six seconds. That show is worse than no
- * show: the lounge scenes follow the same track through its spectrum and its section
- * boundaries without trusting either very far, so a track the analyser lost runs calm there
- * instead of frantic. This is the verdict that routes it.
- */
+/** Route unreliable grids to lounge, which follows the spectrum without trusting cue timing. */
 export interface GridTrust {
 	trusted: boolean;
 	/** Human-readable, shown on the queue row and in the inspector. Empty when trusted. */
@@ -17,52 +8,23 @@ export interface GridTrust {
 }
 
 /**
- * Fragmentation is the tell, confidence and meter are the accessories.
- *
- * Calibrated against a 113-track cache: the clean end of the corpus tops out near 4.8
- * sections a minute (busy but honest house), the broken end starts at 5.5 with the one
- * catastrophic grid at 6.3. Confidence alone cannot draw this line - one track at
- * meterConfidence 0.55 has clean structure while another at 0.88 is chopped to bits by a
- * half-time grid - so it only ever tightens the fragmentation test, never trips on its own.
- * A 2/4 verdict is treated the same way: real 2/4 barely exists in this repertoire, so on a
- * fragmented track it is evidence of a meter failure rather than of a polka.
- *
- * The line sits at the top of the gap rather than its middle because the rate is counted in
- * wall-clock minutes and sections are cut at bar lines: a normal arrangement at 160 bpm
- * makes more sections a minute than the same one at 100. cool (Grey256) is 16 sections in
- * 180 s at 160 bpm, 4/4 at meter confidence 1.00 with every boundary on the 4-bar grid, and
- * the owner read its map as correct; at 5.2 it ran in lounge on 5.33. Nothing else in the
- * library sits between the two lines. A rate scaled by the analysed tempo was considered
- * and refused: a wrong-level grid reports a wrong tempo, so scaling by it hides exactly the
- * wreck this gate exists to catch.
+ * Fragmentation is the primary signal; low meter confidence and 2/4 only tighten its threshold.
+ * The 113-track calibration separated clean arrangements below 5.5 sections/minute from broken
+ * grids above it. Do not normalize by BPM: the wrong metrical level also corrupts that value.
  */
 const FRAGMENTED = 5.4;
 const SUSPECT = 4.5;
 const SHAKY_METER = 0.55;
-/**
- * Fragmentation needs FRAGMENTS. A rate alone is biased against short tracks: a 95-second
- * hardstyle edit with a normal eight-section arrangement reads as 5.1 a minute, which is how
- * the owner heard a correctly-labelled track routed to lounge. The genuine wrecks this gate
- * exists for carried 11 and 23 sections; below ten, no track is "chopped to bits" whatever
- * its rate says.
- */
+/** Require ten sections so short edits are not penalized by a high per-minute rate. */
 const MIN_SECTIONS = 10;
-/**
- * A published tempo this close to the analysed one, at the same level, corroborates the
- * grid: the wrecks this gate catches are wrong-level grids, and a catalogue that agrees on
- * the level is the witness a fragmented but honest arrangement needs. HUMBLE. is 16
- * sections in 177 s at meter confidence 0.99 with Deezer's 149.8 against the model's 150,
- * and the fragmentation is the record's stop-time drops, not a broken grid.
- */
+/** A close published BPM at the same metrical level corroborates a busy arrangement. */
 const CORROBORATED_BPM = 0.035;
 
 export function gridTrust(analysis: TrackAnalysis, publishedBpm?: number | null): GridTrust {
 	const minutes = analysis.duration / 60;
-	// The PRE-consolidation count where the analysis carries one: fragmentation is a fact
-	// about what the segmenter heard, and a wreck that merged into a tidy table is still
-	// a wreck - the merge hid the symptom, not the broken grid underneath it.
+	// Use the pre-consolidation count so merging cannot hide a fragmented grid.
 	const sectionCount = analysis.rawSectionCount ?? analysis.sections.length;
-	// Too short to fragment meaningfully, and too short for lounge to improve on anything.
+	// Short tracks do not provide enough evidence of fragmentation.
 	if (minutes < 1 || sectionCount < MIN_SECTIONS) {
 		return { trusted: true, reasons: [] };
 	}

@@ -209,9 +209,6 @@ fn info_carries_the_effects() {
 	assert!(res.contains(r#""ip":"192.168.1.57""#), "{res}");
 }
 
-/// The header the whole two-way controller rests on. The app is served from elsewhere on the
-/// network, so every request it makes is cross-origin; without this a browser may send but never
-/// read, which is the flaw the app was rebuilt to fix.
 #[test]
 fn cors_is_on_every_response() {
 	let mut api = MockApi::new();

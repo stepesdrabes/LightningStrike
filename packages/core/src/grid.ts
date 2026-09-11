@@ -1,29 +1,17 @@
 import type { TempoGrid } from './contracts/analysis.ts';
 
-/**
- * Structural changes land on a 4-bar multiple, whatever `barsPerPhrase` says. Sections are
- * detected on this grid and the linter holds cues to it, so both must agree on the maths.
- */
+/** Shared four-bar structural grid for section detection and cue linting. */
 export const PHRASE_BARS = 4;
 
 /**
- * A whole phrase, which is what `f.phraseStart` fires on and what `tempo.barsPerPhrase` ships.
- *
- * Twice `PHRASE_BARS`, and the two are not interchangeable. The anchor is fitted to the 4-bar
- * grid because that is where changes land, and then resolved to whichever of the two phases mod
- * 8 agrees with it: an anchor fitted only mod 4 leaves the mod-8 phase a coin toss, and half
- * the section starts then fire on the answering bar of the phrase instead of the asking one.
+ * Eight-bar musical phrase, distinct from the four-bar structural grid.
+ * Resolve both phases so phraseStart lands on the opening half.
  */
 export const BARS_PER_PHRASE = 8;
 
 /**
- * When a bar starts, in seconds.
- *
- * Read from `tempo.barTimes` rather than reconstructed from a period, because a constant
- * period is only ever a fit: a track that moves by two per cent accumulates whole beats of
- * error across four minutes, and every cue in the back half then fires against a metronome the
- * song is not playing to. Outside the table the last known period is extended, which is the
- * only sane answer for a cue past the end of the audio.
+ * Bar start in seconds, using measured barTimes to avoid accumulated tempo-fit drift.
+ * Extrapolate outside the table with the nearest known period.
  */
 export function barTimeAt(tempo: TempoGrid, bar: number): number {
 	const times = tempo.barTimes;
@@ -33,8 +21,7 @@ export function barTimeAt(tempo: TempoGrid, bar: number): number {
 
 	const last = times.length - 1;
 	if (bar <= 0) {
-		// Extrapolating backwards keeps bar -1 a bar earlier than bar 0 rather than equal to it,
-		// which matters because a fade is addressed relative to the bar it completes on.
+		// Extrapolate negative bars so pre-boundary fades retain their full duration.
 		const span = last >= 1 ? times[1] - times[0] : tempo.beatPeriod * tempo.beatsPerBar;
 		return times[0] + bar * span;
 	}
@@ -58,13 +45,7 @@ export function barDurationAt(tempo: TempoGrid, bar: number): number {
 	return span > 1e-6 ? span : fallback;
 }
 
-/**
- * The inverse of `barTimeAt`: which bar, and how far through it, a moment falls on.
- *
- * Fractional, so a caller gets the bar phase from the same arithmetic that produced the bar
- * index and the two cannot disagree. Hand-rolling this against a constant period is what put
- * the scrubber, the player and the agent's tools on three different clocks.
- */
+/** Inverse of barTimeAt, including fractional bar phase so every consumer shares one clock. */
 export function barAtTime(tempo: TempoGrid, t: number): number {
 	const times = tempo.barTimes;
 	if (!times || times.length === 0) {
@@ -93,28 +74,12 @@ export function barAtTime(tempo: TempoGrid, t: number): number {
 	return span > 1e-6 ? lo + (t - times[lo]) / span : lo;
 }
 
-/**
- * The bar a hand-placed moment belongs to: nearest bar line, ties to the EARLIER bar.
- *
- * One function because a hand map is read twice - once by the preview and once by the
- * analysis that adopts it - and the two must land on the same bar or the room plays an
- * arrangement the preview never showed. They did not: one rounded a fractional bar with
- * `Math.round` (ties up) while the other walked the bar table keeping the first nearest
- * (ties down), and a boundary drawn on beat 3 of a 4/4 bar sits at EXACTLY bar + 0.5 by
- * construction, so the editor produced that tie constantly. On one judged track the two
- * consumers put the same drawn boundary four seconds apart.
- *
- * Ties go to the earlier bar because that is what the adoption already did, and the adopted
- * table is what the room has been playing and what the owner has confirmed by ear.
- */
+/** Nearest bar line, ties to the earlier bar. Preview and adopted hand maps must agree. */
 export function nearestBar(tempo: TempoGrid, t: number): number {
 	return tieToEarlier(barAtTime(tempo, t));
 }
 
-/**
- * The same rule for a caller holding only the bar table - the analysis while it is still
- * building one, which has no `TempoGrid` to hand yet.
- */
+/** The same tie rule for analysis callers that only have a bar table. */
 export function nearestBarIn(barTimes: ArrayLike<number>, t: number, barCount: number): number {
 	const last = Math.max(0, Math.min(barCount, barTimes.length - 1));
 	if (last < 1 || t <= barTimes[0]) return 0;
@@ -135,16 +100,7 @@ function tieToEarlier(bars: number): number {
 	return bars - floor > 0.5 ? floor + 1 : floor;
 }
 
-/**
- * The beat period and tempo AT a bar, rather than the track's median.
- *
- * `tempo.bpm` is a summary, and on a track that changes tempo it is a summary of nothing
- * anybody plays: SICKO MODE reports 77.67 while its first movement runs at 138 and its
- * second at 77. Every decision taken from the median is then taken for a track that does
- * not exist - the strobe rate sized off it ran at 9.2 Hz in the fast movement, past the
- * strobe ceiling, and the linter agreed with the planner because both read the same
- * median. The bar table has known the truth all along.
- */
+/** Local beat period from the bar table; the track median cannot time tempo-changing passages. */
 export function beatPeriodAt(tempo: TempoGrid, bar: number): number {
 	return barDurationAt(tempo, bar) / Math.max(1, tempo.beatsPerBar);
 }
@@ -155,7 +111,7 @@ export function bpmAt(tempo: TempoGrid, bar: number): number {
 }
 
 /** A stretch of the track whose bars are the same length, and what tempo that is. */
-export interface TempoSegment {
+interface TempoSegment {
 	startBar: number;
 	endBar: number;
 	bpm: number;
@@ -164,30 +120,12 @@ export interface TempoSegment {
 	end: number;
 }
 
-/**
- * How much the bar length has to step to be a change of tempo rather than a track breathing.
- *
- * A live-feeling record drifts a couple of per cent across a phrase and a limited one wobbles
- * less; a beat switch doubles or halves. Twelve per cent sits well clear of the first and well
- * under the second - SICKO MODE's switch is 78%, and no bar-to-bar wobble measured on the
- * judged corpus comes close.
- */
+/** A 12% step separates ordinary tempo drift from beat switches. */
 const TEMPO_STEP = 0.12;
-/** And how long it has to hold, so one long bar at an edit is not read as a new tempo. */
+/** Require a sustained change so a single edited bar is not a tempo segment. */
 const TEMPO_SEGMENT_BARS = 4;
 
-/**
- * The track's tempo map, read off the bar table.
- *
- * A single `bpm` is a summary, and on a track assembled from several - a beat switch, a
- * medley - it is a summary of nothing anybody plays. The bar table already carries the truth
- * because it is built from tracked beat times, so the map is a measurement rather than an
- * estimate: consecutive bars are gathered while their length holds, and a segment is only
- * admitted once it has lasted long enough to be music rather than an edit.
- *
- * Returns one segment for the overwhelming majority of tracks, which is the honest answer for
- * them.
- */
+/** Group consecutive bars by sustained duration changes, using the measured bar table. */
 export function tempoSegments(tempo: TempoGrid, minBars = TEMPO_SEGMENT_BARS): TempoSegment[] {
 	const times = tempo.barTimes;
 	if (!times || times.length < 2 + minBars) {
@@ -210,13 +148,12 @@ export function tempoSegments(tempo: TempoGrid, minBars = TEMPO_SEGMENT_BARS): T
 	let reference = durations[0];
 	for (let b = 1; b < durations.length; b++) {
 		if (Math.abs(durations[b] - reference) <= TEMPO_STEP * reference) {
-			// Track the drift rather than the first bar, so a slow ramp does not eventually
-			// read as a step against a stale reference.
+			// Follow gradual drift so a ramp does not become a false step against the first
+			// bar.
 			reference = reference * 0.7 + durations[b] * 0.3;
 			continue;
 		}
-		// A step counts once the new length holds: an edit is one odd bar, a tempo change is
-		// a passage. The short bars a listener cut leaves behind are exactly the first case.
+		// Require the new length to hold through a passage.
 		const holds = durations
 			.slice(b, b + minBars)
 			.every((d) => Math.abs(d - durations[b]) <= TEMPO_STEP * durations[b]);
@@ -243,14 +180,7 @@ export function tempoSegments(tempo: TempoGrid, minBars = TEMPO_SEGMENT_BARS): T
 	return out.length > 0 ? out : [{ startBar: 0, endBar: durations.length, bpm: tempo.bpm, start: times[0], end: times[times.length - 1] }];
 }
 
-/**
- * How long a hit lasts, in seconds, read off the bar table.
- *
- * The one place this arithmetic lives, because the planner and the linter have to agree on it
- * exactly. They did not: the planner sized a strobe against the bar it was measured at and then
- * placed it a bar earlier, so on a track that drifts by a per cent the two disagreed and the
- * linter rejected a show the engine had just written. A rejected show is a dark room.
- */
+/** Hit duration in seconds at its actual placement, shared by planner and linter. */
 export function hitSeconds(
 	tempo: TempoGrid,
 	bar: number,

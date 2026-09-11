@@ -30,39 +30,22 @@ type Listener = (settings: PublicSettings) => void;
 
 interface SettingsFile {
 	/**
-	 * A DeepSeek platform key, kept here rather than in the environment because the desktop
-	 * build launches without a shell to inherit one from. `cache/` is gitignored and the
-	 * settings API is loopback-only, which is the same boundary the hardware and the queue sit
-	 * behind: anyone who can reach loopback on this machine is already sitting at it.
+	 * Store the key for desktop launches without shell credentials; cache is ignored and settings
+	 * are loopback-only.
 	 */
 	deepseekApiKey?: string;
-	/**
-	 * Which backend the authoring button spends.
-	 *
-	 * Superseded by `authorModel`, which names one of them exactly. Still read, so a machine
-	 * that chose DeepSeek before the models were nameable keeps its choice.
-	 */
+	/** Legacy backend preference, retained to migrate existing choices to authorModel. */
 	authorBackend?: BackendId;
 	/** One of `AUTHOR_MODELS`. The backend is whichever one it belongs to. */
 	authorModel?: string;
 	authorEffort?: EffortLevel;
-	/**
-	 * How far ahead of the audio the strips are driven, milliseconds.
-	 *
-	 * DDP and WLED add transport delay the compiler cannot know, and it varies with the board,
-	 * the network and the controller. So it belongs to the installation rather than to a track,
-	 * and it is dialled by eye against the real room. Positive runs the room early.
-	 */
+	/** Installation output lead, milliseconds; positive compensates for transport/controller delay. */
 	outputOffsetMs?: number;
 	/** Frames a second on the wire. Belongs to the fixture, like the trim above it. */
 	outputFps?: number;
 	/**
-	 * The two ends of the tone curve, dialled against the real room and belonging to it.
-	 *
-	 * How bright a fixture reads is a property of how much strip is hanging and how big the space
-	 * is, not of the show, so it cannot be authored. `outputBrightness` is a dimmer applied after
-	 * gamma and costs no contrast; `outputContrast` is the exponent, which is what decides whether
-	 * a hit has anything to be brighter than.
+	 * Installation tone curve: brightness dims after gamma; contrast sets the exponent and hit
+	 * separation.
 	 */
 	outputBrightness?: number;
 	outputContrast?: number;
@@ -70,14 +53,7 @@ interface SettingsFile {
 	outputLampBrightness?: number;
 	/** Which wire the fixture is addressed on. Belongs to the installation too. */
 	outputProtocol?: WireProtocol;
-	/**
-	 * Whether the radio keeps the queue from running out.
-	 *
-	 * Here rather than on the queue, which is broadcast to every phone in the room and rebuilt
-	 * field by field when it is loaded, so a flag on it would quietly vanish on a restart. This
-	 * is a preference of the machine running the night, and it sits behind the same loopback
-	 * boundary as the hardware.
-	 */
+	/** Persist the host's radio preference in settings, outside the shared queue payload. */
 	autopilot?: boolean;
 	/** Calm scenes instead of the authored show, while a track is playing. */
 	lounge?: boolean;
@@ -101,14 +77,7 @@ export interface PublicSettings {
 	authorBackend: BackendId;
 	authorModel: string;
 	authorEffort: EffortLevel;
-	/**
-	 * The catalogue itself, rather than a copy of it kept in the browser by hand.
-	 *
-	 * Every other cross-boundary type in this app is mirrored in `lib/types.ts` on purpose, but
-	 * this is data rather than a shape: a model added to `AUTHOR_MODELS` should appear in the
-	 * menu without a second edit, and a stale duplicate here would offer a model the server
-	 * would then refuse.
-	 */
+	/** Send the model catalogue from the server so newly supported choices need no client copy. */
 	authorModels: readonly AuthorModel[];
 	outputOffsetMs: number;
 	outputFps: number;
@@ -136,12 +105,7 @@ class Settings {
 		return this.cached;
 	}
 
-	/**
-	 * The model this machine authors with.
-	 *
-	 * A stored id that is no longer offered falls back to the default rather than being kept,
-	 * because the alternative is a button that spends nothing and a 400 nobody expected.
-	 */
+	/** Fall back to the default if a stored model ID is no longer offered. */
 	private modelIn(file: SettingsFile): AuthorModel {
 		const stored = authorModel(file.authorModel);
 		if (stored) return stored;
@@ -170,8 +134,7 @@ class Settings {
 			outputProtocol: isWireProtocol(file.outputProtocol) ? file.outputProtocol : 'ddp',
 			autopilot: file.autopilot ?? false,
 			lounge: file.lounge ?? false,
-			// On by default. A room that holds its last cue forever after the music stops is the
-			// behaviour this replaced, not a preference anyone would choose from scratch.
+
 			rest: file.rest ?? true,
 			ambient: {
 				source: file.ambientColour ?? DEFAULT_AMBIENT.source,
@@ -188,11 +151,7 @@ class Settings {
 		return (await this.load()).autopilot ?? false;
 	}
 
-	/**
-	 * Told when anything changes, so the server's own renderer follows a switch without a browser
-	 * having to relay it. The hardware keeps running with no tab open, and so must the decision
-	 * about what it is running.
-	 */
+	/** Notify the server renderer directly so settings apply without an open browser. */
 	subscribe(listener: Listener): () => void {
 		this.listeners.add(listener);
 		return () => this.listeners.delete(listener);
@@ -200,8 +159,7 @@ class Settings {
 
 	async update(patch: Partial<SettingsFile>): Promise<PublicSettings> {
 		const next = { ...(await this.load()), ...patch };
-		// An empty string is how the interface says "forget it", which is not the same as the
-		// key being absent from a partial update.
+		// An empty string clears the key; an absent patch field preserves it.
 		if (patch.deepseekApiKey === '') delete next.deepseekApiKey;
 		this.cached = next;
 
@@ -215,12 +173,7 @@ class Settings {
 		return published;
 	}
 
-	/**
-	 * The backend to author with, or why it cannot be.
-	 *
-	 * An environment variable wins over the stored key, so a dev machine can point at a
-	 * different account without editing anything the app also writes to.
-	 */
+	/** Environment credentials override the stored key. */
 	async provider(id: BackendId): Promise<{ provider: AuthorProvider } | { error: string }> {
 		if (id === 'claude') return { provider: CLAUDE };
 		const key = process.env.DEEPSEEK_API_KEY || (await this.load()).deepseekApiKey;
@@ -228,13 +181,7 @@ class Settings {
 		return { provider: deepseek(key) };
 	}
 
-	/**
-	 * The whole authoring choice, resolved: which desk, which model, how hard it thinks.
-	 *
-	 * `asked` is whatever the request named, which may be nothing and may be a model this build
-	 * does not offer. Either way what comes back is a model on the list, so nothing downstream
-	 * has to defend against a free string reaching the CLI.
-	 */
+	/** Resolve arbitrary requested IDs to catalogue models before constructing CLI arguments. */
 	async authoring(
 		asked?: string | null,
 		effortAsked?: string | null

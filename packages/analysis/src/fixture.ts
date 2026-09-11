@@ -1,15 +1,6 @@
 /**
- * A synthesised arrangement with exact ground truth, for tests.
- *
- * Not a click track. Thresholds only mean something against material that has an intro, a
- * groove, a build, a void and two drops, and the detectors are all relative to the track's
- * own distributions, so a signal without dynamics tells you nothing about them.
- *
- * Every voice is shaped the way the real thing is, because the detectors key off exactly
- * those shapes: the kick has an attack ramp rather than starting at full amplitude, which
- * would splatter broadband energy no drum has; the snare rings for two hundred milliseconds
- * rather than twenty; and the hat is noise at 9 kHz rather than white, which would put a
- * third of its energy in the snare's band.
+ * Synthetic ground truth needs arrangement dynamics and realistic transient spectra: relative
+ * detectors cannot be calibrated on clicks. Ramp kicks, sustain snares, and band-limit hats.
  */
 export interface Stage {
 	bars: number;

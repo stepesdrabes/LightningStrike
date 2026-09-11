@@ -1,27 +1,18 @@
-// Stage a phase-shifted variant of one track's analysis into a cache, so the owner can
-// HEAR a downbeat hypothesis instead of reading numbers. The model's own downbeats agree
-// with the shipped fit at low meterConfidence (phaseprobe), and marks cannot resolve
-// sub-bar phase - the room can. Shifts the cached BeatThis downbeats K beats along the
-// beat stream and re-runs the full pipeline, so every stage re-decides on the new grid.
-//
-//   MV_CACHE_DIR=<cache> node bench/phaseflip.ts <trackId> <shiftBeats>
-//   MV_CACHE_DIR=<cache> node bench/phaseflip.ts <trackId> restore
-//
-// The variant keeps the ORIGINAL blob's audio hash and id, so the app serves it as
-// cached; the show.json is removed so composition re-derives from the variant. The
-// pre-experiment blob is saved beside as <id>.analysis.json.orig - `restore` puts it
-// back. Bench-path drums (no Adtof model), which is acceptable for a phase A/B.
+// Shift cached model downbeats and rerun analysis for a listening comparison.
+// MV_CACHE_DIR=<cache> node bench/phaseflip.ts <trackId> <shiftBeats|restore>
+// Keep hash/ID, save .analysis.json.orig for restore and invalidate the show. Uses DSP drums
+// without ADTOF.
 import { copyFileSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 
 const id = process.argv[2];
 const arg = process.argv[3];
 if (!id || !arg) throw new Error('usage: node bench/phaseflip.ts <trackId> <shiftBeats|restore>');
-const cache = process.env.MV_CACHE_DIR ?? join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache();
 const blobPath = join(cache, `${id}.analysis.json`);
 const origPath = `${blobPath}.orig`;
 const showPath = join(cache, `${id}.show.json`);

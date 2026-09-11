@@ -1,12 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-/**
- * Where the workspace lives, found by walking up to the package.json that declares workspaces.
- *
- * Anchored here rather than to cwd because the dev server runs from `apps/web`, so anything
- * cwd-relative lands somewhere else and re-fetches everything it was supposed to have cached.
- */
+/** Find the workspaces package.json from this module; cwd differs between dev and production. */
 export function workspaceRoot(): string {
 	let dir = import.meta.dirname;
 	for (let i = 0; i < 8; i++) {

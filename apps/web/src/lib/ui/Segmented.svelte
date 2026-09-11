@@ -1,15 +1,5 @@
 <script lang="ts" generics="T extends string">
-	/**
-	 * A choice between two or three named things, all of them visible.
-	 *
-	 * The other kind of boolean - a thing that is simply on or off - is `Switch`. This is for
-	 * a choice where the alternatives have names worth reading: a colour source, a camera, a
-	 * frame rate.
-	 *
-	 * `glass` is the variant that floats over the room. It is a different recipe rather than a
-	 * tint of the inset one because it sits on live light instead of on a panel, so it needs its
-	 * own blur and a border bright enough to survive a white wall behind it.
-	 */
+	/** The glass variant floats over live light and needs stronger blur and borders. */
 	let {
 		options,
 		value = $bindable(),

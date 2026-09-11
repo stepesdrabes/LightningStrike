@@ -9,14 +9,8 @@ import { bandBetween } from '../dsl/spectrum.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
- * A loud floor in two colours: the long walls in the room's own hue, the short walls in the
- * third, the beam taking the pair's meeting. Colour by position only, which is the free axis
- * of the ramp, so a room split this way reads as designed rather than as a wash that happens
- * to be two colours. The split swaps walls every phrase, slowly enough to read as the song
- * turning a corner, and the whole floor leans with the low end.
- *
- * Written as the fourth loud bed: the top band had three, one of them chorus-only and one
- * avoided by the two biggest families in the corpus, so a rap drop was chorusBloom every night.
+ * Split base and third spatially across wall pairs; phrase-length swaps keep temporal colour
+ * slow.
  */
 export const twoTone: EffectDef = {
 	id: 'twoTone',
@@ -34,8 +28,7 @@ export const twoTone: EffectDef = {
 	params: [INTENSITY, param('contrast', 'How far the two colours sit apart', 0.7)],
 	create(g) {
 		const buf = new Float32Array(g.count * 3);
-		// 1 on the walls spanning x, 0 on the ones spanning y, and the beam by its position
-		// along its own length so the pair meets on it rather than the beam picking a side.
+		// Opposite axis pairs take 0/1; interpolate along the beam so the colours meet on it.
 		const side = new Float32Array(g.count);
 		const edge = new Float32Array(g.count);
 		for (const s of g.strips) {
@@ -60,8 +53,7 @@ export const twoTone: EffectDef = {
 				const { f, p, palette, hueShift } = ctx;
 				const weight = low.update(clamp(bandBetween(f, 0, 0.15) * 1.6), f.dt);
 				const tilt = lean.update(clamp(bandBetween(f, 0.5, 1) * 1.4), f.dt);
-				// Which pair holds the base: swaps on the phrase, read off the grid so a seek
-				// lands on the same split.
+				// Read phrase swaps from the grid so seeks preserve the split.
 				const swap = Math.floor(f.barIndex / 8) % 2;
 				const gain = (0.42 + p.intensity * 0.79) * (0.6 + weight * 0.4);
 				const apart = 0.3 + clamp(p.contrast) * 0.7;
@@ -69,8 +61,7 @@ export const twoTone: EffectDef = {
 				for (let i = 0; i < g.count; i++) {
 					const s = swap ? 1 - side[i] : side[i];
 					const mix = lerp(s, 1 - s, 1 - edge[i]);
-					// Base to third by position; the base side opens toward glow as the top of the
-					// mix opens, which is the one span that costs no light.
+					// Spatial base-to-third colour; top-end modulation stays within base..glow.
 					const home = lerp(SLOT.base, SLOT.glow, tilt * 0.7);
 					const slot = lerp(home, SLOT.third, (1 - mix) * apart);
 					setSample(buf, i, palette, slot + hueShift, gain * (0.75 + 0.25 * mix));

@@ -10,20 +10,10 @@ import { spectralTilt, spectrumFocus } from '../dsl/spectrum.ts';
 import { BeatHold } from '../dsl/env.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-/**
- * The stretch of the palette a curtain walks as it thins, dense edge to faint tail.
- *
- * An aurora is two neighbouring colours shading into each other rather than a spectrum, so a
- * short arc is the honest translation: the show supplies which two.
- */
+/** A short palette arc gives neighbouring curtain colours; the show supplies the hues. */
 const CURTAIN_LO = 0.05;
 const CURTAIN_HI = 0.42;
 
-/**
- * The northern lights are the one natural licence for green light in a dark room. Two
- * curtains drift around the ring at bar-locked rates and the colour slides toward violet
- * where they thin out.
- */
 export const auroraBorealis: EffectDef = {
 	id: 'auroraBorealis',
 	name: 'Aurora Borealis',
@@ -45,8 +35,7 @@ export const auroraBorealis: EffectDef = {
 		const buf = new Float32Array(g.count * 3);
 		const shimmerPhase = new Float32Array(g.count);
 		for (let i = 0; i < g.count; i++) shimmerPhase[i] = hash01(i) * 6.28;
-		// `f.energy` is beat-resolution data the player interpolates per frame, so a brightness
-		// multiplied by it slides continuously between the beats.
+		// Latch interpolated beat-energy readings before applying them to brightness.
 		const passage = new BeatHold(0.45);
 		const lean = new BeatHold(0.4);
 		const spread = new BeatHold(0.4);
@@ -63,16 +52,13 @@ export const auroraBorealis: EffectDef = {
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
 
-				// The floor is high because the cue's own intensity already says the passage is
-				// quiet. A bed that dims itself as well is dimmed twice, and two multiplications
-				// of a number under one is how an intro reached byte zero.
+				// Keep a high floor because cue intensity already dims quiet passages.
 				const heard = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
 				level = envelope(level, clamp(0.55 + heard * 0.45), f.dt, 0.2, 1.2);
 				const gain = level * (0.55 + p.intensity * 1.1);
 				const clock = (f.barIndex + f.barPhase) * (0.02 + p.drift * 0.03) * motion;
 
-				// Where the music sits draws the two curtains together or apart, and a spectrum
-				// narrowing onto one voice blooms them wider. Position and width, never level.
+				// Spectral tilt and focus move curtain position and width, not level.
 				const tilt = lean.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const focus = spread.update(spectrumFocus(f), f.beat, f.dt, f.beatPeriod);
 				const bloom = 1 - focus * 0.35;

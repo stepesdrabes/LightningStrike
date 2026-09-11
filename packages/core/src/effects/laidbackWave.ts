@@ -7,10 +7,7 @@ import { spectralTilt } from '../dsl/spectrum.ts';
 import { sinewave } from '../dsl/wave.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-/**
- * The tempo of a crowd nodding, not dancing. Heavy sine easing makes the wave linger at
- * each wall like a nod at its peak; anything faster breaks a half-time pocket.
- */
+/** Heavy easing lets the half-time wave linger at each wall like a nod. */
 export const laidbackWave: EffectDef = {
 	id: 'laidbackWave',
 	name: 'Laidback Wave',
@@ -26,15 +23,11 @@ export const laidbackWave: EffectDef = {
 	},
 	params: [INTENSITY, param('barsPerWave', 'Bars per wave', 2, 1, 4, 1)],
 	create(g) {
-		// The passage's own level. `f.energy` is beat resolution whatever it is passed through,
-		// so this only says how loud the passage is and belongs slow.
+		// Smooth beat energy for passage level.
 		const passage = new Follower(0.09, 0.65);
-		// Where the nod's crest sits in the palette. Slower than the wave, so the colour belongs
-		// to the passage and the movement belongs to the wave.
+		// Colour moves slower than the wave so it belongs to the passage.
 		const lean = new Follower(0.15, 0.6);
-		// ny is normalised by the room's LONGEST side, so the depth axis covers only part of
-		// 0..1. The nod is supposed to linger at each wall, and over the raw range it lingered
-		// past the back wall instead, outside the room.
+		// Expand fixture-normalized depth so the nod settles on actual walls.
 		let lo = Infinity;
 		let hi = -Infinity;
 		for (let i = 0; i < g.count; i++) {
@@ -51,12 +44,9 @@ export const laidbackWave: EffectDef = {
 			render(out, ctx) {
 				const { f, p, palette, hueShift } = ctx;
 
-				// ctx.motion deliberately does NOT scale this. The phase is read off the absolute
-				// bar clock so a seek reproduces the frame exactly, and multiplying a growing
-				// counter by a value the player cross-fades between cues moves the pattern by the
-				// whole elapsed length: at bar 120 a routine 1.0 to 1.25 is 7.5 revolutions in one
-				// frame. A grid-locked phase takes its speed from the grid, and that is the point
-				// of it.
+				// Do not scale absolute grid phase by motion: changing motion at a large bar
+				// index
+				// would jump the pattern by the elapsed time.
 				const phase = frac((f.barIndex + f.barPhase) / Math.max(1, p.barsPerWave));
 				const front = sinewave(phase);
 				const passageLevel = passage.update(f.energy, f.dt);
@@ -66,10 +56,8 @@ export const laidbackWave: EffectDef = {
 				for (let i = 0; i < g.count; i++) {
 					const d = (g.ny[i] - lo) / span - front;
 					const wave = Math.exp(-d * d * 12);
-					// The nod carries a colour with it. Behind the crest the room sits in its own
-					// hue; the crest itself reaches toward the third by as much as the mix has
-					// opened, so what travels through the room is a colour and not only a level -
-					// deep through base being one hue at two lightnesses.
+					// Let the crest reach the third spatially while the background holds the
+					// base hue.
 					const slot = lerp(
 						lerp(SLOT.deep, SLOT.base, clamp(0.4 + wave * 0.6)),
 						SLOT.third,

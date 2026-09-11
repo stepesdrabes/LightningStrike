@@ -1,13 +1,8 @@
 /**
- * Iterative radix-2 complex FFT, and a real-input wrapper that runs a half-length complex
- * transform. Music analysis is all real-input, so the wrapper is the one that gets used and
- * the 2x it buys is free.
- *
- * The working buffers are Float64Array on purpose. V8 computes in doubles regardless, so a
- * Float32Array butterfly pays a rounding conversion on every store and runs about five times
- * slower for no accuracy gain.
+ * Radix-2 FFT with a half-length real-input wrapper. Float64 working buffers avoid Float32
+ * rounding on every butterfly store in V8.
  */
-export class Fft {
+class Fft {
 	readonly size: number;
 	private readonly rev: Uint32Array;
 	private readonly cos: Float64Array;
@@ -121,10 +116,7 @@ export class RealFft {
 		this.half.transform(re, im);
 	}
 
-	/**
-	 * Windowed spectrum of `signal` starting at `offset`, zero-padded past either end.
-	 * `outRe`/`outIm` must hold `bins` values.
-	 */
+	/** Windowed spectrum at offset, zero-padded outside signal. Output arrays must hold bins values. */
 	forward(
 		signal: Float32Array,
 		offset: number,
@@ -138,9 +130,8 @@ export class RealFft {
 		const re = this.re;
 		const im = this.im;
 
-		// Untangle: the even- and odd-sample sub-spectra are the conjugate-symmetric and
-		// antisymmetric halves of what came back, recombined with a half-bin twiddle. Bin
-		// h - k falls out of the same pair, so the loop only runs a quarter turn.
+		// Untangle conjugate-symmetric even/odd spectra with a half-bin twiddle. Reusing each pair
+		// for h-k limits the loop to a quarter turn.
 		for (let k = 0; k <= h >> 1; k++) {
 			const j = (h - k) % h;
 			const evenRe = 0.5 * (re[k] + re[j]);

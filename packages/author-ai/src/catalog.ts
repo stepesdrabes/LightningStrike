@@ -1,10 +1,7 @@
 import type { EffectDef, TrackAnalysis } from '@mv/core';
 import { BUILT_IN_EFFECTS, LAYER_ROLES, SLOT, SPECTRUM_BANDS } from '@mv/core';
 
-/**
- * One line per effect. With forty of them a three-line entry each is a thousand tokens of
- * catalog the author reads on every turn.
- */
+/** One line per effect limits the catalog cost on every authoring turn. */
 export function renderCatalog(effects: readonly EffectDef[] = BUILT_IN_EFFECTS): string {
 	const lines: string[] = [];
 	for (const role of LAYER_ROLES) {

@@ -1,13 +1,7 @@
-// What the analysis makes of one cached track, movements and all, from its stored beats.
-//
-//   MV_CACHE_DIR=... node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks] [--no-drums] [--out=file]
-//
-// Starts from the model's own count - the `heard` streams a blob written at ANALYSIS 26 or
-// later carries, else a fresh tracking run cached in bench/corpus/.beats/app-<id>.json for
-// the bench to share - never from the blob's `beats`, which the repair has already written
-// over. The drum model runs too, so the section table is the one ingest writes. It exists
-// to read movements, tempo per song and the per-song section table at a glance after an
-// analyser change.
+// Inspect a cached track through current analysis, including movements and per-song tempo.
+// MV_CACHE_DIR=<cache> node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks]
+// [--no-drums] [--out=file]
+// Use stored heard beats or a cached model run, not the already-repaired analysis beats.
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CACHE_DIR, decodeAudio, handMapInput, publishedLevel, readContext } from '@mv/analysis';

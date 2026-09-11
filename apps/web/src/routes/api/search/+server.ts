@@ -5,14 +5,7 @@ import type { RequestHandler } from './$types';
 /** A song plus where to fetch it, which is the shape the browser is handed. */
 type SearchResult = Song & { webpageUrl: string };
 
-/**
- * Search results, cached by query.
- *
- * Backspacing over a word asks the same question again immediately, and every keystroke past
- * the debounce is a round trip. Bounded rather than time-expiring: YouTube Music's ranking
- * does not move fast enough for a stale answer inside one session to matter, and a fixed
- * ceiling cannot leak.
- */
+/** Bound a session query cache so backspacing can reuse results without unbounded growth. */
 const CACHE = new Map<string, SearchResult[]>();
 const CACHE_MAX = 60;
 

@@ -11,8 +11,7 @@
 	import Badge from '$lib/ui/Badge.svelte';
 	import Slider from '$lib/ui/Slider.svelte';
 
-	// The map is a property of the grid, computed once per analysis; the reading follows the
-	// bar the room is actually in.
+	// Build the map per analysis; read tempo at the current bar.
 	const tempoMapOf = (a: TrackAnalysis | null) => (a ? tempoSegments(a.tempo) : []);
 	const clock = (t: number) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 
@@ -58,13 +57,7 @@
 	const localBpm = $derived(analysis ? bpmAt(analysis.tempo, readout?.bar ?? 0) : 0);
 
 	const ready = $derived(readout.duration > 0);
-	/**
-	 * Nothing loaded and nothing on the way.
-	 *
-	 * A transport with nothing behind it is a bar pretending it could play something, so it is not
-	 * rendered rather than rendered disabled. The room underneath carries on either way - it is
-	 * full-window, and resting is a thing it does rather than an absence of one.
-	 */
+	/** Hide empty transport controls while the full-window resting room continues. */
 	const empty = $derived(!meta && queued === 0);
 	let mutedAt = $state<number | null>(null);
 
@@ -99,17 +92,14 @@
 				{/if}
 			</div>
 			<div class="meta">
-				<!-- With nothing queued at all the bar is not this one, so a null title here means a
-				     row that exists and is still being fetched. -->
+				<!-- A null title here means a queued row is still being fetched. -->
 				<span class="title truncate" title={meta?.title ?? ''}>{meta?.title ?? 'Preparing'}</span>
 				<span class="sub truncate muted">
 					{#if meta}
 						{meta.uploader}
 						{#if analysis}
 							<span class="dot">·</span>
-							<!-- The tempo HERE, not the track median: on a track assembled from several
-							     the median describes none of them, and this was the last thing on
-							     screen still claiming a track has one. -->
+							<!-- Show local tempo across movements rather than the track median. -->
 							<span class="mono">{localBpm.toFixed(0)}</span> bpm
 							{#if tempoMap.length > 1}
 								<span class="dot">·</span>

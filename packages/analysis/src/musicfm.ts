@@ -5,16 +5,9 @@ import { RealFft, hannWindow } from './dsp/fft.ts';
 import { MODEL_DIR } from './paths.ts';
 
 /**
- * MusicFM (ByteDance 2023, MIT) conformer embeddings + the section head trained in
- * bench/train-sectionhead.py: the learned side of section labelling. Exported to ONNX by
- * bench/export-musicfm.py; the weights are optional local files like the other models,
- * and the rules pipeline is the life without them.
- *
- * Every constant here is the training frontend's contract, verified against saved probe
- * vectors in musicfm.test.ts - none is tunable. The windowing must match
- * bench/extract-musicfm.py EXACTLY (30 s windows, 5 s pad discarded each side, variable
- * pieces at the track edges): the head has only ever seen those numerics, and a
- * different scheme puts unfamiliar edge effects exactly where intro and outro live.
+ * MusicFM (ByteDance 2023, MIT) plus an optional section head. Frontend constants and windowing
+ * must match bench/extract-musicfm.py: 30 s pieces, 5 s discarded padding, variable track edges.
+ * Verify parity with bench/musicfm-parity.ts.
  */
 const ENCODER_FILE = 'musicfm_encoder_int8.onnx';
 const HEAD_FILE = 'musicfm_sectionhead.onnx';
@@ -29,8 +22,6 @@ const FREQ_BINS = N_FFT / 2 + 1;
 const WIN = 30 * MUSICFM_RATE;
 const PAD = 5 * MUSICFM_RATE;
 const POOL = 3;
-/** Embedding frames per second after pooling. */
-export const MUSICFM_FPS = 25 / POOL;
 
 interface MusicFmConfig {
 	melMean: number;
@@ -39,15 +30,9 @@ interface MusicFmConfig {
 }
 
 /**
- * torchaudio's default MelSpectrogram + AmplitudeToDB, on one piece of audio.
- *
- * Power spectrogram (magnitude squared, unnormalised), hann window, centre-aligned with
- * reflect padding, times the saved HTK filterbank, then 10*log10 clamped at 1e-10. The
- * filterbank is the exact matrix torchaudio built, saved by the export script: mel-scale
- * arithmetic re-derived by hand is exactly the parity bug the ADTOF port hit.
- *
- * Returns frames * N_MELS laid out frame-major, with the LAST frame dropped the way the
- * model's own preprocessing drops it.
+ * Match torchaudio MelSpectrogram + AmplitudeToDB: unnormalised power, Hann window, centred
+ * reflect padding, saved HTK filterbank, then 10*log10(max(x, 1e-10)). Return frame-major mel
+ * values with the last frame dropped, matching model preprocessing.
  */
 export function melSpectrogram(piece: Float32Array, fb: Float32Array): Float32Array {
 	const pad = N_FFT >> 1;
@@ -80,10 +65,7 @@ export function melSpectrogram(piece: Float32Array, fb: Float32Array): Float32Ar
 	return out;
 }
 
-/**
- * The section head alone, for callers that already hold embeddings: the bench gate
- * labels the precomputed corpus embeddings without ever loading the 350 MB encoder.
- */
+/** Label precomputed embeddings without loading the large encoder. */
 export class MusicFmHead {
 	private readonly session: ort.InferenceSession;
 	readonly kinds: readonly string[];
@@ -107,10 +89,8 @@ export class MusicFmHead {
 	}
 
 	/**
-	 * Per-frame posteriors over the lighting kinds, [t x kinds] frame-major.
-	 *
-	 * The track-position channel is appended here exactly as in training: intro and
-	 * outro are partly positions, and the embeddings alone cannot see the clock.
+	 * Frame-major posteriors [t x kinds]. Append track position exactly as trained so intro/outro
+	 * labels can observe the clock.
 	 */
 	async label(emb: { frames: number; data: Float32Array }): Promise<Float32Array> {
 		const t = emb.frames;
@@ -188,10 +168,8 @@ export class MusicFm {
 	}
 
 	/**
-	 * Layer-9 embeddings for a whole track at MUSICFM_FPS, frame-major [t x 1024].
-	 *
-	 * `mono` must be 24 kHz. The piece walk mirrors bench/extract-musicfm.py line for
-	 * line; the pooled tail that does not fill a triple is dropped there too.
+	 * 24 kHz mono to layer-9 embeddings at 25/3 Hz, frame-major [t x 1024]. Match extraction
+	 * windowing and drop incomplete pooled triples.
 	 */
 	async embed(mono: Float32Array): Promise<{ frames: number; data: Float32Array }> {
 		const { melMean, melStd } = this.config;

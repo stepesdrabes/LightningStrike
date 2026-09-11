@@ -1,37 +1,15 @@
 import { spawn } from 'node:child_process';
 
-/**
- * The colour a track already has.
- *
- * A show's palette is chosen from tempo, mode and how squashed the master is, which are
- * properties of the recording but say nothing about how the record presents itself. The cover
- * does, and somebody already chose it: a yellow sleeve is a yellow record, and a room that
- * lights it in teal is arguing with the artwork for no reason.
- *
- * Decoded through ffmpeg rather than a JPEG library, because ffmpeg is already a hard
- * dependency here and the alternative is a decoder per container for a 48-pixel answer.
- */
+/** Read the cover hue through ffmpeg, already required for audio, without adding image decoders. */
 
 /** Enough to average a sleeve, few enough that the histogram is not a list of unique pixels. */
 const SIZE = 48;
 /** Below this a pixel is grey and has no hue to contribute. */
 const MIN_SAT = 0.22;
-/**
- * Below this a pixel is a shadow and its hue is mostly noise.
- *
- * There is deliberately no ceiling to match. One was tried at 0.99 to drop blown highlights and
- * it threw away the answer: a saturated flat colour is full-value by construction, so a sleeve
- * that is a single sheet of yellow had every yellow pixel discarded and came back reading the
- * cyan of the character drawn on it. A blown highlight is white, and white is already excluded
- * by having no saturation.
- */
+/** Reject dark pixels, but keep full-value saturated colour; saturation already excludes white highlights. */
 const MIN_VAL = 0.12;
 const BINS = 36;
-/**
- * How much of the image's own colour has to agree before a hue is called dominant. Under this
- * the sleeve is a grey photograph or a collage, and inventing a colour from it would be worse
- * than the tempo-derived choice it would replace.
- */
+/** Minimum colour agreement for a dominant hue; weak agreement should retain the tempo palette. */
 const MIN_SHARE = 0.18;
 
 function rgb2hsv(r: number, g: number, b: number): [number, number, number] {
@@ -83,7 +61,6 @@ export interface Artwork {
 	share: number;
 }
 
-/** The dominant hue of already-decoded RGB pixels. Separated so it can be tested directly. */
 export function dominantHue(rgb: Uint8Array): Artwork {
 	const weight = new Float64Array(BINS);
 	const sinAcc = new Float64Array(BINS);

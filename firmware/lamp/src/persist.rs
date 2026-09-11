@@ -9,15 +9,13 @@ use room_light::state::LightState;
 use sequential_storage::cache::{Cache, Uncached};
 use sequential_storage::map::{MapConfig, MapStorage};
 
-/// espflash's default table puts `nvs` at 0x9000, 24 KB; nothing else touches it in a
-/// bare-metal app, so it is the settings store. Read from the table anyway, so a custom table
-/// moves it without a code change.
+/// Use the partition table's NVS region; fall back to espflash's default 24 KB at 0x9000.
+/// Custom tables can move settings without code changes.
 const NVS_FALLBACK: core::ops::Range<u32> = 0x9000..0xF000;
 
 const KEY: u8 = 0;
 
-/// The remembered light in flash; same wear maths as the Pico build, hundreds of records per
-/// erase cycle against debounced saves.
+/// Debounced settings log amortises flash wear over hundreds of records per erase.
 pub struct Persist {
 	map: MapStorage<
 		u8,
@@ -56,8 +54,7 @@ impl Persist {
 		}
 	}
 
-	/// Best effort: a light that cannot save is still a light. The blocking write stalls the
-	/// executor for a few ms, which is why saves are debounced rather than per-change.
+	/// Debounce blocking writes, which stall the executor for milliseconds. Save failure must not stop lighting.
 	pub async fn save(&mut self, s: &LightState) {
 		if let Err(e) = self.map.store_item(&mut self.buf, &KEY, &settings::encode(s)).await {
 			log::warn!("settings save failed: {e:?}");

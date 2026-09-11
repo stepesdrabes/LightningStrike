@@ -2,12 +2,8 @@ import { z } from 'zod';
 import type { Show } from '@mv/core';
 
 /**
- * The Show, as a real schema rather than `z.any()`.
- *
- * This matters more than it looks: `z.any()` produces no JSON Schema at all, so the MCP layer
- * hands the argument through unparsed and the tool receives a string. The symptom is
- * "show.cues is not iterable", and the agent then spends its turns trying to route around a
- * tool it cannot use.
+ * A concrete schema makes MCP parse the argument as an object; z.any() supplies no JSON
+ * Schema.
  */
 const numbers = z.record(z.string(), z.number());
 
@@ -27,7 +23,7 @@ const explicitPalette = z.object({
 	white: z.number().min(0).max(1).optional()
 });
 
-export const SECTION_ENUM = z.enum([
+const SECTION_ENUM = z.enum([
 	'intro',
 	'groove',
 	'verse',
@@ -85,16 +81,12 @@ export const showSchema = z.object({
 		.optional()
 });
 
-export interface ParsedShow {
+interface ParsedShow {
 	show: Show | null;
 	error: string | null;
 }
 
-/**
- * Accept either a real object or a JSON string. Coercing a string is cheap insurance: if
- * anything upstream stringifies the argument again, the tool still works instead of failing
- * in a way that looks like the agent's fault.
- */
+/** Accept stringified arguments as well as objects for MCP compatibility. */
 export function coerceShow(input: unknown): ParsedShow {
 	let candidate = input;
 

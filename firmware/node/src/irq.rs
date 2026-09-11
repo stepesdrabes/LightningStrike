@@ -8,8 +8,7 @@ use embassy_rp::peripherals::{DMA_CH2, PIO1};
 #[cfg(feature = "frame")]
 use embassy_rp::peripherals::{DMA_CH3, DMA_CH4};
 
-// Every DMA channel on the RP2040 raises DMA_IRQ_0, so the strips' channels are extra
-// handlers on the same vector rather than vectors of their own. CH1 is the settings flash.
+// All RP2040 DMA channels share DMA_IRQ_0; add strip handlers to that vector. CH1 serves settings flash.
 bind_interrupts!(pub struct Irqs {
 	PIO0_IRQ_0 => PioIrq<PIO0>;
 	#[cfg(feature = "strips")]

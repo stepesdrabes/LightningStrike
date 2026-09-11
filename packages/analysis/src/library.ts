@@ -6,13 +6,7 @@ import { ANALYSIS_VERSION, SHOW_VERSION } from '@mv/core';
 import { CACHE_DIR } from './paths.ts';
 import type { TrackMeta } from './ingest.ts';
 
-/**
- * Recover a field from the head of an analysis without parsing it.
- *
- * The analyses are around 400 kB each, so this reads the first couple of kilobytes:
- * `version` and `duration` are both written within the first few lines, whatever the key
- * order, and that is enough to know whether a blob is current without opening it.
- */
+/** Read version/duration from the analysis head; parsing every large blob would slow the library. */
 async function headOfAnalysis(
 	path: string
 ): Promise<{ duration: number | null; version: number | null }> {
@@ -39,11 +33,8 @@ export interface LibraryEntry extends TrackMeta {
 	/** An analysis exists, so this track loads without touching the network. */
 	analysed: boolean;
 	/**
-	 * The cached artifacts are the versions this build writes, so the track may play as-is.
-	 * False means a queue row must go through prepare again - a stale analysis is silently
-	 * wrong rather than obviously broken, and a stale engine show never hears an engine fix.
-	 * A model-authored show is exempt from the show half: it is kept across versions on
-	 * purpose, being the one artifact money was spent on.
+	 * Analysis and engine-show versions must match. Preserve model-authored shows across versions
+	 * because they are paid artifacts.
 	 */
 	current: boolean;
 	authored: 'none' | 'engine' | 'claude' | 'deepseek';
@@ -53,12 +44,7 @@ export interface LibraryEntry extends TrackMeta {
 	updatedAt: number;
 }
 
-/**
- * The family the enrichment settled on.
- *
- * From the context rather than the analysis: the analysis is around 400 kB and does not carry
- * a genre at all, while the context is a few kB and is the only place it lives.
- */
+/** Genre comes from the small context blob, not the large analysis, which does not store it. */
 async function readGenre(path: string): Promise<GenreFamily | null> {
 	try {
 		const raw = await readFile(path, 'utf8');
@@ -75,11 +61,8 @@ interface ShowStamp {
 }
 
 /**
- * Which of the two authors wrote a show, and which model if it was the agent.
- *
- * Shows carry `authoredBy` from this version on; anything written before it is judged by
- * whether it has effects of its own, which only the agent produces. That fallback cannot name
- * a backend, so it answers `claude`: DeepSeek postdates every show old enough to need it.
+ * Legacy shows with custom effects are AI-authored. Their backend is Claude because they
+ * predate DeepSeek support.
  */
 async function readShowStamp(path: string): Promise<ShowStamp | null> {
 	try {
@@ -97,12 +80,7 @@ async function readShowStamp(path: string): Promise<ShowStamp | null> {
 	}
 }
 
-/**
- * Everything already in the cache, newest first.
- *
- * Reads the meta files and stats the rest. The analyses are around 400 kB each and the only
- * thing this panel wants from them is a duration, which now lives in the meta.
- */
+/** Library entries, newest first; use metadata duration without loading analysis bodies. */
 export async function readLibrary(): Promise<LibraryEntry[]> {
 	if (!existsSync(CACHE_DIR)) return [];
 	const files = await readdir(CACHE_DIR);
@@ -127,8 +105,7 @@ export async function readLibrary(): Promise<LibraryEntry[]> {
 				? await headOfAnalysis(analysisFile)
 				: { duration: null, version: null };
 
-			// Written back rather than recovered on every listing, so the repair happens once per
-			// track and the next read is as cheap as any other.
+			// Persist repaired metadata once rather than recover it on every listing.
 			if (!meta.duration && head.duration !== null) {
 				meta = { ...meta, duration: head.duration };
 				await writeFile(

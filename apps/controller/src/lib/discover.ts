@@ -1,18 +1,6 @@
 /**
- * Finding the lights without being told where they are.
- *
- * The board already answers a UDP broadcast (`?room-node`, `firmware/wire/src/hello.rs`) and
- * that is what the desktop app uses - but a browser cannot send UDP, and it cannot browse mDNS
- * service types either. Two things it can do:
- *
- * 1. Resolve a name it already knows. The hostnames are compiled into the firmware, so
- *    `room-bounce.local` is a fixed address rather than a discovered one.
- * 2. Knock on every address on its own subnet and see what answers `/api/info` with our shape.
- *
- * The second needs a subnet, and a browser cannot learn its own - mDNS-obfuscated ICE candidates
- * closed that door years ago. But it can read where the page came from, and this app is served
- * from the board, so `location.hostname` is a light's address. That is the whole trick: the
- * first light found is what locates the rest.
+ * Browsers cannot discover via UDP or mDNS. Probe known names, then sweep the subnet learned
+ * from the page origin or a board's reported IP.
  */
 
 import { pooled, type Net } from './net.ts';
@@ -31,7 +19,7 @@ const SWEEP_TIMEOUT_MS = 1200;
 /** Phones throttle hard above this, and the sweep gets slower rather than faster. */
 const SWEEP_CONCURRENCY = 24;
 
-export function infoUrl(host: string): string {
+function infoUrl(host: string): string {
 	return `http://${host}/api/info`;
 }
 
@@ -59,7 +47,7 @@ export async function probe(net: Net, host: string, timeoutMs: number): Promise<
 	return info ? { host, info } : null;
 }
 
-export interface DiscoverOptions {
+interface DiscoverOptions {
 	net: Net;
 	/** Where the page itself came from - an address here is what makes a sweep possible. */
 	origin: string;
@@ -72,20 +60,14 @@ export interface DiscoverOptions {
 	signal?: AbortSignal;
 }
 
-/**
- * Known names and remembered addresses first, then the subnet.
- *
- * The fast path is the common one: the app is served by a board, so probing its own origin
- * finds a light in a single round trip and the sweep only ever runs to find its siblings.
- */
+/** Probe known and remembered hosts before sweeping for sibling boards. */
 export async function discover(opts: DiscoverOptions): Promise<Found[]> {
 	const { net, origin, remembered = [], onFound, onSweeping, signal } = opts;
 	const found = new Map<string, Found>();
 	const seenNames = new Set<string>();
 
 	const keep = (hit: Found | null): void => {
-		// One board answers on both its address and its name, and a second entry for it would
-		// show up as a second light in the switcher.
+		// Deduplicate boards reachable by both address and name.
 		if (!hit || found.has(hit.host) || seenNames.has(hit.info.name)) return;
 		found.set(hit.host, hit);
 		seenNames.add(hit.info.name);
@@ -99,10 +81,7 @@ export async function discover(opts: DiscoverOptions): Promise<Found[]> {
 	await Promise.all(direct.map(async (host) => keep(await probe(net, host, DIRECT_TIMEOUT_MS))));
 	if (signal?.aborted) return [...found.values()];
 
-	// Three ways to learn the subnet, in descending order of certainty. The origin is only an
-	// address when the page was opened at one rather than at a name; a board that answered
-	// reports its own; and a remembered address is worth reading even when nothing answered on
-	// it, because a board that moved on DHCP moved within the same network.
+	// Prefer the origin IP, then a responding board, then remembered DHCP addresses for the subnet.
 	const prefix =
 		subnetOf(origin) ??
 		[...found.values()].map((f) => subnetOf(f.info.ip)).find((p) => p != null) ??

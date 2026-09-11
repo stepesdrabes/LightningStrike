@@ -10,15 +10,8 @@ import { Edge, INTENSITY, param } from './helpers.ts';
 const IMPACT_HOLD = 0.08;
 
 /**
- * The rationed special: the whole room struck white on the arrival, and out of that frame
- * three concentric shells carrying a slice of the palette by radius, two beats of glory,
- * then gone.
- *
- * This is the effect the picker hands the peak of nearly every track, which is exactly why it
- * may not have colours of its own: the biggest moment of a show is the last place the room
- * should stop being the colour it has been all night. It is also why the shells are thick and
- * the arrival is a blow: three thin rings crossing an unlit room measured as a mean of one
- * byte over the passage it was reserved for.
+ * Use the show's palette at its peak. A whole-room arrival and thick shells keep this short
+ * reserved gesture visibly substantial.
  */
 export const chromaBurst: EffectDef = {
 	id: 'chromaBurst',
@@ -35,8 +28,7 @@ export const chromaBurst: EffectDef = {
 	},
 	params: [INTENSITY, param('trigger', 'Trigger', 0, 0, 1, 1)],
 	create(g) {
-		// Every LED on this fixture is coplanar, so `g.dist` starts at the beam's middle and
-		// never reaches 0. Re-based on the room's own range, the way kickTunnel and subSwell are.
+		// Normalize actual fixture distances; the coplanar frame never reaches raw dist = 0.
 		const depth = new Float32Array(g.count);
 		let near = Infinity;
 		let far = 0;

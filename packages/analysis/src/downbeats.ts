@@ -12,11 +12,7 @@ export interface Meter {
 }
 
 const CANDIDATE_METERS = [4, 3];
-/**
- * Four beats to a bar unless three is clearly better. In the Harmonix Set 890 of 912 tracks
- * are in four, so a marginal preference for three is much more likely to be a detector
- * artefact than a waltz.
- */
+/** Prefer four unless three wins clearly; the repertoire's strong 4/4 prior makes weak 3/4 votes suspect. */
 const THREE_PENALTY = 0.72;
 
 function z(a: Float32Array): Float32Array {
@@ -27,14 +23,8 @@ function z(a: Float32Array): Float32Array {
 	return out;
 }
 
-/**
- * A per-beat "this is a downbeat" score from cues that do not need to know the meter.
- *
- * The three that carry the weight are: harmony changes on the downbeat far more often than
- * anywhere else; the kick lands on it; and the snare deliberately does not, which is why the
- * mid-band term is subtracted rather than added.
- */
-export function downbeatLikelihood(bf: BeatFeatures): Float32Array {
+/** Downbeat evidence: harmonic changes and kicks add support; snares usually oppose it. */
+function downbeatLikelihood(bf: BeatFeatures): Float32Array {
 	const n = bf.count;
 	const out = new Float32Array(n);
 	if (n === 0) return out;
@@ -52,10 +42,7 @@ export function downbeatLikelihood(bf: BeatFeatures): Float32Array {
 	const zl = z(bf.low);
 	const zm = z(bf.mid);
 
-	// Weights chosen against the GTZAN beat and downbeat annotations. Broadband spectral
-	// change is deliberately absent: on its own it predicts downbeats, but next to harmonic
-	// change it only adds what that already says, and fitting it a weight bought nothing that
-	// survived a held-out half.
+	// Weights fitted on GTZAN. Broadband change adds no held-out value beyond harmonic change.
 	for (let i = 0; i < n; i++) {
 		out[i] = 1.2 * zh[i] + 0.25 * zb[i] + 0.5 * zf[i] + 0.8 * zl[i] - 0.8 * zm[i];
 	}
@@ -77,12 +64,8 @@ function acfAt(a: Float32Array, lag: number): number {
 }
 
 /**
- * Meter and downbeat phase together.
- *
- * The meter comes from where the beat sequence repeats itself: a bar in four makes the beat
- * two bars away resemble this one, so the likelihood curve correlates at lags 4, 8 and 16,
- * where three-time correlates at 3, 6 and 12. The phase then just picks whichever residue
- * class collects the most downbeat evidence.
+ * Meter follows likelihood autocorrelation at bar multiples; phase selects the residue with
+ * most downbeat evidence.
  */
 export function detectMeter(bf: BeatFeatures): Meter {
 	const like = downbeatLikelihood(bf);

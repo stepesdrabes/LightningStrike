@@ -1,17 +1,9 @@
-// Where a hand-drawn map's boundaries actually LAND, in both consumers, against where they
-// were drawn. The editor has been reported three times as ignoring drawn sections and three
-// plausible fixes have missed; this prints the answer instead of arguing about it.
-//
-//   MV_CACHE_DIR=<cache> node bench/mapland.ts <trackId> [nudge=<index>:<seconds>]
-//
-// `nudge` moves one boundary and flags it `offGrid`, which is the editor's fine drag, without
-// touching the judgement on disk - the owner's maps are hours of listening and this never
-// writes. The adoption column re-walks the cached beats the way `analyzeTrack` does, so it is
-// a simulation of the next analysis rather than the analysis itself; `bench/gridedit.ts` runs
-// the real thing when the two need reconciling.
+// Trace hand-map adoption against cached beats without writing the judgment file.
+// MV_CACHE_DIR=<cache> node bench/mapland.ts <trackId> [nudge=<index>:<seconds>]
+// nudge simulates an off-grid fine drag. gridedit.ts runs the full pipeline for comparison.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import type { TrackAnalysis } from '@mv/core';
 import { barTimeAt, nearestBar, nearestBarIn } from '@mv/core';
 import { barStartsAtCuts, handMapGrid, handSectionBars, resyncedCuts } from '@mv/analysis';
@@ -20,9 +12,7 @@ import type { JudgedSection } from '../apps/web/src/lib/server/judge.ts';
 
 const id = process.argv[2];
 if (!id) throw new Error('usage: node bench/mapland.ts <trackId> [nudge=<index>:<seconds>]');
-const cache =
-	process.env.MV_CACHE_DIR ??
-	join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache();
 
 const analysis = JSON.parse(
 	readFileSync(join(cache, `${id}.analysis.json`), 'utf8')

@@ -16,12 +16,7 @@ interface Shot {
 	bounces: number;
 }
 
-/**
- * A kick fires a packet of light from the nearest corner DOWN one wall; it hits the next
- * corner, ricochets with loss, and dies within two bounces. Travel is directional and
- * linear - a bullet, not a wave - and the corner flash at each impact is what makes the
- * architecture part of the gesture: the room's own geometry answers the drum.
- */
+/** Corner impacts reflect with loss and flash the architecture, keeping the gesture directional. */
 export const ricochet: EffectDef = {
 	id: 'ricochet',
 	name: 'Ricochet',
@@ -91,22 +86,20 @@ export const ricochet: EffectDef = {
 					s.alive = true;
 					s.bounces = 0;
 					s.power = clamp(0.35 + f.kickEnv * 0.65) * permission;
-					// Launch corner and direction rotate deterministically, so a bar of
-					// four-on-the-floor sprays all four corners rather than hammering one.
+					// Rotate launch corner and direction deterministically to spread hits
+					// around the room.
 					s.pos = cornerU[launches % cornerU.length];
 					s.vel = (launches % 2 === 0 ? 1 : -1) * (0.55 + p.speed * 0.9);
 					launches++;
 				}
 
-				// One wall in roughly a third of a beat: fast enough to read as a shot, slow
-				// enough that the eye can follow which way it went.
+				// Cross one wall in roughly a third of a beat so the shot stays trackable.
 				const dt = f.dt * Math.max(0.05, motion);
 				for (const s of shots) {
 					if (!s.alive) continue;
 					const target = nextCorner(s.pos, s.vel);
 					const before = s.pos;
 					s.pos = (s.pos + s.vel * dt * 0.28 + 1) % 1;
-					// Crossed the corner ahead: reflect with loss, flash the corner.
 					const crossed =
 						s.vel > 0
 							? (target - before + 1) % 1 <= ((s.pos - before + 1) % 1) + 1e-6
@@ -130,10 +123,9 @@ export const ricochet: EffectDef = {
 					for (const s of shots) {
 						if (!s.alive) continue;
 						const d = Math.min(Math.abs(u - s.pos), 1 - Math.abs(u - s.pos));
-						// A soft head some eight pixels wide and a short tail BEHIND the direction of
-						// travel: a one-pixel head was invisible from under the frame, and a hard
-						// five-pixel one at pure white was a tracer round. Only a full-power shot
-						// reaches white; the rest stay in the bright read of the room's own colour.
+						// Use a soft eight-pixel head and trailing tail for visibility without
+						// a tracer-like hot point.
+						// Reserve white for full-power shots.
 						const behind = s.vel > 0 ? (s.pos - u + 1) % 1 : (u - s.pos + 1) % 1;
 						if (d < 0.013) {
 							const head = 1 - d / 0.013;

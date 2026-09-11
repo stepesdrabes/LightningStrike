@@ -38,20 +38,16 @@ export interface RenderCtx {
 }
 
 /**
- * `out` is the effect's own scratch buffer, persistent across frames and never cleared
- * by the mixer, which is what lets trails and decay work. Stateless spatial effects must
- * therefore write every pixel every frame.
- *
- * Never allocate in `render`. Read only from `ctx`: no Date.now, no Math.random, so
- * recordings and exports reproduce exactly.
+ * out persists across frames and is never cleared by the mixer; stateless effects must
+ * write every pixel. Allocate outside render and use only deterministic inputs from ctx.
  */
 export interface Effect {
 	reset(): void;
 	render(out: Float32Array, ctx: RenderCtx): void;
 }
 
-/** Metadata that makes restraint structural rather than something the author must remember. */
-export interface EffectTaste {
+/** Restraint metadata enforced by the picker and linter. */
+interface EffectTaste {
 	/** 1 = ambient, 5 = peak-of-the-track. */
 	energy: 1 | 2 | 3 | 4 | 5;
 	sections: readonly SectionKind[];
@@ -60,95 +56,40 @@ export interface EffectTaste {
 	/** Usable at most once per show. */
 	peakReserved: boolean;
 	/**
-	 * False when this cannot hold a room on its own.
-	 *
-	 * A bed is the floor of a cue, and most beds are written to sit under something: some are
-	 * spatially sparse, some scale themselves by the very energy the cue's intensity is already
-	 * scaling. Either way they emit almost nothing in a quiet passage, and gamma 2.2 sends
-	 * anything under 0.08 to byte zero, so a cue whose only substantial layer is one of these
-	 * comes out black rather than dim. Absent means it carries.
-	 *
-	 * The quiet probe cannot decide this: it rewards bytes of movement, and a flash moves the
-	 * most bytes of anything while being dark most of every bar. Any effect that is an event
-	 * with darkness between - a slam, a burst, a strobe - declares `carries: false` however
-	 * high its measured `quiet` comes out.
+	 * False if the effect cannot sustain a room alone; absent means true.
+	 * Events with darkness between must set false regardless of measured quiet movement.
 	 */
 	carries?: boolean;
 	/**
-	 * True for a master that renders black until the player arms `trigger` from a hit.
-	 *
-	 * These are punctuation, not looks: placed in a cue's master layer with no hit behind
-	 * them they are a no-op, so the planner's reserved-peak choice must never land on one.
+	 * Master stays black until a hit arms trigger. Excluded from untriggered peak-layer
+	 * selection.
 	 */
 	hitOnly?: boolean;
 	/**
-	 * What kind of gesture this is, declared only where a genre may need to refuse it.
-	 *
-	 * `flash` is light as interruption - strobes and shutters, dark between frames. `impact`
-	 * is light as a blow - slams, blinders, bursts. The families whose flash allowance is
-	 * zero forbid both as effects exactly as they forbid them as hits; everything else is
-	 * ungoverned and leaves this absent.
+	 * flash: interrupted light; impact: slams, blinders or bursts.
+	 * Genres with no flash allowance forbid both. Other effects leave this absent.
 	 */
 	character?: 'flash' | 'impact';
-	/**
-	 * Which peak treatment a master serves, absent when it serves either. A slam peak is
-	 * an impact and a bloom peak is a lift, and the reserved-master draw is a seed-broken
-	 * tie - without this, adding any master reshuffles the ties and a bloom look can land
-	 * on a rap climax, which the room reads as the punch going missing. Only read for the
-	 * peak-master choice; ordinary layers never consult it.
-	 */
+	/** Peak-master treatment; absent accepts either. Ordinary layer selection ignores it. */
 	peakStyle?: 'slam' | 'bloom';
 	/**
-	 * The drum stream this effect IS the answer to, declared only where that is the whole
-	 * gesture: an effect that spawns on `f.kick` renders black in a passage with no kicks,
-	 * and a grid pulse that reads as the kit keeps pounding through a sung verse the drums
-	 * sat out. The picker refuses both where the slot's stream is silent - dead layers and
-	 * lying ones are the same mistake from the room's side.
-	 *
-	 * `any` means kick or snare. Effects that merely season themselves with an envelope -
-	 * a bed with a kick bump in it - leave this absent and degrade gracefully.
+	 * Required drum stream for the whole gesture; any means kick or snare.
+	 * Effects that only season a continuing look with drums leave this absent.
 	 */
 	kit?: 'kick' | 'snare' | 'hat' | 'any';
 	/**
-	 * How much this moves over a quiet passage, as a share of its own mean level.
-	 *
-	 * Bytes of delivered movement, measured by substituting the effect into the quiet cues of a
-	 * cached corpus and rendering them. NOT a synthetic journey's `quiet` column: that spreads a
-	 * wandering peak across every band where a real sparse intro has content in a handful and
-	 * silence in the rest, and it reverses the ranking. Chosen by the synthetic number, `nebula`
-	 * leads the beds and delivers 1.02 on real tracks; chosen by this one, `spectrumBed` leads
-	 * and delivers 4.41. Only the beds and accents that can appear in a quiet section declare it;
-	 * absent means it has never been asked to hold one.
-	 *
-	 * These are stored measurements from `bench/quietprobe.ts`, and nothing asserts them
-	 * because measuring needs the audio cache and a test may not depend on it. Changing an
-	 * effect in the quiet pool, the spectrum or the house floor invalidates whatever it
-	 * declares here; re-run the probe and paste its numbers back.
-	 *
-	 * The planner prefers a high one where there is nothing else happening. Measured on a real
-	 * intro, the pair the picker chose delivered 1.27 bytes of movement where the two most
-	 * spectrum-led candidates in the same pool delivered 2.24 across 2.7x the spatial spread. The
-	 * catalog already had the answer; nothing was choosing it.
+	 * Quiet-passage delivered movement as a share of mean level, measured on real cached tracks
+	 * by bench/quietprobe.ts. Synthetic spectra can reverse the ranking. Absent means
+	 * unmeasured.
+	 * Rerun the probe after changing a quiet-pool effect, the spectrum or the house floor.
 	 */
 	quiet?: number;
 	/**
-	 * How much of the room's light moves at frame scale while this plays, 0 to 1.
-	 *
-	 * 1 is a whole-room strike on every hit with darkness between (moshSlam, stageBlinders,
-	 * a strobe); 0.6 to 0.7 a partial strike, one wall or one wave per hit; 0.4 to 0.5 a
-	 * twinkle or a hard-edged pattern; 0.2 to 0.3 smooth motion; a field that holds or
-	 * breathes is 0. Absent means 0.
-	 *
-	 * The picker spends a budget of this per cue (`activityBudget` in select.ts), which is
-	 * what keeps three layers from all striking on the same kick. Measured over the corpus,
-	 * the cues the owner heard as "way too flickery" were exactly those: a unison slam under a
-	 * half-room gatling under a snare bloom, each defensible alone. Every console source says
-	 * the same thing structurally - one hit layer over a stable base - and the eye agrees:
-	 * modulation from independent layers adds, and the sum lands in the 8 to 10 Hz band where
-	 * a flashing room reads brightest and busiest.
-	 *
-	 * Rated by hand from the gesture, not measured: a per-pixel movement metric cannot tell a
-	 * chase from a flicker, and a chase is what a rhythm layer is for.
+	 * Hand-rated share of light moving at frame scale, 0..1; absent means 0.
+	 * 1: whole-room strikes; 0.6-0.7: partial strikes; 0.4-0.5: twinkle/hard patterns;
+	 * 0.2-0.3: smooth motion; 0: held/breathing fields. The picker budgets this per cue
+	 * to avoid overlapping strikers. Pixel movement alone cannot distinguish chase from
+	 * flicker.
 	 */
 	activity?: number;
 }

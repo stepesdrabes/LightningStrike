@@ -33,11 +33,7 @@ describe('bounds', () => {
 });
 
 describe('swatches', () => {
-	/**
-	 * The reason these exist at all. A wheel in the interface is in textbook degrees and the room
-	 * runs on FastLED's ramp, and the two are different curves rather than a rotation - so a swatch
-	 * drawn with CSS `hsl` offers colours the strips cannot make.
-	 */
+
 	it('draws a picked hue in the colour the room will deliver, not the one CSS would', () => {
 		const [r, g, b] = hsv2rgb(rampHueFor(90), 1, 1);
 		const byte = (v: number) => Math.round(v * 255);

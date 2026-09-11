@@ -1,24 +1,11 @@
-// What every effect delivers to the strips, alone, through the real output chain.
-//
-//   node bench/effectlevel.ts                 # the whole catalog
-//   node bench/effectlevel.ts vortex pump     # named effects only
-//   node bench/effectlevel.ts --raw           # opacity 1, intensity 1: the effect's own output
-//
-// Each effect is rendered alone in a Mixer at its ROLE'S opacity budget and the cue intensity the
-// engine writes for the section (groove 0.68, build 0.62, drop 0.9, intro 0.46, outro 0.5), with
-// no house floor, over the gate's groove/build/void/drop journey and the quiet intro/outro
-// journey. So a row is what that layer contributes to a cue, in bytes, not what the effect asks
-// for in the authoring domain: the compressor, gamma and the 1.4 headroom are all in the number.
-//
-// Columns per section: auth (the mean of the authoring-domain frame after the intensity scale,
-// which is the domain the four layers ADD in before gamma, so a stack's level is roughly the sum
-// of its layers' auth), mean byte over the room, p90 (the pixel a tenth of the room is above,
-// which is how bright the room LOOKS), strike (the brightest the room mean gets over the section:
-// what an event effect delivers when it fires), fill (share of pixels over byte 24), on (share of frames
-// the room is lit at all, which separates an event from a level), punch (median max-pixel move
-// within 120 ms of a kick) and ripple (mean frame-to-frame move of the room mean: whole-room
-// flicker) and shim (mean per-pixel move against an 80 ms average: twinkle, texture and jitter,
-// which the room mean cannot see). Masters are armed for the first bar of the drop only.
+// Render effects alone through the output chain at role opacity and section intensity, without
+// house floor.
+// node bench/effectlevel.ts [effect ...] [--raw]
+// --raw sets opacity and intensity to 1. Masters arm only for the first drop bar.
+// Columns: auth = authoring mean, byte = delivered mean, p90 = pixel 90th percentile,
+// strike = peak room mean, fill = pixels above byte 24, on = lit-frame share,
+// punch = median max-pixel move within 120 ms of kicks, ripple = room-mean frame motion,
+// shim = per-pixel residual against an 80 ms average.
 import {
 	BUILT_IN_EFFECTS,
 	DEFAULT_OPACITY,

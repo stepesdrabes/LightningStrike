@@ -21,28 +21,15 @@ export interface Readout {
 	playing: boolean;
 	bar: number;
 	section: string;
-	energy: number;
-	bpm: number;
-	cueBar: number;
 	/** True once the room has handed over to the ambient scenes. */
 	resting: boolean;
 	scene: string;
-	/**
-	 * The colours the room has actually landed on, as CSS.
-	 *
-	 * Sampled off the live palette rather than reported as hue numbers, because in lounge that
-	 * palette is a cue's and was never built from hues at all - there is nothing to report.
-	 */
+	/** CSS colours sampled from the live palette; lounge cue palettes may have no source hues. */
 	roomBase: string;
 	roomAccent: string;
 }
 
-/**
- * Owns the render loop. Deliberately not a Svelte component and deliberately not reactive:
- * the hot path writes ~4000 floats per frame into typed arrays, and putting those behind a
- * `$state` proxy would cost more than everything else here combined. Only the small
- * `Readout` is published, at 20 Hz.
- */
+/** Keep the render hot path unproxied; publish only the small Readout at 20 Hz. */
 export class Viz {
 	readonly geometry: Geometry = buildGeometry(DEFAULT_ROOM);
 	readonly registry = new EffectRegistry();
@@ -53,22 +40,12 @@ export class Viz {
 	analysis: TrackAnalysis | null = null;
 	show: Show | null = null;
 
-	/**
-	 * What the room is being asked to be. Plain fields rather than `$state` for the same reason
-	 * nothing else in here is reactive: they are read once a frame on the hot path.
-	 */
 	lounge = false;
 	rest = true;
 
 	onReadout: ((r: Readout) => void) | null = null;
-	/**
-	 * The track played to its end rather than being stopped. Seeking and pausing both stop the
-	 * source node too, so those are filtered out here rather than at the callback.
-	 */
+	/** Fires only on natural completion; seeking and pausing also stop source nodes. */
 	onEnded: (() => void) | null = null;
-
-	/** Positive values render ahead, compensating for output latency. */
-	previewOffsetMs = 0;
 
 	private ctx: AudioContext | null = null;
 	private buffer: AudioBuffer | null = null;
@@ -127,9 +104,7 @@ export class Viz {
 	}
 
 	async loadAudio(bytes: ArrayBuffer): Promise<void> {
-		// Whatever is playing belongs to the track being replaced. Without this the old source
-		// keeps running, `playing` stays true, and the `play()` that follows returns early: the
-		// previous track carries on while the new one never starts.
+		// Stop the previous source before replacing its audio buffer.
 		this.pause();
 		this.ctx ??= new AudioContext();
 		this.gain ??= (() => {
@@ -147,8 +122,7 @@ export class Viz {
 		this.registry.clearGenerated();
 		for (const gen of show.generatedEffects) {
 			const compiled = compileGenerated(gen, this.geometry);
-			// A rejected effect is skipped rather than fatal: the rest of the show is still
-			// worth watching, and the cue referencing it simply leaves that layer dark.
+			// Rejected generated effects leave only their own layers dark.
 			if (compiled.def) this.registry.add(compiled.def);
 			else console.warn(`generated effect "${gen.id}" rejected`, compiled.failures);
 		}
@@ -250,22 +224,18 @@ export class Viz {
 	}
 
 	/**
-	 * Where the listener actually is, which is behind where the audio clock has been scheduled
-	 * to by however long the output path takes.
-	 *
-	 * Public because the room has to render this instant and not `position`. Anything driven
-	 * off the raw audio clock leads what is being heard by the whole output latency, which is
-	 * tens of milliseconds over a speaker and a few hundred over Bluetooth.
+	 * Audio position minus output latency. Rendering and hardware sync follow
+	 * this heard instant.
 	 */
 	get heardPosition(): number {
 		const latency =
 			(this.ctx as (AudioContext & { outputLatency?: number }) | null)?.outputLatency ??
 			this.ctx?.baseLatency ??
 			0.02;
-		return this.position - latency + this.previewOffsetMs / 1000;
+		return this.position - latency;
 	}
 
-	private publishReadout(dt: number, frame?: ShowFrame): void {
+	private publishReadout(dt: number, frame: ShowFrame): void {
 		this.fpsAcc += dt;
 		this.fpsFrames++;
 		if (this.fpsAcc >= 0.5) {
@@ -277,22 +247,15 @@ export class Viz {
 		this.readoutAcc += dt;
 		if (this.readoutAcc < 0.05) return;
 		this.readoutAcc = 0;
-		const f = frame ?? this.player.frame;
+		const f = frame;
 		this.onReadout?.({
 			fps: Math.round(this.fps),
-			// The heard instant, not the raw audio clock: every indicator fed from the
-			// readout (scrubber, timeline playhead, judge timestamps) marks what the ear
-			// is getting, and the raw clock leads it by the whole output latency - the
-			// same correction the room and the hardware sync already make. Paused audio
-			// has no output path, so the raw clock is the truth then.
+			// Playing indicators follow heard audio; paused audio has no output latency.
 			position: this.playing ? this.heardPosition : this.position,
 			duration: this.duration,
 			playing: this.playing,
 			bar: f.barIndex,
 			section: f.section,
-			energy: f.energy,
-			bpm: f.bpm,
-			cueBar: this.player.currentCue?.bar ?? -1,
 			resting: this.director.resting,
 			scene: this.director.sceneName,
 			roomBase: this.swatch(SLOT.base),

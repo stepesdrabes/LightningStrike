@@ -3,13 +3,7 @@ import type { Spectrogram } from './dsp/spectrogram.ts';
 import type { OnsetCurves } from './onsets.ts';
 import { PITCH_CLASSES } from './chroma.ts';
 
-/**
- * Everything reduced to one row per beat.
- *
- * Beat-synchronous aggregation is what makes repeated passages line up exactly in a
- * similarity matrix whatever the tempo, and it takes the row count from tens of thousands to
- * a few hundred, which is what puts an O(n^2) structure analysis within reach.
- */
+/** Beat aggregation aligns repeats across tempo changes and reduces quadratic structure costs. */
 export interface BeatFeatures {
 	count: number;
 	/** Beat start times; `time[count]` holds the end of the last beat. */

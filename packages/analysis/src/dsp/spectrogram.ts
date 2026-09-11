@@ -1,10 +1,7 @@
 import { RealFft, hannWindow } from './fft.ts';
 
-/**
- * A bank of triangular filters over FFT bins. Stored flat: band `b` covers bins
- * `start[b] .. start[b] + width[b] - 1` with weights at `offset[b]`.
- */
-export interface FilterBank {
+/** Flat triangular bank: band b spans start[b] through start[b]+width[b]-1, weights at offset[b]. */
+interface FilterBank {
 	bands: number;
 	start: Int32Array;
 	width: Int32Array;
@@ -82,7 +79,7 @@ export function logFilterBank(
 	return buildBank(fftSize, sampleRate, centres);
 }
 
-export function applyBank(mags: Float32Array, bank: FilterBank, out: Float32Array, at = 0): void {
+function applyBank(mags: Float32Array, bank: FilterBank, out: Float32Array, at = 0): void {
 	for (let b = 0; b < bank.bands; b++) {
 		const from = bank.start[b];
 		const n = bank.width[b];
@@ -93,7 +90,7 @@ export function applyBank(mags: Float32Array, bank: FilterBank, out: Float32Arra
 	}
 }
 
-export interface SpectrogramOptions {
+interface SpectrogramOptions {
 	fftSize: number;
 	hop: number;
 	bank: FilterBank;
@@ -116,12 +113,8 @@ export interface Spectrogram {
 }
 
 /**
- * One STFT pass reduced straight into the filterbank. The linear spectrogram is never kept:
- * at 100 fps a ten-minute track is a quarter of a gigabyte of it, and nothing downstream
- * wants bin resolution anyway.
- *
- * Frames are centred on their timestamp, so frame `f` reports what is happening at
- * `f * hop / sampleRate` rather than what happened over the window starting there.
+ * Reduce STFT directly into filterbank bands to avoid retaining a large linear spectrogram.
+ * Frame f is centred on f * hop / sampleRate.
  */
 export function computeSpectrogram(
 	signal: Float32Array,

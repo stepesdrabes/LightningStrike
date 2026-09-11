@@ -14,11 +14,7 @@ function idle(role: DeviceRole): HardwareStatus {
 	};
 }
 
-/**
- * A view onto the boards, mirroring the queue client: the server owns the sockets and this
- * reacts. Nothing here is optimistic, because the only thing worth reporting is what a board
- * actually said.
- */
+/** Reflect board reports from server-owned sockets without optimistic updates. */
 export class HardwareClient {
 	statuses = $state<HardwareStatus[]>(DEVICE_ROLES.map(idle));
 

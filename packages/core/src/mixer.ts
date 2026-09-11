@@ -29,21 +29,12 @@ const DEFAULT_BLEND: Record<LayerRole, BlendMode> = {
 };
 
 /**
- * The least cue intensity a hit is rendered at.
- *
- * A strobe or a slam is punctuation on the timeline, not part of the look it lands over, and
- * the planner puts the strobe that announces a drop inside the "breath" bar it has just
- * dimmed to six tenths of the passage: rendered at the breath's 0.31 to 0.47, Rock That
- * Body's first strobe reached byte 22 and the owner heard the strobes as "sometimes kinda
- * dim". The floor is a build cue's level (0.62 plus energy), where the same flashes were
- * judged right in the room, so a hit fired out of a hollow or a dimming build arrives at
- * the level a build would have given it and a hit fired out of anything louder is exactly
- * what it was. Measured over the corpus: 28 of 108 strobes sat under it, all in a breath.
+ * Minimum hit intensity, measured at a build cue's level so dim pre-drop cues retain
+ * punctuation.
  */
-export const HIT_INTENSITY_FLOOR = 0.68;
+const HIT_INTENSITY_FLOOR = 0.68;
 
-// Opacity budget per role. Without it the four additive layers reliably sum past white
-// and the palette stops being readable at exactly the loudest moment.
+// Role budgets preserve colour when additive layers overlap.
 export const DEFAULT_OPACITY: Record<LayerRole, number> = {
 	bed: 0.45,
 	rhythm: 0.8,
@@ -60,17 +51,8 @@ export class Layer {
 	blendMode: BlendMode;
 	enabled = true;
 	readonly buf: Float32Array;
-	readonly role: LayerRole;
 
-	/**
-	 * The effect being faded out, and what it was rendering with.
-	 *
-	 * A cue change is a hard cut and always has been: the desk fades the palette and the level, the
-	 * look itself arrives on the downbeat. That is right for a show and wrong for a room at rest,
-	 * where nothing is arriving and a cut is the only thing anyone would notice. So the outgoing
-	 * effect is kept alive for `fade` seconds when a caller asks for one, and both are rendered and
-	 * lerped. `setEffect` with no fade is the old behaviour exactly, down to the byte.
-	 */
+	/** Retain outgoing state for optional ambient crossfades; show cues default to hard cuts. */
 	private prevEffect: Effect | null = null;
 	private prevParams: Params = {};
 	private readonly prevBuf: Float32Array;
@@ -78,7 +60,6 @@ export class Layer {
 	private fadeLength = 0;
 
 	constructor(role: LayerRole, count: number) {
-		this.role = role;
 		this.buf = new Float32Array(count * 3);
 		this.prevBuf = new Float32Array(count * 3);
 		this.opacity = DEFAULT_OPACITY[role];
@@ -104,21 +85,9 @@ export class Layer {
 	}
 
 	/**
-	 * Render, and hand back whichever buffer holds the result.
-	 *
-	 * With nothing handing over that is the effect's own buffer, untouched, which is what keeps the
-	 * no-fade path byte-identical. Mid-handover it is `scratch`, because the two effects have to be
-	 * mixed before the blend mode rather than after it: only `add` distributes over a crossfade, and
-	 * a bed blends `over`.
-	 *
-	 * The mix is in light rather than in the authoring domain, which is not linear in it: a plain
-	 * lerp halves both effects at the midpoint, and half an authoring value is a fifth of the light,
-	 * so two looks that light different walls hand over through a visible dip. Squaring, mixing and
-	 * taking the root back preserves the light where they are disjoint and changes nothing where
-	 * they agree.
-	 *
-	 * The outgoing effect keeps its own buffer, so a trail on its way out decays against its own
-	 * history rather than against its replacement's.
+	 * Mix into scratch before the layer blend mode; only add distributes over a crossfade.
+	 * Squared-light blending avoids midpoint dimming. Keep separate buffers so outgoing trails
+	 * decay against their own history. Without a fade, return the original buffer unchanged.
 	 */
 	render(ctx: RenderCtx, scratch: Float32Array): Float32Array {
 		ctx.p = this.params;
@@ -173,26 +142,14 @@ export class Mixer {
 	motion = 1;
 	/** Cue-level ceiling, 0..1. */
 	intensity = 1;
-	/**
-	 * A cut over everything, 0..1: the blackout hit. Kept apart from `intensity` because the
-	 * master layer is floored against the cue's level below, and a cut is the one thing a hit
-	 * may never be floored out of.
-	 */
+	/** Blackout cut, 0..1, separate from the cue intensity so the hit floor cannot defeat it. */
 	dim = 1;
 	/** User master fader, 0..1. */
 	brightness = 1;
 	/**
-	 * House floor: the level the room sits at when the cue's own layers are not carrying it.
-	 *
-	 * Every venue has one and this room did not, which is why its quiet passages measured byte 3
-	 * with 5% of the LEDs lit. The cause is structural rather than a bad number somewhere: a bed
-	 * is written to sit UNDER something, so an intro carrying a bed and one texture emits about
-	 * 0.2 before the output chain, and gamma 2.2 turns that into nothing at any intensity the
-	 * cue is allowed to ask for. No dimmer can lift a room that is not being lit.
-	 *
-	 * Added after the cue's intensity rather than before it, because it is a floor and not a
-	 * layer: a breakdown asking for 40% is asking for 40% of its LOOK, not for the room to go
-	 * out. A void sets this to zero, which is what makes a void still mean darkness.
+	 * House floor after cue intensity, preserving light when quiet layers cannot carry the
+	 * room.
+	 * Void cues set it to zero.
 	 */
 	floor = 0;
 
@@ -230,13 +187,7 @@ export class Mixer {
 		this.finish(f);
 	}
 
-	/**
-	 * The layers, the cue's ceiling and the house floor, into `frame`.
-	 *
-	 * Split from `finish` so two of these can be crossfaded as one picture before the output chain
-	 * runs. Everything up to here is in the authoring domain, where light adds linearly and a
-	 * crossfade means what it says; everything after it is one-per-room and must happen once.
-	 */
+	/** Compose in the authoring domain; callers may blend stages before running finish once. */
 	compose(f: ShowFrame): void {
 		const ctx = this.ctx;
 		ctx.f = f;
@@ -246,9 +197,7 @@ export class Mixer {
 		this.frame.fill(0);
 
 		const master = this.layers.master;
-		// The additive master joins after the cue's dimmer, floored: a hit is not part of the
-		// look it lands over. Any other blend mode on the master is a look and takes the cue's
-		// level with the rest.
+		// Additive punctuation joins after cue dimming; other master modes take the cue level.
 		const hitLast = master.blendMode === 'add';
 		for (const role of LAYER_ROLES) {
 			const layer = this.layers[role];
@@ -259,9 +208,7 @@ export class Mixer {
 			blend(this.frame, out, layer.blendMode, layer.opacity);
 		}
 
-		// Exposure headroom above 1.0 on purpose: the 3D preview tone-maps HDR values into
-		// a blown-out core with coloured fringes, which is what a camera sees looking at an
-		// LED. Clipping here instead would make them read as flat stickers.
+		// Retain HDR headroom for the preview's bright cores and coloured fringes.
 		const scale = this.intensity * this.dim * this.brightness * 1.4;
 		if (scale !== 1) for (let i = 0; i < this.frame.length; i++) this.frame[i] *= scale;
 
@@ -273,13 +220,10 @@ export class Mixer {
 		}
 
 		if (this.floor > 0) {
-			// The room's own home colour, so the floor reads as the show being lit rather than as
-			// a grey wash somebody forgot to turn off.
+			// Use the show's home colour for the floor.
 			sample(this.palette, SLOT.base, this.brightness, this.floorRgb);
-			// A black-level lift, not a clamp. Clamping to the floor erases everything the cue's
-			// own layers are doing below it, and a quiet passage is exactly where they are all
-			// below it: the outro came out a dead flat wash whose peak equalled its floor. This
-			// way the layers still ride on top, compressed into the headroom that is left.
+			// Lift the black level instead of clamping, preserving layer movement below the
+			// floor.
 			for (let i = 0; i < this.frame.length; i += 3) {
 				for (let c = 0; c < 3; c++) {
 					const lift = this.floorRgb[c] * this.floor;
@@ -289,15 +233,7 @@ export class Mixer {
 		}
 	}
 
-	/**
-	 * Slew, auto-expose, compress and quantize `frame` into `bytes`.
-	 *
-	 * `alive` freezes auto-exposure. It defaults to the same question the mixer has always asked -
-	 * is anything playing loudly enough to be worth exposing for - and is a parameter so a caller
-	 * that knows better can say so. A room at rest is not a silent passage of a track: its level is
-	 * chosen rather than measured, and an exposure that pulls it back toward the target is undoing
-	 * that decision.
-	 */
+	/** Apply the output chain once. Set alive false to freeze exposure during silence or rest. */
 	finish(f: ShowFrame, alive = f.energy > 0.02): void {
 		this.slew.apply(this.frame, f.dt);
 		this.meanLevel.apply(this.frame, f.dt, alive);

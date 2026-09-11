@@ -7,16 +7,11 @@ import { autopilot } from './autopilot.ts';
 import { ingestDetached } from './ingestDetached.ts';
 import { queue } from './queueStore.ts';
 
-/**
- * yt-dlp's own stage words, and the analyser's, mapped onto the four the queue row draws.
- * Anything unrecognised leaves the status alone and only updates the message, so a new stage
- * appearing upstream shows up as text rather than as a wrong chip.
- */
+/** Map known ingest stages to queue states; unknown messages leave status unchanged. */
 const STAGES: Record<IngestStage, ItemStatus> = {
 	resolving: 'resolving',
 	downloading: 'downloading',
-	// Everything past the download is analysis as far as a row is concerned. Enrichment used
-	// to be missing here, which left the chip reading "Downloading" for the whole lookup.
+
 	'looking the track up': 'analysing',
 	cached: 'analysing',
 	decoding: 'analysing',
@@ -37,16 +32,9 @@ const LABELS: Record<IngestStage | 'composing', string> = {
 	composing: 'Composing the show'
 };
 
-/**
- * Prepare a track: download it if needed, analyse it, and compose the engine's show so the
- * room is lit the moment the audio is.
- *
- * Lifted from the ingest route unchanged in behaviour. An existing show for the same grid is
- * left alone because it may be one Claude has already revised.
- */
+/** Prepare audio and analysis, preserving an existing authored show on the same grid. */
 async function prepare(item: QueueItem, onStage: (stage: string) => void) {
-	// The row already carries the sleeve YouTube Music listed it with, which is squarer and
-	// cleaner than the still yt-dlp would find for the same track.
+	// Prefer the catalogue sleeve already on the row to yt-dlp's video still.
 	const result = await ingestDetached(item.source, {
 		onProgress: onStage,
 		artwork: item.thumbnail || undefined
@@ -56,11 +44,8 @@ async function prepare(item: QueueItem, onStage: (stage: string) => void) {
 	try {
 		const existing = JSON.parse(await readFile(showPath(result.id), 'utf8')) as Show;
 		const author = existing.authoredBy ?? (existing.generatedEffects.length > 0 ? 'claude' : 'engine');
-		// A model-authored show is kept across engine versions - it is the one artifact money
-		// was spent on. An engine show is kept only while nothing under it has moved: an older
-		// build's show never hears an engine fix, and the audio hash cannot see a re-analysis -
-		// the same file gains a different section table, and cues composed against the old one
-		// keep pounding through a passage the analyser has since relabelled.
+		// Keep paid model shows across engine versions; invalidate engine shows when either the grid or
+		// engine changes.
 		if (
 			existing.analysisHash === result.analysis.hash &&
 			(author !== 'engine' || (existing.version === SHOW_VERSION && result.fromCache))
@@ -100,32 +85,18 @@ async function prepare(item: QueueItem, onStage: (stage: string) => void) {
 }
 
 /**
- * How many times a row is fetched before it is called failed, counting the first.
- *
- * Two layers, deliberately: the fetcher retries three times seconds apart inside one attempt,
- * and this spaces whole attempts a minute or so apart. Of fifty tracks fetched in one sitting
- * twelve returned 403 and a later re-run recovered seven, so the slow layer is the one that
- * actually pays.
+ * Bound whole-attempt retries beyond yt-dlp's short retries; transient 403s can take a minute
+ * to clear.
  */
 const QUEUE_ATTEMPTS = 3;
 const RETRY_WAIT_MS = [20000, 60000];
 
 /**
- * One ingest at a time, ever.
- *
- * The beat tracker is an ONNX graph that will happily take every core it is offered, so two
- * of them running together is slower than the same two in sequence and starves the render
- * loop besides. Serialising also means the track about to play is never queued behind three
- * speculative ones.
+ * Serialize ONNX analysis to avoid CPU contention and keep the next track ahead of speculative
+ * work.
  */
 class IngestRunner {
-	/**
-	 * Set before the first await, not after it.
-	 *
-	 * Checking a flag and then awaiting before setting it is not a guard at all: two calls in
-	 * the same turn both pass. Two browsers connecting at once is enough to do it, and every
-	 * mutation path calls this.
-	 */
+	/** Set the guard before the first await so simultaneous callers cannot both enter. */
 	private busy = false;
 
 	/** Prepare the current row, then the one after it, and stop. */
@@ -142,19 +113,13 @@ class IngestRunner {
 				await this.run(target);
 				more = true;
 			} else {
-				// Nothing left to prepare is exactly when the queue is about to run out, so it is
-				// also when the radio gets its turn. Here rather than on a timer or a queue
-				// subscription: this already runs after every mutation, and nothing fires without
-				// an inbound request, so a flag left on cannot wake the machine at four in the
-				// morning with nobody in the room.
+				// Ask radio when preparation empties, following requests rather than an unattended timer.
 				more = await autopilot.topUp(Date.now());
 			}
 		} finally {
 			this.busy = false;
 		}
-		// The queue may have moved on while that was happening, so ask again rather than
-		// assuming the next candidate is the one that was next when this started. Outside the
-		// finally, or the flag would still be set when the recursion re-enters.
+		// Recheck the queue after clearing the guard; it may have changed during preparation.
 		if (more) void this.pump();
 	}
 
@@ -162,8 +127,7 @@ class IngestRunner {
 		queue.patch(item.key, { status: 'resolving', message: 'Resolving' });
 		try {
 			const { result, authored, loungeOnly, trustNote } = await prepare(item, (stage) => {
-				// A stage moves the chip; a free-text note (a retry, a model that failed to load)
-				// only changes what the row says, leaving the status where it was.
+				// Only recognised stages change status; free-text notes update the message.
 				const status = STAGES[stage as IngestStage];
 				const message = LABELS[stage as IngestStage] ?? stage;
 				queue.patch(item.key, status ? { status, message } : { message });
@@ -189,11 +153,8 @@ class IngestRunner {
 			const reason = raw.split('\n')[0].slice(0, 200);
 			const spent = (item.attempts ?? 1) + 1;
 
-			// The fetcher already tried three times inside one prepare, seconds apart. YouTube
-			// hands out 403s that outlast that and clear a minute later, so the row goes back in
-			// line rather than stopping - bounded, and only for a failure worth asking again.
-			// The wait is taken here, inside the serialised runner, so nothing is left armed to
-			// wake the machine on its own.
+			// Retry transient fetch failures inside the serial runner, with no detached timer left to wake
+			// later.
 			if (isTransientFetchError(raw) && spent <= QUEUE_ATTEMPTS) {
 				queue.patch(item.key, {
 					status: 'pending',
@@ -205,9 +166,7 @@ class IngestRunner {
 			}
 
 			queue.patch(item.key, { status: 'error', attempts: spent, message: reason });
-			// A radio pick that will not download is usually the network or a stale yt-dlp
-			// rather than that track, so the count is what stops it queueing all night into
-			// the same failure.
+			// Bound failed radio picks so network or yt-dlp failures cannot enqueue indefinitely.
 			if (item.auto) autopilot.noteFailure();
 		}
 	}

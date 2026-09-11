@@ -1,15 +1,8 @@
 <!doctype html>
 <meta charset="utf-8" />
 <title>LightningStrike</title>
-<!--
-	What the window holds while the server comes up.
-
-	The sidecar is a Node process with an ONNX runtime and a SvelteKit graph behind it, so a cold
-	start is seconds; waiting for it before opening a window is what made a launch look like a
-	hang. This is on screen first, and the shell navigates away from it once the server answers -
-	or calls `lightningstrikeFailed` and leaves the reason here, because a Finder-launched app has
-	no console for anyone to read.
--->
+<!-- Show startup progress before Node is ready; the shell reports failures here without a
+     console. -->
 <style>
 	html,
 	body {
@@ -74,7 +67,7 @@
 	</span>
 	<p id="why"></p>
 	<script>
-		// Called from the shell. Nothing else on this page runs.
+
 		window.lightningstrikeFailed = (message) => {
 			document.getElementById('why').textContent = message;
 			document.body.classList.add('failed');

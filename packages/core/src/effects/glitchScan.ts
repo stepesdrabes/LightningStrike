@@ -11,13 +11,8 @@ import { INTENSITY, param } from './helpers.ts';
 const MAX_SEGMENTS = 32;
 
 /**
- * Random in space, never in time: which segments light is a hash of the grid slot index,
- * but the timing is always on the grid. Every fourth bar inverts figure and ground, so the
- * picked segments punch holes in a dim field instead of flashing over darkness.
- *
- * Eighths by default: sixteenths at 128 bpm are 8.5 Hz of random segments, which is the
- * band where a flashing room reads busiest, and the planner raises the rate to sixteenths
- * only where the hats actually play them.
+ * Hash spatial choices on the grid. Default eighths avoid overly busy sixteenth flashes;
+ * the planner enables sixteenths where the hats support them.
  */
 export const glitchScan: EffectDef = {
 	id: 'glitchScan',
@@ -41,8 +36,7 @@ export const glitchScan: EffectDef = {
 		const ring = ringsFor(g).perimeter;
 		const segEnv = new Float32Array(MAX_SEGMENTS);
 		const lit = new Float32Array(MAX_SEGMENTS);
-		// Sampled once, when a segment fires. A colour read every frame would follow the
-		// spectrum's own noise; read on the 16th grid it can only change when the segment does.
+		// Sample colour only when a segment fires so it stays fixed through that gesture.
 		const segSlot = new Float32Array(MAX_SEGMENTS).fill(SLOT.base);
 		const level = new BeatHold(0.5);
 		let lastSlot = -1;
@@ -67,9 +61,8 @@ export const glitchScan: EffectDef = {
 					for (let c = 0; c < count; c++) {
 						const idx = Math.floor(hash01(slot * 13 + c * 101) * segs);
 						segEnv[idx] = 1;
-						// How loud the spectrum is where that segment sits decides whether it
-						// reads as the room's colour or as the answer to it. Three stops, not a
-						// ramp: everything between two designed hues is a hue nobody chose.
+						// Use three colour stops; a continuous ramp would spend time on
+						// undeclared hues.
 						const band = bandAt(f, (idx + 0.5) / segs);
 						segSlot[idx] = band > 0.6 ? SLOT.accent : band > 0.3 ? SLOT.third : SLOT.base;
 					}
@@ -80,8 +73,8 @@ export const glitchScan: EffectDef = {
 				const held = level.update(f.energy, f.beat, f.dt, f.beatPeriod);
 				const gain = (0.5 + p.intensity * 1.0) * clamp(0.6 + held * 0.4);
 				const segPx = ring.length / segs;
-				// Three pixels of crossfade at every seam: the segments still snap in TIME, but
-				// a hard edge in space read as a row of switched fixtures from under the frame.
+				// Three-pixel seam crossfades soften spatial edges while preserving timed
+				// snaps.
 				const feather = 3 / segPx;
 
 				for (let s = 0; s < segs; s++) {

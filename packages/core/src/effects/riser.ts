@@ -9,10 +9,7 @@ import { sinewave } from '../dsl/wave.ts';
 import { ringU } from '../dsl/space.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-/**
- * In ring coordinates. A hard 0/1 front steps LED to LED as it advances, and a bar creeping
- * one pixel at a time reads as juddering rather than as filling.
- */
+/** Soften the ring front so slow fills do not judder one LED at a time. */
 const FRONT_FEATHER = 0.004;
 
 export const riser: EffectDef = {
@@ -30,9 +27,7 @@ export const riser: EffectDef = {
 	},
 	params: [INTENSITY, param('ticks', 'Segment ticks', 8, 0, 16, 1), param('bleach', 'Bleach', 0.8)],
 	create(g) {
-		// Outside a build there is no timeline to follow, so the fill follows the air band. It
-		// has to be latched first: the ratchet collapses instantly when its target dips, and an
-		// unlatched band dips several times a beat.
+		// Outside builds, latch the air-band target so the instant-down ratchet cannot shimmer.
 		const air = new BeatHold(0.5);
 		const tilt = new BeatHold(0.25);
 		let progress = 0;
@@ -57,8 +52,8 @@ export const riser: EffectDef = {
 				const level = (0.5 + p.intensity * 0.9) * (0.5 + 0.5 * progress);
 
 				for (let i = 0; i < g.count; i++) {
-					// Mirrored around each run's own start, so the two fronts meet at the back wall
-					// on the drop downbeat and the beam runs the same race along its own length.
+					// Mirror fronts to meet at the back on the drop; the beam fills along its
+					// own length.
 					const along = ringU(g, i);
 					const d = Math.min(along, 1 - along);
 					let v = 1 - smoothstep(reach - FRONT_FEATHER, reach + FRONT_FEATHER, d);

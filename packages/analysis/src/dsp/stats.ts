@@ -42,10 +42,7 @@ export function stdev(a: ArrayLike<number>): number {
 	return Math.sqrt(acc / n);
 }
 
-/**
- * Rescale to 0..1 between two quantiles, so a threshold means the same thing on a squashed
- * master as on a dynamic one and a single outlier cannot set the top.
- */
+/** Scale between two quantiles to 0..1 so mastering outliers cannot set thresholds. */
 export function normalise(
 	a: ArrayLike<number>,
 	loQ = 0.02,
@@ -126,14 +123,7 @@ export function sampleAt(a: ArrayLike<number>, x: number): number {
 	return a[i] * (1 - f) + a[i + 1] * f;
 }
 
-/**
- * Centred running median, radius `r`, in place of a smoothing filter.
- *
- * Two properties an exponential filter cannot have. It is CENTRED, so it has no group delay: an
- * offline analyser is not causal and paying a lag for smoothing is a realtime tax we do not owe.
- * And a median preserves a step edge where a mean rounds it off, so an impulse survives while the
- * jitter around it does not - which is the difference between smoothing a spectrum and blurring it.
- */
+/** Centred median preserves step edges without group delay; offline analysis needs no causal lag. */
 export function centredMedian(a: ArrayLike<number>, r: number, out = new Float32Array(a.length)): Float32Array {
 	const n = a.length;
 	if (n === 0 || r <= 0) {

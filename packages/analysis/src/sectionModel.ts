@@ -1,22 +1,9 @@
 import { SECTION_FEATURE_COUNT } from './sectionFeatures.ts';
 
 /**
- * Groove against drop, as softmax weights over `SECTION_FEATURES`.
- *
- * GENERATED. Do not hand-edit: the coefficients are indexed by feature ORDER, so an edit that
- * looks local is a different model. The fitter that produced them is no longer in the tree, so
- * changing `SECTION_FEATURES` means writing a new one and refitting, not adjusting numbers here.
- *
- * Fitted on 115 Harmonix tracks annotated with musical function. Cross-validated five ways
- * and grouped BY TRACK, so it is scored only on tracks the fit never saw: it calls this decision
- * right on 69.1% of annotated frames, against 46.2% for always answering the commoner of
- * the two. The hand-written thresholds it replaces reached F1 47.2 on groove and 53.6 on drop
- * where a fit on the same features reaches 62.0 and 67.2.
- *
- * This is the only label a model decides here. Build, breakdown, void, intro and outro keep their
- * rules, and the rules win on them: the build walk-back scores 15.3 F1 against a model's 0.0,
- * because a build is defined by where it is GOING and no summary of what a section contains can
- * see that.
+ * Generated groove/drop weights, fitted on 115 Harmonix tracks. Do not hand-edit: coefficients
+ * follow SECTION_FEATURES order. Its fitter is absent; feature changes require a new fit.
+ * Other labels retain positional, kit, and silence rules.
  */
 
 /** Weights for [groove, drop]. */
@@ -30,11 +17,7 @@ if (WEIGHTS[0].length !== SECTION_FEATURE_COUNT) {
 	);
 }
 
-/**
- * The model's margin toward drop: positive reads as a drop, and the magnitude is how
- * confidently. Exposed so repeats of the same material can be decided once, on their
- * pooled evidence, instead of each landing on its own side of zero.
- */
+/** Signed drop margin for pooling repeat evidence before committing to a label. */
 export function dropMargin(x: readonly number[]): number {
 	let z = BIAS[1] - BIAS[0];
 	for (let d = 0; d < SECTION_FEATURE_COUNT; d++) z += (WEIGHTS[1][d] - WEIGHTS[0][d]) * x[d];

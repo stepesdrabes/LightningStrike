@@ -5,12 +5,7 @@ import type { SurfaceFactory } from './surfaceMaterial.ts';
 const UP = new THREE.Vector3(0, 0, 1);
 const X = new THREE.Vector3(1, 0, 0);
 
-/**
- * Oriented from an explicit basis rather than from Euler angles, whose order is easy to get
- * subtly wrong here. Wrong rotates the UV axes, and the spill shader then measures
- * distance-from-strip along the wall's length instead of its height, so the falloff never applies
- * and the whole wall washes out uniformly.
- */
+/** An explicit basis preserves the UV axes the spill shader uses to measure wall height. */
 function orient(mesh: THREE.Object3D, dir: THREE.Vector3, up: THREE.Vector3): void {
 	const z = new THREE.Vector3().crossVectors(dir, up).normalize();
 	mesh.quaternion.setFromRotationMatrix(
@@ -44,12 +39,8 @@ export function buildRoom(spec: RoomSpec, surfaces: SurfaceFactory): THREE.Mesh[
 		meshes.push(mesh);
 	}
 
-	// The floor is straight under a downward-facing fixture and is the brightest surface in the
-	// room; the ceiling catches none of it and only closes the box.
-	//
-	// `orient` maps the plane's own x onto `dir` and its y onto `up`, so both panels have to put
-	// width on the room's x: naming the axes the other way round builds a 4 x 5 m panel over a
-	// 5 x 4 m room, which reads as the walls not meeting it.
+	// The floor receives the downlight; the ceiling only closes the room.
+	// Align panel width with room x so rectangular panels meet the walls.
 	for (const [z, dir, base, ambient] of [
 		[H, new THREE.Vector3(0, -1, 0), 0x090910, 0.14],
 		[0, new THREE.Vector3(0, 1, 0), 0x0a0a0e, 0.1]

@@ -1,21 +1,6 @@
-//! Letting the webview draw as fast as the display can.
-//!
-//! WKWebView paces `requestAnimationFrame` at 60 Hz whatever the panel is capable of, which on a
-//! ProMotion Mac is half of what the room could be shown at. Safari does not, because the setting
-//! that governs it - `PreferPageRenderingUpdatesNear60FPSEnabled` - is honoured for Safari and not
-//! for an embedded webview. WebKit bug 294338 has been open on exactly that since June 2025, and
-//! no public API exposes the preference. The only route is the one Safari itself uses.
-//!
-//! So this is a private API, deliberately: `+[WKPreferences _features]` for the catalogue and
-//! `-[WKPreferences _setEnabled:forFeature:]` to spend it. It matters less here than it would
-//! elsewhere - the app is unsigned and runs on the machine that built it, so there is no review to
-//! fail - but it is still a selector Apple never promised. Every call is guarded, and if any of
-//! them ever goes away the room draws at 60 again, which is what it did before this existed.
-//!
-//! The catalogue is a CLASS method while the setter is an instance one, and that asymmetry is the
-//! whole trap: asking the preferences object whether it responds to `_features` says no, which
-//! reads exactly like a feature that has been withdrawn. It has not - there are 579 of them on
-//! macOS 26.3, and this is one.
+//! Lift WKWebView's 60 Hz cap via guarded private selectors (WebKit bug 294338). Missing selectors
+//! leave the 60 Hz fallback intact. _features is a class method; _setEnabled:forFeature: is an
+//! instance method.
 
 #[cfg(target_os = "macos")]
 use objc2::rc::Retained;

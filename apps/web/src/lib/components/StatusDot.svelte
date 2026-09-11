@@ -4,8 +4,7 @@
 	let { state, size = 7 }: { state: LinkState; size?: number } = $props();
 </script>
 
-<!-- Shape carries nothing; colour and motion do. Only a live stream pulses, so a glance at
-     the top bar tells a board that is merely reachable from one that is being fed. -->
+<!-- Pulse only for live streaming, distinguishing reachable boards from active output. -->
 <span class="dot {state}" style:width={`${size}px`} style:height={`${size}px`}></span>
 
 <style>

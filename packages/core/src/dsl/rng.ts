@@ -33,10 +33,8 @@ export class Rng {
 }
 
 /**
- * Stateless per-index hash in 0..1. Use for fixed constellations and stateless twinkle.
- *
- * Every step re-coerces to unsigned: `^` yields a signed int32 in JavaScript, and a negative
- * result here becomes negative brightness or an out-of-range index at the call site.
+ * Stateless hash in 0..1. Re-coerce each XOR to unsigned to avoid negative brightness or
+ * indices.
  */
 export function hash01(k: number): number {
 	let h = (k | 0) >>> 0;

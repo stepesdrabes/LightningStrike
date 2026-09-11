@@ -2,29 +2,17 @@ import type { Geometry, StripSpec } from '../contracts/room.ts';
 import { stampGaussian } from './buffer.ts';
 import { clamp, frac } from './math.ts';
 
-/**
- * One LED's position along the perimeter ring, falling back to its own strip for the beam.
- * The default coordinate for anything that should read as travelling around the room.
- */
+/** Perimeter coordinate, falling back to the beam's strip coordinate. */
 export function ringU(g: Geometry, i: number): number {
 	return g.perim[i] >= 0 ? g.perim[i] : g.local[i];
 }
 
-/**
- * Which room axis a run spans. Runs are axis-aligned by construction, so this is exact.
- *
- * How to tell one run from the opposite pair. Every LED in this fixture faces the same way, so
- * a run's `normal` says nothing about which run it is; asking it was only ever a proxy for this
- * question and stopped answering it the moment the light stopped being on the walls.
- */
+/** Axis-aligned runs share a downward normal; their spanned axis distinguishes them. */
 export function stripAxis(s: StripSpec): 'x' | 'y' {
 	return Math.abs(s.end[0] - s.start[0]) >= Math.abs(s.end[1] - s.start[1]) ? 'x' : 'y';
 }
 
-/**
- * A 1-D topology over the room, so a stateful effect (shift register, trail, chase) can
- * be written once and run around the frame's perimeter as a seamless ring.
- */
+/** Ring topology for seamless perimeter trails and chases. */
 export interface Ring {
 	name: string;
 	/** Ring position -> global LED index. */
@@ -132,11 +120,7 @@ export function pxPerSecond(ring: Ring, metresPerSecond: number): number {
 	return (metresPerSecond / ring.metres) * ring.length;
 }
 
-/**
- * Gaussian blob at a sub-pixel position on one strip, clipped to that strip. Strips are
- * concatenated in the global buffer, so an unclipped blob near the west wall's end lands
- * on the ceiling beam, which is nowhere near it in the room.
- */
+/** Clip sub-pixel blobs to their strip so concatenated buffers cannot leak onto the beam. */
 export function stampOnStrip(
 	buf: Float32Array,
 	count: number,
@@ -150,21 +134,14 @@ export function stampOnStrip(
 }
 
 /**
- * Where the stereo image sits across the room's width, as a 0..1 x-coordinate.
- *
- * A bias, never a position: pan is a property of the mix, not of the room, so hard left
- * reaches only `reach` of the way to the wall - an effect that maps it straight onto a
- * wall gets a rig that lurches whenever a synth pad happens to be wide. Multiply the
- * result's excursion by `f.panWidth` where a mono passage should sit centred.
+ * Stereo bias in 0..1 x-space, limited by reach to avoid lurching across the room.
+ * Scale the excursion by panWidth when mono passages should stay centred.
  */
 export function panU(pan: number, reach = 0.35): number {
 	return 0.5 + clamp(pan, -1, 1) * reach;
 }
 
-/**
- * Ways of laying a 1-D pattern across the room. Any pattern crossed with any projection
- * is a distinct look, which is where most of the variety in this system comes from.
- */
+/** 1-D room projections, reusable across spatial patterns. */
 export type Projection =
 	| 'perimeter'
 	| 'radial'

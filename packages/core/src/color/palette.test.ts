@@ -3,10 +3,6 @@ import { PALETTE_ANCHORS, SLOT } from '../contracts/palette.ts';
 import { hsv2rgb } from './hsv.ts';
 import { makePalette, sample } from './palette.ts';
 
-/**
- * Every effect in the catalog addresses colour by slot and nothing else, so a slot that does
- * not deliver the colour the show declared is a defect every effect inherits at once.
- */
 describe('palette slots', () => {
 	const cases: [number, number, number][] = [
 		[0, 180, 60],

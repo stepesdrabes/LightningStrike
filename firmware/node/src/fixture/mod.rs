@@ -1,6 +1,5 @@
-//! What this board drives, the one thing the two builds differ by. Both expose the same
-//! surface, so nothing above this module branches on which one was linked in, and `claim` hands
-//! back what it did not want as a [`Board`], which makes the pin budget a compile error.
+//! Both fixtures expose one interface. claim returns spare peripherals as [`Board`], making pin
+//! conflicts compile errors.
 //!
 //! [`Board`]: crate::board::Board
 

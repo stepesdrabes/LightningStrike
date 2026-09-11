@@ -1,5 +1,4 @@
-//! The control vocabulary: what a phone can say to the light and what it hears back. The DTOs
-//! are the JSON shapes; `Patch` and `Command` are what reaches the engine after validation.
+//! JSON DTOs and the validated Patch/Command vocabulary sent to the engine.
 
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -94,11 +93,8 @@ impl PatchDto<'_> {
 #[derive(Serialize, Debug)]
 pub struct InfoDto<'a> {
 	pub name: &'a str,
-	/// The board's own address, dotted-quad, empty before DHCP has landed.
-	///
-	/// Redundant to whoever already routed a request here, and the one thing a browser cannot
-	/// work out for itself: a page opened at `room-bounce.local` has no way to learn the subnet
-	/// it is on, and that subnet is what the controller sweeps to find the other lights.
+	/// Board IPv4 dotted-quad, empty before DHCP. Needed for subnet discovery from .local pages,
+	/// whose browser cannot resolve the address itself.
 	pub ip: &'a str,
 	pub firmware: &'a str,
 	#[serde(rename = "uptimeS")]

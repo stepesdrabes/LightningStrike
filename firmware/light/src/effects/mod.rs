@@ -1,5 +1,4 @@
-//! Standalone effects, one per file. Each yields linear RGBW emitter values; whatever measured
-//! trims a fixture carries are applied downstream, so an effect never knows a strip's facts.
+//! Linear RGBW effects, independent of fixture-specific trims applied downstream.
 
 pub mod fire;
 pub mod twinkle;

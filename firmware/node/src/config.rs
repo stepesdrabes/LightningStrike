@@ -4,8 +4,7 @@ pub const WIFI_PASSWORD: &str = env!("WIFI_PASSWORD");
 /// What WLED listens on, and therefore what the host sends to with no configuration.
 pub const DDP_PORT: u16 = 4048;
 
-/// Where the once-a-second stats line is mirrored, for watching a board that is already on a
-/// wall: `nc -lu 4049`.
+/// Once-per-second telemetry port: nc -lu 4049.
 pub const STATS_PORT: u16 = 4049;
 
 /// The light's own control plane, so a phone needs nothing but the address.

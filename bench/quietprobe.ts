@@ -14,20 +14,10 @@ import { CACHE_DIR } from '@mv/analysis';
 
 
 /**
- * What each bed and accent actually delivers over the REAL quiet sections of the cache.
- *
- * The effect gate asks a version of this of a synthesised passage, and it answers
- * it differently: its spectrum spreads a wandering peak across every band, where a real sparse
- * intro has content in a handful of bands and silence in the rest. Ranked on the synthetic
- * journey, `nebula` and `harmonicRibbon` look like the reactive pair; substituted into a real
- * intro they delivered 0.65 bytes of movement against the 1.27 of the pair they replaced, while
- * `spectrumBed` and `bandBloom` delivered 2.24. A metric that reverses the ranking of the thing
- * it is selecting for is worse than no metric.
- *
- * So this one substitutes each candidate into the quiet cues of every cached track and renders
- * them, which is slow and is the point. `taste.quiet` is generated from its output.
- *
- *   node bench/quietprobe.ts [--role bed] [--limit 8]
+ * Generate taste.quiet by substituting each candidate into real cached quiet cues.
+ * Synthetic spectra distribute energy unlike sparse recordings and can reverse effect
+ * rankings.
+ * node bench/quietprobe.ts [--role bed] [--limit 8]
  */
 
 const argv = process.argv.slice(2);

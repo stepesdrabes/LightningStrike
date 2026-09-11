@@ -1,10 +1,7 @@
 <script lang="ts">
 	import Icon from './Icon.svelte';
 
-	/**
-	 * Eleven colours worth having on a wall, warm first, plus the picker: twelve tiles fill the
-	 * six-column grid exactly, and a thirteenth would sit alone on a row of its own.
-	 */
+	/** Eleven colours plus the picker fill two six-column rows. */
 	const PRESETS: readonly string[] = [
 		'#ffd6aa',
 		'#ffffff',

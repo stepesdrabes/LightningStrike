@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Show, TrackAnalysis, TrackContext } from '@mv/core';
-	import { barAtTime, barTimeAt, tempoSegments } from '@mv/core';
+	import { tempoSegments } from '@mv/core';
 	import { Viz, type Readout } from '$lib/viz.svelte.ts';
+	import { createArrangementEditor } from '$lib/arrangement.svelte.ts';
 	import { QueueClient } from '$lib/queue.svelte.ts';
 	import { HardwareClient } from '$lib/hardware.svelte.ts';
 	import { installHint, readShell } from '$lib/shell.svelte.ts';
@@ -13,7 +14,6 @@
 	import type {
 		AuthorEffort,
 		AuthorEvent,
-		JudgedSection,
 		Judgement,
 		JudgementPatch,
 		LibraryEntry,
@@ -50,9 +50,6 @@
 		playing: false,
 		bar: 0,
 		section: 'intro',
-		energy: 0,
-		bpm: 0,
-		cueBar: -1,
 		resting: false,
 		scene: '',
 		roomBase: 'transparent',
@@ -64,7 +61,7 @@
 	let show = $state<Show | null>(null);
 	let meta = $state<TrackMeta | null>(null);
 	let trackId = $state<string | null>(null);
-	let load = $state<LoadState>({ phase: 'idle', message: '', progress: null });
+	let load = $state<LoadState>({ phase: 'idle', message: '' });
 	let log = $state<string[]>([]);
 	let steps = $state<Step[]>([]);
 	let warnings = $state<string[]>([]);
@@ -74,8 +71,7 @@
 		authorBackend: 'claude',
 		authorModel: 'claude-opus-5',
 		authorEffort: 'high',
-		// Empty until the settings arrive, which is what the menu has to survive rather than a
-		// guess at the catalogue that could disagree with the server's.
+		// Use the server catalogue once settings arrive; do not guess model choices.
 		authorModels: [],
 		outputOffsetMs: 0,
 		outputFps: DEFAULT_OUTPUT_FPS,
@@ -94,13 +90,7 @@
 	let shown = $state(0);
 	let searchOpen = $state(false);
 	let searchSeed = $state('');
-	/**
-	 * The slice of the track the timeline lanes are showing.
-	 *
-	 * Held here rather than in the drawer because two things read it - the lanes and the
-	 * scrubber's bracket - and because the drawer unmounts when it closes, which would otherwise
-	 * throw the zoom away every time somebody glanced at the room.
-	 */
+	/** Share the timeline window with the scrubber outside the drawer's mount lifetime. */
 	let laneView = $state<TimeWindow>(FULL_WINDOW);
 	let hardwareOpen = $state(false);
 	let libraryOpen = $state(false);
@@ -109,52 +99,44 @@
 	/** By track id. Loaded once when the panel first opens; writes go through saveJudgement. */
 	let judgements = $state<Record<string, Judgement>>({});
 	let judgementsLoaded = false;
-	/**
-	 * Seconds where the grid's own bar lengths change - the judge panel offers these as
-	 * movement candidates. A measurement of the bar table, not a guess about structure:
-	 * whether a tempo change is a new song is the listener's call, so nothing acts on them.
-	 */
+	/** Tempo-change candidates, seconds; only the listener decides whether they start a new song. */
 	const tempoChanges = $derived(
 		analysis ? tempoSegments(analysis.tempo).slice(1).map((s) => Math.round(s.start * 10) / 10) : []
 	);
 
-	/**
-	 * Where a new song starts inside this one, read straight off the saved judgement.
-	 *
-	 * Two surfaces edit this list - the panel's chips and the section lane's dividers - so it
-	 * is held in one place and derived rather than drafted. A local copy per surface is how a
-	 * mark removed in the lane comes back from the panel's next save.
-	 */
-	const movements = $derived(trackId ? (judgements[trackId]?.movements ?? []) : []);
-	/** Seconds near which the owner refused a movement the analyser found; remembered like a mark. */
-	const movementVetoes = $derived(trackId ? (judgements[trackId]?.movementVetoes ?? []) : []);
-	/**
-	 * Where the analysis says the songs change - its own findings and the marks it has heard -
-	 * as the panel and the lane show them. The first span starts the track and is not a seam.
-	 */
+	const arrangement = createArrangementEditor({
+		get trackId() { return trackId; },
+		get meta() { return meta; },
+		get judgements() { return judgements; },
+		get viz() { return viz; },
+		get show() { return show; },
+		set show(value) { show = value; },
+		get analysis() { return analysis; },
+		set analysis(value) { analysis = value; },
+		loadJudgements,
+		saveJudgement,
+		openTimeline() { timelineOpen = true; },
+		note
+	});
+	const movements = $derived(arrangement.movements);
+	const movementVetoes = $derived(arrangement.movementVetoes);
+	const sectionEditing = $derived(arrangement.sectionEditing);
+	const sectionDraft = $derived(arrangement.sectionDraft);
+	const previewShow = $derived(arrangement.previewShow);
+	const {
+		armSectionEdit,
+		saveSections,
+		saveMovements,
+		vetoMovement,
+		liftVeto,
+		undoMapEdit,
+		discardSections,
+		togglePreview
+	} = arrangement;
+	/** Analysis movement seams; the initial span is not a seam. */
 	const detectedMovements = $derived(
 		(analysis?.movements ?? []).slice(1).map((m) => ({ t: m.startTime, source: m.source, note: m.note }))
 	);
-
-	/** Hand-drawn section editing: the drawer's section lane grows handles while armed. */
-	let sectionEditing = $state(false);
-	let sectionDraft = $state<JudgedSection[] | null>(null);
-	/**
-	 * One step back through the hand map, held here because the page owns the draft: the lane
-	 * asks for it and this decides what the step was. Section edits and movement marks share
-	 * the stack, so undo walks back through the gestures in the order they were made.
-	 */
-	type MapEdit = { sections: JudgedSection[] } | { movements: number[] };
-	let undoStack: MapEdit[] = [];
-	/** The show composed from the hand-drawn map while previewing it; null otherwise. */
-	let previewShow = $state<Show | null>(null);
-	/** Where the real show waits while the preview is on stage. Not reactive: only restore reads it. */
-	let shelvedShow: Show | null = null;
-	/** And the real analysis, whose section table the preview replaces for as long as it runs. */
-	let shelvedAnalysis: TrackAnalysis | null = null;
-	let previewFetching = false;
-	/** A draft that arrived while a compose was in flight, so the last edit always wins. */
-	let previewPending = false;
 
 	// Read once: the shell injects it before any of this runs and never changes it.
 	const shell = readShell();
@@ -166,9 +148,7 @@
 	let relevelling = $state(false);
 	let rerolling = $state(false);
 
-	// Deliberately not `$state`: the sync effect below reads it, and a reactive read there would
-	// re-subscribe on every step of the trim, tearing down the interval it just built. The slider
-	// displays `settings.outputOffsetMs`; this is the copy the wire is driven from.
+	// Keep wireOffset plain so slider updates do not tear down the hardware-sync interval.
 	let wireOffsetMs = 0;
 
 	// The server owns the address and whether it is streaming; this only ever reads them.
@@ -197,13 +177,7 @@
 					: ''
 	);
 
-	/**
-	 * Closing the drawer throws the zoom away.
-	 *
-	 * The window outlives the drawer's markup on purpose - the scrubber draws it too - but it is a
-	 * place in one track rather than a setting, and coming back to a collapsed player still framed
-	 * on eight bars of a song that has since changed is a state nobody asked to be in.
-	 */
+	/** Reset track-local zoom when collapsing the drawer. */
 	function toggleTimeline() {
 		timelineOpen = !timelineOpen;
 		if (!timelineOpen) laneView = FULL_WINDOW;
@@ -213,8 +187,8 @@
 		log = [...log.slice(-400), line];
 	}
 
-	function setPhase(phase: LoadState['phase'], message: string, progress: number | null = null) {
-		load = { phase, message, progress };
+	function setPhase(phase: LoadState['phase'], message: string) {
+		load = { phase, message };
 	}
 
 	function postJson(url: string, body: unknown) {
@@ -273,14 +247,8 @@
 		void patchSettings({ deepseekApiKey: key });
 	}
 
-	/**
-	 * What YouTube Music would play after what is already queued.
-	 *
-	 * Refreshed whenever the set list changes, because the point of the blend is that it drifts
-	 * with the night rather than orbiting whatever seeded it first.
-	 */
-	// More are fetched than the rail shows, so offering a different four is a step through what
-	// was already asked for rather than another round trip.
+	/** Refresh blended radio suggestions when the set list changes. */
+	// Fetch extra suggestions so rotating the visible four requires no request.
 	const SUGGESTION_ROWS = 4;
 
 	async function refreshSuggestions() {
@@ -321,12 +289,7 @@
 		new Set(queue.items.map((i) => i.trackId).filter((id): id is string => id !== null))
 	);
 
-	/**
-	 * Queue something already in the cache.
-	 *
-	 * Through the same path as a palette pick, because a cached row and a catalogue hit differ
-	 * only in whether anything has to be fetched - and `pick` is where the after-effects live.
-	 */
+	/** Cached tracks use pick() to share queueing side effects with search results. */
 	function fromLibrary(entry: LibraryEntry, how: 'queue' | 'now') {
 		return pick(libraryToCandidate(entry), how);
 	}
@@ -346,10 +309,8 @@
 	}
 
 	async function saveJudgement(j: JudgementPatch) {
-		// A PATCH: whatever this writer owns, and nothing else. The server merges it over the
-		// file. The client used to merge instead, against a `judgements` map loaded once per
-		// page - which is how a redrawn map was reverted by a later star, and how a section
-		// save could blank a rating given in another tab.
+		// Patch only this writer's fields; merging against a stale client snapshot loses concurrent
+		// edits.
 		judgements = {
 			...judgements,
 			[j.trackId]: { ...(judgements[j.trackId] ?? ({} as Judgement)), ...j }
@@ -367,261 +328,13 @@
 		}
 	}
 
-	/**
-	 * The draft the editor starts from: the saved hand-drawn map, else the analysis as-is.
-	 *
-	 * Taken exactly as saved. An earlier version snapped it onto bar lines on the way in, so
-	 * that the lane matched what the engine would round to - which silently destroyed every
-	 * boundary the owner had placed between bar lines on purpose, the moment the editor was
-	 * re-armed. A hand map is a record of what was heard; it is the arrangement's job to
-	 * round, not the editor's job to forget.
-	 */
-	function seedSections(): JudgedSection[] | null {
-		const saved = trackId ? judgements[trackId]?.sections : null;
-		if (saved?.length) return saved.map((s) => ({ ...s }));
-		return seedFromAnalysis();
-	}
-
-	async function armSectionEdit(on: boolean) {
-		undoStack = [];
-		if (!on) {
-			sectionEditing = false;
-			sectionDraft = null;
-			return;
-		}
-		await loadJudgements();
-		sectionDraft = seedSections();
-		if (!sectionDraft) return;
-		sectionEditing = true;
-		timelineOpen = true;
-	}
-
-	function applySections(list: JudgedSection[]) {
-		if (!trackId) return;
-		sectionDraft = list;
-		// The preview follows the hand drawing it, rather than freezing at whatever the map
-		// said when the button was pressed.
-		if (previewShow) void stagePreview(false);
-		// The map and the grid it was drawn against; the panel's fields are none of the
-		// editor's business and are left to the file.
-		void saveJudgement({
-			trackId,
-			title: meta?.title ?? judgements[trackId]?.title ?? '',
-			sections: list,
-			analysisHash: analysis?.hash ?? null,
-			showSeed: show?.seed ?? null,
-			authoredBy: show?.authoredBy ?? null
-		});
-	}
-
-	function saveSections(list: JudgedSection[]) {
-		if (sectionDraft) {
-			undoStack = [...undoStack.slice(-49), { sections: $state.snapshot(sectionDraft) }];
-		}
-		applySections(list);
-	}
-
-	/** Movement marks, written by whichever surface the owner reached for. */
-	function applyMovements(list: number[]) {
-		if (!trackId) return;
-		void saveJudgement({
-			trackId,
-			title: meta?.title ?? judgements[trackId]?.title ?? '',
-			movements: list
-		});
-	}
-
-	function saveMovements(list: number[]) {
-		undoStack = [...undoStack.slice(-49), { movements: [...movements] }];
-		applyMovements(list);
-	}
-
-	/**
-	 * A detected movement the owner refuses. Written beside the marks rather than as a
-	 * deletion, because there is nothing to delete: the analysis will find the same seam
-	 * again on its next run unless told not to, and the stamp on the cached blob carries the
-	 * refusal so the next play hears it.
-	 */
-	function vetoMovement(t: number) {
-		if (!trackId) return;
-		if (movementVetoes.some((x) => Math.abs(x - t) < 0.5)) return;
-		void saveJudgement({
-			trackId,
-			title: meta?.title ?? judgements[trackId]?.title ?? '',
-			movementVetoes: [...movementVetoes, Math.round(t * 10) / 10].sort((a, b) => a - b)
-		});
-	}
-
-	function liftVeto(t: number) {
-		if (!trackId) return;
-		void saveJudgement({
-			trackId,
-			title: meta?.title ?? judgements[trackId]?.title ?? '',
-			movementVetoes: movementVetoes.filter((x) => Math.abs(x - t) >= 0.5)
-		});
-	}
-
-	function undoMapEdit() {
-		const last = undoStack.at(-1);
-		if (!last) return;
-		undoStack = undoStack.slice(0, -1);
-		if ('sections' in last) applySections(last.sections);
-		else applyMovements(last.movements);
-	}
-
-	function discardSections() {
-		if (!trackId) return;
-		// The preview's toggle lives on the hand-drawn row, which a discard removes; left
-		// armed it would play a show whose map no longer exists, with no way back.
-		void togglePreview(false);
-		if (judgements[trackId]) void saveJudgement({ trackId, sections: null });
-		sectionDraft = sectionEditing ? seedFromAnalysis() : null;
-	}
-
-	function seedFromAnalysis(): JudgedSection[] | null {
-		if (!analysis) return null;
-		return analysis.sections.map((s) => ({
-			kind: s.kind,
-			startTime: s.startTime,
-			endTime: s.endTime,
-			startBar: s.startBar,
-			endBar: s.endBar
-		}));
-	}
-
-	/**
-	 * Hear the show the hand-drawn map would produce. The server composes it from the
-	 * judgement's sections and nothing is written, so arming swaps the show on stage and
-	 * disarming puts the cached one back; the viz applies either mid-play, the same way a
-	 * reroll does.
-	 */
-	async function togglePreview(on: boolean) {
-		if (!viz) return;
-		if (!on) {
-			if (!previewShow) return;
-			// Two cases, and only the first is ours to undo: either the preview is still the
-			// show on stage, and the shelf belongs back; or something else replaced it while
-			// previewing - a reroll, a re-analysis, the agent - and that show owns the stage
-			// now, so restoring would clobber it and the shelf is simply dropped.
-			if (show === previewShow) {
-				show = shelvedShow;
-				if (shelvedAnalysis) analysis = shelvedAnalysis;
-				if (show && analysis) viz.loadShow(analysis, show);
-				else viz.clearShow();
-			}
-			previewShow = null;
-			shelvedShow = null;
-			shelvedAnalysis = null;
-			return;
-		}
-		if (previewShow) return;
-		await stagePreview(true);
-	}
-
-	/**
-	 * Compose the map as it stands and put it on stage.
-	 *
-	 * Run again after every edit while the preview is up: a preview of the map as it was a
-	 * gesture ago is not a preview of anything, and the room is the only place the change can
-	 * actually be judged. The shelf is taken on the FIRST staging only - re-staging must never
-	 * shelve the preview it is replacing, or the real show is lost behind it.
-	 */
-	async function stagePreview(first: boolean) {
-		if (!trackId || !analysis || !viz) return;
-		// A burst of nudges outruns the round trip. Rather than dropping the ones that arrive
-		// mid-flight - which would leave the room showing an arrangement nobody is drawing any
-		// more - the last draft is remembered and composed as soon as the wire is free.
-		if (previewFetching) {
-			previewPending = true;
-			return;
-		}
-		previewFetching = true;
-		try {
-			while (true) {
-				previewPending = false;
-				const res = await fetch(`/api/track/${trackId}/preview-arrangement`, {
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					// The draft while the editor is armed, so this hears the edit that is on
-					// screen rather than the last one saved. Without a draft the server falls
-					// back to the saved map.
-					body: JSON.stringify({ sections: sectionDraft ?? undefined })
-				});
-				if (!res.ok) throw new Error((await res.text()).slice(0, 300));
-				const data = (await res.json()) as { show: Show; analysis: TrackAnalysis };
-				if (first && !previewShow) {
-					shelvedShow = show;
-					shelvedAnalysis = analysis;
-				}
-				show = data.show;
-				// Read the staged value BACK rather than remembering the same raw object:
-				// `$state` wraps a plain object in a proxy per variable, so two variables
-				// assigned one object hold two different proxies and the check in
-				// `togglePreview` could never hold. That is what stranded the preview on stage
-				// with the toggle reset - "only the Preview remained there". Assigning an
-				// already-proxied value hands over that same proxy.
-				previewShow = show;
-				// The map's own section table goes on stage with it, so the strip, the scrubber
-				// and the inspector describe the arrangement being previewed rather than the
-				// one it replaced. Restored intact when the preview comes off.
-				analysis = data.analysis;
-				viz.loadShow(data.analysis, data.show);
-				// A section starts on a bar line or not at all, so a boundary placed between
-				// two of them is rounded onto the nearer one. Say so, with the worst offender:
-				// silent rounding is what made the preview look like it was ignoring the map.
-				const drawn = sectionDraft ?? judgements[trackId]?.sections ?? [];
-				let moved = 0;
-				let worst = 0;
-				for (let i = 0; i < Math.min(drawn.length, data.analysis.sections.length); i++) {
-					const by = Math.abs(data.analysis.sections[i].startTime - drawn[i].startTime);
-					if (by > 0.05) {
-						moved++;
-						worst = Math.max(worst, by);
-					}
-				}
-				const rounded =
-					moved > 0
-						? ` - ${moved} boundary${moved === 1 ? '' : 's'} rounded onto a bar line, ` +
-							`up to ${worst.toFixed(2)}s`
-						: '';
-				// Every gesture would otherwise write a line of its own; while editing, only a
-				// rounding is worth saying, because that is the one thing the lane cannot show.
-				if (first) {
-					note(
-						`previewing the hand-drawn arrangement: ${data.show.cues.length} cues, ` +
-							`${data.analysis.sections.length} sections${rounded}`
-					);
-				} else if (rounded) {
-					note(`preview recomposed${rounded}`);
-				}
-				if (!previewPending) break;
-			}
-		} catch (e) {
-			note(`ERROR ${(e as Error).message}`);
-		} finally {
-			previewFetching = false;
-		}
-	}
-
-	// A hand-drawn map belongs to one track; the mode does not survive a track change.
-	// Neither does the preview: the incoming track's own show is already on stage, so only
-	// the bookkeeping is dropped here.
+	// Reset after the new track owns the stage, without restoring the old preview.
 	$effect(() => {
 		void trackId;
-		sectionEditing = false;
-		sectionDraft = null;
-		undoStack = [];
-		previewShow = null;
-		shelvedShow = null;
-		// The incoming track's own analysis is already being loaded; dropping the shelf here
-		// only stops a later toggle-off restoring the previous track's table over it.
-		shelvedAnalysis = null;
+		arrangement.reset();
 	});
 
-	/**
-	 * The next analysed library track without a verdict, oldest first, so working the corpus
-	 * front to back visits every track once and the order is stable across sessions.
-	 */
+	/** Visit unjudged analysed tracks oldest first for stable corpus review order. */
 	function nextUnjudged() {
 		const candidates = library
 			.filter((e) => e.analysed && !judgements[e.id])
@@ -658,8 +371,7 @@
 	async function addSuggestion(song: SearchResult) {
 		await queue.add([toNewItem(song)]);
 		note(`queued ${song.title}`);
-		// Dropped from the list rather than refetched, so the other three do not move under the
-		// hand that was about to pick one of them.
+		// Remove only the picked suggestion so remaining choices do not shift.
 		suggestions = suggestions.filter((s) => s.id !== song.id);
 	}
 
@@ -692,13 +404,7 @@
 		void patchSettings({ outputFps });
 	}
 
-	/**
-	 * The output stage: what reaches the strips and the lamp, and nothing else.
-	 *
-	 * These deliberately do not touch the browser's own renderer, so the 3D room keeps showing the
-	 * show rather than the installation's dimmer. Moving one only tracks the slider's own readout
-	 * until it is released; the release writes, and the server's renderer picks it up there.
-	 */
+	/** Hardware-only output controls: update local readouts during drag and persist on release. */
 	function moveBrightness(outputBrightness: number) {
 		settings = { ...settings, outputBrightness };
 	}
@@ -742,10 +448,7 @@
 		void patchSettings({ rest: on });
 	}
 
-	/**
-	 * Dragging a colour. The room takes it on its next frame; the disk waits for the release, the
-	 * same way the hardware trim does.
-	 */
+	/** Apply ambient colour each frame during drag; persist on release. */
 	function moveAmbient(next: AmbientSettings) {
 		settings = { ...settings, ambient: next };
 	}
@@ -779,12 +482,8 @@
 		};
 	});
 
-	// Seeded from the whole set list, so what is offered drifts with the night.
-	//
-	// Through a `$derived` rather than read straight from the effect: the queue object is
-	// replaced wholesale on every stream message, which is about eight times per track while
-	// one is being prepared, and an effect reading it re-runs on all of them. The derived
-	// string only notifies when it actually differs, so this is one request per real change.
+	// Derive a stable queue signature so ingest SSE updates do not refetch unchanged radio
+	// suggestions.
 	const setList = $derived(queue.items.map((i) => i.trackId).join());
 	$effect(() => {
 		void setList;
@@ -795,10 +494,8 @@
 		viz?.setVolume(volume);
 	});
 
-	// What the room is asked to be. The renderer holds these as plain fields rather than reactive
-	// ones, so this effect is the whole of the wiring: whenever the stored settings change, they
-	// are pushed once and then read every frame from there. A track whose grid the analyser lost
-	// runs in lounge whatever the switch says; the switch still reads as the user left it.
+	// Push settings into the unproxied renderer. Untrusted grids force lounge without changing the
+	// switch.
 	$effect(() => {
 		const v = viz;
 		if (!v) return;
@@ -812,15 +509,8 @@
 		if (viz) viz.artHue = meta?.artHue ?? null;
 	});
 
-	// Keep the hardware clock aligned with the audio that is actually playing. Half a second
-	// is plenty: the server extrapolates between syncs from its own monotonic clock.
-	//
-	// `heardPosition`, not `position`: the preview already subtracts the output latency so it
-	// lines up with what reaches the ear, and sending the raw audio clock instead put the room
-	// that far ahead of both. Read off the viz rather than the readout for the same reason it
-	// is not read from anywhere else here - the readout is a `$state` object republished at
-	// 20 Hz, and touching it inside this effect re-subscribed that often, which cleared the
-	// interval before it could ever fire and turned two posts a second into twenty.
+	// Sync heard audio every 500 ms; the server extrapolates. Read plain Viz fields so 20 Hz readout
+	// updates cannot restart the interval.
 	$effect(() => {
 		const v = viz;
 		if (!ddpRunning || !v) return;
@@ -837,12 +527,8 @@
 	});
 
 	/**
-	 * Follow the server's idea of what is playing.
-	 *
-	 * The queue is server state so that a phone in the room can change it, which means this
-	 * tab is a follower: it reacts to the current row becoming ready rather than deciding
-	 * anything. Keyed on the track id so a row being re-titled mid-download does not reload
-	 * audio that is already decoded.
+	 * Follow the server's ready current track. Key by track ID so metadata updates do not reload
+	 * audio.
 	 */
 	let loadedTrackId = $state<string | null>(null);
 	/** The row a skip has already been spent on, so a dead track is stepped over once. */
@@ -851,23 +537,15 @@
 		const item = current;
 		if (!viz) return;
 
-		// A track that will not load is the end of the night if nothing steps over it: only
-		// `onEnded` advances the queue, and a row that never plays never ends. Once per row, so
-		// a queue of failures walks to the end and stops there rather than looping.
-		//
-		// Only once something has played, though. On a fresh start the selection is where the
-		// last session left it, and stepping off it before anyone has pressed anything would
-		// move the queue under the user for a track they can see has failed and may want to
-		// retry.
+		// After playback starts, skip unloadable rows once each. Preserve failed selections on initial
+		// load so the host can retry them.
 		if (loadedTrackId !== null && item && item.status === 'error' && item.key !== skippedKey) {
 			skippedKey = item.key;
 			void queue.next();
 			return;
 		}
 
-		// An emptied queue leaves the room running. Stopping the music because somebody cleared
-		// a list would be the one thing a room full of people would not forgive, and the loaded
-		// track stays addressable so it can still be handed to Claude.
+		// Clearing the queue leaves loaded audio playing and available for authoring.
 		if (!item || item.status !== 'ready' || !item.trackId) return;
 		if (item.trackId === loadedTrackId) return;
 
@@ -915,8 +593,7 @@
 			}
 
 			setPhase('ready', '');
-			// Starting here rather than on the queue event: a track that is not decoded yet
-			// cannot play, and asking it to would just silently do nothing.
+			// Wait for decoding before starting playback.
 			await viz.play();
 			if (ddpRunning) void startOutput(id);
 		} catch (e) {
@@ -933,30 +610,18 @@
 			.filter(Boolean);
 	}
 
-	/**
-	 * Point the server's own renderer at a track.
-	 *
-	 * Also how a changed show reaches the strips: the output reads the show from disk when it
-	 * starts and never again, so rerolling or authoring one while streaming leaves the room
-	 * playing the composition it was handed.
-	 */
+	/** Restart output to load the latest show from disk after authoring or rerolling. */
 	function startOutput(id: string | null, to = ddpHost) {
 		return postJson('/api/output', {
 			action: 'start',
-			// Absent rather than null: with no track the server starts the loop bare and the room
-			// takes the resting scenes, which is what somebody connecting before the music wants.
+			// Omit trackId to start the resting room before any track is loaded.
 			...(id ? { trackId: id } : {}),
 			hosts: hosts(to),
 			offsetMs: wireOffsetMs
 		});
 	}
 
-	/**
-	 * Point the room at a board and start driving it.
-	 *
-	 * The address comes from the press rather than from the status, because storing it is a round
-	 * trip and the stream would otherwise start against whichever board was configured before.
-	 */
+	/** Use the pressed address directly; SSE may still report the previous board. */
 	async function connectOutput(host: string) {
 		if (hosts(host).length === 0) return;
 		if (host !== ddpHost) await hardware.setHost('frame', host);
@@ -995,20 +660,14 @@
 		void refreshLibrary();
 
 		if (how === 'queue' || wasEmpty) return;
-		// From the reply rather than the live queue, which anyone else may have appended to in
-		// between - and does, once the radio is topping it up.
+		// Read added rows from this reply, not a queue changed concurrently by guests or radio.
 		const added = after?.items[after.items.length - 1];
 		if (!added) return;
 		if (how === 'now') await queue.jump(added.key);
 		else await queue.playNext(added.key);
 	}
 
-	/**
-	 * Re-read the track at a different metrical level.
-	 *
-	 * The whole show is re-composed rather than rescaled, because every cue is addressed by bar
-	 * and the bars have moved: a rescaled show would point the entire night at the wrong music.
-	 */
+	/** Recompose after changing the grid; rescaling leaves bar-addressed cues on the wrong music. */
 	async function relevel(level: number) {
 		const source = meta?.source;
 		if (!source || relevelling || !viz) return;
@@ -1036,13 +695,6 @@
 		}
 	}
 
-	/**
-	 * Compose the same track again with a different roll.
-	 *
-	 * The engine composes in about a millisecond, so this is a parameter and a button rather
-	 * than a feature: the show that comes back is the same composer's work under a different
-	 * seed, not a different composer.
-	 */
 	async function reroll() {
 		if (!trackId || !viz || rerolling) return;
 		rerolling = true;
@@ -1078,8 +730,7 @@
 		}
 
 		function settle(state: Step['state'], result?: string) {
-			// Close the most recent pending step. Tool results arrive in order, so the newest
-			// pending step is always the one they belong to.
+			// Tool results close the newest pending step.
 			for (let i = steps.length - 1; i >= 0; i--) {
 				if (steps[i].state !== 'pending') continue;
 				steps[i] = { ...steps[i], state, result };
@@ -1133,9 +784,8 @@
 			}
 		}
 
-		// The choice travels with the request rather than being read from disk at the far end: the
-		// menu writes it optimistically, and a press landing before that PUT would otherwise spend
-		// the previous model.
+		// Send the optimistic model selection directly so a pending settings PUT cannot select the
+		// previous model.
 		const es = new EventSource(
 			`/api/author?id=${encodeURIComponent(trackId)}` +
 				`&model=${encodeURIComponent(settings.authorModel)}` +
@@ -1181,20 +831,15 @@
 			});
 			note(`show ready: ${data.show.cues.length} cues, ${data.show.generatedEffects.length} generated`);
 			setPhase('ready', '');
-			// The server's renderer read the old show off disk when it started and will not look
-			// again, so without this the strips keep playing the draft the agent just replaced.
+
 			if (ddpRunning && trackId) void startOutput(trackId);
 			void refreshLibrary();
 			es.close();
 		});
 	}
 
-	/**
-	 * Previous means the previous section until the track is barely started, then the previous
-	 * track. Same gesture as every player: what it does depends on where you are in the song.
-	 */
-	// The audio clock, not the readout: the readout is published at 20 Hz and stops entirely
-	// while the tab is in the background, where the audio keeps playing regardless.
+	/** Previous seeks to the prior section, then the prior track near the beginning. */
+	// Use the audio clock; background tabs stop publishing readouts while audio continues.
 	function prev() {
 		const v = viz;
 		if (!v || !analysis || v.position < 3) {
@@ -1256,8 +901,6 @@
 		{busyLabel}
 		{failure}
 		hardware={hardware.status}
-		{leftOpen}
-		{rightOpen}
 		cached={library.length}
 		onsearch={openSearch}
 		onlibrary={() => (libraryOpen = true)}
@@ -1451,8 +1094,7 @@
 	ondisconnect={() => void disconnectOutput()} />
 
 <style>
-	/* No z-index of its own: the room layer inside it has to stay under the panels, which is
-	   only possible while they all share the root stacking context. */
+	/* Share the root stacking context so the room layer remains below the panels. */
 	.shell {
 		display: flex;
 		flex-direction: column;

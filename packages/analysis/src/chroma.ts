@@ -20,12 +20,8 @@ export interface Chromagram {
 }
 
 /**
- * A log-frequency spectrogram folded into pitch classes.
- *
- * The audio is decimated to 11 kHz first. Chroma needs semitone resolution at the bottom of
- * its range, which at 44.1 kHz would mean an 8192-point window; at 11 kHz a 2048-point one
- * gives the same 5 Hz bins for a quarter of the work, and everything above 5 kHz that gets
- * thrown away was never going to be a pitch.
+ * Decimate to 11 kHz before chroma: a 2048-point window retains ~5 Hz pitch resolution at
+ * one quarter of the 44.1 kHz cost; discarded frequencies are above the pitch range.
  */
 export function chromagram(mono: Float32Array, sampleRate: number, targetFps = 50): Chromagram {
 	const factor = Math.max(1, Math.round(sampleRate / 11025));
@@ -85,14 +81,13 @@ export function chromagram(mono: Float32Array, sampleRate: number, targetFps = 5
 }
 
 /**
- * Krumhansl-Kessler key profiles, as revised by Temperley (2001). Correlating a track's
- * average chroma against all 24 rotations is the standard method; it gets the tonic right far
- * more often than the mode, which is why the result carries both confidences separately.
+ * Temperley (2001) revision of Krumhansl-Kessler profiles. Report tonic and mode confidence
+ * separately because tonic is usually easier to identify.
  */
 const MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
 const MINOR = [6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
-export const NOTE_NAMES = [
+const NOTE_NAMES = [
 	'C',
 	'C#',
 	'D',
@@ -143,12 +138,7 @@ export function estimateKey(chroma: Chromagram): KeyEstimate {
 	return estimateKeySpan(chroma, 0, chroma.frames / chroma.fps);
 }
 
-/**
- * The key over one span of the track, for comparing a section against its siblings.
- *
- * Same profiles, same correlation, restricted frames. The caller owns the judgement about
- * what a disagreement between two spans means; this only reports each span honestly.
- */
+/** Estimate one span with the same key profiles; the caller interprets disagreements between spans. */
 export function estimateKeySpan(chroma: Chromagram, fromSec: number, toSec: number): KeyEstimate {
 	const from = Math.max(0, Math.floor(fromSec * chroma.fps));
 	const to = Math.min(chroma.frames, Math.ceil(toSec * chroma.fps));

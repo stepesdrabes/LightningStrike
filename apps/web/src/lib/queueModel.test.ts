@@ -254,8 +254,6 @@ describe('signatureOf', () => {
 		expect(signatureOf('MK', 'Dior feat. Chrystal')).toBe(signatureOf('MK', 'Dior'));
 	});
 
-	// The question is whether the room has heard the song, not whether it is the same master,
-	// so a remix counts as already played - including one billed to the remixer as well.
 	it('reads a remix as the song it is a remix of', () => {
 		expect(signatureOf('CHRYSTAL', 'The Days (NOTION Remix)')).toBe(
 			signatureOf('CHRYSTAL', 'The Days')
@@ -280,8 +278,6 @@ describe('titleKeyOf', () => {
 		expect(titleKeyOf('Creep - Live at Wembley')).toBe(titleKeyOf('Creep'));
 	});
 
-	// Rips made before the catalogue path existed are titled "Artist - Title", and cutting at
-	// that dash would key the whole row on the artist's name.
 	it('leaves an upload title that leads with the act alone', () => {
 		expect(titleKeyOf('CHRYSTAL - THE DAYS  (NOTION REMIX)')).toBe('chrystalthedays');
 		expect(titleKeyOf('Daft Punk - One More Time')).toBe('daftpunkonemoretime');

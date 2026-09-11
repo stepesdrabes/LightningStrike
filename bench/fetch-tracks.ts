@@ -2,17 +2,8 @@ import { spawn } from 'node:child_process';
 import { ingest } from '@mv/analysis';
 
 /**
- * Download and analyse a corpus into `MV_CACHE_DIR`. Every entry names its YouTube id
- * outright where one is known, so the track ingested is the one that was listened to and
- * chosen, not whatever a search ranks first on the day; a `query` is resolved with yt-dlp
- * for the rest. The list below is the 2026-09-09 addition to review corpus 3, the owner's
- * last analysis corpus: current hits across the families they judge, plus the structures
- * the sixty-five did not hold (a 6/8 ballad, a three-part song with tempo changes, garage's
- * swing, hard techno at 155, jump-up at 174, a drum-and-bass verse under a rock chorus).
- * The original tuning corpus this bench fetched in 2026-08 lives in git history.
- *
- * Serial on purpose: the beat tracker is an ONNX graph that takes every core it is offered,
- * so two at once is slower than the same two in sequence.
+ * Download and analyze the review corpus into MV_CACHE_DIR, preferring explicit YouTube IDs.
+ * The serial loop avoids competing ONNX runs that each use every available core.
  */
 const TRACKS: { id?: string; query?: string; note?: string }[] = [
 	// Current hits, September 2026

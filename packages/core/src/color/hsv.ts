@@ -4,10 +4,8 @@ const T = 1 / 3;
 const C171 = 171 / 255;
 
 /**
- * FastLED's rainbow hue ramp, not textbook HSV. Eight cardinal points with a widened
- * yellow band; textbook HSV gives yellow a thin sliver and reads wrong on LEDs.
- *
- * Value stays linear here. Gamma belongs to the output stage, applied exactly once.
+ * FastLED rainbow ramp: widened yellow reads better on LEDs than textbook HSV.
+ * Value remains linear; gamma belongs to the output stage.
  */
 export function hsv2rgb(
 	h: number,
@@ -86,17 +84,8 @@ export function hsv2rgb(
 }
 
 /**
- * The ramp coordinate that DELIVERS a given true hue, degrees in, 0..1 out.
- *
- * The ramp above is not a rotation of textbook HSV, it is a different curve: feeding it a hue
- * measured in textbook degrees lands up to 30 degrees away, which is a whole colour name. A cover
- * measured at 90 (chartreuse) came out of the room at 60 (yellow). Anything that measures a hue
- * from the outside world - artwork, a published colour, a user's pick - is in textbook degrees and
- * has to come through here before it can be a palette hue.
- *
- * Inverted by search rather than algebraically because the ramp is piecewise and not injective:
- * it spends no coordinates at all between about 150 and 223 degrees, which is cyan, so a cyan
- * sleeve resolves to the nearest hue the LEDs can actually make instead of to nothing.
+ * Map true hue in degrees to the nearest deliverable ramp coordinate (0..1).
+ * The ramp is piecewise and skips some hues, so inversion uses nearest-hue search.
  */
 export function rampHueFor(degrees: number): number {
 	const want = ((degrees % 360) + 360) % 360;

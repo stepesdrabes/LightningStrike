@@ -8,9 +8,8 @@ export interface Loudness {
 	/** Sample peak in dBFS. */
 	peak: number;
 	/**
-	 * Peak-to-loudness ratio in LU. Under about 8 the master is heavily limited, which is
-	 * worth knowing: per-bar level barely moves on such a track, so a show driven by level
-	 * alone goes flat and onset density has to carry the dynamics instead.
+	 * Peak-to-loudness ratio, LU. Below ~8 indicates limiting; onset density then carries more
+	 * dynamics than level.
 	 */
 	peakToLoudness: number;
 	/** Short-term loudness (3 s window) sampled every 100 ms, LUFS. */
@@ -23,10 +22,7 @@ const STEP_SEC = 0.1;
 const SHORT_TERM_SEC = 3;
 const ABSOLUTE_GATE = -70;
 const RELATIVE_GATE = -10;
-/**
- * Cancels the K-weighting's own passband gain at 997 Hz, so a full-scale sine reads
- * -3.01 LUFS exactly as it would unweighted.
- */
+/** Cancel K-weighting passband gain at 997 Hz so a full-scale sine measures -3.01 LUFS. */
 const OFFSET = -0.691;
 
 function loudnessOf(meanSquare: number): number {
@@ -34,14 +30,8 @@ function loudnessOf(meanSquare: number): number {
 }
 
 /**
- * ITU-R BS.1770-4 integrated loudness with the EBU R128 gating, plus the short-term curve
- * the same blocks give for free.
- *
- * Computed here rather than read back from ffmpeg for two reasons: it measures the mono
- * stream that is actually analysed, where ffmpeg would report the stereo original and be up
- * to 3 dB out depending on how correlated the channels are; and the short-term curve is a
- * better per-bar level than band RMS, being the only definition of "how loud is this" that
- * anyone has standardised.
+ * ITU-R BS.1770-4 with EBU R128 gating. Measure the analysed mono stream; stereo loudness
+ * can differ by 3 dB. Reuse its blocks for the short-term curve.
  */
 export function measureLoudness(mono: Float32Array, sampleRate: number): Loudness {
 	const weighted = Float32Array.from(mono);

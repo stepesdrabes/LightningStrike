@@ -1,14 +1,9 @@
-// Score the analyzer against the owner's marked boundary errors from the 2026-08-14
-// judged round: for each complained seam with an inferable true bar, where does the
-// pipeline at HEAD put the boundary, and what does the arrival evidence say around it?
-//
-//   node bench/earlybars.ts            # desktop cache, all targets
-//
-// The targets are frozen here on purpose - they come from snapshot.json's bar windows
-// and the owner's notes, and they outrank any corpus metric at one-bar resolution.
+// Score frozen 2026-08-14 owner boundary targets against the current pipeline and arrival
+// evidence.
+// node bench/earlybars.ts
 import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
 import { BeatThis } from '../packages/analysis/src/beatthis.ts';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
@@ -30,7 +25,7 @@ if (!tuning) throw new Error(`unknown variant ${variantName}`);
 const noLyrics = process.argv.includes('--no-lyrics');
 
 
-const cache = process.env.MV_CACHE_DIR ?? join(homedir(), 'Library/Application Support/cz.drabek.lightningstrike/cache');
+const cache = benchmarkCache();
 const beatsDir = join(import.meta.dirname, 'corpus/.beats');
 mkdirSync(beatsDir, { recursive: true });
 
@@ -81,10 +76,7 @@ for (const [id, targets] of byTrack) {
 		downbeats: tracked.downbeats,
 		tuning
 	});
-	// A build's start is where the approach begins, not the seam the ear judges - the
-	// arrival it rises into is. Scoring the build start read a chorus landing exactly on
-	// the owner's bar as WORSE because the 2-bar riser before it tied for distance.
-	// Verified against every v19 blob before landing: excluding builds shifts no prior row.
+	// Exclude build starts: the judged seam is their following arrival.
 	const bounds = analysis.sections.filter((s) => s.kind !== 'build').map((s) => s.startBar);
 	for (const t of targets) {
 		// The boundary this run puts nearest the judged complaint.

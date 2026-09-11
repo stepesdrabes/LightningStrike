@@ -10,11 +10,7 @@ import { spectralTilt } from '../dsl/spectrum.ts';
 import { BeatHold } from '../dsl/env.ts';
 import { INTENSITY, param } from './helpers.ts';
 
-/**
- * Several simple layers at different musical rates beat one complex layer: the bright
- * seams appear where the 8, 16 and 32-beat waves constructively interfere, so they are
- * emergent rather than authored.
- */
+/** Interference among 8-, 16- and 32-beat waves creates the bright seams. */
 export const aurora: EffectDef = {
 	id: 'aurora',
 	name: 'Aurora',
@@ -28,8 +24,7 @@ export const aurora: EffectDef = {
 		peakReserved: false,
 		activity: 0.05,
 		quiet: 2.78,
-		// Curtains with dark between them: 36% of its light in a tenth of the pixels. Lovely
-		// under something, and a quiet cue lit by this alone shows as bands with gaps.
+		// Curtain gaps leave too much darkness to carry a quiet cue alone.
 		carries: false
 	},
 	params: [INTENSITY, param('waves', 'Wave scale', 0.5)],
@@ -38,9 +33,7 @@ export const aurora: EffectDef = {
 		const ph = new Float32Array(3);
 		const slots = [SLOT.base, SLOT.third, SLOT.glow];
 		const gains = [0.5, 0.35, 0.3];
-		// Everything the music drives is latched on the beat. A threshold or a phase that
-		// follows the spectrum frame by frame moves the seams at the frame rate, which is the
-		// one thing a bed must never do.
+		// Latch musical modulation to prevent frame-rate seam movement.
 		const lean = new BeatHold(0.35);
 		const passage = new BeatHold(0.45);
 		const air = new BeatHold(0.2);
@@ -63,22 +56,14 @@ export const aurora: EffectDef = {
 
 				const tilt = lean.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const heard = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
-				// The floor is high because the cue's own intensity already says the passage is
-				// quiet. A bed that dims itself as well is dimmed twice, and two multiplications
-				// of a number under one is how an intro reached byte zero.
+				// Keep a high floor because cue intensity already dims quiet passages.
 				const gain = (0.3 + p.intensity * 0.6) * clamp(0.6 + heard * 0.4);
 				const scale = 1.5 + p.waves * 3.5;
 				// Busy top end lowers the bar for a highlight, so dense passages shimmer.
 				const threshold = 0.62 - air.update(f.bands[Band.Air], f.beat, f.dt, f.beatPeriod) * 0.2;
-				// Each layer slides a different distance as the arrangement climbs, so where the
-				// seams land is the music's business and not only the clock's.
+				// Different offsets let the arrangement move the interference seams.
 				const walk = tilt * 0.3;
-				// The lightest layer tints toward white with it. Inside one hue on purpose: a walk
-				// between two of the show's hues spends most of its time on neither.
-				// A spectral term may only walk the slot inside base..glow. That span is safe because it
-				// is a SATURATION move at constant flux (measured x1.03 over 24 hues); crossing to
-				// white is x2.66, a spectrum driving BRIGHTNESS through the palette, which is the
-				// blinking the mixer already had to be rescued from once.
+				// Keep spectral tint in the nearly constant-flux base..glow span.
 				const top = lerp(SLOT.base, SLOT.glow, clamp(tilt));
 
 				for (let i = 0; i < g.count; i++) {

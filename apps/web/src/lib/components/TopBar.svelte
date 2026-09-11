@@ -11,8 +11,6 @@
 		busyLabel = '',
 		failure = '',
 		hardware,
-		leftOpen = true,
-		rightOpen = true,
 		cached = 0,
 		onsearch,
 		onlibrary,
@@ -24,8 +22,6 @@
 		busyLabel?: string;
 		failure?: string;
 		hardware: HardwareStatus;
-		leftOpen?: boolean;
-		rightOpen?: boolean;
 		/** Tracks already downloaded, which is the only thing the library button has to say. */
 		cached?: number;
 		onsearch: (seed: string) => void;
@@ -35,13 +31,7 @@
 		ontoggleRight: () => void;
 	} = $props();
 
-	/**
-	 * A button dressed as a field.
-	 *
-	 * Everything typed here belongs in the palette, so a real input would only have to hand
-	 * its first keystroke over and then fight the modal for focus. A keypress opens the
-	 * palette seeded with that character instead.
-	 */
+	/** Seed the palette from a keypress; a real input would compete with the modal for focus. */
 	function onkeydown(e: KeyboardEvent) {
 		if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
 			e.preventDefault();
@@ -115,15 +105,13 @@
 <style>
 	header {
 		display: grid;
-		/* Three tracks rather than flex, so the field stays optically centred whatever the
-		   status text on the right happens to be doing. */
+		/* Three columns keep search centred regardless of status-text width. */
 		grid-template-columns: 1fr minmax(280px, 460px) 1fr;
 		align-items: center;
 		gap: 16px;
 		height: var(--topbar-h);
 		flex: none;
-		/* --traffic-inset is set by the desktop shell and is absent in a browser, where the
-		   window has no controls floating over this bar. */
+		/* The desktop shell sets --traffic-inset for native window controls; browsers omit it. */
 		padding: 0 12px 0 calc(12px + var(--traffic-inset, 0px));
 		background: var(--panel);
 		backdrop-filter: var(--panel-blur);
@@ -215,10 +203,6 @@
 		color: var(--bad);
 	}
 
-	/*
-	 * Deliberately quiet. This is a readout that happens to be clickable, not a call to
-	 * action, and the room is what should be lit up on this screen.
-	 */
 	.link {
 		display: inline-flex;
 		align-items: center;

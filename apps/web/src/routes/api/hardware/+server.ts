@@ -13,8 +13,6 @@ const HOST = /^[A-Za-z0-9._-]{1,253}$/;
 export const POST: RequestHandler = async (event) => {
 	if (!isLocal(event)) error(403, 'the hardware belongs to the machine running the show');
 
-	// No probe verb. Setting a host probes it, and while anything is watching the status stream
-	// the server probes on its own timer, so asking for one by hand only ever duplicated those.
 	const body = (await event.request.json()) as {
 		action: 'set';
 		role?: string;
@@ -31,8 +29,7 @@ export const POST: RequestHandler = async (event) => {
 		link.setHost(host);
 
 		if (typeof body.region === 'string') {
-			// Checked against the geometry rather than against a pattern, so an id that no longer
-			// names a part of this room is refused here instead of silently lighting nothing.
+			// Validate region IDs against geometry so unknown regions cannot silently light nothing.
 			const known = roomRegions(buildGeometry(DEFAULT_ROOM)).some((r) => r.id === body.region);
 			if (!known) error(400, 'that is not a part of this room');
 			link.setRegion(body.region);

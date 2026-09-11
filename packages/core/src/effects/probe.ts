@@ -8,12 +8,8 @@ import { Mixer } from '../mixer.ts';
 import { quietFrames, scriptFrames } from './gate.ts';
 
 /**
- * What an effect looks like, as five numbers.
- *
- * The gate answers whether an effect is legal - finite, bounded, deterministic, resettable.
- * None of that says whether it looks like anything, and an effect can pass every one of those
- * checks while lighting four pixels and ignoring the music. These are the questions a catalog
- * actually fails on, and they are the ones an author has to be able to see.
+ * Measure delivered appearance separately from gate legality: coverage, concentration,
+ * palette fidelity and musical response, including kit-free passages.
  */
 export interface EffectCharacter {
 	/** Share of the room above byte 24, which is where a pixel reads as lit in a dark room. */
@@ -24,15 +20,11 @@ export interface EffectCharacter {
 	hue: number;
 	/** How far the output moves when the music drives it, as a share of its own mean level. */
 	react: number;
-	/** The same, over an intro with no kit at all: where the room is reported dead. */
+	/** The same over a quiet passage with no kit. */
 	quiet: number;
 }
 
-/**
- * Red base, cyan accent, yellow third: three hues far enough apart to tell apart by eye. Held
- * fixed rather than taken from the show, so a character measured today is comparable with one
- * measured against a different palette months ago.
- */
+/** Use a fixed, separated-hue palette so measurements stay comparable across shows. */
 const PROBE_PALETTE = makePalette({
 	base: 0,
 	accent: 180,
@@ -42,19 +34,9 @@ const PROBE_PALETTE = makePalette({
 	white: 0.06
 });
 /**
- * The hues the palette actually delivers, taken from the palette rather than from the degrees it
- * was declared with.
- *
- * `hsv2rgb` is FastLED's rainbow ramp, not a rotation of textbook HSV: it spends no coordinates
- * at all between about 150 and 223 degrees. An accent declared at 180 therefore leaves the room
- * somewhere near 150, and comparing the delivered pixel against 180 marks every correctly
- * addressed accent as a colour the show never declared. Read off the ramp's own output, an
- * effect that reaches past `SLOT` for a hue of its own is still the only thing that fails.
- *
- * Only the anchors bright enough for a lit pixel to have come from. The near-black end of the
- * ring runs from the accent's shade back round to the base's, so it passes through every hue
- * there is at a value of about 0.15 - taking those as declared would make the column vacuous,
- * and a bright magenta is not excused by a black one three anchors away.
+ * Compare with hues actually emitted by the FastLED ramp, not declared HSV degrees.
+ * Include only bright anchors: near-black interpolation passes through otherwise undeclared
+ * hues.
  */
 /** Where an anchor is bright enough that a pixel above `LIT` could have been sampled from it. */
 const ANCHOR_LEVEL = 0.5;
@@ -123,11 +105,7 @@ interface Run {
 	mean: number;
 }
 
-/**
- * One effect alone in the mixer, which is what applies gamma and the rest of the output chain.
- * Measuring the raw buffer instead would judge brightness in the authoring domain, where
- * anything under 0.081 is byte 0 and the difference between dim and off is invisible.
- */
+/** Measure through the mixer so gamma and the output chain determine delivered brightness. */
 function run(def: EffectDef, g: Geometry, frames: readonly ShowFrame[]): Run {
 	const mixer = new Mixer(g);
 	mixer.palette = PROBE_PALETTE;
@@ -147,10 +125,8 @@ function run(def: EffectDef, g: Geometry, frames: readonly ShowFrame[]): Run {
 }
 
 /**
- * Movement against a deafened run of the same journey, as a share of the effect's own level.
- *
- * Guarded against a near-black output rather than scaled by it: an effect delivering almost
- * nothing divides by almost nothing and reports spectacular reactivity it does not have.
+ * Compare against a deafened journey and normalize by mean level, with a near-black guard
+ * to avoid inflating response from almost-zero output.
  */
 function reactivity(live: Run, deaf: Run): number {
 	if (live.mean < 0.5) return 0;

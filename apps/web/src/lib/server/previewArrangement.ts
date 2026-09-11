@@ -1,37 +1,15 @@
 import type { BarRow, Moment, SectionKind, SectionSpan, TrackAnalysis } from '@mv/core';
-import { SECTION_KINDS, barAtTime, barTimeAt, nearestBar } from '@mv/core';
+import { SECTION_KINDS, barTimeAt, nearestBar } from '@mv/core';
 import { barStartsAtCuts, deriveGridCuts, handMapGrid, resyncedCuts } from '@mv/analysis';
 import type { JudgedSection } from './judge.ts';
 
 /**
- * The analysis re-sectioned along the owner's hand-drawn map, for an ephemeral preview.
- *
- * Three fields have to move together, not two. `sections` is what the planner reads, but the
- * PLAYER builds every frame's `section` from the per-bar `bars[].section` column, and the
- * linter reads that column as well - so replacing only the span table produced cues written
- * for the new arrangement running against effects that still saw the old one. That is what
- * made the preview look inert in the room. `moments` follows for the same reason.
- *
- * Everything else stays shared with the cached blob: tempo, envelopes and onsets are
- * measurements, and nothing here mutates what it is handed.
+ * Update sections, bars[].section and section-derived moments together so planner, player and
+ * linter see one arrangement. Keep input measurements immutable.
  */
 /**
- * The bar table a map implies, with a bar line AT every boundary the owner placed off one.
- *
- * A section starts on a bar line or not at all, so a boundary drawn between two of them can
- * only be rounded - which is what the room reported as the preview "snapping to something
- * different". A boundary placed off the grid is a statement ABOUT the grid, and the analysis
- * already knows how to answer it: the listener cut, which absorbs the offset as one short bar
- * ending exactly at the mark. This does the same thing to the cached table so the preview
- * shows what the next analysis will produce, rather than a rounded stand-in for it.
- *
- * WHICH cuts is not this side's decision: `handMapGrid` answers it and `resyncedCuts` says
- * where the bar count is handed back, exactly as the next analysis will ask them. Two
- * consumers reading one map through two readings of the same rule is the bug this whole area
- * keeps producing - deriving the cuts here independently lost the ones the cached table
- * already carried, which moved boundaries the owner drew nowhere near the cut.
- *
- * Returns null when the map implies no cuts, which is the common case and needs no work.
+ * Use handMapGrid and resyncedCuts, as analysis does, to honour deliberate off-grid boundaries
+ * while retaining existing listener cuts. Return null if no cuts are needed.
  */
 function regridForMap(
 	analysis: TrackAnalysis,
@@ -49,8 +27,7 @@ function regridForMap(
 		return best;
 	};
 
-	// Skipping the first everywhere: its start is where the track begins, not a statement
-	// about a bar line, and the analysis reads the map off the same slice.
+	// The first map start is the track edge, not grid-correction evidence.
 	const boundaries = hand.slice(1).map((s) => s.startTime);
 	const deliberate = hand
 		.slice(1)
@@ -61,8 +38,7 @@ function regridForMap(
 		{ beats, barTimes: tempo.barTimes, beatsPerBar: tempo.beatsPerBar },
 		deliberate
 	);
-	// The analysis reads a map drawn on a UNIFORM grid through its residues instead, so the
-	// preview has to as well, or the two split apart on exactly the maps that carry no flag.
+	// Match analysis's residue interpretation for maps drawn on uniform grids.
 	const cutTimes =
 		grid.gridCuts ??
 		deriveGridCuts(boundaries, Float64Array.from(beats), tempo.beatsPerBar, tempo.downbeatPhase);
@@ -78,9 +54,8 @@ function regridForMap(
 
 	const starts = barStartsAtCuts(beats.length, tempo.beatsPerBar, tempo.downbeatPhase, cutBeats);
 	const barTimes = starts.map((i) => Math.round(beats[i] * 1000) / 1000);
-	// Each new bar takes its measurements from the old bar its middle falls in. The analysis
-	// re-derives these from the audio on the next play; a preview only has to be right about
-	// WHERE the bars are, and the two bars either side of a cut are the only approximate ones.
+	// Preview bars reuse measurements from the old bar containing their midpoint; analysis later
+	// recomputes them from audio.
 	const bars: BarRow[] = [];
 	for (let b = 0; b < barTimes.length - 1; b++) {
 		const middle = (barTimes[b] + barTimes[b + 1]) / 2;
@@ -95,22 +70,16 @@ function regridForMap(
 }
 
 export function applyHandSections(analysis: TrackAnalysis, hand: JudgedSection[]): TrackAnalysis | null {
-	// A time that is not a number is not a boundary. The judgement is written by the panel and
-	// read back as data, so nothing upstream guarantees the shape; without this the spans come
-	// out NaN, most of the track ends up covered by no section at all, and `composeShow`
-	// quietly lights the whole thing as an outro rather than failing.
+	// Validate persisted boundary times before they can produce NaN spans.
 	const drawn = hand.filter((s) => Number.isFinite(s.startTime));
 	if (drawn.length < 2) return null;
-	// The grid first: a boundary the owner placed off a bar line becomes one, so what follows
-	// reads it exactly instead of rounding it onto the nearest bar the old table happened to
-	// have. Without cuts this is the cached table unchanged.
+	// Apply grid cuts before resolving section boundaries; no-cut maps reuse the cached grid.
 	const regrid = regridForMap(analysis, drawn);
 	const gridded: TrackAnalysis = regrid
 		? { ...analysis, tempo: regrid.tempo, bars: regrid.bars }
 		: analysis;
 	const sections = rebuildSections(gridded, drawn);
-	// The analyser refuses a map that collapses to a single span, and the preview has to
-	// refuse the same ones, or it previews an arrangement the room will never adopt.
+	// Reject single-span maps just as analysis does.
 	if (sections.length < 2) return null;
 	return {
 		...gridded,
@@ -120,12 +89,7 @@ export function applyHandSections(analysis: TrackAnalysis, hand: JudgedSection[]
 	};
 }
 
-/**
- * The per-bar section column, rewritten to the drawn map.
- *
- * A bar no span covers keeps whatever it had: the spans cover the track by construction, so
- * that is a bar past the end of the table rather than a hole in it.
- */
+/** Rewrite per-bar sections; bars past the covered table retain their previous value. */
 function relabelBars(bars: readonly BarRow[], sections: readonly SectionSpan[]): BarRow[] {
 	const out = bars.map((b) => ({ ...b }));
 	for (const s of sections) {
@@ -136,10 +100,7 @@ function relabelBars(bars: readonly BarRow[], sections: readonly SectionSpan[]):
 	return out;
 }
 
-/**
- * Hand maps keep `kind` a plain string so old maps survive vocabulary changes; a word the
- * current vocabulary does not know reads as the neutral middle of it.
- */
+/** Unknown legacy section kinds fall back to neutral energy. */
 function coerceKind(kind: string): SectionKind {
 	return (SECTION_KINDS as readonly string[]).includes(kind) ? (kind as SectionKind) : 'groove';
 }
@@ -148,11 +109,8 @@ function rebuildSections(analysis: TrackAnalysis, hand: JudgedSection[]): Sectio
 	const barCount = analysis.bars.length;
 	const drawn = [...hand].sort((a, b) => a.startTime - b.startTime);
 
-	// Boundaries between consecutive drawn sections, snapped to the nearest bar. Times are the
-	// authoritative coordinate on a hand map (its stored bars are fractional, and pinned to
-	// whatever grid the map was drawn over), while the engine addresses cues by whole bars, so
-	// the map rounds onto the current grid here. The first and last boundaries are forced to
-	// the track's edges: the engine expects sections to cover every bar with no gaps.
+	// Round authoritative map times onto the current bar grid; force edge boundaries to cover the
+	// track.
 	const bounds = drawn.map((s, i) =>
 		i === 0 ? 0 : Math.max(0, Math.min(barCount, nearestBar(analysis.tempo, s.startTime)))
 	);
@@ -162,8 +120,7 @@ function rebuildSections(analysis: TrackAnalysis, hand: JudgedSection[]): Sectio
 	let cursor = 0;
 	for (let i = 0; i < drawn.length; i++) {
 		const endBar = Math.min(barCount, bounds[i + 1]);
-		// A sliver that rounded to nothing on the bar grid has nothing to light; its bars
-		// belong to the neighbour that absorbed the boundary.
+		// Skip spans collapsed by bar rounding; neighbouring sections absorb them.
 		if (endBar <= cursor) continue;
 
 		let sum = 0;
@@ -191,10 +148,8 @@ function rebuildSections(analysis: TrackAnalysis, hand: JudgedSection[]): Sectio
 		cursor = endBar;
 	}
 
-	// Preview-grade repeat grouping: same kind within a bar of the same length reads as the
-	// same material. The analyser matches material by audio self-similarity, which a hand map
-	// does not carry, so this is approximate on purpose. It only has to be right enough for
-	// the picker to repeat a look across the obvious repeats, such as identical choruses.
+	// Approximate repeats by kind and near-equal length because hand maps contain no audio similarity
+	// features.
 	let nextGroup = 0;
 	for (const s of spans) {
 		const kin = spans.find(
@@ -208,8 +163,7 @@ function rebuildSections(analysis: TrackAnalysis, hand: JudgedSection[]): Sectio
 		}
 	}
 
-	// Ranked by mean, not peak, mirroring the analyser: a long mid-energy section containing
-	// one loud bar must not outrank a short section that is loud the whole way through.
+	// Rank mean energy, matching analysis, so isolated peaks cannot dominate sustained loud sections.
 	[...spans]
 		.sort((a, b) => b.meanEnergy - a.meanEnergy || b.peakEnergy - a.peakEnergy)
 		.forEach((s, i) => {
@@ -219,11 +173,7 @@ function rebuildSections(analysis: TrackAnalysis, hand: JudgedSection[]): Sectio
 	return spans;
 }
 
-/**
- * Only the section_start rows are section-derived; the event moments come from the bars,
- * which a hand map does not move, so they carry over unchanged. The note text mirrors the
- * analyser's format, so anything reading the preview analysis sees the same shape.
- */
+/** Rebuild section_start moments only; retain measured events and match analysis's note format. */
 function rebuildMoments(moments: Moment[], sections: SectionSpan[]): Moment[] {
 	const out: Moment[] = moments.filter((m) => m.kind !== 'section_start');
 	for (const s of sections) {

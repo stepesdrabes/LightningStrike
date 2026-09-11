@@ -3,13 +3,8 @@ import type { Geometry, StripSpec } from '@mv/core';
 import { LIGHTING } from './lighting.ts';
 
 /**
- * One row per strip, one texel per LED: the single copy of the show, read both by the strips that
- * draw it and by the surfaces it falls on, so what a fixture shows and what it throws cannot
- * disagree.
- *
- * 8-bit because the bytes are already gamma-encoded PWM values, which are linear in emitted
- * light. LINEAR magnification gives LED-to-LED blending for free, which is the frosted-diffuser
- * look; NEAREST shows the raw pixels instead.
+ * Shared strip/surface texture: one row per strip, one texel per LED.
+ * PWM bytes represent linear emitted light; linear filtering supplies the frosted diffuser.
  */
 export class LedTexture {
 	readonly texture: THREE.DataTexture;
@@ -42,14 +37,6 @@ export class LedTexture {
 		this.texture.wrapT = THREE.ClampToEdgeWrapping;
 		this.texture.colorSpace = THREE.NoColorSpace;
 		this.texture.needsUpdate = true;
-	}
-
-	set diffused(v: boolean) {
-		this.texture.magFilter = v ? THREE.LinearFilter : THREE.NearestFilter;
-		this.texture.needsUpdate = true;
-	}
-	get diffused(): boolean {
-		return this.texture.magFilter === THREE.LinearFilter;
 	}
 
 	/** Where a strip's texels live, as (u span, u offset, v row). */

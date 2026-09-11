@@ -27,11 +27,8 @@ import { authorModel, isEffort, type EffortLevel } from '@mv/author-ai';
 import type { RequestHandler } from './$types';
 
 /**
- * Loopback only, both ways.
- *
- * Reading says whether a key is stored and never what it is, but knowing the machine has one is
- * still a fact about the person running the night, and writing spends their money. This sits
- * behind the same boundary as the hardware and the queue.
+ * Settings reads and writes are loopback-only; responses expose key presence, never
+ * credentials.
  */
 export const GET: RequestHandler = async (event) => {
 	if (!isLocal(event)) error(403, 'settings belong to the machine running the show');
@@ -48,14 +45,11 @@ export const PUT: RequestHandler = async (event) => {
 	if (typeof body.autopilot === 'boolean') patch.autopilot = body.autopilot;
 	if (typeof body.lounge === 'boolean') patch.lounge = body.lounge;
 	if (typeof body.rest === 'boolean') patch.rest = body.rest;
-	// Checked against the catalogue rather than merely typed, so nothing that reaches the CLI as
-	// a `--model` argument came from the request body.
+	// Validate model IDs against the catalogue before constructing CLI arguments.
 	if (authorModel(body.authorModel)) patch.authorModel = body.authorModel;
 	if (isEffort(body.authorEffort)) patch.authorEffort = body.authorEffort;
 	if (isColourSource(body.ambientColour)) patch.ambientColour = body.ambientColour;
-	// Clamped rather than rejected: every one of these is a slider, and the bound is what the
-	// control is for rather than a validity rule worth failing a request over. The hue wraps
-	// instead, because it is a wheel and 370 means 10 rather than "too far".
+	// Clamp slider values to shared bounds; wrap hue because 370 degrees is 10.
 	if (number(body.ambientHue)) patch.ambientHue = wrapDegrees(body.ambientHue);
 	if (number(body.ambientSat)) patch.ambientSat = clamp(body.ambientSat, SAT_MIN, SAT_MAX);
 	if (number(body.ambientDrift)) patch.ambientDrift = clamp(body.ambientDrift, DRIFT_MIN, DRIFT_MAX);
@@ -74,8 +68,7 @@ export const PUT: RequestHandler = async (event) => {
 	if (number(body.outputLampBrightness)) {
 		patch.outputLampBrightness = clamp(body.outputLampBrightness, OUTPUT_BRIGHTNESS_MIN, 1);
 	}
-	// One of three rather than clamped: this is a picker, and a rate between them is not a
-	// slower version of either, it is a frame interval nothing was tuned against.
+	// Accept only tuned FPS choices; intermediate rates are not slider values.
 	if (isOutputFps(body.outputFps)) patch.outputFps = body.outputFps;
 	if (isWireProtocol(body.outputProtocol)) patch.outputProtocol = body.outputProtocol;
 	if (Object.keys(patch).length === 0) error(400, 'nothing to change');

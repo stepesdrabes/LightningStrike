@@ -3,11 +3,7 @@ import { join } from 'node:path';
 import { CONTEXT_VERSION, type TrackContext } from '@mv/core';
 import { CACHE_DIR, enrichTrack, publishedLevel, readContext, contextPath } from '@mv/analysis';
 
-/**
- * Run enrichment over every cached track and report what it found: identity resolution,
- * genre family, published tempo against the detected one, synced lyrics. The coverage
- * numbers are the acceptance test for the enrichment chain.
- */
+/** Report cached-track enrichment coverage: identity, genre, published tempo and synced lyrics. */
 const force = process.argv.includes('--force');
 
 const files = (await readdir(CACHE_DIR)).filter((f) => f.endsWith('.meta.json'));

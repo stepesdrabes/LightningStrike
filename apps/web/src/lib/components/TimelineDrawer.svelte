@@ -43,8 +43,7 @@
 </script>
 
 <div class="drawer floats">
-	<!-- The bands are the strips themselves, so their axis is the room rather than the track;
-	     only the lanes below have a time window to zoom. -->
+	<!-- LED bands use the room axis; only the timeline lanes zoom in time. -->
 	<LedBands {viz} />
 	<ShowStrip
 		{analysis}

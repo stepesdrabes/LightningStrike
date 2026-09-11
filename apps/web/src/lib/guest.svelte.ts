@@ -8,13 +8,7 @@ export interface Guest {
 	name: string;
 }
 
-/**
- * Who this phone is, remembered between visits.
- *
- * Kept in localStorage rather than a cookie because the server never needs to trust it: the
- * token is what grants access, and the name only decides which rows this phone may take back.
- * A guest who clears it is simply a new guest.
- */
+/** Persist the guest locally: the token grants access and the name identifies removable rows. */
 export function loadGuest(): Guest | null {
 	if (typeof localStorage === 'undefined') return null;
 	try {
@@ -32,16 +26,7 @@ export function saveGuest(guest: Guest): void {
 	localStorage.setItem(STORE_KEY, JSON.stringify(guest));
 }
 
-export function forgetGuest(): void {
-	localStorage.removeItem(STORE_KEY);
-}
-
-/**
- * A guest's view of the queue, over the same stream the desktop watches.
- *
- * Read-only: every change goes through /api/guest, which is a far smaller surface than the
- * host API, and the result arrives back here the same way anyone else's would.
- */
+/** Guest changes use /api/guest; the shared SSE stream remains authoritative. */
 export class GuestQueue {
 	state = $state<QueueState>(EMPTY_QUEUE);
 	failure = $state('');

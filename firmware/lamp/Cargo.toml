@@ -8,8 +8,7 @@ publish = false
 [workspace]
 
 [features]
-# The gate-order colour pass at boot. Off by default, so the boot look is the engine's fade into
-# the remembered state, the same as the frame.
+# Optional gate-order boot test; defaults preserve the remembered-state fade.
 selftest = []
 # The onboard WS2812. Off by default: a second light beside the fixture reads as a fault.
 status-led = []
@@ -37,8 +36,7 @@ embassy-time = "0.5.1"
 # BlockingAsync, so the blocking esp-storage satisfies sequential-storage's async traits.
 embassy-embedded-hal = "0.6.0"
 
-# `unstable` for LEDC, which is semver-exempt; the `=` pins hold the whole radio stack still
-# until esp-hal 1.2 and esp-radio 1.0 land together.
+# LEDC needs unstable. Exact pins keep compatible esp-hal/esp-radio versions together.
 esp-hal = { version = "=1.1.2", features = ["esp32c3", "unstable", "log-04"] }
 esp-rtos = { version = "=0.3.0", features = ["esp32c3", "embassy", "esp-radio", "log-04"] }
 esp-radio = { version = "=1.0.0-beta.0", features = ["esp32c3", "wifi", "log-04"] }
@@ -49,7 +47,6 @@ esp-storage = { version = "0.9.0", features = ["esp32c3"] }
 esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32c3"] }
 
 sequential-storage = "8.0.1"
-embedded-storage = "0.3"
 heapless = "0.9"
 log = "0.4"
 static_cell = "2.1"

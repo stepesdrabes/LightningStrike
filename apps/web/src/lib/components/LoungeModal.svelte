@@ -150,10 +150,7 @@
 		{/if}
 	</section>
 
-	<!--
-		No brightness here. How bright a fixture is belongs to the installation rather than to the
-		resting room, so it is one control in the hardware panel instead of two that disagree.
-	-->
+	<!-- Fixture brightness belongs to the hardware panel. -->
 
 	<section>
 		<h3>Scene</h3>
@@ -200,12 +197,7 @@
 		font-weight: 600;
 		letter-spacing: -0.005em;
 	}
-	/*
-	 * Wherever the accent appears in this panel it means one thing: the walls are being driven by
-	 * something other than the track on the scrubber. Here that is the room having actually handed
-	 * over, which is not the same as either switch being on - lounge takes a second to arrive and
-	 * resting waits out its grace first.
-	 */
+	/* Accent means the room has actually entered lounge/rest, after transition or grace time. */
 	.lamp {
 		display: grid;
 		place-items: center;
@@ -261,7 +253,6 @@
 		font-weight: 600;
 		color: var(--muted-foreground);
 	}
-
 
 	.line {
 		display: flex;

@@ -8,16 +8,12 @@ import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { DEFAULT_TUNING, type StructureTuning } from '../packages/analysis/src/structure.ts';
 import { DEFAULT_LABEL_TUNING, type LabelTuning } from '../packages/analysis/src/arrange.ts';
 import { fMeasure } from './metrics.ts';
-import { KIND_SONG, KIND_CLUB } from './kinds.ts';
+import { KIND_SONG } from './kinds.ts';
 
 /**
- * Score the section pipeline against annotated ground truth: Harmonix (function labels,
- * song vocabulary) and Raveform (expert EDM labels, club vocabulary).
- *
- *   node bench/structscore.ts --dataset harmonix --limit 60 --variant current
- *
- * Variants sweep the structure tuning; beats are cached per track so a variant costs the
- * analysis alone rather than the model.
+ * Score structure against Harmonix song labels or Raveform club labels, reusing cached model
+ * beats.
+ * node bench/structscore.ts --dataset harmonix --limit 60 --variant current
  */
 const argv = process.argv.slice(2);
 const flag = (n: string, d: string) => {
@@ -58,10 +54,7 @@ const VARIANTS: Record<string, StructureTuning> = {
 const tuning = VARIANTS[variantName];
 if (!tuning) throw new Error(`unknown variant ${variantName}`);
 
-/**
- * Build walk-back variants, orthogonal to the structure tuning. `wide16` is the pre-2026-08-12
- * behaviour; the rest tighten one dial at a time so the sweep says which one pays.
- */
+/** Sweep build walk-back independently of structure tuning; wide16 retains the older baseline. */
 const LABEL_VARIANTS: Record<string, LabelTuning> = {
 	current: { ...DEFAULT_LABEL_TUNING },
 	wide16: { maxBuildBars: 16, riseBeyondFirst: false, riseRatio: 1, breakOnBreakdown: false },
@@ -76,11 +69,7 @@ const LABEL_VARIANTS: Record<string, LabelTuning> = {
 const labelName = flag('labels', 'current');
 const labels = LABEL_VARIANTS[labelName];
 if (!labels) throw new Error(`unknown label variant ${labelName}`);
-/**
- * Label sections from the MusicFM head instead of the rules, using the precomputed
- * corpus embeddings (bench/convert-embeddings.py). This is the P6 end-to-end gate:
- * the same posteriors production computes, through the same analyzeTrack path.
- */
+/** Evaluate MusicFM head labels through analyzeTrack using precomputed corpus embeddings. */
 const useHead = argv.includes('--head');
 
 const ROOT = join(import.meta.dirname, 'corpus');

@@ -24,11 +24,8 @@ const TELEMETRY_STALE_MS = 2600;
 type Listener = (statuses: HardwareStatus[]) => void;
 
 /**
- * What the app knows about the board, from the two things the board says.
- *
- * Discovery is a question the host asks and can ask at any time; telemetry is a stream the
- * board only sends to whoever is already sending it DDP. So the two answer different
- * questions - "is it there" and "is it keeping up" - and neither substitutes for the other.
+ * Discovery reports reachability; DDP telemetry reports delivery health. Neither replaces the
+ * other.
  */
 class DeviceLink {
 	private host = '';
@@ -40,10 +37,8 @@ class DeviceLink {
 	private message = '';
 	private probing = false;
 	/**
-	 * The board's own IP, from whichever reply last came back.
-	 *
-	 * Not the same thing as `host`, which is whatever was typed and may be a name. Two boards
-	 * report to the same stats port, so a line has to be attributed by where it came from.
+	 * Attribute shared-port telemetry by the board's reply IP, which may differ from its
+	 * configured hostname.
 	 */
 	private address = '';
 
@@ -96,10 +91,7 @@ class DeviceLink {
 		this.onChange();
 	}
 
-	/**
-	 * Point at a board. An empty host forgets everything, because a stale identity beside a
-	 * blank address is the panel claiming to know something it does not.
-	 */
+	/** Clearing a host also clears stale board identity. */
 	setHost(host: string): void {
 		const next = host.trim();
 		if (next === this.host) return;
@@ -113,11 +105,7 @@ class DeviceLink {
 		if (next) void this.probe();
 	}
 
-	/**
-	 * Point at a part of the room. Takes effect the next time output starts, the same as the
-	 * address does: re-pointing a running stream mid-track would step the room, and the show is
-	 * the thing being judged.
-	 */
+	/** Region changes apply when output restarts, avoiding mid-track jumps. */
 	setRegion(id: string): void {
 		if (id === this.regionId) return;
 		this.regionId = id;
@@ -151,19 +139,13 @@ class DeviceLink {
 		this.identity = answer?.identity ?? null;
 		this.address = answer?.address ?? '';
 		this.latencyMs = this.identity ? Date.now() - started : null;
-		// A board that has never answered is a different situation from one that answered before
-		// and has now gone quiet, and only the second is worth a message.
+		// Report silence only after a board has previously answered.
 		this.message = this.identity ? '' : 'No answer from that address.';
 		this.publish();
 	}
 }
 
-/**
- * The room's boards.
- *
- * One stats socket between them rather than one each: the port is fixed at 4049 and both boards
- * report to whoever last sent them DDP, so a line is attributed by the address it came from.
- */
+/** Share fixed stats port 4049 across boards, attributing replies by source address. */
 class Hardware {
 	private readonly links: Record<DeviceRole, DeviceLink>;
 	private listeners = new Set<Listener>();
@@ -208,10 +190,7 @@ class Hardware {
 		else this.closeStats();
 	}
 
-	/**
-	 * Poll only while somebody is watching, counted rather than flagged so a second tab
-	 * closing does not stop the first one's readout.
-	 */
+	/** Count viewers so one tab closing cannot stop another tab's polling. */
 	watch(): () => void {
 		this.watchers++;
 		if (this.probeTimer === null) {
@@ -230,12 +209,7 @@ class Hardware {
 		for (const role of DEVICE_ROLES) void this.links[role].probe();
 	}
 
-	/**
-	 * Bind the stats port and listen.
-	 *
-	 * Held only while streaming so `firmware/tools/ddp-probe.ts`, which binds the same port,
-	 * still works whenever the app is idle.
-	 */
+	/** Hold the stats port only while streaming so standalone probes can use it when idle. */
 	private openStats(): void {
 		if (this.stats) return;
 		const socket = createSocket({ type: 'udp4', reuseAddr: true });
@@ -245,8 +219,7 @@ class Hardware {
 			const telemetry = parseTelemetry(buf.toString(), Date.now());
 			if (!telemetry) return;
 			const link = DEVICE_ROLES.map((r) => this.links[r]).find((l) => l.answersFrom(rinfo.address));
-			// An unattributable line goes to the only configured board, if there is one: a name
-			// typed into the field never matches the IP a board reports from.
+			// With one configured board, accept otherwise unattributable replies from its resolved IP.
 			const only = DEVICE_ROLES.map((r) => this.links[r]).filter((l) => l.configured);
 			(link ?? (only.length === 1 ? only[0] : null))?.takeTelemetry(telemetry);
 		});
@@ -254,8 +227,7 @@ class Hardware {
 		socket.on('error', () => this.closeStats());
 		socket.bind(STATS_PORT);
 
-		// Nothing else republishes while a stream is healthy, so the transition from fresh to
-		// stale needs its own nudge or the panel would show 60 fps forever after a board dies.
+		// Publish freshness expiry even when no packets arrive to trigger an update.
 		const tick = setInterval(() => this.publish(), 1000);
 		socket.once('close', () => clearInterval(tick));
 	}
@@ -272,12 +244,7 @@ interface Answer {
 	address: string;
 }
 
-/**
- * One discovery query and the first answer to it.
- *
- * The board replies to the source port rather than to the stats port, so this needs no
- * standing listener and works whether or not anything is streaming.
- */
+/** Discovery replies to its query's source port and needs no persistent stats listener. */
 function ask(host: string, timeoutMs: number): Promise<Answer | null> {
 	return new Promise((resolve) => {
 		let socket: Socket;
@@ -314,4 +281,3 @@ function ask(host: string, timeoutMs: number): Promise<Answer | null> {
 }
 
 export const hardware = new Hardware();
-export { DDP_PORT, STATS_PORT };

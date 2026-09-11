@@ -13,21 +13,12 @@ import { ShowPlayer } from './player.ts';
 import { AmbientPlayer, type AmbientSettings } from './ambient/player.ts';
 import { IdleClock } from './ambient/idle.ts';
 
-/**
- * How long the room stays on the show after the music stops before it starts letting go.
- *
- * A track handing over to the next one is a gap of a second or two - fetch, decode, play - and a
- * room that dips through every one of those is worse than one that never rests at all. This is
- * longer than any ordinary gap and shorter than anyone's patience.
- */
+/** Seconds to hold the show across ordinary fetch/decode gaps between tracks. */
 const REST_GRACE = 2.5;
 
 /** Seconds to dissolve into rest, and to come back out of it. */
 const REST_DISSOLVE = 5;
-/**
- * Coming back is faster than going, and deliberately asymmetric: the music is already playing by
- * the time this runs, so the room owes you the show rather than a considered arrival.
- */
+/** Return faster because the music is already playing. */
 const WAKE_DISSOLVE = 1.5;
 
 export interface DirectorState {
@@ -42,22 +33,10 @@ export interface DirectorState {
 }
 
 /**
- * The room, as one picture.
- *
- * Two complete looks are composed side by side and crossfaded before the output chain: the authored
- * show on one mixer, the ambient scenes on the other. A crossfade is the only honest way to do this
- * - there is one buffer per layer role and `Layer.setEffect` zeroes it, so a show and a scene cannot
- * share a stack - and it is cheap, because only one of the two is composed unless a handover is
- * actually in flight.
- *
- * The output chain runs once, here, on the blend. Running it per stage would slew, limit and expose
- * two rooms independently and then average the results, and auto-exposure in particular would spend
- * the whole dissolve chasing a picture that is half of something else.
+ * Crossfade separate show and ambient mixers; their persistent layer buffers cannot be shared.
+ * Run the output chain once on the blend so exposure follows the combined picture.
  */
 export class RoomDirector {
-	readonly geometry: Geometry;
-	readonly registry: EffectRegistry;
-
 	readonly showMix: Mixer;
 	readonly ambientMix: Mixer;
 	readonly player: ShowPlayer;
@@ -80,17 +59,12 @@ export class RoomDirector {
 	private u = 0;
 	private stopped = 0;
 	/**
-	 * Whether a show has ever been loaded, which is not the same as one being loaded now.
-	 *
-	 * `hasShow` goes false for a second in the middle of every track change, while the next track's
-	 * bundle is being fetched, and the grace exists precisely to cover that. This is the other
-	 * question - has this room ever had anything to hold - and only it may skip the grace.
+	 * Remember whether any show has loaded: temporary unloads between tracks must retain the
+	 * grace.
 	 */
 	private everLoaded = false;
 
 	constructor(geometry: Geometry, registry = new EffectRegistry()) {
-		this.geometry = geometry;
-		this.registry = registry;
 		this.showMix = new Mixer(geometry);
 		this.ambientMix = new Mixer(geometry);
 		this.player = new ShowPlayer(this.showMix, registry);
@@ -114,23 +88,9 @@ export class RoomDirector {
 	}
 
 	/**
-	 * The output stage, which belongs to the fixtures rather than to the show.
-	 *
-	 * `brightness` is a dimmer and lands after gamma, so it costs no contrast; `contrast` is the
-	 * exponent, which pulls the mids down and leaves full scale alone. Separate controls because
-	 * "too bright" and "the hits do not land" are different complaints with different answers, and
-	 * turning one down to fix the other is how a room ends up flat. `lampBrightness` is its own
-	 * number because the lamp is a different fixture in a different corner at a different distance.
-	 *
-	 * `lampBrightness` is the one that does not keep the promise: the lamp's white knee is a
-	 * threshold on the byte this dims, so under about 0.6 the hits stop reaching it and the lamp
-	 * goes quietly back to being a coloured glow. Turning it down is a way to calm that corner, not
-	 * only to dim it. Nothing here can fix that - the knee lives on the board, which is never told
-	 * this number.
-	 *
-	 * **Only the server sets these.** The browser leaves them at unity, so the preview keeps
-	 * showing the show rather than the room's dimmer: a screen has its own brightness, and dimming
-	 * the picture to match a patio only makes the picture harder to read.
+	 * Server-only fixture controls; the browser keeps unity for a readable preview.
+	 * Brightness scales after gamma; contrast changes the exponent. Lamp brightness is
+	 * independent.
 	 */
 	brightness = MASTER;
 	contrast = GAMMA;
@@ -138,10 +98,6 @@ export class RoomDirector {
 
 	set ambientSettings(s: AmbientSettings) {
 		this.ambient.settings = s;
-	}
-
-	get ambientSettings(): AmbientSettings {
-		return this.ambient.settings;
 	}
 
 	load(analysis: TrackAnalysis, show: Show): void {
@@ -156,22 +112,15 @@ export class RoomDirector {
 	}
 
 	/**
-	 * One frame. `t` is where the audio is; `state` is what the room is being asked to be.
-	 *
-	 * Returns the show's frame rather than the ambient one: it is what the readout, the scrubber and
-	 * the cue highlight are about, and those keep meaning the track even when the room has stopped
-	 * lighting it.
+	 * Returns the track frame for readouts and cue highlighting, even while ambient owns the
+	 * room.
 	 */
 	update(t: number, dt: number, state: DirectorState): ShowFrame {
 		const f = this.player.update(Math.max(0, t), dt);
 
 		const live = state.playing && state.hasShow;
-		// Lounge takes the room at once, because it is a decision rather than an absence. So does an
-		// app that has never had a show in it: the grace is there to bridge the gap between two
-		// tracks, and there is no gap to bridge before the first one. Rest otherwise waits it out.
-		//
-		// Held AT the grace rather than past it, so switching lounge off during a pause leaves the
-		// room resting instead of snapping back to a show nobody is listening to.
+		// Lounge and a never-loaded room skip the grace. Keep it spent when lounge ends during
+		// a pause.
 		if (state.lounge || !this.everLoaded) this.stopped = REST_GRACE;
 		else if (live) this.stopped = 0;
 		else this.stopped += dt;
@@ -181,20 +130,15 @@ export class RoomDirector {
 		const speed = dt / (target > this.u ? REST_DISSOLVE : WAKE_DISSOLVE);
 		this.u = target > this.u ? Math.min(target, this.u + speed) : Math.max(target, this.u - speed);
 
-		// Only the stage that contributes is composed, so a room that has settled on one of them
-		// costs exactly what it did before there were two. The idle clock is part of that: frozen
-		// while nothing reads it, and continuing rather than jumping when something does.
+		// Compose only contributing stages; freeze the idle clock while it is unused.
 		const loungeLive = state.lounge && state.playing && state.hasShow;
 		const w = this.ambience;
 
 		if (w < 1) this.composeShow(f, dt, state.playing);
 		if (w > 0) {
-			// Lounge is fed the track's own frame, so the scenes answer the spectrum and change on
-			// the arrangement. Resting is fed a synthetic grid with no measurement in it at all.
+			// Lounge uses the track frame; rest uses an unmeasured synthetic grid.
 			const af = loungeLive ? f : this.idle.update(dt);
-			// The show stage's palette is whatever cue it is on, already crossfaded by the player.
-			// Only while a track is actually sounding: a paused show's cue is not a colour the room
-			// should keep chasing, and a rested room holds the last one it arrived at.
+			// Follow the show palette only while audio sounds; rest holds the last colour.
 			this.ambient.cuePalette = loungeLive ? this.showMix.palette : null;
 			this.ambient.update(af, loungeLive);
 			this.ambientMix.compose(af);
@@ -202,43 +146,15 @@ export class RoomDirector {
 
 		this.blend(w);
 
-		// Auto-exposure follows the music and nothing else. A resting room's level is chosen rather
-		// than measured, and an exposure that pulls it back toward the target is undoing a decision
-		// it cannot see - which is exactly what it was already forbidden from doing to a silence.
+		// Rest has a chosen level, so auto-exposure must not pull it toward the music target.
 		const exposed = w < 1 && state.playing && f.energy > 0.02;
 		this.finish(f, w, dt, exposed);
 		return f;
 	}
 
-	reset(): void {
-		this.player.reset();
-		this.ambient.reset();
-		this.idle.reset();
-		this.showMix.reset();
-		this.ambientMix.reset();
-		this.frame.fill(0);
-		this.bytes.fill(0);
-		this.bounce.fill(0);
-		this.slew.reset();
-		this.meanLevel.reset();
-		this.lamp.reset();
-		this.u = 0;
-		this.stopped = 0;
-	}
-
 	/**
-	 * The show, held still while the audio is not sounding.
-	 *
-	 * A paused show is a paused clock and a running one at the same time: `t` stops, so every beat,
-	 * band and section freezes, while `dt` keeps arriving, so every phase accumulator and decay in
-	 * every effect carries on. Measured over a pause, the show's own mean brightness swung between
-	 * 28 and 79 bytes on a four-second cycle - a room lurching about while its music sits still,
-	 * and a fade-out that lurches with it.
-	 *
-	 * A desk that pauses shows a still look, so this passes zero. Every time constant in the DSL is
-	 * derived from `dt`, so zero holds all of them exactly rather than approximately: `alphaFor`
-	 * returns 0, `fadeToBlack` decays nothing, an integrator adds nothing. The frame is restored
-	 * before it goes back to the caller, which reports what actually elapsed.
+	 * Pass dt = 0 while paused to freeze effect integrators and decays, then restore the
+	 * caller's dt.
 	 */
 	private composeShow(f: ShowFrame, dt: number, playing: boolean): void {
 		if (playing) {
@@ -251,18 +167,8 @@ export class RoomDirector {
 	}
 
 	/**
-	 * The two stages into one picture, mixed in light rather than in the authoring domain.
-	 *
-	 * The authoring domain is not linear light - `quantize` raises it by gamma on the way to the
-	 * wire, so an LED's output goes as the square-ish of these numbers. A plain lerp there halves
-	 * both looks at the midpoint, and half of an authoring value is a fifth of the light: measured
-	 * across a handover between two looks that light different walls, the room dropped to 43% of
-	 * its own brightness halfway and climbed back out. That is a dip anyone in the room can see.
-	 *
-	 * Squaring first, mixing, and taking the root back out preserves the light exactly where the two
-	 * looks are disjoint and leaves them untouched where they agree. The square is standing in for
-	 * gamma 2.2 - the exact exponent would cost three `Math.pow` per channel and lands within 6% of
-	 * this at the worst point of the fade, which is a tenth of a stop.
+	 * Mix squared values and take the root to avoid a brightness dip between disjoint looks.
+	 * The square approximates gamma without three Math.pow calls per channel.
 	 */
 	private blend(w: number): void {
 		const show = this.showMix.frame;
@@ -284,13 +190,7 @@ export class RoomDirector {
 		}
 	}
 
-	/**
-	 * The accent slot of whichever stage the room is showing, mixed the way `blend` mixes light.
-	 *
-	 * A plain lerp between two full-brightness colours dips through the middle - red to green
-	 * passes through a half-lit olive - and the lamp would darken across a dissolve that is meant
-	 * to be invisible, for the same reason and by the same arithmetic as the picture itself.
-	 */
+	/** Use the same light-domain blend for the accent so the lamp does not dim midway. */
 	private accent(w: number): Float32Array {
 		const out = this.tint;
 		if (w < 1) sample(this.showMix.palette, SLOT.accent, 1, SHOW_ACCENT);
@@ -314,8 +214,7 @@ export class RoomDirector {
 		this.meanLevel.apply(this.frame, dt, exposed);
 		compressHighlights(this.frame);
 		quantize(this.frame, this.bytes, this.contrast, this.brightness);
-		// After the chain, so the lamp answers the level the frame is actually at rather than the
-		// level the show was authored at.
+		// Reduce the delivered level after the output chain.
 		this.lamp.render(this.frame, f, this.accent(w), dt, this.bounce, this.lampBrightness);
 	}
 }

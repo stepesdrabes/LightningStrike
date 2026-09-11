@@ -2,64 +2,26 @@ import { SPECTRUM_BANDS, encodeBase64, sectionBase, type SectionKind, type Spect
 import type { Spectrogram } from './dsp/spectrogram.ts';
 import { centredMedian, quantile } from './dsp/stats.ts';
 
-/**
- * Frames per second the spectrum is shipped at.
- *
- * Fifty, against the analyser's hundred. The eye integrates over about fifty milliseconds, so
- * twenty is already finer than anything a room can show, and halving the rate halves the
- * largest thing in the file. Below forty a sixteenth-note flicker at club tempo starts to alias.
- */
-export const SPECTRUM_FPS = 50;
-/**
- * The analysed range. Thirty hertz because nothing below it survives an LED strip anyway, and
- * sixteen kilohertz because that is where the filterbank ends.
- */
+/** 50 Hz halves stored spectrum size; below ~40 Hz, club-tempo sixteenths start aliasing. */
+const SPECTRUM_FPS = 50;
+/** Analysed range, Hz: 30 to the filterbank's 16 kHz ceiling. */
 const MIN_HZ = 30;
 const MAX_HZ = 16000;
 
-/**
- * How many frames either side the centred median looks, at SPECTRUM_FPS.
- *
- * Zero group delay, which is the one thing an offline analyser gets for free and a realtime one
- * can never have. Measured on the corpus, the shipped spectrum's own frame-to-frame acceleration
- * was 8.80 bytes against the 4 bytes at which `flickerprobe` calls an effect shimmering: half of
- * its variance was noise, and every effect reading it had to pay for that noise with smoothing.
- * Removing it here is what makes the wider window below affordable.
- */
+/** Centred median radius at SPECTRUM_FPS: remove frame noise without adding group delay. */
 const MEDIAN_RADIUS = 5;
-/**
- * The window, in dB, that the byte range is spread across.
- *
- * Swept: 26 dB gives more contrast (SD 0.280) and too little headroom (mean 0.653), 36 dB gives
- * 0.261. Thirty is where contrast stops paying for the range it costs.
- */
+/** Fixed dB window; 30 balances contrast and headroom in the corpus sweep. */
 const WINDOW_DB = 30;
 /**
- * The most a quiet section may be lifted toward the loud ones, in dB.
- *
- * The whole safety argument for the lift, and the number to re-measure before touching. A section
- * kind whose own q95 sits below the reference gets pulled up by at most this much, so a quiet
- * passage keeps some of its own articulation without arriving at a drop's. Six dB inside a 30 dB
- * window is 0.20 of the byte range and nothing more. Pooled across every INSTANCE of a kind, never
- * fitted per instance: per-instance AGC is exactly what makes every section look identical.
+ * Maximum quiet-kind lift, dB. Pool all instances of each kind; per-instance AGC erases
+ * section contrast. Six dB is 0.20 of the fixed 30 dB window.
  */
 const MAX_LIFT_DB = 6;
 
 /**
- * Fold the analyser's filterbank down to the handful of log-spaced bands the show carries.
- *
- * A fixed dB window against one shared reference per band, NOT the per-band quantile stretch this
- * used to do. Stretching each band across its own whole-track range means every band reads near
- * full whenever it is near its own maximum, so a drop - where they all are - arrived as a flat
- * plateau: measured, mean 0.768 with a standard deviation of 0.136 and 14% of values pinned above
- * 0.93, which is a room with nothing left to react with. It also destroys the RELATIVE height
- * between bands, and that relationship is what makes a spectrum look like music rather than like
- * twenty independent meters.
- *
- * The reference is the 95th percentile over the loud sections pooled, so "1.0" means "as loud as
- * this track's loud passages get". Drops and grooves are genuinely about equally loud in this
- * repertoire (0.769 against 0.750 measured), so the spectrum is not asked to tell them apart; a
- * drop reads through its layers, its motion and its lit area instead.
+ * Use a fixed dB window per band, referenced to the loud sections' pooled q95. Whole-track
+ * quantile stretching flattens loud passages and destroys relative band heights. Drop
+ * identity belongs to layers, motion, and area, not extra spectrum level.
  */
 export function spectrumTrack(
 	spec: Spectrogram,

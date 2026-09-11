@@ -62,35 +62,17 @@ export interface TrackMeta {
 	thumbnail: string;
 	webpageUrl: string;
 	source: string;
-	/**
-	 * Seconds. Held here so a list of the cache can show run times without opening the
-	 * analyses, which are around 400 kB each and would be tens of megabytes for one panel.
-	 */
+	/** Seconds, cached here so library rows need not open large analysis blobs. */
 	duration?: number;
-	/**
-	 * Dominant hue of the cover, degrees, or null when it has no colour worth taking. Cached
-	 * here because it is a property of the artwork rather than of the audio, so re-analysing
-	 * the track should not re-download the image.
-	 */
+	/** Cover hue in degrees, or null. Keep with artwork metadata so reanalysis need not fetch the image. */
 	artHue?: number | null;
-	/**
-	 * Whether the analysed grid deserves its authored show, held here so the queue can read
-	 * it without opening a 400 kB analysis per row. A track this says not to trust runs in
-	 * the lounge scenes instead; absent means trusted (analysed before the verdict existed).
-	 */
+	/** Cached lounge-routing verdict. Absent means trusted for legacy analyses. */
 	gridTrust?: { trusted: boolean; reasons: string[] };
-	/**
-	 * The owner overrode the verdict from the queue: run the authored show regardless. Kept
-	 * beside the verdict so a re-analysis refreshes the evidence without erasing the answer.
-	 */
+	/** Listener override survives reanalysis while the grid evidence refreshes. */
 	gridTrustOverride?: true;
 }
 
-/**
- * The owner's word beats the verdict: run this track's authored show from now on, whatever
- * the analyser thinks of its grid. On the meta rather than the queue row, so the answer
- * survives the row being pruned and the track being queued again next month.
- */
+/** Persist trust override on track metadata so pruning and requeueing cannot erase it. */
 export async function markGridTrusted(id: string): Promise<void> {
 	const meta = await readMeta(id);
 	if (!meta) return;
@@ -106,11 +88,7 @@ export async function readMeta(id: string): Promise<TrackMeta | null> {
 	}
 }
 
-/**
- * The map itself, and the grid it was drawn on, or null when this track carries no map.
- * Separate from the reading below because the cached-analysis path needs only to ask whether
- * the map has changed, which must not depend on interpreting it.
- */
+/** Read raw marks separately from interpretation so cache invalidation can detect any map change. */
 async function readHandMap(
 	id: string
 ): Promise<{
@@ -150,10 +128,7 @@ async function readHandMap(
 	}
 }
 
-/**
- * What a cached analysis must carry to count as having heard this track's current marks -
- * the map and the movements together, since either changes what the analysis would be.
- */
+/** Cache stamp includes section and movement marks because either changes analysis. */
 async function handMapStamp(id: string): Promise<string | undefined> {
 	const map = await readHandMap(id);
 	if (!map) return undefined;
@@ -164,17 +139,9 @@ async function handMapStamp(id: string): Promise<string | undefined> {
 }
 
 /**
- * What the hand-drawn map beside this cache says about the track, ready to spread into
- * `analyzeTrack`: the grid it implies and the sections it draws. The judgement is read as
- * data rather than imported as code - the app owns its full shape, this side needs the map -
- * and tolerated missing or malformed the way every judgement read is: a broken file is one
- * lost map, not a broken analysis.
- *
- * The map is read together with the analysis it was DRAWN ON, which is still the cached one
- * at this point (this runs before the fresh blob is written), because the grid reading
- * depends on it: `handMapGrid` carries a confirmed piecewise grid forward and only derives
- * new cuts from a uniform one. The judgement pins `analysisHash`, so a cache holding some
- * other grid than the map was drawn on is caught rather than trusted.
+ * Read optional judgement data with the analysis it was drawn on before overwriting the cache.
+ * The pinned analysisHash guards the drawing grid; preserve confirmed piecewise cuts.
+ * Missing or malformed judgement files mean no map.
  */
 export async function handMapInput(id: string): Promise<{
 	gridCuts?: number[];
@@ -226,10 +193,7 @@ export async function findAudioFile(id: string): Promise<string | null> {
 	assertId(id);
 	if (!existsSync(CACHE_DIR)) return null;
 	const files = await readdir(CACHE_DIR);
-	// A positive list, after two denylist failures: a mid-session build cached raw
-	// .instrumental.pcm beside the audio and served 16 MB of samples to the browser, and an
-	// interrupted yt-dlp leaves .part/.ytdl files that would poison the track forever.
-	// Only a container yt-dlp actually produces counts as the audio.
+	// Accept known audio containers only; intermediate PCM and interrupted .part/.ytdl files are not audio.
 	const AUDIO = /\.(m4a|webm|opus|mp3|ogg|oga|aac|wav|flac|mp4|mka)$/i;
 	const hit = files.find((f) => f.startsWith(`${id}.`) && AUDIO.test(f));
 	return hit ? join(CACHE_DIR, hit) : null;
@@ -246,15 +210,8 @@ export interface IngestResult {
 }
 
 /**
- * Let the audio outvote the record shop.
- *
- * Store genres describe the artist; the classifier heard this track. The Weeknd is filed
- * under R&B while Blinding Lights is synthwave, and the room should light the record that
- * is playing. The middle of the track is classified rather than the start, because a
- * four-minute intro classifies as the ambient it genuinely is and the track is not that.
- *
- * Returns an updated context, or the same object when the audio had nothing confident to
- * add. Failures are swallowed: genre is an improvement, never a dependency.
+ * Classify the middle of the track so a long intro does not dominate genre. Audio may outvote
+ * artist metadata; uncertainty or failure retains the original context.
  */
 export async function refineGenreFromAudio(
 	context: TrackContext,
@@ -269,10 +226,8 @@ export async function refineGenreFromAudio(
 			const window = Math.min(mono22k.length, 180 * sampleRate);
 			const start = Math.max(0, Math.floor((mono22k.length - window) / 2));
 			const result = await model.run(mono22k.subarray(start, start + window));
-			// The "Electronic" parent is dropped before voting: it spans techno through ambient,
-			// so as a keyword it only ever drowns the style beside it. The other parents (Hip
-			// Hop, Rock, Folk) genuinely narrow the family and stay. Activations weight the
-			// votes, so the style the model is sure of decides.
+			// Drop the Electronic parent because it obscures specific styles; retain informative parents
+			// and weight votes by activation.
 			const top = result.top.slice(0, 5);
 			const vote = mapGenres(
 				top.map((t) => t.label.replace(/^Electronic---/, '').replace('---', ' ')),
@@ -298,22 +253,9 @@ export async function refineGenreFromAudio(
 }
 
 /**
- * Take the genre verdict's drum claim to the record, and downgrade it where the record says
- * no. Returns a corrected context, or null when the verdict stands.
- *
- * The audio classifier hears a piano ballad as Tropical House and there is no ballot on
- * which it loses (`familyCorroborated` carries the numbers). What settles it is the kick
- * rate over the track's own loud bars - the measurement the drop vocabulary is already
- * gated on. The replacement family comes from the same labels with the kick-claiming ones
- * struck out, because the model was not hearing nothing: "Pop Ballad" was sitting third on
- * its own list all along.
- *
- * Runs AFTER the analysis, which is the only place the measurement exists. That order is
- * safe rather than lucky: every club privilege inside the analysis is kick-gated too, so a
- * verdict this pass downgrades had already been refused the drop vocabulary - the three
- * tracks it moves in the judged library were all labelled chorus/verse before it existed.
- * The corrected family is persisted, so the show, the picker and the panel all see it, and
- * a later re-analysis reads the corrected value from the start.
+ * After analysis, remove genre families whose kick claim the loud-bar rate contradicts.
+ * Re-vote the same labels and persist the correction. Analysis already gates club privileges
+ * on that kick evidence, so changing the family cannot invalidate its vocabulary.
  */
 export function correctGenreFamily(
 	context: TrackContext,
@@ -337,27 +279,14 @@ export function correctGenreFamily(
 }
 
 /**
- * Whether the published tempo re-hears the detected one at another metrical level.
- *
- * Returns the factor to re-read the beats at, or null when the two already agree or
- * disagree by a ratio no metrical error produces - a published figure that is simply
- * wrong must not drag a good grid with it. Mirrors the correction the AI author has
- * always been allowed to make from research; this is the engine path getting the same
- * privilege from the same kind of evidence.
- *
- * Genre-gated, because catalogue tempi carry each genre's own notation convention:
- * hip-hop and RnB are routinely published at the hat count, double the felt pulse the
- * room should move at, so a "correction" there un-fixes a grid that was already right.
- * The slow families are barred from doubling for the same reason in the other direction.
+ * Return a corroborated metrical ratio or null. Genre gates respect catalogue notation:
+ * hip-hop/RnB may publish the hat count, and slow families must not be doubled into a wrong pulse.
  */
 export function publishedLevel(
 	beats: readonly number[],
 	publishedBpm: number,
 	genreFamily?: string | null,
-	/**
-	 * The model's downbeats and the drum model's snares, when the caller has them: the
-	 * snare says which of two octaves carries the backbeat, which no catalogue can.
-	 */
+	/** Optional model downbeats and snares let the backbeat disambiguate catalogue tempo octaves. */
 	kit?: { downbeats?: readonly number[]; snares?: readonly number[] }
 ): number | null {
 	if (genreFamily === 'hiphop' || genreFamily === 'rnb') return null;
@@ -371,11 +300,8 @@ export function publishedLevel(
 			// model hears its 92 bpm riff, and the owner's map runs in whole bars of 2.6 s.
 			// Punk that really plays at 186 (American Idiot) the model tracks there itself.
 			if (r > 1 && (genreFamily === 'ballad' || genreFamily === 'ambient' || genreFamily === 'metal')) return null;
-			// The octave the catalogue names is checked against the snare. Deezer publishes
-			// Frank Ocean's Thinkin Bout You at 130; the model hears 65 with the snare on two
-			// and four, and re-read at 130 that snare sits on beat three of every bar, which
-			// no backbeat does. The faster of the two grids is the one the test can fail: a
-			// backbeat there confirms a doubling and refuses a halving, its absence the reverse.
+			// Check the faster grid for snares on beats two/four. A backbeat there supports doubling and
+			// rejects halving; its absence supports the converse.
 			if ((r === 2 || r === 0.5) && kit?.downbeats && kit.snares) {
 				const share = backbeatShare(beats, r === 2 ? 2 : 1, kit.downbeats, kit.snares);
 				if (share !== null && (r === 2 ? share < BACKBEAT_SHARE : share >= BACKBEAT_SHARE)) return null;
@@ -393,9 +319,8 @@ const BACKBEAT_MIN_SNARES = 24;
 const BACKBEAT_MIN_DOWNBEATS = 8;
 
 /**
- * Share of snare hits on the second and fourth beat of the bar, on the beat grid read at
- * `mult` times its tracked rate (1 or 2), with the bar phase taken from the model's own
- * downbeats. Null where there is too little kit to read.
+ * Snare share on beats two/four at mult times tracked tempo, using model downbeat phase.
+ * Null when kit evidence is insufficient.
  */
 function backbeatShare(
 	beats: readonly number[],
@@ -438,16 +363,8 @@ function backbeatShare(
 }
 
 /**
- * Every stage an ingest reports, as a closed set.
- *
- * A union rather than free text because the queue maps each one to a row status: when
- * `looking the track up` and `transcribing drums` were merely emitted and not mapped, a row
- * sat reading "Downloading" through the whole enrichment. Callers type their tables against
- * this, so the compiler catches the next one instead of a listener noticing months later.
- *
- * The same channel also carries free-text notes - a model that failed to load, a grid being
- * re-read at a corrected level - which are messages rather than stages and leave the row's
- * status where it was. That is why the type is widened rather than closed.
+ * Known stages are typed for exhaustive queue-status mapping. Free-text notes share the
+ * progress channel without changing the current stage.
  */
 export type IngestStage =
 	| 'resolving'
@@ -462,19 +379,9 @@ export type IngestStage =
 export interface IngestOptions {
 	/** Re-analyse even when a current cached analysis exists. */
 	force?: boolean;
-	/**
-	 * Re-read the beats at a different metrical level: 2 doubles, 0.5 halves, 1.5 reads three
-	 * where the tracker read two. Implies `force`, since the cached grid is what is being
-	 * disagreed with.
-	 */
+	/** Metrical multiplier: 2 doubles, 0.5 halves, 1.5 reads three for two. Implies force. */
 	metricalLevel?: number;
-	/**
-	 * Cover art, when the caller knows it better than the rip does.
-	 *
-	 * yt-dlp reports a video still, and for an art track that is the square sleeve pillarboxed
-	 * into 16:9 on a flat fill - nearly half the image is a colour the record does not contain,
-	 * which both muddies the blurred backdrop and drags `artHue` toward the fill.
-	 */
+	/** Prefer caller-supplied square cover art; yt-dlp stills may contain pillarbox fill that biases hue. */
 	artwork?: string;
 	onProgress?: (stage: IngestStage | (string & {})) => void;
 }
@@ -523,9 +430,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		id = `file-${hash}`;
 		title = basename(original, extname(original));
 
-		// Copy into the cache rather than referencing in place, so every artifact for a track
-		// lives in one directory and the audio route can serve local files the same way it
-		// serves downloads.
+		// Copy local audio into cache so serving and artifact ownership match downloaded tracks.
 		audioPath = join(CACHE_DIR, `${id}${extname(original)}`);
 		if (!existsSync(audioPath)) await copyFile(original, audioPath);
 
@@ -544,11 +449,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	meta.duration ??= previous?.duration;
 	await writeFile(metaPath(id), JSON.stringify(meta, null, '\t'));
 
-	// Enrichment runs once per track and its result is cached like everything else. A context
-	// whose lookups all failed is retried on the next ingest, so one offline evening does not
-	// leave a track contextless forever. 'effnet' does not count as a lookup here: it is the
-	// local model's marker, gets stamped even on an offline run, and counting it once made a
-	// failed enrichment permanent - no published tempo, no lyrics, ever, for that track.
+	// Retry contexts with no successful remote lookup. The local effnet marker must not count,
+	// or one offline run would permanently suppress tempo and lyric enrichment.
 	let context = await readContext(id);
 	const enriched = (c: TrackContext) => c.sources.some((s) => s !== 'effnet');
 	if (!context || context.version !== CONTEXT_VERSION || !enriched(context)) {
@@ -569,23 +471,17 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 
 	const relevel = opts.metricalLevel !== undefined && Math.abs(opts.metricalLevel - 1) > 1e-6;
 	if (!opts.force && !relevel) {
-		// Only the READ is allowed to fail quietly. Everything the cached blob is then put
-		// through used to sit inside this catch, where one undefined reference turned into a
-		// silent full re-analysis on every play - a 40-second bug that looked like a policy.
+		// Catch only cache-read failures; errors processing a cached analysis must not silently trigger reanalysis.
 		let cached: TrackAnalysis | null = null;
 		try {
 			cached = JSON.parse(await readFile(analysisPath(id), 'utf8')) as TrackAnalysis;
 		} catch {
 			// No cache, or unreadable. Fall through and analyse.
 		}
-		// A stale blob is silently wrong rather than obviously broken: same shape, different
-		// meaning. Version mismatch has to discard it - and so does a hand-drawn map the blob
-		// has not heard, which is how a map drawn on a current analysis takes effect on the
-		// very next play instead of waiting for a version bump it may never get.
+		// Invalidate stale versions and changed hand maps even when their JSON shape still looks compatible.
 		if (cached && cached.version === ANALYSIS_VERSION && cached.handMap === (await handMapStamp(id))) {
 			log('cached');
-			// Tracks analysed before meta carried a duration or a trust verdict get them
-			// here, so a list of the cache does not have to open a 400 kB analysis per row.
+			// Backfill legacy duration/trust metadata to avoid analysis reads for every library row.
 			if (!meta.duration || !meta.gridTrust) {
 				meta.duration = meta.duration || cached.duration;
 				meta.gridTrust = meta.gridTrust ?? gridTrust(cached, context.publishedBpm);
@@ -599,9 +495,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	log('decoding');
 	const decoded = await decodeAudio(audioPath);
 
-	// The audio's own genre vote, once the audio exists to ask. The cache remembers whether
-	// the model has spoken - and only whether it actually spoke: a failed model run returns
-	// null and earns no marker, so the next ingest asks again.
+	// Record effnet only after successful classification so failures retry on later ingests.
 	if (!context.sources.includes('effnet')) {
 		const refined = await refineGenreFromAudio(context, decoded.mono, decoded.sampleRate);
 		if (refined !== null) {
@@ -627,10 +521,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		log(`beat model unavailable, falling back: ${e instanceof Error ? e.message : String(e)}`);
 	}
 
-	// The drum model hears the kit through the whole mix where the band-flux DSP hears
-	// bands; like the beat model it is optional, and its absence is the DSP path working
-	// exactly as before. It listens at the training frontend's rate, so it decodes its own
-	// copy rather than resampling the analysis one upward, which would be inventing octaves.
+	// Decode model drums at their training rate; upsampling the analysis PCM cannot restore lost bands.
 	let drums: import('./adtof.ts').AdtofOnsets | undefined;
 	try {
 		const { Adtof } = await import('./adtof.ts');
@@ -648,10 +539,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		log(`drum model unavailable, falling back: ${e instanceof Error ? e.message : String(e)}`);
 	}
 
-	// A published tempo that re-hears the tracked one at a clean ratio settles the octave
-	// automatically, which until now only happened when the AI author researched the track.
-	// An explicit request still wins: it is a listener's correction, which outranks a catalogue.
-	// After the drum model, because the snare is what checks the catalogue's octave.
+	// Catalogue metrical corrections follow drum inference for the snare check; explicit listener
+	// corrections retain precedence.
 	let metricalLevel = opts.metricalLevel;
 	if (metricalLevel === undefined && tracked && context.publishedBpm) {
 		const level = publishedLevel(tracked.beats, context.publishedBpm, context.genreFamily, {
