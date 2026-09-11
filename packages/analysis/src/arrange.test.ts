@@ -1,5 +1,46 @@
 import { describe, expect, it } from 'vitest';
-import { carveRingOut, levelEnvelopes, snapToPhrases, type Segment } from './arrange.ts';
+import { arrange, carveRingOut, levelEnvelopes, snapToPhrases, type Segment } from './arrange.ts';
+import type { BarFeatures } from './structure.ts';
+
+describe('opening labels', () => {
+	function opening(level: number, kick: number, snare: number, kitElsewhere = true) {
+		const count = 64;
+		const time = Float64Array.from({ length: count + 1 }, (_, i) => i * 2);
+		const levels = Float32Array.from({ length: count }, (_, b) =>
+			b < 24 ? level : b < 40 ? -12 : b < 48 ? -38 : -10
+		);
+		const bandsDb = Float32Array.from({ length: count * 4 }, (_, i) => levels[Math.floor(i / 4)]);
+		const rms = Float32Array.from(levels, (db) => Math.pow(10, db / 20));
+		const bars: BarFeatures = {
+			count, time, rms, floor: Float32Array.from(rms),
+			low: new Float32Array(count), mid: new Float32Array(count), high: new Float32Array(count),
+			patternDim: 1, pattern: new Float32Array(count), chroma: new Float32Array(count * 12)
+		};
+		const kicks = Int32Array.from({ length: count }, (_, b) =>
+			b < 24 ? kick : b < 40 || b >= 48 ? Number(kitElsewhere) * 4 : 0
+		);
+		const snares = Int32Array.from({ length: count }, (_, b) =>
+			b < 24 ? snare : b < 40 || b >= 48 ? Number(kitElsewhere) * 2 : 0
+		);
+		return arrange(
+			bandsDb, bars, [0, 24, 40, 48, 64],
+			{ group: [0, 1, 2, 1], repeatOf: [null, null, null, 1] },
+			Float32Array.from({ length: count * 2 }, (_, i) => levels[Math.floor(i / 2)]),
+			1, kicks, snares, new Set([24, 40, 48])
+		).segments[0];
+	}
+
+	it('recognises an established full-kit opening below the later chorus level', () => {
+		expect(opening(-16, 4, 2).kind).toBe('groove');
+	});
+
+	it('keeps quiet full-kit, kick-only and beatless introductions', () => {
+		expect(opening(-30, 4, 2).kind).toBe('intro');
+		expect(opening(-16, 4, 0).kind).toBe('intro');
+		expect(opening(-16, 0, 0).kind).toBe('intro');
+		expect(opening(-16, 0, 0, false).kind).toBe('intro');
+	});
+});
 
 /** A 16-bar final drop whose last `ring` bars have the kick out and the level collapsed. */
 function ringOut(ring: number): { segments: Segment[]; energy: Float32Array; kicks: Int32Array } {

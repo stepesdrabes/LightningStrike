@@ -49,51 +49,57 @@ export const blockChase: EffectDef = {
 			[1, 4, 2, 8]
 		];
 		const level = new Float32Array(walls.length + 1);
-		const held = new Float32Array(walls.length + 1);
+		const power = new Float32Array(walls.length + 1);
+		const born = new Float64Array(walls.length + 1).fill(-Infinity);
 		const kit = new Presence();
 		let lastStep = -1;
 		let strike = 0;
+		let hitPower = 0;
 
 		return {
 			reset() {
 				level.fill(0);
-				held.fill(0);
+				power.fill(0);
+				born.fill(-Infinity);
 				kit.reset();
 				lastStep = -1;
 				strike = 0;
+				hitPower = 0;
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
 				const playing = kit.update(f.kickEnv, f.dt, f.beatPeriod);
+				// A low-rate grid sample may arrive after the hit envelope has started cooling.
+				if (f.kick || hitPower === 0) hitPower = f.kickEnv;
 				const per = p.half > 0.5 ? 2 : 1;
 
-				const step = Math.floor((f.beatIndex + f.beatPhase) / per);
+				const beat = f.beatIndex + f.beatPhase;
+				const step = Math.floor(beat / per);
 				if (step !== lastStep) {
 					lastStep = step;
 					if (playing > 0.08) {
 						const order = ORDERS[Math.min(ORDERS.length - 1, Math.max(0, Math.round(p.order)))];
 						const mask = order[strike % order.length];
 						strike++;
-						const strength = clamp(0.55 + 0.45 * f.kickEnv) * playing;
+						const strength = clamp(0.55 + 0.45 * hitPower) * playing;
+						const at = f.t - (beat - step * per) * f.beatPeriod;
 						for (let k = 0; k < walls.length; k++) {
 							if (mask & (1 << k)) {
-								level[k] = strength;
-								held[k] = HOLD;
+								power[k] = strength;
+								born[k] = at;
 							}
 						}
 						if (f.downbeat) {
-							level[beamBlock] = playing;
-							held[beamBlock] = HOLD;
+							power[beamBlock] = playing;
+							born[beamBlock] = at;
 						}
 					}
 				}
 
 				// Cool within a musical duration before the next strike.
 				const tail = Math.max(0.03, f.beatPeriod * per * 0.5) / Math.max(0.05, motion);
-				const k = Math.exp(-f.dt / tail);
 				for (let b = 0; b < level.length; b++) {
-					if (held[b] > 0) held[b] -= f.dt;
-					else level[b] *= k;
+					level[b] = power[b] * Math.exp(-Math.max(0, f.t - born[b] - HOLD) / tail);
 					if (level[b] < 0.004) level[b] = 0;
 				}
 

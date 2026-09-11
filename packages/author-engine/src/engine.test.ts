@@ -55,6 +55,39 @@ describe('chorus drive through a long medley', () => {
 	}
 });
 
+describe('sparse kit and vocal builds', () => {
+	it.each(['hiphop', 'pop', 'rock', 'metal', 'edm'] as const)('favours individual kick accents without losing chorus variety in %s', (family) => {
+		const track = fixture();
+		for (const s of track.sections) if (s.kind === 'drop') s.meanEnergy = 90;
+		for (const b of track.bars) if (b.section === 'drop') b.kicks = 2;
+		const neutral = BUILT_IN_EFFECTS.map(e => ({ ...e, taste: { ...e.taste, kickAccent: false } }));
+		const choices = (pool: typeof BUILT_IN_EFFECTS) => [1, 7, 29].flatMap(seed =>
+			composeShow(track, { seed, effects: pool, context: { ...emptyContext(), genreFamily: family } })
+				.cues.filter(c => c.section === 'drop').map(c => c.layers.rhythm?.effect ?? '')
+		);
+		const chosen = choices(BUILT_IN_EFFECTS);
+		const accents = (ids: string[]) => ids.filter(id => effects.get(id)?.taste.kickAccent).length;
+		expect(accents(chosen)).toBeGreaterThan(accents(choices(neutral)));
+		expect(accents(chosen)).toBeLessThan(chosen.length);
+		expect(new Set(chosen).size).toBeGreaterThanOrEqual(4);
+	});
+
+	it('retains a continuous note voice through drumless builds and layer stripping', () => {
+		const track = fixture();
+		for (const b of track.bars) if (b.section === 'build') b.kicks = b.snares = 0;
+		const pool = BUILT_IN_EFFECTS.map(e => e.role === 'bed' ? { ...e, taste: { ...e.taste, noteReactive: false } } : e);
+		const composed = composeShow(track, { effects: pool });
+		for (let i = 0; i < composed.cues.length; i++) {
+			const cue = composed.cues[i];
+			if (cue.section !== 'build') continue;
+			const voices = [cue.layers.rhythm, cue.layers.accent].filter(Boolean);
+			expect(voices.some(s => effects.get(s!.effect)?.taste.noteReactive)).toBe(true);
+			const drop = composed.cues.slice(i + 1).find(c => c.section === 'drop');
+			if (drop) expect(Object.keys(cue.layers).length).toBeLessThan(Object.keys(drop.layers).length);
+		}
+	});
+});
+
 describe('coverage', () => {
 	it('opens at bar 0 and runs in order', () => {
 		expect(show.cues[0].bar).toBe(0);

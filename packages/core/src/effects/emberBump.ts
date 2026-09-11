@@ -21,6 +21,7 @@ export const emberBump: EffectDef = {
 		peakReserved: false,
 		activity: 0.3,
 		carries: false,
+		kickAccent: true,
 		kit: 'kick'
 	},
 	params: [INTENSITY, param('lag', 'Front-to-back lag', 0.5)],

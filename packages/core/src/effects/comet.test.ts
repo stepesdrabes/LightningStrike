@@ -38,7 +38,7 @@ function performance(section: SectionKind, notes: boolean) {
 }
 
 describe('comet note articulation', () => {
-	it.each(['intro', 'breakdown'] as const)('answers an offbeat note in a %s without moving or recolouring the shape', (section) => {
+	it.each(['intro', 'breakdown', 'build'] as const)('answers an offbeat note in a %s without moving or recolouring the shape', (section) => {
 		const played = performance(section, true);
 		const steady = performance(section, false);
 		const at = 77;

@@ -17,6 +17,8 @@ interface PickRequest {
 	bare?: boolean;
 	/** A continuous spectral voice that can react while the kit and beat events rest. */
 	noteVoice?: boolean;
+	/** Prefer individual kick accents over grid motion or ducking when the kit is sparse. */
+	kickAccent?: boolean;
 	/** SectionSpan.group identity: reuse the opening effect when the material returns. */
 	group?: number;
 	/**
@@ -213,6 +215,7 @@ export class EffectPicker {
 				// The foreign-gesture penalty exceeds a loud-band mismatch plus jitter, while retaining a
 				// fallback.
 				(req.avoid?.includes(e.id) ? 4.4 : 0) +
+				(req.kickAccent && e.taste.kickAccent ? 3.2 : 0) +
 				// Only where it is the whole show. In a groove or a drop there is a kit, a
 				// transient layer and a master doing the reacting, and a bed that fights them is
 				// noise rather than information.

@@ -8,13 +8,6 @@ import { INTENSITY, param } from './helpers.ts';
 /** Seconds the corners hold their peak before sliding back: past the eye's integration window. */
 const HOLD = 0.06;
 
-/**
- * The room clenches on the kick. At rest the ring's light sits at the middle of each wall;
- * every kick snaps it into the four corners, which flare toward white, and it slides back to
- * the centres over the beat. The total light barely moves, so the gesture is contrast and
- * position rather than a flash, and the hundredth kick lands as hard as the first. The beam
- * answers the snare from its middle, so the backbeat has a home of its own.
- */
 export const snapSplit: EffectDef = {
 	id: 'snapSplit',
 	name: 'Snap Split',
@@ -27,17 +20,12 @@ export const snapSplit: EffectDef = {
 		maxBars: 32,
 		peakReserved: false,
 		activity: 0.4,
+		kickAccent: true,
 		kit: 'kick'
 	},
-	// 0.75 rather than 0.5: at half a beat the corners were dark again before the eye had
-	// settled on them (the owner, twice: "a bit too quick", then "too quick" again at 0.65).
-	// Past 0.9 the corners are still a fifth lit when the next kick on a four-to-the-floor
-	// lands, which is where the snap turns into a pulse.
 	params: [INTENSITY, param('hold', 'Beats to slide back', 0.75, 0.2, 1.2, 0.05)],
 	create(g) {
-		// Corner-ness per LED: 1 at a corner, 0 at the middle of its wall, in each wall's own
-		// length so the long and short runs read the same at their ends. The two fields have
-		// about the same total, which is what keeps the snap a move rather than a dip.
+		// Normalize within each strip so long and short walls distribute their light equally.
 		const corner = new Float32Array(g.count);
 		const middle = new Float32Array(g.count);
 		for (const s of g.strips) {
@@ -63,18 +51,11 @@ export const snapSplit: EffectDef = {
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
 				const playing = kit.update(f.kickEnv, f.dt, f.beatPeriod);
-				// A soft kick still snaps most of the way: the gesture is the corners taking the
-				// light, and a snap that scales down with the kick's envelope reads as the room
-				// hesitating rather than the kit playing quietly.
 				if (f.kick) {
 					snap.fire(clamp(0.55 + 0.5 * f.kickEnv) * playing);
 					held = HOLD;
 				}
 				if (f.snare) answer.fire(clamp(0.4 + 0.6 * f.snareEnv));
-				// The corners sit at the peak for the hold before they start sliding back. A
-				// flash that is already leaving on its second frame reads dimmer and LATER than
-				// one held for the eye's integration window: the owner heard the snap as quick
-				// and "very slightly delayed" on the same kicks.
 				if (held > 0) held -= f.dt;
 				const s = held > 0 ? snap.value : snap.decay(f.dt, f.beatPeriod, (p.hold * 2) / Math.max(0.05, motion));
 				const a = answer.decay(f.dt, f.beatPeriod, 0.5 / Math.max(0.05, motion));
@@ -83,18 +64,13 @@ export const snapSplit: EffectDef = {
 				for (let i = 0; i < g.count; i++) {
 					if (g.perim[i] < 0) {
 						const b = middle[i] * a;
-						setSample(out, i, palette, lerp(SLOT.base, SLOT.white, b) + hueShift, (0.1 + 0.9 * b) * gain);
+						setSample(out, i, palette, lerp(SLOT.base, SLOT.white, b) + hueShift, (0.1 + 1.02 * b) * gain);
 						continue;
 					}
-					// Where the light is: the middles at rest, the corners on the snap. The rest
-					// state sits well under full, so the corners flaring is the bright thing.
 					const c = corner[i];
 					const field = lerp(1 - c, c, s);
-					// The corners flare a step harder than the field alone would put them: the
-					// owner heard the snap as "a bit too subtle", and it is the corners that say
-					// the kick landed.
 					const slot = lerp(SLOT.base, SLOT.white, clamp(c * s * 1.3));
-					setSample(out, i, palette, slot + hueShift, (0.1 + 0.62 * field * field + 0.42 * c * s) * gain);
+					setSample(out, i, palette, slot + hueShift, (0.1 + 0.62 * field * field + 0.43 * c * s) * gain);
 				}
 			}
 		};

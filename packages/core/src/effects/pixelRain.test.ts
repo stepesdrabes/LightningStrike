@@ -40,7 +40,7 @@ function performance(section: SectionKind, notes: boolean, fps = 60) {
 const sum = (frame: Float32Array) => frame.reduce((total, value) => total + value, 0);
 
 describe('pixelRain note articulation', () => {
-	it.each(['intro', 'breakdown'] as const)('brightens a falling droplet on an offbeat %s note', (section) => {
+	it.each(['intro', 'breakdown', 'build'] as const)('brightens a falling droplet on an offbeat %s note', (section) => {
 		const played = performance(section, true);
 		const steady = performance(section, false);
 		const at = 80;

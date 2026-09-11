@@ -290,6 +290,9 @@ export class ShowPlayer {
 		this.kickEnv.reset();
 		this.snareEnv.reset();
 		this.hatEnv.reset();
+		this.lastKickAt = -Infinity;
+		this.lastSnareAt = -Infinity;
+		this.lastHatAt = -Infinity;
 		this.kickCursor = 0;
 		this.snareCursor = 0;
 		this.hatCursor = 0;
@@ -346,6 +349,9 @@ export class ShowPlayer {
 		this.lastBeatIndex = Number.NaN;
 		this.lastBarIndex = Number.NaN;
 		this.lastPhraseIndex = Number.NaN;
+		this.activeHitMaster = null;
+		// The same cue retains its effect instances, whose holds may refer to the old time.
+		this.mixer.reset();
 	}
 
 	private updateGrid(t: number, tempo: TempoGrid): void {

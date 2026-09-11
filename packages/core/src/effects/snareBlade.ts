@@ -65,7 +65,7 @@ export const snareBlade: EffectDef = {
 				const life = Math.max(0.24, tempo * 1.05 / Math.max(0.7, motion));
 				const reply = Math.min(0.04, tempo * 0.08);
 				const pop = Math.max(0.045, tempo * 0.22);
-				const gain = 0.42 + p.intensity * 0.66;
+				const gain = (0.42 + p.intensity * 0.66) * 1.08;
 
 				for (const b of blades) {
 					if (!b.alive) continue;

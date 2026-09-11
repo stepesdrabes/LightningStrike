@@ -2,7 +2,7 @@ import type { SectionKind } from './frame.ts';
 import type { LayerRole, ParamSpec, Params } from './effect.ts';
 import type { ShowPalette } from './palette.ts';
 
-export const SHOW_VERSION = 32;
+export const SHOW_VERSION = 33;
 
 export interface LayerSpec {
 	effect: string;

@@ -11,7 +11,7 @@ export const comet: EffectDef = {
 	id: 'comet',
 	name: 'Comet',
 	role: 'rhythm',
-	blurb: 'A hot head and soft tail orbit the room; quiet notes brighten it and kicks open the tail.',
+	blurb: 'A hot head and soft tail orbit the room; notes brighten it and kicks open the tail.',
 	taste: {
 		energy: 3,
 		sections: ['intro', 'groove', 'breakdown', 'build', 'drop'],
@@ -53,7 +53,7 @@ export const comet: EffectDef = {
 				const heard = low * 0.4 + mid * 0.6;
 				const held = passage.update(heard, beats);
 				// Articulate notes through brightness so the orbit and colour remain steady.
-				const listen = f.section === 'intro' || f.section === 'breakdown';
+				const listen = f.section === 'intro' || f.section === 'breakdown' || f.section === 'build';
 				const noteGain = listen ? clamp(0.86 + heard * 0.2 + (heard - held) * 2.8, 0.65, 1.55) : 1;
 
 				const tailPx = ring.length * p.tail * (1 + f.kickEnv * p.kickSwell);

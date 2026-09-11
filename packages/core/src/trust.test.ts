@@ -22,6 +22,57 @@ function sketch(input: {
 }
 
 describe('gridTrust', () => {
+	function busyTracked(): TrackAnalysis {
+		const a = sketch({ duration: 158, sections: 16, meterConfidence: 0.99, bpm: 175 });
+		const period = 60 / 175;
+		const beats = Array.from({ length: Math.floor(a.duration / period) }, (_, i) => 0.2 + i * period);
+		const downbeats = beats.filter((_, i) => i % 4 === 0);
+		a.tempo = { ...a.tempo, confidence: 0.66, ambiguous: false, beatPeriod: period, barTimes: downbeats };
+		a.heard = { beats, downbeats };
+		return a;
+	}
+
+	it('trusts busy phrasing corroborated by raw beats and downbeats without catalogue metadata', () => {
+		expect(gridTrust(busyTracked()).trusted).toBe(true);
+	});
+
+	it('keeps fragmentation warnings when the model disagrees with the bar phase', () => {
+		const a = busyTracked();
+		a.tempo.barTimes = a.tempo.barTimes.map((t) => t + a.tempo.beatPeriod);
+		expect(gridTrust(a).trusted).toBe(false);
+	});
+
+	it('does not mistake repaired timing or a short correct excerpt for corroboration', () => {
+		const repaired = busyTracked();
+		repaired.downbeats = repaired.heard!.downbeats;
+		delete repaired.heard;
+		expect(gridTrust(repaired).trusted).toBe(false);
+		const brief = busyTracked();
+		brief.heard!.downbeats = brief.heard!.downbeats.slice(0, 20);
+		expect(gridTrust(brief).trusted).toBe(false);
+	});
+
+	it('retains the warning for ambiguous tempo or inconsistent raw four-beat cycles', () => {
+		const ambiguous = busyTracked();
+		ambiguous.tempo.ambiguous = true;
+		expect(gridTrust(ambiguous).trusted).toBe(false);
+		const irregular = busyTracked();
+		irregular.heard!.downbeats = irregular.heard!.beats.filter((_, i) => i % 7 === 0 || i % 7 === 3);
+		expect(gridTrust(irregular).trusted).toBe(false);
+	});
+
+	it('requires confident audio evidence even when model times look regular', () => {
+		const weak = busyTracked();
+		weak.tempo.confidence = 0.35;
+		expect(gridTrust(weak).trusted).toBe(false);
+		const unknown = busyTracked();
+		unknown.tempo.confidence = Number.NaN;
+		expect(gridTrust(unknown).trusted).toBe(false);
+		const halfBars = busyTracked();
+		halfBars.tempo.beatsPerBar = 2;
+		expect(gridTrust(halfBars).trusted).toBe(false);
+	});
+
 	it('trips on the catastrophically fragmented grid', () => {
 		// I Don't Care: 23 sections in 220 s on a 2/4 grid at meter confidence 0.50.
 		const verdict = gridTrust(

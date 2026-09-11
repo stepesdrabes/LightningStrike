@@ -1,31 +1,29 @@
 import type { EffectDef } from '../contracts/effect.ts';
 import { SLOT } from '../contracts/palette.ts';
 import { addSample } from '../color/palette.ts';
-import { hash01 } from '../dsl/rng.ts';
+import { Follower, Schmitt } from '../dsl/env.ts';
 import { clamp } from '../dsl/math.ts';
-import { BeatHold } from '../dsl/env.ts';
-import { bandAt } from '../dsl/spectrum.ts';
+import { hash01 } from '../dsl/rng.ts';
+import { bandAt, bandBetween } from '../dsl/spectrum.ts';
 import { ringsFor } from '../dsl/space.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 const MAX_SEGMENTS = 32;
 
-/**
- * Hash spatial choices on the grid. Default eighths avoid overly busy sixteenth flashes;
- * the planner enables sixteenths where the hats support them.
- */
 export const glitchScan: EffectDef = {
 	id: 'glitchScan',
 	name: 'Glitch Scan',
 	role: 'rhythm',
-	blurb: 'Hash-picked ring segments flashing on the eighth grid, inverting every 4 bars.',
+	blurb: 'Feathered segments answer loud phrases and offbeat swells, resting when the music settles.',
 	taste: {
 		energy: 4,
 		sections: ['groove', 'breakdown', 'build', 'drop'],
 		minBars: 2,
 		maxBars: 16,
 		peakReserved: false,
-		activity: 0.7
+		activity: 0.5,
+		carries: false,
+		noteReactive: true
 	},
 	params: [
 		INTENSITY,
@@ -34,52 +32,71 @@ export const glitchScan: EffectDef = {
 	],
 	create(g) {
 		const ring = ringsFor(g).perimeter;
-		const segEnv = new Float32Array(MAX_SEGMENTS);
+		const born = new Float64Array(MAX_SEGMENTS).fill(-Infinity);
+		const power = new Float32Array(MAX_SEGMENTS);
 		const lit = new Float32Array(MAX_SEGMENTS);
-		// Sample colour only when a segment fires so it stays fixed through that gesture.
 		const segSlot = new Float32Array(MAX_SEGMENTS).fill(SLOT.base);
-		const level = new BeatHold(0.5);
+		const voice = new Follower(0.06, 0.2);
+		const passage = new Follower(1.5, 3);
+		const onset = new Schmitt(0.015, 0.065);
 		let lastSlot = -1;
-
+		let lastFire = -Infinity;
+		let rising = false;
 		return {
 			reset() {
-				segEnv.fill(0);
+				born.fill(-Infinity);
+				power.fill(0);
 				lit.fill(0);
 				segSlot.fill(SLOT.base);
-				level.reset();
+				voice.reset();
+				passage.reset();
+				onset.reset();
 				lastSlot = -1;
+				lastFire = -Infinity;
+				rising = false;
 			},
 			render(out, ctx) {
-				const { f, p, palette, hueShift } = ctx;
+				const { f, p, palette, hueShift, motion } = ctx;
 				out.fill(0);
-
+				const tempo = Math.max(0.15, f.beatPeriod);
+				const heard = voice.update(Math.max(
+					bandBetween(f, 0.18, 0.5), bandBetween(f, 0.4, 0.78)
+				), f.dt / tempo);
+				const held = passage.update(heard, f.dt / tempo);
+				const energy = Math.max(f.energy, heard * 0.6);
+				const audible = clamp((heard - 0.12) / 0.52) * Math.sqrt(clamp((energy - 0.08) / 0.5));
+				const lifted = onset.update(heard - held);
+				const note = lifted && !rising;
+				rising = lifted;
 				const segs = Math.min(MAX_SEGMENTS, Math.max(8, Math.round(p.segments)));
-				const slot = Math.floor((f.beatIndex + f.beatPhase) * Math.max(1, Math.round(p.perBeat)));
-				if (slot !== lastSlot) {
-					lastSlot = slot;
-					const count = 2 + (hash01(slot * 31 + 7) < 0.5 ? 1 : 0);
+				const perBeat = Math.max(1, Math.round(p.perBeat));
+				const beat = f.beatIndex + f.beatPhase;
+				const slot = Math.floor(beat * perBeat);
+				const grid = slot !== lastSlot;
+				lastSlot = slot;
+				const gap = Math.max(0.08, tempo * 0.35 / Math.max(0.75, motion));
+				const at = note ? f.t : f.t - (beat - slot / perBeat) * tempo;
+				if ((grid || note) && audible > 0.18 && at - lastFire >= gap) {
+					lastFire = at;
+					const seed = slot * 13 + (note ? 7 : 0);
+					const count = audible > 0.75 ? 3 : 2;
+					const strength = clamp(0.3 + audible * 0.5 + Math.max(0, heard - held) * 0.8);
 					for (let c = 0; c < count; c++) {
-						const idx = Math.floor(hash01(slot * 13 + c * 101) * segs);
-						segEnv[idx] = 1;
-						// Use three colour stops; a continuous ramp would spend time on
-						// undeclared hues.
+						const idx = Math.floor(hash01(seed + c * 101) * segs);
+						born[idx] = at;
+						power[idx] = strength;
 						const band = bandAt(f, (idx + 0.5) / segs);
 						segSlot[idx] = band > 0.6 ? SLOT.accent : band > 0.3 ? SLOT.third : SLOT.base;
 					}
 				}
 
-				const inverted = Math.floor(f.barIndex / 4) % 2 === 1;
-				const tail = Math.exp(-f.dt / Math.max(0.04, f.beatPeriod * 0.4));
-				const held = level.update(f.energy, f.beat, f.dt, f.beatPeriod);
-				const gain = (0.5 + p.intensity * 1.0) * clamp(0.6 + held * 0.4);
+				const release = tempo * 0.17 / Math.max(0.7, motion);
+				const articulation = clamp(0.75 + heard * 0.25 + (heard - held) * 1.5, 0.4, 1.35);
+				const gain = (0.6 + p.intensity * 0.95) * audible * articulation;
 				const segPx = ring.length / segs;
-				// Three-pixel seam crossfades soften spatial edges while preserving timed
-				// snaps.
 				const feather = 3 / segPx;
-
 				for (let s = 0; s < segs; s++) {
-					segEnv[s] *= tail;
-					lit[s] = inverted ? 0.45 * (1 - segEnv[s]) + 0.02 : segEnv[s];
+					lit[s] = power[s] * Math.exp(-Math.max(0, f.t - born[s] - 0.035) / release);
 				}
 				for (let k = 0; k < ring.length; k++) {
 					const pos = k / segPx;
@@ -95,14 +112,10 @@ export const glitchScan: EffectDef = {
 						other = (s + 1) % segs;
 					}
 					const a = lit[s] * w;
-					if (a >= 0.015) {
-						addSample(out, ring.map[k], palette, (inverted ? SLOT.deep + 0.06 : segSlot[s]) + hueShift, a * gain);
-					}
+					if (a >= 0.015) addSample(out, ring.map[k], palette, segSlot[s] + hueShift, a * gain);
 					if (other < 0) continue;
 					const b = lit[other] * (1 - w);
-					if (b >= 0.015) {
-						addSample(out, ring.map[k], palette, (inverted ? SLOT.deep + 0.06 : segSlot[other]) + hueShift, b * gain);
-					}
+					if (b >= 0.015) addSample(out, ring.map[k], palette, segSlot[other] + hueShift, b * gain);
 				}
 			}
 		};

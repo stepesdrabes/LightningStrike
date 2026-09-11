@@ -3,7 +3,7 @@ import { SLOT } from '../contracts/palette.ts';
 import { setSample } from '../color/palette.ts';
 import { hash01 } from '../dsl/rng.ts';
 import { clamp, lerp } from '../dsl/math.ts';
-import { BeatHold, Presence, PulseEnv } from '../dsl/env.ts';
+import { BeatHold, Presence } from '../dsl/env.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 /**
@@ -28,7 +28,8 @@ export const moshSlam: EffectDef = {
 	},
 	params: [INTENSITY, param('beatsPerSlam', 'Beats per slam', 2, 0.5, 4, 0.5)],
 	create(g) {
-		const env = new PulseEnv();
+		let born = -Infinity;
+		let power = 0;
 		// Fixed per-pixel texture, so a full-on frame is not a flat card.
 		const tex = new Float32Array(g.count);
 		for (let i = 0; i < g.count; i++) tex[i] = 0.9 + 0.1 * hash01(i * 11);
@@ -40,7 +41,8 @@ export const moshSlam: EffectDef = {
 
 		return {
 			reset() {
-				env.reset();
+				born = -Infinity;
+				power = 0;
 				passage.reset();
 				kit.reset();
 				lastStep = -1;
@@ -49,12 +51,18 @@ export const moshSlam: EffectDef = {
 				const { f, p, palette, hueShift, motion } = ctx;
 
 				const playing = kit.update(f.kickEnv, f.dt, f.beatPeriod);
-				const step = Math.floor((f.beatIndex + f.beatPhase) / Math.max(0.5, p.beatsPerSlam));
+				const per = Math.max(0.5, p.beatsPerSlam);
+				const beat = f.beatIndex + f.beatPhase;
+				const step = Math.floor(beat / per);
 				if (step !== lastStep) {
 					lastStep = step;
-					if (playing > 0.08) env.fire(playing);
+					if (playing > 0.08) {
+						born = f.t - (beat - step * per) * f.beatPeriod;
+						power = playing;
+					}
 				}
-				const v = env.decay(f.dt, f.beatPeriod, 1.5 / Math.max(0.05, motion));
+				const release = Math.max(f.beatPeriod * 1.5 / Math.max(0.05, motion), 0.02) / 3;
+				const v = power * Math.exp(-Math.max(0, f.t - born - 0.035) / release);
 
 				const passageLevel = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
 				const gain = (0.5 + p.intensity * 1.05) * clamp(0.5 + passageLevel * 0.7);

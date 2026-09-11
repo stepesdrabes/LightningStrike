@@ -10,14 +10,15 @@ export const halftimeBounce: EffectDef = {
 	id: 'halftimeBounce',
 	name: 'Halftime Bounce',
 	role: 'rhythm',
-	blurb: 'A broad warm lobe on the front wall for beats one-two, the back for three-four.',
+	blurb: 'A broad warm lobe nods front to back, lifting on kicks and opening with the snare.',
 	taste: {
 		energy: 3,
 		sections: ['groove', 'verse', 'drop', 'chorus'],
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,
-		activity: 0.2
+		activity: 0.3,
+		kickAccent: true
 	},
 	params: [INTENSITY, param('width', 'Lobe width', 0.3, 0.15, 0.6)],
 	create(g) {
@@ -48,9 +49,11 @@ export const halftimeBounce: EffectDef = {
 
 				const level = passage.update(f.energy, f.beat, f.dt, f.beatPeriod);
 				const snare = f.snareEnv;
+				const kick = Math.pow(clamp(f.kickEnv), 0.85);
 				// The snare widens the current nod instead of starting another.
 				const width = p.width + snare * 0.15;
-				const gain = (0.14 + p.intensity * 0.43) * clamp(0.35 + level * 0.65) * (0.75 + snare * 0.5);
+				const gain = (0.14 + p.intensity * 0.43) * clamp(0.35 + level * 0.65)
+					* (0.75 + snare * 0.5 + kick * 0.9);
 
 				for (let i = 0; i < g.count; i++) {
 					const d = (g.ny[i] - lo) / span - seat;

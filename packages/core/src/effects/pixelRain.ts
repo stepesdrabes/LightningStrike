@@ -74,7 +74,7 @@ export const pixelRain: EffectDef = {
 				const beats = f.dt / Math.max(0.15, f.beatPeriod);
 				const heard = voice.update(Math.max(bandBetween(f, 0.15, 0.45), bandBetween(f, 0.4, 0.78)), beats);
 				const held = passage.update(heard, beats);
-				const listen = f.section === 'intro' || f.section === 'breakdown';
+				const listen = f.section === 'intro' || f.section === 'breakdown' || f.section === 'build';
 				// Existing droplets articulate a note without spawning or recolouring it on a beat.
 				const noteGain = listen ? clamp(0.86 + heard * 0.2 + (heard - held) * 2.8, 0.65, 1.55) : 1;
 				gain = (0.15 + p.intensity * 0.22) * trailDeposit(f.dt, release) * noteGain;

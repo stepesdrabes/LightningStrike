@@ -2,113 +2,115 @@ import type { EffectDef } from '../contracts/effect.ts';
 import { STROBE_MAX_HZ } from '../contracts/show.ts';
 import { SLOT } from '../contracts/palette.ts';
 import { sample } from '../color/palette.ts';
+import { Follower } from '../dsl/env.ts';
 import { clamp, lerp } from '../dsl/math.ts';
+import { bandBetween } from '../dsl/spectrum.ts';
 import { INTENSITY } from './helpers.ts';
 
-/** A flash: full for this long, then a short tail. Under a frame it reads as a dim blip. */
-const HOLD = 0.04;
-const RELEASE = 0.06;
-
-/**
- * Use only the back half of the build. Widen coverage as the rate ladder rises, keeping
- * flashes short enough to leave true darkness between them.
- */
 export const buildStrobe: EffectDef = {
 	id: 'buildStrobe',
 	name: 'Build Strobe',
 	role: 'accent',
-	blurb: 'White flashes on a grid that doubles into the drop, spreading from the long walls to the whole frame.',
+	blurb: 'Feathered flashes enter halfway through the build, gathering pace, width and light into the drop.',
 	taste: {
 		energy: 4,
 		sections: ['build'],
 		minBars: 2,
 		maxBars: 16,
 		peakReserved: false,
-		activity: 1,
+		activity: 0.7,
 		carries: false,
 		character: 'flash'
 	},
 	params: [INTENSITY],
 	create(g) {
-		// Bit per block: the four walls in ring order, then the beam.
 		const block = new Uint8Array(g.count);
-		let bit = 0;
-		for (const s of g.strips) {
-			if (!s.inPerimeter) continue;
-			for (let k = 0; k < s.count; k++) block[s.offset + k] = bit;
-			bit++;
+		const distance = new Float32Array(g.count);
+		let walls = 0;
+		for (const strip of g.strips) {
+			if (!strip.inPerimeter) continue;
+			for (let k = 0; k < strip.count; k++) {
+				block[strip.offset + k] = walls;
+				distance[strip.offset + k] = (k + 0.5) / strip.count - 0.5;
+			}
+			walls++;
 		}
-		const beamBit = bit;
-		for (const s of g.strips) {
-			if (s.inPerimeter) continue;
-			for (let k = 0; k < s.count; k++) block[s.offset + k] = beamBit;
+		for (const strip of g.strips) {
+			if (strip.inPerimeter) continue;
+			for (let k = 0; k < strip.count; k++) {
+				block[strip.offset + k] = walls;
+				distance[strip.offset + k] = (k + 0.5) / strip.count - 0.5;
+			}
 		}
-		const LONG = 0b00101;
-		const SHORT = 0b01010;
-		const BEAM = 1 << beamBit;
-		const ALL = LONG | SHORT | BEAM;
-
-		let lastStep = -1;
-		let level = 0;
-		let held = 0;
-		let mask = 0;
-
+		const voice = new Follower(0.06, 0.22);
+		const passage = new Follower(1.5, 3);
+		const rgb: [number, number, number] = [0, 0, 0];
+		let nextBeat = Number.NaN;
+		let born = -Infinity;
+		let pulse = 0;
+		let side = 0;
+		let spread = 0;
 		return {
 			reset() {
-				lastStep = -1;
-				level = 0;
-				held = 0;
-				mask = 0;
+				nextBeat = Number.NaN;
+				born = -Infinity;
+				pulse = 0;
+				side = 0;
+				spread = 0;
+				voice.reset();
+				passage.reset();
 			},
 			render(out, ctx) {
-				const { f, p, palette, hueShift } = ctx;
+				const { f, p, palette, hueShift, motion } = ctx;
+				out.fill(0);
+				const tempo = Math.max(0.05, f.beatPeriod);
+				const beats = f.dt / tempo;
+				const heard = voice.update(Math.max(
+					bandBetween(f, 0.18, 0.5), bandBetween(f, 0.4, 0.78)
+				), beats);
+				const held = passage.update(heard, beats);
+				const progress = clamp((f.buildProgress - 0.5) * 2);
+				if (f.buildProgress < 0.5) {
+					nextBeat = Number.NaN;
+					born = -Infinity;
+					return;
+				}
 
-				if (held > 0) held -= f.dt;
-				else level *= Math.exp(-f.dt / RELEASE);
-				if (level < 0.01) level = 0;
-
-				const progress = clamp((f.buildProgress - 0.45) / 0.55);
-				if (progress > 0) {
-					const rung = progress < 0.3 ? 0 : progress < 0.6 ? 1 : progress < 0.85 ? 2 : 3;
-					let per = [2, 1, 0.5, 0.25][rung];
-					// Stop rate doubling at the strobe ceiling while continuing to widen
-					// spatial coverage.
-					const floor = 1 / (STROBE_MAX_HZ * Math.max(0.05, f.beatPeriod));
-					while (per < floor && per < 2) per *= 2;
-					const step = Math.floor((f.beatIndex + f.beatPhase) / per);
-					if (step !== lastStep) {
-						lastStep = step;
-						level = 1;
-						held = HOLD;
-						mask =
-							rung === 0
-								? LONG
-								: rung === 1
-									? step % 2 === 0
-										? LONG
-										: SHORT
-									: rung === 2
-										? step % 2 === 0
-											? LONG | BEAM
-											: SHORT | BEAM
-										: ALL;
+				const rung = progress < 0.3 ? 0 : progress < 0.6 ? 1 : progress < 0.85 ? 2 : 3;
+				let period = 2 ** (1 - rung);
+				while (period * tempo < 1 / STROBE_MAX_HZ) period *= 2;
+				const beat = f.beatIndex + f.beatPhase;
+				if (Number.isNaN(nextBeat)) nextBeat = Math.ceil((beat - 1e-6) / period) * period;
+				if (beat >= nextBeat - 1e-6) {
+					const stamp = nextBeat + Math.floor(Math.max(0, beat - nextBeat) / period) * period;
+					const at = f.t - (beat - stamp) * tempo;
+					// Changing the subdivision cannot create an edge before the scheduled pulse.
+					nextBeat = stamp + period;
+					if (at - born >= 1 / STROBE_MAX_HZ - 1e-6) {
+						born = at;
+						side = pulse++ % 2;
+						spread = progress;
 					}
 				}
 
-				if (level === 0) {
-					out.fill(0);
-					return;
-				}
-				// Exceed one before mixing to reach white through accent opacity and build
-				// intensity.
-				const emit = (1.6 + 1.0 * progress) * (0.55 + p.intensity * 0.65) * level;
-				const c = sample(palette, lerp(SLOT.glow, SLOT.white, 0.4 + 0.6 * progress) + hueShift, emit);
+				const age = f.t - born;
+				const release = Math.max(0.018, tempo * 0.08) / Math.max(0.75, motion);
+				const level = Math.exp(-Math.max(0, age - 0.03) / release);
+				if (level < 0.006) return;
+				const note = clamp(0.76 + heard * 0.35 + (heard - held) * 1.1, 0.45, 1.25);
+				const emit = (1.05 + progress * 0.8) * (0.75 + p.intensity * 0.55) * level * note;
+				sample(palette, lerp(SLOT.glow, SLOT.white, 0.12 + progress * 0.45) + hueShift, emit, rgb);
+				const width = 0.14 + spread * 0.2;
 				for (let i = 0; i < g.count; i++) {
-					const o = i * 3;
-					const lit = mask & (1 << block[i]);
-					out[o] = lit ? c[0] : 0;
-					out[o + 1] = lit ? c[1] : 0;
-					out[o + 2] = lit ? c[2] : 0;
+					const isWall = block[i] < walls;
+					const lit = isWall ? block[i] % 2 === side || spread >= 0.85 : spread >= 0.6;
+					if (!lit) continue;
+					const feather = Math.exp(-0.5 * (distance[i] / width) ** 2);
+					const shape = spread * 0.12 + (1 - spread * 0.12) * feather;
+					const at = i * 3;
+					out[at] = rgb[0] * shape;
+					out[at + 1] = rgb[1] * shape;
+					out[at + 2] = rgb[2] * shape;
 				}
 			}
 		};

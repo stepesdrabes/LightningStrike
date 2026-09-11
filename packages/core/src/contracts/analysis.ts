@@ -1,6 +1,6 @@
 import type { SectionKind } from './frame.ts';
 
-export const ANALYSIS_VERSION = 31;
+export const ANALYSIS_VERSION = 32;
 
 export interface TempoGrid {
 	/** Median over the track. For display and for a default time constant, never for timing. */

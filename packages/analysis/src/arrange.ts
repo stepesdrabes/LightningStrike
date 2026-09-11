@@ -482,7 +482,13 @@ export function arrange(
 	}
 
 	const midEnergy = median(segEnergy);
-	if (segments[0].kind !== 'void' && segEnergy[0] < midEnergy) segments[0].kind = 'intro';
+	// A full kick-and-backbeat passage is already the body, even when its chorus is louder.
+	const openingBody = segments[0].kind === 'groove' && audible &&
+		segEnergy[0] > midEnergy - BREAKDOWN_STEP &&
+		kit[0].kit >= 0.9 && kit[0].kick >= 0.65 && kit[0].snare >= 0.65;
+	if (segments[0].kind !== 'void' && segEnergy[0] < midEnergy && !openingBody) {
+		segments[0].kind = 'intro';
+	}
 	const last = segments.length - 1;
 	if (endsTheRecord && last > 0 && segments[last].kind !== 'void' && segEnergy[last] < midEnergy) {
 		segments[last].kind = 'outro';

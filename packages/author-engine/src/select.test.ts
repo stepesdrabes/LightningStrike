@@ -103,6 +103,21 @@ describe('the activity budget', () => {
 	});
 });
 
+describe('individual kick preference', () => {
+	const base = BUILT_IN_EFFECTS.find(e => e.id === 'snapSplit')!;
+	const pulse = { ...base, id: 'pulse', taste: { ...base.taste, kickAccent: true, activity: 0.5 } };
+	const motion = { ...base, id: 'motion', taste: { ...base.taste, kickAccent: false, activity: 0.2 } };
+	const request = { role: 'rhythm' as const, section: 'chorus' as const, lengthBars: 8, energy: 0.9, kickAccent: true, drums: {kick: 0.5, snare: 0.25, hat: 2} };
+	it('prefers a direct kick rise even over a favored grid gesture', () => {
+		expect(new EffectPicker([pulse, motion], new Rng(7)).pick({ ...request, prefer: ['motion'] })?.id).toBe('pulse');
+	});
+	it('falls back within the activity budget and respects exclusions', () => {
+		expect(new EffectPicker([pulse, motion], new Rng(7)).pick({ ...request, busy: 1.1 })?.id).toBe('motion');
+		expect(new EffectPicker([pulse, motion], new Rng(7)).pick({ ...request, exclude: ['pulse'] })?.id).toBe('motion');
+		expect(new EffectPicker([pulse, motion], new Rng(7)).pick({ ...request, drums: {kick: 0, snare: 1, hat: 2} })).toBeNull();
+	});
+});
+
 describe('sustained chorus drive', () => {
 	const template = BUILT_IN_EFFECTS.find((effect) => effect.role === 'rhythm')!;
 	const effect = (id: string, taste: Partial<EffectDef['taste']>): EffectDef => ({

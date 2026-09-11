@@ -140,7 +140,9 @@ export function measureShow(
 	let prevCue = -1;
 	let licensedUntil = -1;
 
-	for (let t = 0; t < analysis.duration; t += dt) {
+	// Accumulated rounding can put an exact beat on opposite sides of the sample at each rate.
+	for (let frame = 0; frame < Math.ceil(analysis.duration * fps); frame++) {
+		const t = frame / fps;
 		const f = player.update(t, dt);
 		mixer.render(f);
 

@@ -315,6 +315,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 				break;
 
 			case 'build':
+				if (addNoteVoice()) break;
 				add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
 				// A build is the one place an accent belongs before the drop rather than in it, and
 				// without one the two effects written for exactly this moment were unreachable.
@@ -332,7 +333,9 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 
 			case 'drop':
 				// Use group identity so a returning chorus retains its visible rhythm.
-				add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
+				const sparseKickLead = profile.peak !== 'swell' && slot.energy >= 0.8
+					&& drums.kick >= KIT_FLOOR && drums.kick < POUNDING_KICK;
+				add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, kickAccent: sparseKickLead, peak: inPeak, group: slot.index === 0 ? slot.span.group : undefined, prefer: signatures, avoid, exclude }));
 				// Hold back the first nonfinal, nonpeak chorus accent so returns add vocabulary.
 				// Pick the kit first in kick-led passages; otherwise give the phrase gesture the activity
 				// budget.
@@ -396,7 +399,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 	}
 
 	carryThePeak(cues, peakCue);
-	stripBuilds(cues);
+	stripBuilds(cues, byId);
 	shapeApproaches(cues, profile);
 	plantWildcard(cues, slots, picker, analysis, byId, exclude);
 	inheritWhereEmpty(cues);
@@ -879,7 +882,7 @@ function inheritWhereEmpty(cues: Cue[]): void {
 }
 
 /** Builds leave layers out so the drop can reintroduce them. */
-function stripBuilds(cues: Cue[]): void {
+function stripBuilds(cues: Cue[], effects: ReadonlyMap<string, EffectDef>): void {
 	for (let i = 0; i < cues.length - 1; i++) {
 		if (cues[i].section !== 'build') continue;
 		const drop = cues.slice(i + 1).find((c) => sectionBase(c.section) === 'drop');
@@ -888,7 +891,9 @@ function stripBuilds(cues: Cue[]): void {
 		while (countLayers(cues[i]) >= dropLayers) {
 			// Strip from the top down: the drum layer is what the drop wants back most.
 			const order: LayerRole[] = ['transient', 'accent', 'rhythm', 'master'];
-			const victim = order.find((r) => cues[i].layers[r]);
+			const sounding = (r: LayerRole) => effects.get(cues[i].layers[r]?.effect ?? '')?.taste.noteReactive;
+			const victim = order.find((r) => cues[i].layers[r] && !sounding(r))
+				?? order.find((r) => cues[i].layers[r]);
 			if (!victim) break;
 			delete cues[i].layers[victim];
 		}

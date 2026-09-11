@@ -77,6 +77,8 @@ interface EffectTaste {
 	 * Effects that only season a continuing look with drums leave this absent.
 	 */
 	kit?: 'kick' | 'snare' | 'hat' | 'any';
+	/** Brightens on individual detected kicks, independently of the beat grid. */
+	kickAccent?: boolean;
 	/** Continuously articulates notes from the high-rate spectrum without drum hits or beat events. */
 	noteReactive?: boolean;
 	/**
