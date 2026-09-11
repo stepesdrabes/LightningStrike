@@ -4,10 +4,11 @@
 
 **Built and running, 2026-09-08.** Everything electrical is done and has played real shows, laid
 out on the floor at full size. What is left is the physical frame: profile, timber, hanging it, and
-moving the supply to the shed.
+boxing the supply. The box is `supply-box.md`.
 
 The patio is roofed, so rain never reaches the fixture. It is unheated and used mostly in warm
-months, which leaves two things to respect: nothing under tension, and the supply stays indoors.
+months, which leaves two things to respect: nothing under tension, and nothing sealed. A box that
+cannot breathe in an unheated space collects the water it breathed in overnight.
 
 ---
 
@@ -52,8 +53,16 @@ curl -X POST http://room-frame/api/state -H 'content-type: application/json' \
 ```
 
 Without a clamp meter, take the current in series at brightness **96, 128 and 180** - 9.1 %, 18.5 %
-and 42.6 % of full - and scale by **10.95, 5.41 and 2.35**. Three answers that agree means the
-extrapolation holds; three that drift mean the strip is being starved. Nothing goes over 4.5 A.
+and 42.6 % of full. Nothing goes over 4.5 A. **Take the idle current out before scaling**, because
+0.41 A of every reading is the ICs and does not answer to brightness:
+
+```
+I_full = I_idle + (I_measured - I_idle) x scale        scale = 10.95, 5.41, 2.35
+```
+
+Three answers that agree means the extrapolation holds; three that drift mean the strip is being
+starved. Scaling the raw reading instead gives 10.3, 8.0 and 6.8 A off a perfectly healthy reel,
+which reads as a starved one.
 
 ---
 
@@ -101,12 +110,15 @@ loses the same 1.9 V and nobody notices.
 Three thin trunks rather than one fat one: each branch keeps its own fuse at the supply and its own
 rail, and every conductor fits a **WAGO 221-413**, which tops out at exactly 4 mm2.
 
+The supply ended up in the patio beside the fixture rather than indoors, so the run is **1.5 m to
+the frame and 3 m to the beam**, not the 8 to 10 m this was sized for. At that length 1.5 mm2 is
+already enough and the 2.5 mm2 is spare.
+
 | | at 200 | at 255 |
 |---|---|---|
-| Trunk, 2.5 mm2 at 8 m, per reel branch | 0.40 V | 0.69 V |
-| Feed, 1.5 mm2 from box to injection point | 0.09 V | 0.15 V |
-| Strip copper, three feeds per reel | 0.23 V | 0.39 V |
-| **At the worst LED, from 12.0 V** | **11.3 V** | **10.7 V** |
+| Feed, 1.5 mm2 at 1.5 m, per reel branch | 0.13 V | 0.22 V |
+| Feed, 1.5 mm2 at 3 m, beam | 0.10 V | 0.18 V |
+| ~~Trunk, 2.5 mm2 at 8 m, per reel branch~~ | ~~0.40 V~~ | ~~0.69 V~~ |
 
 For scale: 10.1 V looked clean on the bench and 8.64 V went cyan.
 
@@ -149,9 +161,19 @@ Both conductors at every point, 1.5 mm2, service loop at every joint. The two re
 corner belong to different branches and **must not be joined**, or both 10 A fuses stop meaning
 anything. The blacks are common and should be.
 
-A reel fed at both ends sags **1.08 V at its middle** at white 255, and 0.63 V at 200. A third feed
-at the corner fold takes that to 0.39 V, and it is the obvious improvement to make while the strip
-is still out of the profile.
+**What is built is one feed per run**, at each `DI` end, all three landing in the same corner. The
+far end of a reel sits **above 10 V** at white 255 that way, clear of the 10.1 V that looked clean
+on the bench, and the room reads right at every level a show uses. One feed per run is the answer,
+not a compromise on the way to three.
+
+It is worth knowing that this beats what the arithmetic here predicts. 5 m of strip at 0.29 ohm/m
+carrying 6.2 A from one end would drop 3.3 V, which is what the 8.64 V above was. Either the strip
+copper is better than that figure, which is easy if the ohm/m was read through un-nulled meter
+leads, or the reel takes less than 6.2 A at 255. **Nothing hangs on which**, because a show never
+gets near a white wash: `rgbww::unpack` puts nothing on the white emitter at all.
+
+For reference, if a second feed is ever wanted: a reel fed at both ends sags **1.08 V at its
+middle** at white 255, and 0.63 V at 200. A third at the corner fold takes that to 0.39 V.
 
 ### Data and capacitors
 
@@ -225,11 +247,10 @@ in sequence rather than together.
 - **Hanging it.** 21 kg of timber, 4 kg of profile, 2 kg of strip and wiring: **call it 30 kg over
   your head.** Four points into roof structure, not into cladding, each rated well past 30 kg on
   its own. This is the one part of the build where getting it wrong hurts a person.
-- **Move the supply to the shed**: three 2.5 mm2 pairs over 8 to 10 m, replacing the short 1.5 mm2
-  feeds. Nothing at the supply end changes. Everything downstream of the PSU's case wants to be
-  inside the S-BOX.
-- **A third feed per reel** at the corner folds.
-- **Confirm the 5 V run is fused.** It was last on the list and may still be open.
+- **The supply box**, which is its own procedure: `supply-box.md`. It carries the fusing, the
+  unused-harness cleanup, the perfboard, the enclosure and the bring-up. **The shed move is
+  cancelled** and with it the 2.5 mm2 trunks; the supply lives in the patio beside the fixture.
+- **Nothing else.** One feed per run measures clean and the second feed is off the list.
 
 ---
 
