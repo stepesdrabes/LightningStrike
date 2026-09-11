@@ -64,7 +64,7 @@ export const snapSplit: EffectDef = {
 				for (let i = 0; i < g.count; i++) {
 					if (g.perim[i] < 0) {
 						const b = middle[i] * a;
-						setSample(out, i, palette, lerp(SLOT.base, SLOT.white, b) + hueShift, (0.1 + 1.02 * b) * gain);
+						setSample(out, i, palette, lerp(SLOT.base, SLOT.white, b) + hueShift, (0.1 + 1.14 * b) * gain);
 						continue;
 					}
 					const c = corner[i];
