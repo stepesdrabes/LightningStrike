@@ -29,7 +29,12 @@ function ingestInWorker(source: string, opts: IngestOptions): Promise<IngestResu
 			workerData: {
 				source,
 				// Only the serialisable options cross the boundary; progress comes back as messages.
-				opts: { force: opts.force, metricalLevel: opts.metricalLevel, artwork: opts.artwork }
+				opts: {
+					cachedTrackId: opts.cachedTrackId,
+					force: opts.force,
+					metricalLevel: opts.metricalLevel,
+					artwork: opts.artwork
+				}
 			},
 			// Do not inherit server inspector/eval flags that can break or collide in a worker.
 			execArgv: []

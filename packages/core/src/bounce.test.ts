@@ -3,6 +3,7 @@ import { createShowFrame } from './contracts/frame.ts';
 import { SLOT } from './contracts/palette.ts';
 import { makePalette, sample } from './color/palette.ts';
 import { BounceLamp } from './bounce.ts';
+import { FlashEnvelope } from './dsl/env.ts';
 
 const PALETTE = makePalette({ base: 320, accent: 185 });
 const DT = 1 / 60;
@@ -89,6 +90,47 @@ describe('the bounce lamp', () => {
 		const hit = brightness(out);
 		for (let i = 0; i < 12; i++) lamp.render(lit, f, tint, DT, out);
 		expect(brightness(out)).toBeLessThan(hit);
+	});
+
+	it('holds its passage glow through snares and hats without extra flashes', () => {
+		const lamp = new BounceLamp();
+		const out = new Uint8Array(3);
+		const f = createShowFrame();
+		const lit = room(0.5);
+		const tint = sample(PALETTE, SLOT.accent, 1, [0, 0, 0]);
+		for (let i = 0; i < 240; i++) lamp.render(lit, f, tint, DT, out);
+		const settled = [...out];
+		for (let i = 0; i < 60; i++) {
+			f.snareEnv = i % 15 === 0 ? 1 : 0;
+			f.hatEnv = 1;
+			lamp.render(lit, f, tint, DT, out);
+			expect([...out]).toEqual(settled);
+		}
+	});
+
+	it.each([30, 60, 120])('lets fast kicks separate at %i fps without a second release tail', (fps) => {
+		const lamp = new BounceLamp();
+		const env = new FlashEnvelope();
+		const out = new Uint8Array(3);
+		const f = createShowFrame();
+		const lit = room(0.8);
+		const tint = sample(PALETTE, SLOT.accent, 1, [0, 0, 0]);
+		for (let i = 0; i < fps * 4; i++) lamp.render(lit, f, tint, 1 / fps, out);
+		const bed = brightness(out);
+		env.fire();
+		f.kickEnv = env.update(1 / fps);
+		lamp.render(lit, f, tint, 1 / fps, out);
+		const peak = brightness(out);
+		for (let i = 1; i < fps / 4; i++) {
+			f.kickEnv = env.update(1 / fps);
+			lamp.render(lit, f, tint, 1 / fps, out);
+		}
+		expect(peak).toBe(255);
+		expect(brightness(out) - bed).toBeLessThan((peak - bed) * 0.15);
+	});
+
+	it('keeps an authored blackout dark even during a kick', () => {
+		expect([...run(1, 0, 1)]).toEqual([0, 0, 0]);
 	});
 
 	// Hue must not change the strongest channel at a given level.

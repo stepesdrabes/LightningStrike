@@ -21,7 +21,7 @@ export const subThrob: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.15,
-		quiet: 1.93,
+		quiet: 4.38,
 		// Driven entirely by the sub band, so a passage with no bass renders nothing.
 		carries: false
 	},

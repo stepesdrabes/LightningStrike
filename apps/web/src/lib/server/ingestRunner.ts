@@ -36,6 +36,7 @@ const LABELS: Record<IngestStage | 'composing', string> = {
 async function prepare(item: QueueItem, onStage: (stage: string) => void) {
 	// Prefer the catalogue sleeve already on the row to yt-dlp's video still.
 	const result = await ingestDetached(item.source, {
+		cachedTrackId: item.trackId ?? undefined,
 		onProgress: onStage,
 		artwork: item.thumbnail || undefined
 	});

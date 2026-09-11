@@ -21,7 +21,7 @@ export const harmonicRibbon: EffectDef = {
 		maxBars: 32,
 		peakReserved: false,
 		activity: 0.1,
-		quiet: 2.19
+		quiet: 5.05
 	},
 	params: [INTENSITY, param('travel', 'How far it walks', 0.7), param('width', 'Band width', 0.5)],
 	create(g) {

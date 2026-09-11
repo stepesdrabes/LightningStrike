@@ -7,6 +7,23 @@ import { fixtureAnalysis, fixtureShow } from './ambient/fixture.ts';
 
 const g = buildGeometry(DEFAULT_ROOM);
 
+describe('drum strength', () => {
+	it('preserves soft onsets and chooses the strongest hit crossed in one frame', () => {
+		const analysis = fixtureAnalysis();
+		analysis.onsets.snare = { times: [0.1, 0.6, 0.61], levels: [0.12, 0.9, 0.2] };
+		const player = new ShowPlayer(new Mixer(g), new EffectRegistry());
+		player.load(analysis, fixtureShow(analysis));
+		player.update(0, 1 / 60);
+		const soft = player.update(0.07, 1 / 60);
+		expect(soft.snare).toBe(true);
+		expect(soft.snareEnv).toBeCloseTo(0.12);
+		for (let t = 0.1; t < 0.54; t += 1 / 60) player.update(t, 1 / 60);
+		const accent = player.update(0.58, 1 / 60);
+		expect(accent.snare).toBe(true);
+		expect(accent.snareEnv).toBeCloseTo(0.9);
+	});
+});
+
 describe('hits across cue boundaries', () => {
 	/**
 	 * A cue installed on a boundary must receive the hit already consumed by the anticipation

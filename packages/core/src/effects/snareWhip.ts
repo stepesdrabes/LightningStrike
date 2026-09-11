@@ -4,7 +4,7 @@ import { sample } from '../color/palette.ts';
 import { clamp } from '../dsl/math.ts';
 import { fadeToBlack } from '../dsl/buffer.ts';
 import { stampOnStrip, stripAxis } from '../dsl/space.ts';
-import { beatRelease, INTENSITY, param } from './helpers.ts';
+import { beatRelease, INTENSITY, param, trailDeposit } from './helpers.ts';
 
 /** Cross the beam in a quarter beat so the snare gesture reads as a whip. */
 export const snareWhip: EffectDef = {
@@ -37,7 +37,8 @@ export const snareWhip: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
-				fadeToBlack(out, f.dt, beatRelease(f.beatPeriod, 0.55));
+				const release = beatRelease(f.beatPeriod, 0.55);
+				fadeToBlack(out, f.dt, release);
 
 				if (f.snare) {
 					whipT = f.t;
@@ -50,7 +51,7 @@ export const snareWhip: EffectDef = {
 				const u = (f.t - whipT) / travel;
 				if (u > 1.2) return;
 
-				const gain = (0.5 + p.intensity * 0.9) * power;
+				const gain = (0.5 + p.intensity * 0.9) * power * trailDeposit(f.dt, release);
 
 				if (u <= 1) {
 					const pos = (dir > 0 ? u : 1 - u) * (beam.count - 1);

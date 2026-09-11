@@ -28,7 +28,7 @@ interface PickRequest {
 	noCharacter?: boolean;
 	/** Disfavored effects, weighted like prefer but retained as fallbacks. */
 	avoid?: readonly string[];
-	/** Exclude these effects unless no alternative fits. */
+	/** Exclude these effects; a bed may fall back only if nothing else can carry the room. */
 	exclude?: readonly string[];
 	/** Hits/beat per stream; absent skips the silent-kit veto. */
 	drums?: { kick: number; snare: number; hat: number };
@@ -44,7 +44,7 @@ interface PickRequest {
  */
 const KIT_FLOOR = 0.2;
 
-function kitSilent(e: EffectDef, drums: PickRequest['drums']): boolean {
+export function kitSilent(e: EffectDef, drums: PickRequest['drums']): boolean {
 	const kit = e.taste.kit;
 	if (!kit || !drums) return false;
 	const density =
@@ -65,11 +65,7 @@ function kitSilent(e: EffectDef, drums: PickRequest['drums']): boolean {
  */
 const QUIET_WEIGHT = 4;
 
-/**
- * Summed taste.activity budget: loud cues allow one whole-room hitter plus motion; grooves
- * allow less.
- * If no candidate fits, retain only the calmest available effects.
- */
+/** Summed activity leaves room for one lead gesture over a carrying bed. */
 const ACTIVITY_FLOOR = 0.8;
 const ACTIVITY_LOUD_TOP = 1.4;
 const ACTIVITY_GROOVE_TOP = 0.9;
@@ -118,32 +114,12 @@ export class EffectPicker {
 		const room = req.busy === undefined ? Infinity : activityBudget(req.energy, req.section) - req.busy;
 		const withinBudget = (e: EffectDef) => (e.taste.activity ?? 0) <= room + 1e-9;
 
-		const groupKey = req.group !== undefined && req.group >= 0 ? `${req.role}:${req.group}` : null;
-		if (groupKey) {
-			const held = this.byGroup.get(groupKey);
-			const def = held ? this.effects.find((e) => e.id === held) : undefined;
-			// Only when it still fits: a reprise that runs half as long as the original cannot
-			// hold an effect that wanted the full length - and a reprise whose kit has left
-			// cannot hold the kit effect the full version opened with.
-			if (
-				def &&
-				req.lengthBars >= def.taste.minBars &&
-				req.lengthBars <= def.taste.maxBars &&
-				!kitSilent(def, req.drums) &&
-				withinBudget(def)
-			) {
-				this.used.set(def.id, (this.used.get(def.id) ?? 0) + 1);
-				this.lastInRole.set(req.role, def.id);
-				return def;
-			}
-		}
-
-		const fits = (e: EffectDef, kitAware: boolean, exclusive = true): boolean => {
+		const fits = (e: EffectDef, exclusive = true): boolean => {
 			if (e.role !== req.role) return false;
 			if (exclusive && req.exclude?.includes(e.id)) return false;
 			if ((this.vetoCharacter || req.noCharacter) && e.taste.character) return false;
 			if (req.mustCarry && e.taste.carries === false) return false;
-			if (kitAware && kitSilent(e, req.drums)) return false;
+			if (kitSilent(e, req.drums)) return false;
 			// Either vocabulary: an effect written for choruses says 'chorus'; the rest of the
 			// catalog speaks the club kinds and serves a chorus as the drop-class passage it is.
 			if (
@@ -160,14 +136,21 @@ export class EffectPicker {
 			}
 			return true;
 		};
-		// The kit veto yields before it empties a pool: a role whose every candidate answers
-		// the kit is better served by the least-wrong of them than by nothing, the same lesson
-		// `carries` taught as a hard requirement.
-		let eligible = this.effects.filter((e) => fits(e, true));
-		if (eligible.length === 0) eligible = this.effects.filter((e) => fits(e, false));
-		// The exclusion yields last: a cue with literally nothing else is lit by the
-		// excluded thing rather than by darkness.
-		if (eligible.length === 0) eligible = this.effects.filter((e) => fits(e, false, false));
+		const groupKey = req.group !== undefined && req.group >= 0 ? `${req.role}:${req.group}` : null;
+		if (groupKey) {
+			const held = this.byGroup.get(groupKey);
+			const def = held ? this.effects.find((e) => e.id === held) : undefined;
+			if (def && fits(def) && withinBudget(def)) {
+				this.used.set(def.id, (this.used.get(def.id) ?? 0) + 1);
+				this.lastInRole.set(req.role, def.id);
+				return def;
+			}
+		}
+		let eligible = this.effects.filter((e) => fits(e));
+		// Only the carrying bed may relax exclusions to avoid an unlit room.
+		if (eligible.length === 0 && req.role === 'bed') {
+			eligible = this.effects.filter((e) => fits(e, false));
+		}
 		if (eligible.length === 0) return null;
 
 		// The activity budget: what the cue already holds decides how hard this layer may hit.
@@ -176,10 +159,10 @@ export class EffectPicker {
 		if (room < Infinity) {
 			const calm = eligible.filter(withinBudget);
 			if (calm.length > 0) eligible = calm;
-			else {
+			else if (req.role === 'bed') {
 				const least = Math.min(...eligible.map((e) => e.taste.activity ?? 0));
 				eligible = eligible.filter((e) => (e.taste.activity ?? 0) === least);
-			}
+			} else return null;
 		}
 
 		// The peak keeps to the top of the catalog. A filter with a fallback rather than a

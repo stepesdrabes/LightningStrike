@@ -23,7 +23,7 @@ export const aurora: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.05,
-		quiet: 2.78,
+		quiet: 4.90,
 		// Curtain gaps leave too much darkness to carry a quiet cue alone.
 		carries: false
 	},

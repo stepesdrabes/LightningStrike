@@ -1,6 +1,7 @@
 import type { ParamSpec } from '../contracts/effect.ts';
 import type { ShowFrame } from '../contracts/frame.ts';
 import type { Geometry, StripSpec } from '../contracts/room.ts';
+import { alphaFor } from '../dsl/math.ts';
 
 export function param(
 	key: string,
@@ -18,6 +19,11 @@ export const INTENSITY = param('intensity', 'Intensity', 0.7);
 /** Release time expressed in beats, so an effect retimes itself with the tempo. */
 export function beatRelease(beatPeriod: number, beats = 0.6): number {
 	return Math.max(beatPeriod * beats, 0.02);
+}
+
+/** Continuous trail sources are calibrated at 60 Hz; one-shot hits must not use this. */
+export function trailDeposit(dt: number, release: number): number {
+	return alphaFor(dt, release) / alphaFor(1 / 60, release);
 }
 
 /** Rising-edge detector for the player-driven `trigger` param. */

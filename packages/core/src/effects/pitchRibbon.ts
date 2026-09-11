@@ -23,7 +23,7 @@ export const pitchRibbon: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.1,
-		quiet: 2.33,
+		quiet: 4.97,
 		carries: false
 	},
 	params: [INTENSITY, param('width', 'Ribbon width', 0.3)],

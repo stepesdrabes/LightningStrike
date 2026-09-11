@@ -40,6 +40,7 @@ const SNARE_GAP = 0.75;
 
 function bandFlux(
 	mag: Float32Array,
+	original: Float32Array,
 	frames: number,
 	bands: number,
 	centreHz: Float32Array,
@@ -62,7 +63,9 @@ function bandFlux(
 		for (let b = lo; b < hi; b++) {
 			const cur = Math.log10(1 + mag[f * bands + b]);
 			const prev = Math.log10(1 + mag[(f - lag) * bands + b]);
-			if (cur > prev) acc += cur - prev;
+			const rise = Math.log10(1 + original[f * bands + b]) - Math.log10(1 + original[(f - lag) * bands + b]);
+			// A changing HPSS mask can rise while the actual sound is decaying.
+			if (cur > prev && rise > 0) acc += Math.min(cur - prev, rise);
 		}
 		out[f] = acc / width;
 	}
@@ -74,6 +77,44 @@ function normaliseCurve(curve: Float32Array, out = new Float32Array(curve.length
 	const top = sorted[Math.floor(sorted.length * 0.995)] || 1;
 	for (let i = 0; i < curve.length; i++) out[i] = curve[i] / top;
 	return out;
+}
+
+/** Spectral shape supplies class evidence that independent band scaling cannot recover. */
+function drumShape(spec: Spectrogram, mag: Float32Array): { kick: Float32Array; snare: Float32Array } {
+	const ranges = [[20, 90], [110, 260], [700, 2500], [4000, 10000], [700, 7000]];
+	const bins = ranges.map(([lo, hi]) => {
+		const found: number[] = [];
+		for (let b = 0; b < spec.bands; b++) {
+			if (spec.centreHz[b] >= lo && spec.centreHz[b] <= hi) found.push(b);
+		}
+		return found;
+	});
+	const kick = new Float32Array(spec.frames);
+	const snare = new Float32Array(spec.frames);
+	const clamp = (v: number) => Math.max(0, Math.min(1, v));
+	for (let f = 0; f < spec.frames; f++) {
+		const offset = f * spec.bands;
+		const mean = (range: number, source = mag) => {
+			let total = 0;
+			for (const b of bins[range]) total += source[offset + b];
+			return total / Math.max(1, bins[range].length);
+		};
+		const bottom = mean(0, spec.mag);
+		const bass = mean(1, spec.mag);
+		kick[f] = clamp((bottom / Math.max(1e-12, bass) - 0.35) / 0.65);
+		const middle = mean(2);
+		const high = mean(3);
+		const noise = mean(4, spec.mag);
+		let log = 0;
+		for (const b of bins[4]) log += Math.log(Math.max(1e-20, spec.mag[offset + b]));
+		const flatness = Math.exp(log / Math.max(1, bins[4].length)) / Math.max(1e-12, noise);
+		const percussion = mean(4) / Math.max(1e-12, noise);
+		// Dense distorted drums can be noisy even when HPSS cannot isolate a percussive ridge.
+		snare[f] = clamp((flatness - 0.35) / 0.25)
+			* clamp((middle / Math.max(1e-12, high) - 0.35) / 0.65)
+			* Math.max(clamp((percussion - 0.4) / 0.35), clamp((flatness - 0.6) / 0.2));
+	}
+	return { kick, snare };
 }
 
 /** Drop candidates that land within `windowSec` of a stronger event in another stream. */
@@ -123,7 +164,7 @@ function placeOnOnset(
 	});
 }
 
-/** Align model times to nearby broadband onsets, bounded to half a sixteenth; otherwise keep the time. */
+/** Match the nearest attack: a louder nearby instrument must not steal a model-classified hit. */
 export function snapTimesToOnsets(
 	times: readonly number[],
 	odf: Float32Array,
@@ -133,27 +174,31 @@ export function snapTimesToOnsets(
 	const radius = Math.max(1, Math.round(radiusSec * fps));
 	return times.map((t) => {
 		const frame = Math.round(t * fps);
-		let best = -1;
-		let bestValue = 0;
+		let best = t;
+		let distance = radiusSec;
 		const from = Math.max(1, frame - radius);
 		const to = Math.min(odf.length - 2, frame + radius);
 		for (let i = from; i <= to; i++) {
-			if (odf[i] >= odf[i - 1] && odf[i] >= odf[i + 1] && odf[i] > bestValue) {
-				bestValue = odf[i];
-				best = i;
-			}
+			if (odf[i] <= 0 || odf[i] < odf[i - 1] || odf[i] < odf[i + 1]) continue;
+			if (odf[i] === odf[i - 1] && odf[i] === odf[i + 1]) continue;
+			const candidate = refinePeakTime(odf, i, fps);
+			const delta = Math.abs(candidate - t);
+			if (delta > distance) continue;
+			distance = delta;
+			best = candidate;
 		}
-		return best >= 0 ? refinePeakTime(odf, best, fps) : t;
+		return best;
 	});
 }
 
 /** HPSS distinguishes sustained bass from kicks by time behaviour where frequency bands overlap. */
 export function detectDrums(spec: Spectrogram, opts: DrumOptions): DrumOnsets {
 	const { percussive } = separate(spec.mag, spec.frames, spec.bands);
+	const shape = drumShape(spec, percussive);
 	const lag = 2;
 
 	const raw = (lo: number, hi: number) =>
-		bandFlux(percussive, spec.frames, spec.bands, spec.centreHz, lo, hi, lag);
+		bandFlux(percussive, spec.mag, spec.frames, spec.bands, spec.centreHz, lo, hi, lag);
 	const flux = (lo: number, hi: number) => normaliseCurve(raw(lo, hi));
 
 	const bodyCurve = flux(SNARE_BODY[0], SNARE_BODY[1]);
@@ -169,12 +214,13 @@ export function detectDrums(spec: Spectrogram, opts: DrumOptions): DrumOnsets {
 		kickCurve[f] = Math.max(0, kickBand[f] - BASS_WEIGHT * bassBand[f]);
 	}
 	normaliseCurve(kickCurve, kickCurve);
+	for (let f = 0; f < spec.frames; f++) kickCurve[f] *= shape.kick[f];
 
 	// Use the weaker snare band: a product admits bodyless hats. Do not veto low end, because
 	// backbeats commonly coincide with kicks.
 	const snareCurve = new Float32Array(spec.frames);
 	for (let f = 0; f < spec.frames; f++) {
-		snareCurve[f] = Math.min(bodyCurve[f], crackCurve[f]);
+		snareCurve[f] = Math.min(bodyCurve[f], crackCurve[f]) * shape.snare[f];
 	}
 
 	const fps = spec.fps;
@@ -255,4 +301,3 @@ function levelsOf(
 		fps
 	};
 }
-

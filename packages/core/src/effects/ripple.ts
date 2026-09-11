@@ -27,7 +27,7 @@ export const ripple: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.1,
-		quiet: 2.99,
+		quiet: 5.65,
 		carries: false
 	},
 	params: [

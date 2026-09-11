@@ -4,7 +4,7 @@ import { addSample } from '../color/palette.ts';
 import { hash01 } from '../dsl/rng.ts';
 import { clamp, envelope } from '../dsl/math.ts';
 import { fadeToBlack } from '../dsl/buffer.ts';
-import { INTENSITY, param } from './helpers.ts';
+import { INTENSITY, param, trailDeposit } from './helpers.ts';
 
 const MAX_GLINTS = 140;
 
@@ -21,7 +21,7 @@ export const discoBall: EffectDef = {
 		maxBars: 32,
 		peakReserved: false,
 		activity: 0.3,
-		quiet: 3.68,
+		quiet: 6.19,
 		// Discrete beams sweeping over an unlit room.
 		carries: false
 	},
@@ -46,7 +46,7 @@ export const discoBall: EffectDef = {
 				level = envelope(level, clamp(0.2 + f.energy), f.dt, 0.1, 0.8);
 				const rot = (f.barIndex + f.barPhase) / 4;
 				const count = Math.floor(MAX_GLINTS * (0.3 + p.density * 0.7));
-				const gain = (0.5 + p.intensity) * level;
+				const gain = (0.5 + p.intensity) * level * trailDeposit(f.dt, 0.08);
 
 				for (let k = 0; k < count; k++) {
 					const d = Math.cos((rot - phase[k]) * Math.PI * 2);

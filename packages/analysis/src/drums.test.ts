@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { detectDrums } from './drums.ts';
+import { detectDrums, snapTimesToOnsets } from './drums.ts';
 import { extractFeatures } from './features.ts';
+import { applyBiquad, lowpass } from './dsp/filters.ts';
+import { fMeasure } from './fixture.ts';
 
 /** Sustained sub kicks over legato bass test both missed kicks and bass notes misread as drums. */
 function sophieClip(): { mono: Float32Array; sampleRate: number; kicks: number[] } {
@@ -54,5 +56,100 @@ describe('the kit on a distorted pitched-sub kick', () => {
 		// shipping kicks when available.
 		expect(recall).toBeGreaterThan(0.8);
 		expect(precision).toBeGreaterThan(0.4);
+	});
+});
+
+function isolatedHits(kind: 'pluck' | 'piano' | 'hat' | 'snare' | 'clap', gain = 0.5) {
+	const sampleRate = 22050;
+	const mono = new Float32Array(sampleRate * 4);
+	const times = [0.5, 1, 1.5, 2, 2.5, 3];
+	let seed = 42;
+	for (const time of times) {
+		const noise = Float32Array.from({ length: Math.ceil(sampleRate * 0.25) }, () => {
+			seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+			return seed / 2147483648 - 1;
+		});
+		applyBiquad(noise, lowpass(sampleRate, kind === 'hat' ? 10500 : 6500));
+		const low = Float32Array.from(noise);
+		const cutoff = kind === 'hat' ? 7000 : kind === 'clap' ? 600 : 900;
+		applyBiquad(low, lowpass(sampleRate, cutoff));
+		applyBiquad(low, lowpass(sampleRate, cutoff));
+		for (let i = 0; i < noise.length; i++) {
+			const s = i / sampleRate;
+			const bandNoise = noise[i] - low[i];
+			let value = 0;
+			if (kind === 'pluck' || kind === 'piano') {
+				for (const fundamental of kind === 'pluck' ? [220] : [220, 277, 330]) {
+					for (let harmonic = 1; harmonic <= 15; harmonic++) {
+						value += Math.sin(2 * Math.PI * fundamental * harmonic * s)
+							* Math.exp(-s * (kind === 'pluck' ? 25 : 6))
+							/ Math.pow(harmonic, 1.6) * Math.min(1, s / 0.004) * 0.2;
+					}
+				}
+			} else if (kind === 'hat') {
+				value = bandNoise * Math.exp(-s * 110);
+			} else if (kind === 'clap') {
+				value = bandNoise * (Math.exp(-s * 22)
+					+ Math.exp(-Math.pow((s - 0.013) / 0.003, 2)) * 0.3
+					+ Math.exp(-Math.pow((s - 0.026) / 0.003, 2)) * 0.3);
+			} else {
+				value = 0.4 * Math.sin(2 * Math.PI * 200 * s) * Math.exp(-s * 25)
+					+ bandNoise * Math.exp(-s * 15);
+			}
+			mono[Math.floor(time * sampleRate) + i] += value * gain;
+		}
+	}
+	const features = extractFeatures(mono, sampleRate);
+	return {
+		times,
+		mono,
+		sampleRate,
+		drums: detectDrums(features.spec, { beatPeriod: 0.5, odf: features.odf })
+	};
+}
+
+describe('fallback drum discrimination', () => {
+	it.each(['pluck', 'piano', 'hat'] as const)('does not call %s attacks snares', (kind) => {
+		const { drums } = isolatedHits(kind);
+		expect(drums.snare.times).toHaveLength(0);
+		if (kind !== 'hat') expect(drums.kick.times).toHaveLength(0);
+	});
+
+	it.each(['snare', 'clap'] as const)('retains quiet %s attacks without a loudness gate', (kind) => {
+		const { drums, times } = isolatedHits(kind, 0.03);
+		const score = fMeasure(times, drums.snare.times, 0.05);
+		expect(score.recall).toBe(1);
+		expect(score.precision).toBe(1);
+	});
+
+	it('finds quiet snares underneath much louder simultaneous tonal chords', () => {
+		const { mono, sampleRate, times } = isolatedHits('snare', 0.03);
+		const piano = isolatedHits('piano', 0.5).mono;
+		for (let i = 0; i < mono.length; i++) mono[i] += piano[i];
+		const features = extractFeatures(mono, sampleRate);
+		const drums = detectDrums(features.spec, { beatPeriod: 0.5, odf: features.odf });
+		expect(fMeasure(times, drums.snare.times, 0.05).recall).toBe(1);
+	});
+});
+
+describe('model onset placement', () => {
+	it('keeps a quiet snare on its own attack beside a louder instrument', () => {
+		const odf = new Float32Array(200);
+		odf[100] = 0.2;
+		odf[104] = 5;
+		expect(snapTimesToOnsets([1.01], odf, 100, 0.05)).toEqual([1]);
+	});
+
+	it('retains the model time when no attack exists in the search window', () => {
+		const odf = new Float32Array(200).fill(0.2);
+		expect(snapTimesToOnsets([1.01], odf, 100, 0.05)).toEqual([1.01]);
+	});
+
+	it('keeps the refined time inside the requested radius', () => {
+		const odf = new Float32Array(200);
+		odf[104] = 0.1;
+		odf[105] = 1;
+		odf[106] = 0.9;
+		expect(snapTimesToOnsets([1], odf, 100, 0.05)).toEqual([1]);
 	});
 });

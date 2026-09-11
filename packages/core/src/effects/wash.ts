@@ -20,7 +20,7 @@ export const wash: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0,
-		quiet: 3.86
+		quiet: 6.00
 	},
 	params: [INTENSITY, param('breath', 'Breath', 0.45), param('drift', 'Drift', 0.06, 0, 0.4)],
 	create() {

@@ -27,7 +27,7 @@ export const subBreath: EffectDef = {
 		// An even bass-independent floor lets this carry a cue between notes.
 		carries: true,
 		// Low quiet movement is expected: the mean deliberately holds still.
-		quiet: 1.94
+		quiet: 4.96
 	},
 	params: [INTENSITY, param('depth', 'Breath depth', 0.62)],
 	create(g) {

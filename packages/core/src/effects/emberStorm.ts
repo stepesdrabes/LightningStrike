@@ -8,7 +8,7 @@ import { BeatHold } from '../dsl/env.ts';
 import { ringsFor, scatter } from '../dsl/space.ts';
 import { spectralTilt } from '../dsl/spectrum.ts';
 import { sinewave } from '../dsl/wave.ts';
-import { beatRelease, INTENSITY, param } from './helpers.ts';
+import { beatRelease, INTENSITY, param, trailDeposit } from './helpers.ts';
 
 const MAX_EMBERS = 32;
 
@@ -25,7 +25,7 @@ export const emberStorm: EffectDef = {
 		maxBars: 32,
 		peakReserved: false,
 		activity: 0.4,
-		quiet: 9.65,
+		quiet: 8.93,
 		// Sparks. 19% of the room, three quarters of its light in a tenth of the pixels.
 		carries: false
 	},
@@ -59,7 +59,8 @@ export const emberStorm: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
-				fadeToBlack(scratch, f.dt, beatRelease(f.beatPeriod, 0.25));
+				const release = beatRelease(f.beatPeriod, 0.25);
+				fadeToBlack(scratch, f.dt, release);
 
 				const tension = clamp(
 					Math.max(f.buildProgress, passage.update(f.energy, f.beat, f.dt, f.beatPeriod) * 0.5)
@@ -74,7 +75,7 @@ export const emberStorm: EffectDef = {
 
 				const at = tint.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const count = Math.floor(MAX_EMBERS * (0.4 + p.count * 0.6));
-				const gain = (0.16 + p.intensity * 0.34) * clamp(0.3 + tension * 0.7);
+				const gain = (0.16 + p.intensity * 0.34) * clamp(0.3 + tension * 0.7) * trailDeposit(f.dt, release);
 				// Use one hue family so overlapping trails cannot mix undeclared colours.
 				const coal = paletteArc(at);
 				const glowing = lerp(coal, SLOT.white, 0.5);

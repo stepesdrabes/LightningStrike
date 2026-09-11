@@ -22,7 +22,7 @@ export const mirrorBall: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.3,
-		quiet: 2.82,
+		quiet: 5.39,
 		// Isolated glints over black.
 		carries: false
 	},

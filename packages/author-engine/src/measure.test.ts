@@ -66,7 +66,7 @@ describe('darkness is reported where it is not asked for', () => {
 		const groove = show.cues.find((c) => c.section === 'groove')!;
 		const sabotaged = {
 			...show,
-			cues: show.cues.map((c) => (c === groove ? { ...c, section: 'void' as const, layers: {} } : c))
+			cues: show.cues.map((c) => (c === groove ? { ...c, section: 'void' as const, layers: {}, fadeBeats: 0 } : c))
 		};
 		const dark = measureShow(sabotaged, analysis, effects, geometry);
 		expect(dark.darkBars.length).toBeGreaterThan(0);

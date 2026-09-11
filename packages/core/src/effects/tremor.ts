@@ -25,7 +25,7 @@ export const tremor: EffectDef = {
 		activity: 0.2,
 		carries: true,
 		// Measured on the cache's quiet sections.
-		quiet: 2.18
+		quiet: 5.74
 	},
 	params: [INTENSITY, param('grain', 'Grain depth', 0.6)],
 	create(g) {

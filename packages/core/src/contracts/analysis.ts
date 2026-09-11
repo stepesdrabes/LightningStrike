@@ -1,6 +1,6 @@
 import type { SectionKind } from './frame.ts';
 
-export const ANALYSIS_VERSION = 30;
+export const ANALYSIS_VERSION = 31;
 
 export interface TempoGrid {
 	/** Median over the track. For display and for a default time constant, never for timing. */
@@ -120,7 +120,8 @@ export interface OnsetStream {
 	/** Onset times, seconds, ascending. */
 	times: number[];
 	/**
-	 * Strength, 0..1 against the track's strongest, aligned with times.
+	 * Strength, 0..1 against the track's strongest, constrained by detector confidence.
+	 * Aligned with times.
 	 * Pattern-completed hits carry pattern confidence.
 	 */
 	levels: number[];

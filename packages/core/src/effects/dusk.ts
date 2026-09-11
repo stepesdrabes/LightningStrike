@@ -23,7 +23,7 @@ export const dusk: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0,
-		quiet: 1.78
+		quiet: 4.59
 	},
 	params: [INTENSITY, param('turn', 'How fast it turns', 0.4), param('depth', 'Depth', 0.5)],
 	create(g) {

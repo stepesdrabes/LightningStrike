@@ -1,15 +1,17 @@
 import type { EffectDef } from '../contracts/effect.ts';
 import { SLOT } from '../contracts/palette.ts';
 import { addSample } from '../color/palette.ts';
-import { lerp } from '../dsl/math.ts';
+import { clamp, lerp } from '../dsl/math.ts';
+import { Follower } from '../dsl/env.ts';
 import { pxPerSecond, ringsFor, scatter } from '../dsl/space.ts';
+import { bandBetween } from '../dsl/spectrum.ts';
 import { INTENSITY, param } from './helpers.ts';
 
 export const comet: EffectDef = {
 	id: 'comet',
 	name: 'Comet',
 	role: 'rhythm',
-	blurb: 'One hot head with an exponential tail lapping the ring; the tail swells on every kick.',
+	blurb: 'A hot head and soft tail orbit the room; quiet notes brighten it and kicks open the tail.',
 	taste: {
 		energy: 3,
 		sections: ['intro', 'groove', 'breakdown', 'build', 'drop'],
@@ -28,16 +30,30 @@ export const comet: EffectDef = {
 		const rings = ringsFor(g);
 		const ring = rings.perimeter;
 		const scratch = new Float32Array(ring.length * 3);
+		const body = new Follower(0.12, 0.75);
+		const voice = new Follower(0.08, 0.5);
+		const passage = new Follower(1.5, 3);
 		let pos = 0;
 		return {
 			reset() {
 				pos = 0;
 				scratch.fill(0);
+				body.reset();
+				voice.reset();
+				passage.reset();
 			},
 			render(out, ctx) {
 				const { f, p, palette } = ctx;
 				const speed = pxPerSecond(ring, ring.metres / (p.bars * f.beatPeriod * 4));
 				pos = (pos + speed * f.dt * ctx.motion) % ring.length;
+				const beats = f.dt / Math.max(0.15, f.beatPeriod);
+				const low = body.update(bandBetween(f, 0.15, 0.5), beats);
+				const mid = voice.update(bandBetween(f, 0.35, 0.75), beats);
+				const heard = low * 0.4 + mid * 0.6;
+				const held = passage.update(heard, beats);
+				// Articulate notes through brightness so the orbit and colour remain steady.
+				const listen = f.section === 'intro' || f.section === 'breakdown';
+				const noteGain = listen ? clamp(0.9 + heard * 0.2 + (heard - held) * 1.2, 0.75, 1.35) : 1;
 
 				const tailPx = ring.length * p.tail * (1 + f.kickEnv * p.kickSwell);
 				scratch.fill(0);
@@ -48,7 +64,7 @@ export const comet: EffectDef = {
 					const w = Math.exp(-k / tailPx);
 					if (w < 0.004) break;
 					const slot = lerp(SLOT.accent, SLOT.white, w * w);
-					addSample(scratch, i, palette, slot + ctx.hueShift, w * (0.37 + p.intensity * 0.66));
+					addSample(scratch, i, palette, slot + ctx.hueShift, w * (0.37 + p.intensity * 0.66) * noteGain);
 				}
 
 				out.fill(0);

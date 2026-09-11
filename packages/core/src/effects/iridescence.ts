@@ -23,7 +23,7 @@ export const iridescence: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.1,
-		quiet: 2.43,
+		quiet: 4.95,
 		// A thin film reads as a sheen on a lit surface rather than as the light itself.
 		carries: false
 	},

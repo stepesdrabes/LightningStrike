@@ -21,7 +21,7 @@ export const sparkle: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.4,
-		quiet: 3.30,
+		quiet: 5.35,
 		// Isolated points on black; between them the room is unlit.
 		carries: false
 	},

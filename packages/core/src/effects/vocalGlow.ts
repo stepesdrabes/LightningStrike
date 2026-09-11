@@ -24,7 +24,7 @@ export const vocalGlow: EffectDef = {
 		maxBars: 32,
 		peakReserved: false,
 		activity: 0,
-		quiet: 2.30,
+		quiet: 5.02,
 		// A front-wall spotlight needs a bed; its concentrated field cannot carry the room.
 		carries: false
 	},

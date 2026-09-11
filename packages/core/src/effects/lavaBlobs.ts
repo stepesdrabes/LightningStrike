@@ -24,7 +24,7 @@ export const lavaBlobs: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.05,
-		quiet: 1.82,
+		quiet: 4.21,
 		// Blob gaps prevent this from carrying a quiet cue alone.
 		carries: false
 	},

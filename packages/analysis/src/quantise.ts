@@ -184,7 +184,7 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 				if (evidence < PROMOTE_EVIDENCE) continue;
 				// Promote, at the confidence that asked for it rather than at full strength: a
 				// completed hit is an inference, and the room should not be told otherwise.
-				out.set(slot, { time: t, level: share * INVENTED_LEVEL, invented: true });
+				out.set(slot, { time: t, level: support[k] * INVENTED_LEVEL, invented: true });
 			}
 		}
 	}

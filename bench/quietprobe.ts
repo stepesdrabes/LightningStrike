@@ -10,14 +10,14 @@ import {
 	type Show,
 	type TrackAnalysis
 } from '@mv/core';
-import { CACHE_DIR } from '@mv/analysis';
+import { benchmarkCache } from './cache.ts';
 
 
 /**
  * Generate taste.quiet by substituting each candidate into real cached quiet cues.
  * Synthetic spectra distribute energy unlike sparse recordings and can reverse effect
  * rankings.
- * node bench/quietprobe.ts [--role bed] [--limit 8]
+ * node bench/quietprobe.ts [--role bed] [--limit 8] [--effects chorusBloom,ambientDrift]
  */
 
 const argv = process.argv.slice(2);
@@ -27,6 +27,8 @@ const flag = (n: string) => {
 };
 const onlyRole = flag('role');
 const limit = Number(flag('limit') ?? 8);
+const onlyEffects = flag('effects')?.split(',');
+const cacheDir = benchmarkCache(flag('cache'));
 
 
 const QUIET = new Set(['intro', 'outro', 'breakdown']);
@@ -39,14 +41,14 @@ interface Track {
 }
 
 const tracks: Track[] = [];
-for (const file of readdirSync(CACHE_DIR).filter((f) => f.endsWith('.show.json'))) {
+for (const file of readdirSync(cacheDir).filter((f) => f.endsWith('.show.json'))) {
 	if (tracks.length >= limit) break;
 	const id = file.replace('.show.json', '');
 	try {
 		const analysis = JSON.parse(
-			readFileSync(join(CACHE_DIR, `${id}.analysis.json`), 'utf8')
+			readFileSync(join(cacheDir, `${id}.analysis.json`), 'utf8')
 		) as TrackAnalysis;
-		const show = JSON.parse(readFileSync(join(CACHE_DIR, file), 'utf8')) as Show;
+		const show = JSON.parse(readFileSync(join(cacheDir, file), 'utf8')) as Show;
 		const spans = analysis.sections
 			.filter((s) => QUIET.has(s.kind))
 			.map((s) => ({ start: s.startTime, end: s.endTime }));
@@ -118,11 +120,17 @@ const candidates = BUILT_IN_EFFECTS.filter(
 	(e) =>
 		(e.role === 'bed' || e.role === 'accent') &&
 		e.taste.sections.some((s) => QUIET.has(s)) &&
-		(!onlyRole || e.role === onlyRole)
+		(!onlyRole || e.role === onlyRole) &&
+		(!onlyEffects || onlyEffects.includes(e.id))
 );
 
 console.error(`${tracks.length} tracks, ${candidates.length} candidates`);
-const rows = candidates.map((e) => ({ id: e.id, role: e.role, ...deliver(e.id, e.role) }));
+if (tracks.length === 0) throw new Error(`No cached shows with quiet passages in ${cacheDir}`);
+const rows = candidates.map((e) => {
+	const row = { id: e.id, role: e.role, ...deliver(e.id, e.role) };
+	console.error(`${e.id}: ${row.drift.toFixed(2)}`);
+	return row;
+});
 rows.sort((a, b) => a.role.localeCompare(b.role) || b.drift - a.drift);
 
 console.log(`\n${'effect'.padEnd(20)}${'role'.padEnd(9)}${'drift'.padStart(8)}${'byte'.padStart(8)}${'spread'.padStart(8)}`);

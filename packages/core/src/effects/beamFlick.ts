@@ -3,7 +3,7 @@ import { SLOT } from '../contracts/palette.ts';
 import { sample } from '../color/palette.ts';
 import { fadeToBlack } from '../dsl/buffer.ts';
 import { stampOnStrip } from '../dsl/space.ts';
-import { beatRelease, INTENSITY, param } from './helpers.ts';
+import { beatRelease, INTENSITY, param, trailDeposit } from './helpers.ts';
 
 const MAX_FLICKS = 6;
 
@@ -51,7 +51,8 @@ export const beamFlick: EffectDef = {
 			},
 			render(out, ctx) {
 				const { f, p, palette, hueShift, motion } = ctx;
-				fadeToBlack(out, f.dt, beatRelease(f.beatPeriod, 0.45));
+				const release = beatRelease(f.beatPeriod, 0.45);
+				fadeToBlack(out, f.dt, release);
 
 				const refractory = Math.max(0.05, f.beatPeriod * 0.4);
 				if ((f.kick || f.snare) && f.t - lastHit > refractory) {
@@ -68,7 +69,7 @@ export const beamFlick: EffectDef = {
 				// rather than stall on it forever.
 				const travel = Math.max(0.1, p.travelBeats * f.beatPeriod) / Math.max(0.2, motion);
 				// Reduce gain because one beam concentrates the transient role's whole budget.
-				const gain = 0.2 + p.intensity * 0.3;
+				const gain = (0.2 + p.intensity * 0.3) * trailDeposit(f.dt, release);
 				const half = beam.count / 2;
 				// Only as far as the mix is actually wide: a mono passage stays centred.
 				const lean = f.pan * f.panWidth * p.panLean * half;

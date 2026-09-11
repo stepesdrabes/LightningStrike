@@ -27,7 +27,7 @@ export const bassRing: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.1,
-		quiet: 2.17,
+		quiet: 4.54,
 		// The permanently dark beam prevents this from carrying a cue alone.
 		carries: false
 	},

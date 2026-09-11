@@ -85,9 +85,8 @@ describe('the activity budget', () => {
 		}
 	});
 
-	it('keeps the calmest candidates rather than the whole pool when the budget is spent', () => {
-		// Nothing left at all: the one transient that is a bloom rather than a strike.
-		expect(pick({ busy: 1.4 })?.id).toBe('subSwell');
+	it('leaves an optional layer out when the activity budget is spent', () => {
+		expect(pick({ busy: 1.4 })).toBeNull();
 	});
 
 	it('skips the budget when the caller passes none', () => {
@@ -103,5 +102,22 @@ describe('the activity budget', () => {
 			if (activity(def?.id) > 0.1) struck = true;
 		}
 		expect(struck).toBe(true);
+	});
+});
+
+describe('musical space', () => {
+	it('leaves the drum layer out when its entire pool requires an absent instrument', () => {
+		const snares = BUILT_IN_EFFECTS.filter((effect) => effect.role === 'transient' && effect.taste.kit === 'snare');
+		const picker = new EffectPicker(snares, new Rng(7));
+		const request = { role: 'transient' as const, section: 'drop' as const, lengthBars: 8, energy: 1 };
+		expect(picker.pick({ ...request, drums: { kick: 1, snare: 0, hat: 2 } })).toBeNull();
+		expect(picker.pick({ ...request, drums: { kick: 1, snare: 0.5, hat: 2 } })?.taste.kit).toBe('snare');
+	});
+
+	it('keeps group identity only while the returning effect is still allowed', () => {
+		const picker = new EffectPicker(BUILT_IN_EFFECTS, new Rng(7));
+		const request = { role: 'rhythm' as const, section: 'drop' as const, lengthBars: 8, energy: 0.7, group: 3 };
+		const first = picker.pick(request)!;
+		expect(picker.pick({ ...request, exclude: [first.id] })?.id).not.toBe(first.id);
 	});
 });

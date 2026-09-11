@@ -78,9 +78,8 @@ interface EffectTaste {
 	 */
 	kit?: 'kick' | 'snare' | 'hat' | 'any';
 	/**
-	 * Quiet-passage delivered movement as a share of mean level, measured on real cached tracks
-	 * by bench/quietprobe.ts. Synthetic spectra can reverse the ranking. Absent means
-	 * unmeasured.
+	 * Quiet-passage movement in output bytes, measured against a 0.5 s low-pass on real
+	 * cached tracks by bench/quietprobe.ts. Absent means unmeasured.
 	 * Rerun the probe after changing a quiet-pool effect, the spectrum or the house floor.
 	 */
 	quiet?: number;

@@ -21,7 +21,7 @@ export const embers: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.2,
-		quiet: 2.53,
+		quiet: 4.71,
 		// A twinkle field: 22% of the room is lit at any instant and the rest is dark.
 		carries: false
 	},

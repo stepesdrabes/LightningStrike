@@ -377,6 +377,8 @@ export type IngestStage =
 	| 'analysing';
 
 export interface IngestOptions {
+	/** Reuse this queue track's saved audio and identity before resolving its original source. */
+	cachedTrackId?: string;
 	/** Re-analyse even when a current cached analysis exists. */
 	force?: boolean;
 	/** Metrical multiplier: 2 doubles, 0.5 halves, 1.5 reads three for two. Implies force. */
@@ -396,8 +398,29 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	let audioPath: string | null;
 	let meta: TrackMeta;
 	let probed: ProbeResult | null = null;
+	let saved: TrackMeta | null = null;
+	let savedAudio: string | null = null;
+	if (opts.cachedTrackId) {
+		const path = metaPath(opts.cachedTrackId);
+		if (existsSync(path)) {
+			const candidate = JSON.parse(await readFile(path, 'utf8')) as TrackMeta;
+			if (candidate.id !== opts.cachedTrackId || typeof candidate.source !== 'string' ||
+				typeof candidate.title !== 'string') {
+				throw new Error(`Invalid cached metadata for ${opts.cachedTrackId}`);
+			}
+			if (source === candidate.source || source === candidate.webpageUrl) {
+				savedAudio = await findAudioFile(candidate.id);
+				if (savedAudio) saved = candidate;
+			}
+		}
+	}
 
-	if (/^https?:\/\//.test(source)) {
+	if (saved && savedAudio) {
+		id = saved.id;
+		title = saved.title;
+		audioPath = savedAudio;
+		meta = { ...saved, thumbnail: opts.artwork || saved.thumbnail };
+	} else if (/^https?:\/\//.test(source)) {
 		log('resolving');
 		probed = await probe(source, (n, of, why) =>
 			log(`resolving - retrying (${n + 1} of ${of}): ${firstLine(why)}`)

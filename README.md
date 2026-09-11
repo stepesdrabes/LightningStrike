@@ -86,6 +86,9 @@ Workspace packages are consumed as TypeScript source. `core` has no external run
 dependencies, so the same renderer runs in the browser and Node. See [CLAUDE.md](CLAUDE.md)
 for development conventions and the rules for changing effects or cached contracts.
 
+The [lighting and drum review harnesses](bench/POLISH.md) provide audio-synchronized output
+comparisons, isolated-effect probes and corpus checks without replacing saved shows.
+
 ## Cache and models
 
 Workspace runs use the repository's `cache/`, independent of the working directory.
@@ -95,6 +98,11 @@ also honors `MV_CACHE_DIR`.
 The cache holds audio and each track's `.analysis.json`, `.show.json`, `.meta.json` and
 `.context.json`, plus queue state, settings and review data. Treat saved shows, track edits
 and settings as user data. Cache and downloaded models are gitignored.
+
+After analysis or engine updates, queued tracks refresh as they become current or next.
+Preparation reuses saved audio, so the original URL or imported file need not remain
+available. Engine shows regenerate; AI-authored arrangements are retained when the audio
+identity still matches.
 
 Workspace analysis reads `models/`, overridden by `MV_MODEL_DIR`. Desktop uses its bundled
 model directory. The optional runtime models are:

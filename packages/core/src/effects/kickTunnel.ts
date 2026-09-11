@@ -5,7 +5,7 @@ import { addSample } from '../color/palette.ts';
 import { clamp, lerp } from '../dsl/math.ts';
 import { fadeToBlack } from '../dsl/buffer.ts';
 import { PulseEnv } from '../dsl/env.ts';
-import { INTENSITY, param } from './helpers.ts';
+import { INTENSITY, param, trailDeposit } from './helpers.ts';
 
 const MAX_RINGS = 8;
 
@@ -84,7 +84,7 @@ export const kickTunnel: EffectDef = {
 				const life =
 					Math.max(0.15, f.beatPeriod * (0.9 - p.speed * 0.5)) / Math.max(0.2, motion);
 				const width = (0.06 + p.width * 0.2) * 1.5;
-				const gain = 0.2 + p.intensity * 0.58;
+				const gain = (0.2 + p.intensity * 0.58) * trailDeposit(f.dt, 0.045);
 
 				for (const r of rings) {
 					if (!r.alive) continue;

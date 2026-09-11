@@ -38,8 +38,8 @@ interface BuildSpan {
 	end: number;
 }
 
-/** Minimum hit strength: uncertainty must not erase ghost notes. */
-const MIN_HIT_LEVEL = 0.35;
+/** Preserve legacy zero-level events without amplifying measured ghost notes. */
+const ZERO_LEVEL_HIT = 0.35;
 
 /**
  * Section floors support sparse quiet layers; voids stay black and drops retain headroom.
@@ -468,7 +468,7 @@ export class ShowPlayer {
 		// The beat-relative lead is clamped in seconds; see the anticipation constants.
 		const lead = Math.min(HIT_LEAD_CAP, Math.max(HIT_LEAD_FLOOR, HIT_LEAD_BEATS * f.beatPeriod));
 		const at = t + lead;
-		// Preserve hit strength, with a floor so ghost notes remain visible.
+		// Preserve measured strength so marginal detections do not become accented strikes.
 		const kick = advance(a.onsets.kick, at, this.kickCursor, (c) => (this.kickCursor = c));
 		const snare = advance(a.onsets.snare, at, this.snareCursor, (c) => (this.snareCursor = c));
 		const hat = advance(a.onsets.hat, at, this.hatCursor, (c) => (this.hatCursor = c));
@@ -659,7 +659,7 @@ function advance(
 	if (i !== cursor) {
 		store(i);
 		// A hit with no level recorded is still a hit; only an empty span reports nothing.
-		if (loudest <= 0) loudest = MIN_HIT_LEVEL;
+		if (loudest <= 0) loudest = ZERO_LEVEL_HIT;
 	}
-	return loudest > 0 ? Math.max(MIN_HIT_LEVEL, loudest) : 0;
+	return loudest;
 }

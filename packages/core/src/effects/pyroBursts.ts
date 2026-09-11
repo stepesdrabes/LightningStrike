@@ -5,7 +5,7 @@ import { addSample } from '../color/palette.ts';
 import { clamp, lerp } from '../dsl/math.ts';
 import { fadeToBlack } from '../dsl/buffer.ts';
 import { noise3 } from '../dsl/wave.ts';
-import { INTENSITY, param } from './helpers.ts';
+import { INTENSITY, param, trailDeposit } from './helpers.ts';
 
 const MAX_BURSTS = 8;
 
@@ -67,7 +67,7 @@ export const pyroBursts: EffectDef = {
 				}
 
 				const life = Math.max(0.3, p.lifeBeats * f.beatPeriod) / Math.max(0.2, motion);
-				const gain = 0.5 + p.intensity * 1.0;
+				const gain = (0.5 + p.intensity * 1.0) * trailDeposit(f.dt, 0.08);
 				// Noise features/second; keep flame motion below rates that alias against the
 				// frame clock.
 				const flick = f.t * 3 * motion;

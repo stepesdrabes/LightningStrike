@@ -4,7 +4,7 @@ import { addPixel, fadeToBlack } from '../dsl/buffer.ts';
 import { clamp, lerp } from '../dsl/math.ts';
 import { sample } from '../color/palette.ts';
 import { ringU } from '../dsl/space.ts';
-import { INTENSITY } from './helpers.ts';
+import { INTENSITY, trailDeposit } from './helpers.ts';
 
 /** Shockwaves in flight at once. Three outlives a bar of four-on-the-floor at any tempo. */
 const SHOTS = 3;
@@ -68,7 +68,7 @@ export const kickCannon: EffectDef = {
 					const core = sample(
 						palette,
 						lerp(SLOT.glow, SLOT.white, power) + hueShift,
-						power * (0.4 + p.intensity * 0.7)
+						power * (0.4 + p.intensity * 0.7) * trailDeposit(f.dt, 0.05)
 					);
 					for (let i = 0; i < g.count; i++) {
 						const u = ringU(g, i);

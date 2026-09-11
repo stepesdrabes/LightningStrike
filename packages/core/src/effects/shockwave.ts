@@ -4,7 +4,7 @@ import { SLOT } from '../contracts/palette.ts';
 import { addSample } from '../color/palette.ts';
 import { clamp, lerp } from '../dsl/math.ts';
 import { fadeToBlack } from '../dsl/buffer.ts';
-import { INTENSITY, param } from './helpers.ts';
+import { INTENSITY, param, trailDeposit } from './helpers.ts';
 
 const MAX_SHELLS = 6;
 
@@ -83,7 +83,7 @@ export const shockwave: EffectDef = {
 						born[s] = -1;
 						continue;
 					}
-					const amp = power[s] * fade * (0.07 + p.intensity * 0.2);
+					const amp = power[s] * fade * (0.07 + p.intensity * 0.2) * trailDeposit(f.dt, 0.05);
 					const ox = originX[s];
 					const oy = originY[s];
 					const oz = originZ[s];

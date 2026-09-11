@@ -7,7 +7,7 @@ import { fadeToBlack } from '../dsl/buffer.ts';
 import { PulseEnv } from '../dsl/env.ts';
 import { spectralTilt } from '../dsl/spectrum.ts';
 import { stampOnStrip } from '../dsl/space.ts';
-import { beatRelease, INTENSITY, param, WallDrops, type WallDrop } from './helpers.ts';
+import { beatRelease, INTENSITY, param, trailDeposit, WallDrops, type WallDrop } from './helpers.ts';
 
 export const pixelRain: EffectDef = {
 	id: 'pixelRain',
@@ -60,11 +60,12 @@ export const pixelRain: EffectDef = {
 				dst = out;
 				palette = ctx.palette;
 				hueShift = ctx.hueShift;
-				fadeToBlack(out, f.dt, beatRelease(f.beatPeriod, 0.2));
+				const release = beatRelease(f.beatPeriod, 0.2);
+				fadeToBlack(out, f.dt, release);
 
 				// Lower gain compensates for the wider droplets so sparse rain does not
 				// outshine beds.
-				gain = 0.15 + p.intensity * 0.22;
+				gain = (0.15 + p.intensity * 0.22) * trailDeposit(f.dt, release);
 				const spawned = rain.spawn(f, p.perBeat);
 				if (spawned) {
 					// Capture spectral colour on the spawn grid; never recolour a falling

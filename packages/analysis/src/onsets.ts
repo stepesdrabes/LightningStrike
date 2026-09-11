@@ -126,7 +126,7 @@ export function pickPeaks(curve: Float32Array, fps: number, opts: PeakOptions): 
 			// Keep the stronger of two peaks inside one refractory window rather than the first,
 			// so a soft pre-hit cannot mask the beat behind it.
 			const prev = peaks[peaks.length - 1];
-			if (prev && v > prev.strength + floor[prev.frame] - floor[i]) {
+			if (prev && v - floor[i] > prev.strength) {
 				peaks[peaks.length - 1] = { frame: i, time: i / fps, strength: v - floor[i] };
 				last = i;
 			}
@@ -148,4 +148,3 @@ export function refinePeakTime(curve: Float32Array, frame: number, fps: number):
 	const shift = Math.abs(denom) < 1e-12 ? 0 : (0.5 * (a - c)) / denom;
 	return (frame + Math.max(-0.5, Math.min(0.5, shift))) / fps;
 }
-

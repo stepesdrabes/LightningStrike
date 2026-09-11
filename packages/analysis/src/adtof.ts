@@ -22,6 +22,7 @@ const FMAX = 20000;
 
 /** Per-class peak thresholds from the port's defaults: kick, snare, tom, hat, cymbal. */
 const THRESHOLDS = [0.22, 0.24, 0.32, 0.22, 0.3] as const;
+const STRONG_ONSET_EXCESS = 0.6;
 const CLASSES = 5;
 
 export interface AdtofOnsets {
@@ -140,6 +141,20 @@ function pickActivationPeaks(
 	return { frames: kept, heights: proc };
 }
 
+/** Keep absolute activation strength when a track contains only marginal detections. */
+export function activationStream(activation: Float32Array, threshold: number): DrumStream {
+	const { frames: peaks, heights } = pickActivationPeaks(activation, threshold);
+	const sorted = peaks.map((i) => heights[i]).sort((a, b) => a - b);
+	const top = Math.max(STRONG_ONSET_EXCESS, sorted[Math.floor(sorted.length * 0.9)] ?? 0);
+	return {
+		times: peaks.map((i) => i / FPS),
+		levels: peaks.map((i) => Math.min(1, heights[i] / top) * Math.min(1, heights[i] / STRONG_ONSET_EXCESS)),
+		// Pattern completion needs a fresh onset, not sustained class activation.
+		curve: heights,
+		fps: FPS
+	};
+}
+
 interface Session {
 	run(feeds: Record<string, unknown>): Promise<Record<string, { data: Float32Array }>>;
 	release?(): Promise<void>;
@@ -190,7 +205,10 @@ export class Adtof {
 	}
 
 	/** `mono` must be 44.1 kHz: the filterbank is a property of the training frontend. */
-	async run(mono: Float32Array): Promise<AdtofOnsets> {
+	async run(
+		mono: Float32Array,
+		probe?: { activations?: Float32Array }
+	): Promise<AdtofOnsets> {
 		const frames = 1 + Math.floor(mono.length / HOP);
 		const spec = new Float32Array(frames * this.nBins);
 		const fft = new RealFft(FRAME_SIZE);
@@ -213,6 +231,7 @@ export class Adtof {
 			spectrogram: new this.Tensor('float32', spec, [1, frames, this.nBins, 1]) as never
 		});
 		const act = result.activations.data as Float32Array;
+		if (probe) probe.activations = act;
 
 		const classActivation = (c: number): Float32Array => {
 			const out = new Float32Array(frames);
@@ -221,18 +240,7 @@ export class Adtof {
 		};
 
 		const stream = (c: number): DrumStream => {
-			const activation = classActivation(c);
-			const { frames: peaks, heights } = pickActivationPeaks(activation, THRESHOLDS[c]);
-			// Normalise against strong track-local hits so model and DSP hit sizes agree.
-			const sorted = peaks.map((i) => heights[i]).sort((a, b) => a - b);
-			const top = sorted.length > 0 ? sorted[Math.floor(sorted.length * 0.9)] || 1 : 1;
-			const scale = top > 1e-9 ? 1 / top : 0;
-			return {
-				times: peaks.map((i) => i / FPS),
-				levels: peaks.map((i) => Math.min(1, heights[i] * scale)),
-				curve: activation,
-				fps: FPS
-			};
+			return activationStream(classActivation(c), THRESHOLDS[c]);
 		};
 
 		const cymbal = pickActivationPeaks(classActivation(4), THRESHOLDS[4]);

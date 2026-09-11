@@ -31,7 +31,7 @@ export const spectrumBed: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.1,
-		quiet: 3.04
+		quiet: 5.74
 	},
 	params: [INTENSITY, param('spread', 'Octaves across the room', 0.7), param('depth', 'Colour travel', 0.6)],
 	create(g) {

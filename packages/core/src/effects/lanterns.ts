@@ -27,7 +27,7 @@ export const lanterns: EffectDef = {
 		maxBars: 64,
 		peakReserved: false,
 		activity: 0.1,
-		quiet: 2.22,
+		quiet: 5.51,
 		carries: false
 	},
 	params: [

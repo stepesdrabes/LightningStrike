@@ -31,7 +31,7 @@ import {
 } from '@mv/core';
 import { KICK_BURSTS, allowedFlashes, profileFor, type GenreProfile } from './genre.ts';
 import { choosePalette } from './palette.ts';
-import { EffectPicker } from './select.ts';
+import { EffectPicker, activityBudget, kitSilent } from './select.ts';
 
 interface EngineOptions {
 	/** Built-ins by default; pass a superset to let generated effects be chosen too. */
@@ -186,6 +186,13 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 
 	for (const slot of slots) {
 		const layers: Partial<Record<LayerRole, LayerSpec>> = {};
+		const drums = drumDensity(analysis, slot.bar, slot.endBar);
+		let busy = 0;
+		const canKeep = (spec: LayerSpec | undefined) => {
+			const def = spec ? byId.get(spec.effect) : undefined;
+			return !!def && !kitSilent(def, drums) &&
+				busy + (def.taste.activity ?? 0) <= activityBudget(slot.energy, slot.section) + 1e-9;
+		};
 		// A family that holds its looks re-stages nothing inside a section: the interior cues
 		// keep the bed and the rhythm layer the section opened with and move the transient or
 		// the accent every second cue, so a techno drop is one look that changes one thing.
@@ -193,14 +200,13 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		const heldLook =
 			profile.holdLooks && slot.index > 0 && previous?.section === slot.section ? previous.layers : null;
 		const holds = (role: LayerRole) =>
-			!!heldLook?.[role] && (role === 'bed' || role === 'rhythm' || slot.index % 2 === 1);
+			canKeep(heldLook?.[role]) && (role === 'bed' || role === 'rhythm' || slot.index % 2 === 1);
 		// The picker is asked only for the layers this cue may change, so a held layer is
 		// never counted as spent twice.
 		const choose = (role: LayerRole, req: Parameters<EffectPicker['pick']>[0]) =>
 			holds(role) ? null : picker.pick(req);
 		// What the cue already holds, in `taste.activity`, so each layer picked after another
 		// may only add what the budget leaves: one hard hitter a cue.
-		let busy = 0;
 		const add = (role: LayerRole, def: EffectDef | null) => {
 			if (holds(role)) {
 				layers[role] = { ...heldLook![role]! };
@@ -214,10 +220,6 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		};
 
 		const length = slot.endBar - slot.bar;
-		// What the kit is doing here, so the picker can refuse a kick effect in the passage
-		// the producer pulled the kick out of. Per slot, not per section: the suspension is
-		// often only part of one.
-		const drums = drumDensity(analysis, slot.bar, slot.endBar);
 		// Kick density can raise the effect energy band when heavy limiting hides intensity
 		// differences.
 		const pounding =
@@ -255,6 +257,12 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 				break;
 
 			case 'intro':
+				add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: Math.min(slot.energy, 0.45), noCharacter: true, prefer: signatures, avoid, exclude }));
+				if (!layers.rhythm) {
+					add('accent', choose('accent', { drums, busy, role: 'accent', section: slot.section, lengthBars: length, energy: slot.energy, noCharacter: true, mustCarry: true, bare, prefer: signatures, avoid, exclude }));
+				}
+				break;
+
 			case 'outro':
 				// Quiet textures must carry; an outro with a carrying inherited bed introduces no new
 				// texture.
@@ -270,15 +278,16 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 			case 'breakdown':
 				// Breakdowns retain slow motion under their smaller activity budget, including while the
 				// kit is absent.
-				if (continued && last?.layers.rhythm) {
+				if (continued && last?.layers.rhythm && canKeep(last.layers.rhythm)) {
 					layers.rhythm = { ...last.layers.rhythm };
 					busy += activityOf(layers.rhythm);
 				} else {
 					add('rhythm', choose('rhythm', { drums, busy, role: 'rhythm', section: slot.section, lengthBars: length, energy: slot.energy, pounding, peak: inPeak, prefer: signatures, avoid, exclude }));
 				}
 				// Keep a texture above the bed and change it only every second continued breakdown cue.
-				if (continued && last?.layers.accent && !breakdownHeld) {
+				if (continued && last?.layers.accent && canKeep(last.layers.accent) && !breakdownHeld) {
 					layers.accent = { ...last.layers.accent };
+					busy += activityOf(layers.accent);
 					breakdownHeld = true;
 					break;
 				}
@@ -562,7 +571,7 @@ function clamp01(v: number): number {
  */
 function intensityFor(slot: Slot, spread = 0, profile?: GenreProfile): number {
 	const base: Record<SectionKind, number> = {
-		intro: 0.46,
+		intro: 0.52,
 		// A step above where they sat: with the catalog's levels brought onto one ladder a
 		// groove measured a median of 46 bytes against an intro's 28 and a drop's 84, and a
 		// groove should read as the room playing, clearly above the room waking up.
@@ -582,7 +591,7 @@ function intensityFor(slot: Slot, spread = 0, profile?: GenreProfile): number {
 	// The peak is the only cue allowed the top of the range, because the linter checks that the
 	// brightest thing in the show happens in the biggest moment of the track.
 	if (slot.peak) return 1;
-	let floor = base[slot.section] * (1 - spread * 0.35);
+	let floor = base[slot.section] * (1 - spread * (slot.section === 'intro' ? 0.12 : 0.35));
 	// The families that sit in near-black between their loud passages get the darkness the
 	// genre expects; everyone else keeps a lit room playing quietly.
 	if (profile?.darkBreakdowns && slot.section === 'breakdown') floor = Math.min(floor, 0.42);
@@ -601,10 +610,9 @@ function intensityFor(slot: Slot, spread = 0, profile?: GenreProfile): number {
 	return Math.min(0.92, floor + slot.energy * 0.08 + climb + finale);
 }
 
-/** Quiet sections drift over tens of seconds; faster motion would expose spectrum noise. */
 function motionFor(slot: Slot, profile?: GenreProfile): number {
 	const base: Record<SectionKind, number> = {
-		intro: 0.28,
+		intro: 0.58,
 		groove: 1,
 		verse: 0.9,
 		// Not 0.34. Motion scales every speed an effect declares, so a third of it turned the one
@@ -625,7 +633,8 @@ function motionFor(slot: Slot, profile?: GenreProfile): number {
 	// The genre's clock. Scaled before rounding, and the quiet floor stands: a ballad's 0.5
 	// on an already-slow outro is a room that has stopped, which is what a ballad's end is.
 	const scale = profile?.motionScale ?? 1;
-	return Math.round(Math.max(0.15, base[slot.section] + climb + lively) * scale * 100) / 100;
+	const floor = slot.section === 'intro' ? 0.35 : 0.15;
+	return Math.round(Math.max(floor, (base[slot.section] + climb + lively) * scale) * 100) / 100;
 }
 
 /** Arrivals snap; eased sections depend on the preceding section's contrast. */
@@ -794,7 +803,7 @@ function noteFor(slot: Slot): string {
 	if (slot.peak) return 'the peak: full stack, palette swapped, biggest look of the night';
 	switch (slot.section) {
 		case 'intro':
-			return 'the room waking up, bed and one texture';
+			return 'the room waking up, a moving gesture over the bed';
 		case 'groove':
 			return 'the groove: bed and pulse, drums held back';
 		case 'verse':

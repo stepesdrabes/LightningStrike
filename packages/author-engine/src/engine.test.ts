@@ -4,6 +4,7 @@ import { BUILT_IN_EFFECTS, HIT_RULES, LAYER_ROLES, PHRASE_BARS, barDurationAt, e
 import { fixture } from './fixture.ts';
 import { composeShow } from './plan.ts';
 import { lintShow } from './lint.ts';
+import { activityBudget } from './select.ts';
 
 const analysis = fixture();
 const effects = new Map(BUILT_IN_EFFECTS.map((e) => [e.id, e]));
@@ -56,6 +57,38 @@ describe('the linter', () => {
 });
 
 describe('the arrangement', () => {
+	it('gives a quiet drumless intro a visible moving gesture without adding a full stack', () => {
+		const track = fixture();
+		track.peakToLoudness = 4;
+		for (const row of track.bars.filter((row) => row.section === 'intro')) {
+			row.kicks = 0;
+			row.snares = 0;
+			row.hats = 0;
+		}
+		for (const family of ['hiphop', 'house', 'ballad', 'ambient'] as const) {
+			const opening = composeShow(track, { context: { ...emptyContext(), genreFamily: family } }).cues[0];
+			expect(opening.layers.rhythm).toBeDefined();
+			expect(effects.get(opening.layers.rhythm!.effect)?.taste.kit).toBeUndefined();
+			expect(Object.keys(opening.layers)).toHaveLength(2);
+			expect(opening.intensity).toBeGreaterThanOrEqual(0.47);
+			expect(opening.motion).toBeGreaterThanOrEqual(0.35);
+		}
+	});
+
+	it('keeps ordinary cue stacks inside their activity allowance across genre policies', () => {
+		for (const family of ['techno', 'house', 'pop', 'hiphop', 'metal', 'ambient'] as const) {
+			for (const seed of [1, 7, 31, 101]) {
+				const composed = composeShow(analysis, { seed, context: { ...emptyContext(), genreFamily: family } });
+				for (const cue of composed.cues) {
+					if (cue.layers.master) continue;
+					const energy = analysis.sections.find((span) => cue.bar >= span.startBar && cue.bar < span.endBar)!.meanEnergy / 100;
+					const activity = Object.values(cue.layers).reduce((sum, spec) => sum + (effects.get(spec!.effect)?.taste.activity ?? 0), 0);
+					expect(activity, `${family}, seed ${seed}, bar ${cue.bar}`).toBeLessThanOrEqual(activityBudget(energy, cue.section) + 1e-9);
+				}
+			}
+		}
+	});
+
 	it('changes section only on the phrase grid', () => {
 		for (let i = 1; i < show.cues.length; i++) {
 			const cue = show.cues[i];
@@ -538,6 +571,15 @@ describe('planner-set params', () => {
 });
 
 describe('kit awareness', () => {
+	it('releases a held techno rhythm when its kick leaves inside the section', () => {
+		const track = fixture();
+		for (const row of track.bars.slice(16, 24)) row.kicks = 0;
+		const catalog = BUILT_IN_EFFECTS.filter((effect) => effect.role !== 'rhythm' || effect.id === 'blockChase');
+		const composed = composeShow(track, { effects: catalog, context: { ...emptyContext(), genreFamily: 'techno' } });
+		expect(composed.cues.find((cue) => cue.bar === 8)?.layers.rhythm?.effect).toBe('blockChase');
+		expect(composed.cues.find((cue) => cue.bar === 16)?.layers.rhythm).toBeUndefined();
+	});
+
 	it('keeps kick effects out of the passages the kick sat out', () => {
 		// The groove keeps its clap backbeat (snares stay), only the kick leaves - the exact
 		// shape of the sung verse that used to get moshSlam pounding through it.
