@@ -25,6 +25,11 @@ analyses, shows or user settings. Cache selection defaults to the desktop cache;
   show, and writes both with copies of context and meta into a scratch cache that
   `compositionprobe`, `lintsweep` and `showreview --analysis/--show` can read. `summary.json`
   lists per track whether beats, bar lines and sections changed and how the onset counts moved.
+- `node bench/introprobe.ts --id ID [--analysis FILE --show FILE] [--before-shows FILE
+  --before-core DIR]` measures one opening: room level at 30, 60 and 120 Hz, what the snares,
+  the level track and the spectrum each contribute, the lift around each snare, effect-state
+  determinism after a backward seek, and whether anything after the intro changed (only
+  meaningful when both sides share an analysis and the shows differ in the intro alone).
 - `node bench/audibility.ts --id ID --from S --to S` writes a 10 ms timeline of level, onset
   strength, DSP and model drum evidence and per-attack spectral snapshots for one passage, to
   judge by evidence what is audible where no labels exist.
