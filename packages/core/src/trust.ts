@@ -51,6 +51,9 @@ function modelCorroborates(analysis: TrackAnalysis): boolean {
 }
 
 export function gridTrust(analysis: TrackAnalysis, publishedBpm?: number | null): GridTrust {
+	if (analysis.level?.silent === true) {
+		return { trusted: false, reasons: ['no signal in analysed audio'] };
+	}
 	const minutes = analysis.duration / 60;
 	// Use the pre-consolidation count so merging cannot hide a fragmented grid.
 	const sectionCount = analysis.rawSectionCount ?? analysis.sections.length;

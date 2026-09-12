@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isFill, refineBoundaries, type BarFeatures } from './structure.ts';
+import { arrivalStrengths, isFill, refineBoundaries, similarityMatrix, type BarFeatures } from './structure.ts';
 
 /** Two-second fixture bars with level/pattern variation, flat chroma, and no within-bar dips. */
 function table(rows: { rms: number; pattern: number[] }[]): BarFeatures {
@@ -166,5 +166,52 @@ describe('the straddle', () => {
 		const hooks = new Uint8Array(40);
 		hooks[17] = 1;
 		expect(refineWith([0, 16, 18, 40], flat, kit, { straddle: true, hooks })).toEqual([0, 16, 18, 40]);
+	});
+});
+
+describe('arrival evidence without drums', () => {
+	it('does not invent arrivals or contrast between digitally silent bars', () => {
+		const bars = table(Array.from({ length: 24 }, () => ({ rms: 0, pattern: [0, 0] })));
+		bars.chroma.fill(0);
+		expect(Array.from(arrivalStrengths(bars, new Int32Array(bars.count)))).toEqual(
+			new Array(bars.count).fill(0)
+		);
+		expect(Array.from(similarityMatrix(bars))).toEqual(new Array(bars.count ** 2).fill(1));
+	});
+
+	it('does not treat disappearance into silence as a new pattern arriving', () => {
+		const bars = table([
+			{ rms: 0.1, pattern: [1, 0] },
+			{ rms: 0, pattern: [0, 0] },
+			{ rms: 0, pattern: [0, 0] }
+		]);
+		bars.chroma.fill(0, 12);
+		expect(Array.from(arrivalStrengths(bars, null))).toEqual([0, 0, 0]);
+		expect(similarityMatrix(bars)[1]).toBe(0);
+	});
+
+	it('retains an audible drumless entrance after silence', () => {
+		const bars = table([
+			...Array.from({ length: 3 }, () => ({ rms: 0, pattern: [0, 0] })),
+			...Array.from({ length: 21 }, () => ({ rms: 0.001, pattern: [1, 0] }))
+		]);
+		bars.chroma.fill(0, 0, 36);
+		const arrivals = arrivalStrengths(bars, null);
+		expect(arrivals[1]).toBe(0);
+		expect(arrivals[2]).toBe(0);
+		expect(arrivals[3]).toBeGreaterThan(2.5);
+		expect(arrivals[4]).toBe(0);
+		expect(refineBoundaries([0, 4, 24], bars, null, undefined, 2)).toEqual([0, 3, 24]);
+	});
+
+	it('keeps soft melodic changes as sensitive as the same passage played loudly', () => {
+		const rows = Array.from({ length: 24 }, (_, b) => ({
+			rms: b < 8 ? 0.1 : 0.2,
+			pattern: b < 8 ? [1, 0] : [0, 1]
+		}));
+		const loud = arrivalStrengths(table(rows), null);
+		const soft = arrivalStrengths(table(rows.map((r) => ({ ...r, rms: r.rms * 0.001 }))), null);
+		for (let b = 0; b < rows.length; b++) expect(soft[b]).toBeCloseTo(loud[b], 4);
+		expect(soft[8]).toBeGreaterThan(2);
 	});
 });

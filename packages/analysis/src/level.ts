@@ -10,7 +10,9 @@ const WINDOW_DB = 48;
 const REFERENCE_Q = 0.95;
 
 /** K-weighted short-term level in dB per frame, centred like the spectrum's entries. */
-export function levelCurve(mono: Float32Array, sampleRate: number, frames: number): Float32Array {
+export function levelCurve(
+	mono: Float32Array, sampleRate: number, frames: number, present?: Uint8Array
+): Float32Array {
 	const weighted = Float32Array.from(mono);
 	applyCascade(weighted, kWeighting(sampleRate));
 	const prefix = new Float64Array(weighted.length + 1);
@@ -23,6 +25,7 @@ export function levelCurve(mono: Float32Array, sampleRate: number, frames: numbe
 		const from = Math.min(weighted.length, Math.max(0, centre - half));
 		const to = Math.min(weighted.length, Math.max(from, centre + half));
 		const power = to > from ? (prefix[to] - prefix[from]) / (to - from) : 0;
+		if (present) present[f] = power > 0 ? 1 : 0;
 		db[f] = 10 * Math.log10(Math.max(power, 1e-12));
 	}
 	return db;
@@ -36,7 +39,10 @@ export function levelTrack(
 	sectionAt: (t: number) => SectionKind
 ): LevelTrack {
 	const frames = Math.max(1, Math.round(duration * LEVEL_FPS));
-	const db = levelCurve(mono, sampleRate, frames);
+	const silent = mono.length > 0 && !mono.some((v) => v !== 0);
+	if (silent) return { fps: LEVEL_FPS, data: encodeBase64(new Uint8Array(frames)), silent: true };
+	const present = new Uint8Array(frames);
+	const db = levelCurve(mono, sampleRate, frames, present);
 
 	const loud: number[] = [];
 	for (let f = 0; f < frames; f++) {
@@ -47,6 +53,7 @@ export function levelTrack(
 
 	const data = new Uint8Array(frames);
 	for (let f = 0; f < frames; f++) {
+		if (!present[f]) continue;
 		data[f] = Math.round(255 * clamp01((db[f] - reference + WINDOW_DB) / WINDOW_DB));
 	}
 	return { fps: LEVEL_FPS, data: encodeBase64(data) };

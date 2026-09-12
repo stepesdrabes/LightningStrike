@@ -47,6 +47,9 @@ export function spectrumTrack(
 		range.push([Math.min(lo, spec.bands - 1), Math.max(hi, Math.min(lo + 1, spec.bands))]);
 		centreHz.push(Math.round(Math.sqrt(edges[k] * edges[k + 1])));
 	}
+	if (spec.mag.length > 0 && !spec.mag.some((v) => v !== 0)) {
+		return { fps: SPECTRUM_FPS, bands, centreHz, data: encodeBase64(new Uint8Array(frames * bands)) };
+	}
 
 	const db = new Float32Array(frames * bands);
 	for (let f = 0; f < frames; f++) {

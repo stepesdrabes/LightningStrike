@@ -207,6 +207,18 @@ export interface IngestResult {
 	/** What the free metadata says the track is. Never null, possibly empty. */
 	context: TrackContext;
 	fromCache: boolean;
+	/** Previous cached grid, sections and punctuation still match; retained shows must also lint. */
+	arrangementUnchanged?: true;
+}
+
+function sameArrangementLayout(previous: TrackAnalysis | null, analysis: TrackAnalysis): boolean {
+	if (!previous || previous.hash !== analysis.hash || !Array.isArray(previous.tempo?.barTimes)
+		|| !Array.isArray(previous.beats) || !Array.isArray(previous.sections)
+		|| !Array.isArray(previous.bars) || previous.bars.some((bar) => !bar || typeof bar !== 'object')
+		|| !Array.isArray(previous.moments)) return false;
+	const layout = (a: TrackAnalysis) => [a.duration, a.tempo, a.beats, a.sections, a.movements,
+		a.bars.map((bar) => [bar.bar, bar.t, bar.section, bar.events]), a.moments];
+	return JSON.stringify(layout(previous)) === JSON.stringify(layout(analysis));
 }
 
 /**
@@ -493,14 +505,13 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	}
 
 	const relevel = opts.metricalLevel !== undefined && Math.abs(opts.metricalLevel - 1) > 1e-6;
+	let cached: TrackAnalysis | null = null;
+	try {
+		cached = JSON.parse(await readFile(analysisPath(id), 'utf8')) as TrackAnalysis;
+	} catch {
+		// No readable previous analysis.
+	}
 	if (!opts.force && !relevel) {
-		// Catch only cache-read failures; errors processing a cached analysis must not silently trigger reanalysis.
-		let cached: TrackAnalysis | null = null;
-		try {
-			cached = JSON.parse(await readFile(analysisPath(id), 'utf8')) as TrackAnalysis;
-		} catch {
-			// No cache, or unreadable. Fall through and analyse.
-		}
 		// Invalidate stale versions and changed hand maps even when their JSON shape still looks compatible.
 		if (cached && cached.version === ANALYSIS_VERSION && cached.handMap === (await handMapStamp(id))) {
 			log('cached');
@@ -600,7 +611,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	meta.gridTrust = gridTrust(analysis, context.publishedBpm);
 	await writeFile(metaPath(id), JSON.stringify(meta, null, '\t'));
 	context = await settleGenreFamily(id, context, analysis);
-	return { id, audioPath, analysis, meta, context, fromCache: false };
+	return { id, audioPath, analysis, meta, context, fromCache: false,
+		...(sameArrangementLayout(cached, analysis) ? { arrangementUnchanged: true as const } : {}) };
 }
 
 /** `correctGenreFamily`, persisted. Both ingest paths end here, cached blob or fresh one. */

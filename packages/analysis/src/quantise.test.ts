@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { DrumStream } from './drums.ts';
+import { dropUnconfirmed, type DrumStream } from './drums.ts';
 import { quantiseOnsets } from './quantise.ts';
 
 const beats = Float64Array.from({ length: 25 }, (_, i) => i * 0.5);
@@ -47,6 +47,41 @@ describe('pattern evidence and played timing', () => {
 		const output = quantiseOnsets(input, options);
 		const additions = output.times.filter((_, i) => output.invented[i]);
 		expect(additions).toEqual([4.56]);
+	});
+
+	it('does not invent the evidence peak of a recovered attack snapped across a slot boundary', () => {
+		const input = stream([0.5, 0.625, 2.5, 2.625, 4.55, 6.5, 6.625]);
+		input.curve[455] = 0;
+		input.curve[457] = 0.18;
+		expect(quantiseOnsets(input, options).times).toContain(4.57);
+		input.sourceFrames = input.times.map((t) => t === 4.55 ? 457 : -1);
+		input.curve[461] = 0.16;
+		const output = quantiseOnsets(input, options);
+		expect(output.times).toContain(4.55);
+		expect(output.times).not.toContain(4.57);
+		expect(output.times).not.toContain(4.61);
+		expect(output.invented.every((invented) => !invented)).toBe(true);
+	});
+
+	it('releases source evidence when a preceding filter removed its detection', () => {
+		const input = stream([0.5, 0.625, 2.5, 2.625, 4, 4.55, 6.5, 6.625]);
+		input.curve[457] = 0.18;
+		input.sourceFrames = input.times.map((t) => t === 4.55 ? 457 : -1);
+		const filtered = dropUnconfirmed(input, [4.55], stream([]), 0.03, 0.3);
+		expect(filtered.sourceFrames).not.toContain(457);
+		expect(quantiseOnsets(filtered, options).times).toContain(4.57);
+	});
+
+	it('keeps a distinct nearby weak peak even beside an already consumed model attack', () => {
+		const input = stream([0.5, 0.625, 2.5, 2.625, 4.55, 6.5, 6.625]);
+		input.curve[455] = 0;
+		input.curve[454] = 0.9;
+		input.curve[457] = 0.18;
+		input.sourceFrames = input.times.map((t) => t === 4.55 ? 454 : -1);
+		const output = quantiseOnsets(input, options);
+		expect(output.times).toContain(4.55);
+		expect(output.times).toContain(4.57);
+		expect(output.invented[output.times.indexOf(4.57)]).toBe(true);
 	});
 
 	it('follows actual bar resets and excludes short bars from pattern votes', () => {

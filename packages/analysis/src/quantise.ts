@@ -69,6 +69,7 @@ interface Hit {
 	time: number;
 	level: number;
 	invented: boolean;
+	sourceFrame?: number;
 }
 
 export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): QuantisedOnsets {
@@ -78,6 +79,7 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 	const windowBars = opts.windowBars ?? 8;
 	const downbeatPhase = opts.downbeatPhase ?? 0;
 	const { times, levels, curve, fps } = stream;
+	const reserved = new Set<number>();
 
 	const empty = (): QuantisedOnsets => ({
 		times: [...times],
@@ -110,7 +112,7 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 	const unquantised: Hit[] = [];
 	for (let i = 0; i < times.length; i++) {
 		const t = times[i];
-		const hit: Hit = { time: t, level: levels[i] ?? 1, invented: false };
+		const hit: Hit = { time: t, level: levels[i] ?? 1, invented: false, sourceFrame: stream.sourceFrames?.[i] };
 		const slot = slotOf(t);
 		const span = Math.max(1e-6, slotTime(slot + 1) - slotTime(slot));
 		// Genuinely unquantised, or a detector artefact. Either way it is not part of a pattern,
@@ -171,13 +173,15 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 			if (Math.abs(time - t) > span * 0.5 || slotOf(time) !== slotOf(t)) continue;
 			if (best < 0 || curve[i] > curve[best]) best = i;
 		}
-		return best < 0 ? null : {
+		// A detected attack may snap across a slot boundary; its model peak still belongs to it.
+		return best < 0 || reserved.has(best) ? null : {
 			time: refinePeakTime(curve, best, fps),
 			level: (stream.levelCurve ?? curve)[best]
 		};
 	};
 
 	const out = new Map<number, Hit>(detected);
+	const promotions: { slot: number; time: number; span: number; support: number }[] = [];
 	for (const members of cohorts.values()) {
 		if (members.length < 2) continue;
 
@@ -214,17 +218,28 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 					continue;
 				}
 				if (!mayPromote || share < PATTERN_SUPPORT) continue;
-				const evidence = evidenceAt(t, span);
-				if (!evidence) continue;
-				// Promote, at the confidence that asked for it rather than at full strength: a
-				// completed hit is an inference, and the room should not be told otherwise.
-				out.set(slot, {
-					time: evidence.time,
-					level: Math.min(support[k], evidence.level) * INVENTED_LEVEL,
-					invented: true
-				});
+				promotions.push({ slot, time: t, span, support: support[k] });
 			}
 		}
+	}
+
+	// Finish demotions before reserving evidence, so only detections that will be emitted
+	// own their source frames. Unquantised flams also survive and keep their ownership.
+	for (const hit of [...out.values(), ...unquantised]) {
+		const frame = hit.sourceFrame ?? -1;
+		if (hit.time >= 0 && hit.time <= opts.duration && Number.isInteger(frame) && frame >= 0 && frame < curve.length) {
+			reserved.add(frame);
+		}
+	}
+	for (const request of promotions) {
+		const evidence = evidenceAt(request.time, request.span);
+		if (!evidence) continue;
+		// A completed hit is an inference, at the confidence that asked for it.
+		out.set(request.slot, {
+			time: evidence.time,
+			level: Math.min(request.support, evidence.level) * INVENTED_LEVEL,
+			invented: true
+		});
 	}
 
 	const hits = [...out.entries()]

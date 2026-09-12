@@ -30,6 +30,7 @@ import {
 	gateByEvidence,
 	mergeStreams,
 	modelDeafToHats,
+	withModelPeakFrames,
 	snapTimesToOnsets,
 	type DrumStream
 } from './drums.ts';
@@ -349,12 +350,14 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		? {
 				kick: snapStream(input.drums.kick, features.odf, features.curves.fps, grid.beatPeriod),
 				snare: snapStream(
-					dropUnconfirmed(
-						input.drums.snare,
-						input.drums.snareClicks ?? [],
-						dspDrums.snare,
-						HAT_EVIDENCE_S,
-						CLICK_SNARE_EVIDENCE
+					withModelPeakFrames(
+						dropUnconfirmed(
+							input.drums.snare,
+							input.drums.snareClicks ?? [],
+							dspDrums.snare,
+							HAT_EVIDENCE_S,
+							CLICK_SNARE_EVIDENCE
+						)
 					),
 					features.odf,
 					features.curves.fps,

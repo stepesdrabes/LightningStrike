@@ -1,6 +1,6 @@
 import type { SectionKind } from './frame.ts';
 
-export const ANALYSIS_VERSION = 33;
+export const ANALYSIS_VERSION = 34;
 
 export interface TempoGrid {
 	/** Median over the track. For display and for a default time constant, never for timing. */
@@ -158,6 +158,8 @@ export interface LevelTrack {
 	fps: number;
 	/** `frames` bytes, base64. Entry f is centred on (f + 0.5) / fps. */
 	data: string;
+	/** Nonempty analysed PCM is identically zero. Absent for legacy or nonzero audio. */
+	silent?: true;
 }
 
 export interface Moment {

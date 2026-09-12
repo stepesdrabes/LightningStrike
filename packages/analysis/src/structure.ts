@@ -169,6 +169,13 @@ export function similarityMatrix(bars: BarFeatures): Float32Array {
 	const n = bars.count;
 	const dim = bars.patternDim;
 	const sim = new Float32Array(n * n);
+	const silent = new Uint8Array(n);
+	for (let b = 0; b < n; b++) {
+		let content = 0;
+		for (let k = 0; k < dim; k++) content += bars.pattern[b * dim + k];
+		for (let k = 0; k < PITCH_CLASSES; k++) content += bars.chroma[b * PITCH_CLASSES + k];
+		if (content === 0) silent[b] = 1;
+	}
 
 	// L2-normalised patterns lose level contrast. Restore it only as a similarity multiplier:
 	// level may reject a match, never make different patterns match.
@@ -178,6 +185,10 @@ export function similarityMatrix(bars: BarFeatures): Float32Array {
 	for (let i = 0; i < n; i++) {
 		sim[i * n + i] = 1;
 		for (let j = i + 1; j < n; j++) {
+			if (silent[i] && silent[j]) {
+				sim[i * n + j] = sim[j * n + i] = 1;
+				continue;
+			}
 			let dot = 0;
 			for (let k = 0; k < dim; k++) dot += bars.pattern[i * dim + k] * bars.pattern[j * dim + k];
 			// Chroma agreement carries the harmony, which timbre alone misses when a verse and a
@@ -371,10 +382,13 @@ function arrivalParts(
 	{
 		const dim = bars.patternDim;
 		let dot = 0;
+		let content = 0;
 		for (let k = 0; k < dim; k++) {
 			dot += bars.pattern[(b - 1) * dim + k] * bars.pattern[b * dim + k];
+			content += bars.pattern[b * dim + k];
 		}
-		novelty = Math.max(0, 1 - dot);
+		// An absent pattern is missing arrival evidence, not maximal novelty.
+		if (content > 0) novelty = Math.max(0, 1 - dot);
 	}
 
 	// Settling contrast distinguishes a sustained arrival from a fill. Gate it off when physical
@@ -638,7 +652,8 @@ export function isFill(bars: BarFeatures, db: Float32Array, b: number): boolean 
 
 /** The held-breath test the arrival score uses: the bar before collapses into this one. */
 function collapseBefore(bars: BarFeatures, b: number): number {
-	const dipRef = Math.max(bars.rms[b], 1e-6);
+	const dipRef = bars.rms[b];
+	if (dipRef <= 1e-6) return 0;
 	return Math.max(0, 1 - bars.floor[b - 1] / dipRef);
 }
 

@@ -101,8 +101,9 @@ and settings as user data. Cache and downloaded models are gitignored.
 
 After analysis or engine updates, queued tracks refresh as they become current or next.
 Preparation reuses saved audio, so the original URL or imported file need not remain
-available. Engine shows regenerate; AI-authored arrangements are retained when the audio
-identity still matches.
+available. Current engine arrangements are retained when the refreshed musical layout matches
+and the show remains valid; other engine shows regenerate with their saved reroll seed.
+AI-authored arrangements are retained when the audio identity still matches.
 
 Workspace analysis reads `models/`, overridden by `MV_MODEL_DIR`. Desktop uses its bundled
 model directory. The optional runtime models are:

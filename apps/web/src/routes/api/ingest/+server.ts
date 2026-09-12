@@ -2,9 +2,9 @@ import { error, json } from '@sveltejs/kit';
 import { readFile, writeFile } from 'node:fs/promises';
 import { BUILT_IN_EFFECTS } from '@mv/core';
 import { showPath } from '@mv/analysis';
-import { composeShow, lintShow } from '@mv/author-engine';
+import { composeShow, refreshShow, lintShow } from '@mv/author-engine';
 import type { Show } from '@mv/core';
-import { ingestDetached } from '$lib/server/ingestDetached.ts';
+import { ingestDetached } from '../../../lib/server/ingestDetached.ts';
 import type { RequestHandler } from './$types';
 
 /** Prepare an engine show immediately, preserving an existing authored show on the same grid. */
@@ -21,30 +21,32 @@ export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const result = await ingestDetached(source.trim(), { metricalLevel });
 
-		// Recompose on a corrected grid because every cue is bar-addressed.
-		let show: Show | null = null;
+		let existing: Show | null = null;
 		try {
-			if (metricalLevel === undefined) {
-				const existing = JSON.parse(await readFile(showPath(result.id), 'utf8')) as Show;
-				if (existing.analysisHash === result.analysis.hash) show = existing;
-			}
+			existing = JSON.parse(await readFile(showPath(result.id), 'utf8')) as Show;
 		} catch {
-			// No show yet, or one written against a grid that has since been re-analysed.
+			// No readable saved show.
 		}
 
-		if (!show) {
-			show = composeShow(result.analysis, {
-				artHue: result.meta.artHue,
-				context: result.context
-			});
-			const verdict = lintShow(show, {
+		const composition = { artHue: result.meta.artHue, context: result.context };
+		// An explicit grid correction rebuilds authored arrangements too: cues are bar-addressed.
+		const candidate = metricalLevel !== undefined
+			? composeShow(result.analysis, {
+				...composition,
+				seed: existing?.analysisHash === result.analysis.hash ? existing?.seed : undefined
+			})
+			: refreshShow(result.analysis, { ...composition, existing, analysisChanged: !result.fromCache,
+				arrangementUnchanged: result.arrangementUnchanged });
+		let show: Show | null = candidate;
+		if (candidate !== existing) {
+			const verdict = lintShow(candidate, {
 				analysis: result.analysis,
 				effects: new Map(BUILT_IN_EFFECTS.map((e) => [e.id, e])),
 				context: result.context
 			});
 			// A show the linter rejects would be rejected on load too; better to say so here.
 			if (!verdict.ok) show = null;
-			else await writeFile(showPath(result.id), JSON.stringify(show, null, '\t'));
+			else await writeFile(showPath(result.id), JSON.stringify(candidate, null, '\t'));
 		}
 
 		return json({

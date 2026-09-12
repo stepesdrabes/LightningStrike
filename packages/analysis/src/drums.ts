@@ -15,7 +15,22 @@ export interface DrumStream {
 	curve: Float32Array;
 	/** Optional rendered confidence at each evidence frame, in the same units as `levels`. */
 	levelCurve?: Float32Array;
+	/** Source frames in `curve`, index-aligned with `times`; -1 means unknown provenance. */
+	sourceFrames?: readonly number[];
 	fps: number;
+}
+
+/**
+ * Attach source frames before acoustic snapping changes model onset times.
+ * Call after vetoes, while the stream still uses unmerged model evidence.
+ */
+export function withModelPeakFrames(stream: DrumStream): DrumStream {
+	if (stream.times.length === 0) return stream;
+	const sourceFrames = stream.times.map((time) => {
+		const frame = Math.round(time * stream.fps);
+		return Number.isInteger(frame) && frame >= 0 && frame < stream.curve.length ? frame : -1;
+	});
+	return { ...stream, sourceFrames };
 }
 
 interface DrumOnsets {
@@ -219,7 +234,12 @@ export function gateByEvidence(
 		if (best >= floor) keep.push(i);
 	}
 	if (keep.length === stream.times.length) return stream;
-	return { ...stream, times: keep.map((i) => stream.times[i]), levels: keep.map((i) => stream.levels[i]) };
+	return {
+		...stream,
+		times: keep.map((i) => stream.times[i]),
+		levels: keep.map((i) => stream.levels[i]),
+		...(stream.sourceFrames ? { sourceFrames: keep.map((i) => stream.sourceFrames![i] ?? -1) } : {})
+	};
 }
 
 /** Keep every hit except the suspects that `evidence` does not confirm within `radiusSec`. */
@@ -241,7 +261,12 @@ export function dropUnconfirmed(
 		if (!suspect.has(t) || confirmed.has(t)) keep.push(i);
 	}
 	if (keep.length === stream.times.length) return stream;
-	return { ...stream, times: keep.map((i) => stream.times[i]), levels: keep.map((i) => stream.levels[i]) };
+	return {
+		...stream,
+		times: keep.map((i) => stream.times[i]),
+		levels: keep.map((i) => stream.levels[i]),
+		...(stream.sourceFrames ? { sourceFrames: keep.map((i) => stream.sourceFrames![i] ?? -1) } : {})
+	};
 }
 
 /**
@@ -280,7 +305,10 @@ export function mergeStreams(a: DrumStream, b: DrumStream, gapSec: number): Drum
 		}
 		out.push(hit);
 	}
-	return { ...a, times: out.map((h) => h.time), levels: out.map((h) => h.level) };
+	const merged = { ...a, times: out.map((h) => h.time), levels: out.map((h) => h.level) };
+	// Events from the other stream do not identify frames in this stream's evidence curve.
+	delete merged.sourceFrames;
+	return merged;
 }
 
 /** HPSS distinguishes sustained bass from kicks by time behaviour where frequency bands overlap. */

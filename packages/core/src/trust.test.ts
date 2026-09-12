@@ -22,6 +22,20 @@ function sketch(input: {
 }
 
 describe('gridTrust', () => {
+	it('routes explicitly measured silent audio to calm scenes even with a short regular grid', () => {
+		const analysis = sketch({ duration: 32, sections: 2 });
+		analysis.level = { fps: 100, data: 'AAAA', silent: true };
+		expect(gridTrust(analysis, 120)).toEqual({ trusted: false, reasons: ['no signal in analysed audio'] });
+	});
+
+	it('does not infer silence from an absent, empty or all-zero legacy level stream', () => {
+		const analysis = sketch({ duration: 32, sections: 2 });
+		for (const level of [undefined, { fps: 100, data: '' }, { fps: 100, data: 'AAAA' }]) {
+			analysis.level = level;
+			expect(gridTrust(analysis).trusted).toBe(true);
+		}
+	});
+
 	function busyTracked(): TrackAnalysis {
 		const a = sketch({ duration: 158, sections: 16, meterConfidence: 0.99, bpm: 175 });
 		const period = 60 / 175;

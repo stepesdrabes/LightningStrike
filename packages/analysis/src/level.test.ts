@@ -39,4 +39,33 @@ describe('level track', () => {
 		expect(click).toBeLessThan(at(1) - 60);
 		expect(at(2.6)).toBeLessThan(click * 0.3);
 	});
+
+	it('marks exact digital silence without normalising it to full level', () => {
+		const level = levelTrack(new Float32Array(rate * 2), rate, 2, () => 'verse');
+		expect(level.silent).toBe(true);
+		expect(decodeBase64(level.data).every((v) => v === 0)).toBe(true);
+	});
+
+	it.each([0.001, 1e-9])('retains a nonzero drumless signal at amplitude %g', (amplitude) => {
+		const mono = Float32Array.from({ length: rate }, (_, i) => amplitude * Math.sin(2 * Math.PI * 220 * i / rate));
+		const level = levelTrack(mono, rate, 1, () => 'intro');
+		expect(level.silent).toBeUndefined();
+		expect(decodeBase64(level.data).some((v) => v > 200)).toBe(true);
+	});
+
+	it('does not mark absent PCM as measured silence', () => {
+		const level = levelTrack(new Float32Array(), rate, 0, () => 'intro');
+		expect(level.silent).toBeUndefined();
+		expect(decodeBase64(level.data)).toEqual(new Uint8Array(1));
+	});
+
+	it('keeps a measured zero window dark even when every nonzero frame is below the log floor', () => {
+		const mono = new Float32Array(rate * 2);
+		for (let i = rate; i < mono.length; i++) mono[i] = 1e-9 * Math.sin(2 * Math.PI * 220 * i / rate);
+		const level = levelTrack(mono, rate, 2, () => 'intro');
+		const bytes = decodeBase64(level.data);
+		expect(bytes[50]).toBe(0);
+		expect(bytes[150]).toBeGreaterThan(200);
+		expect(level.silent).toBeUndefined();
+	});
 });

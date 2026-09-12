@@ -1,7 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
-import { BUILT_IN_EFFECTS, SHOW_VERSION, type Show } from '@mv/core';
+import { BUILT_IN_EFFECTS, type Show } from '@mv/core';
 import { isTransientFetchError, showPath, type IngestStage } from '@mv/analysis';
-import { composeShow, lintShow } from '@mv/author-engine';
+import { refreshShow, lintShow } from '@mv/author-engine';
 import { currentItem, nextItem, type ItemStatus, type QueueItem } from '$lib/queueModel.ts';
 import { autopilot } from './autopilot.ts';
 import { ingestDetached } from './ingestDetached.ts';
@@ -41,37 +41,32 @@ async function prepare(item: QueueItem, onStage: (stage: string) => void) {
 		artwork: item.thumbnail || undefined
 	});
 
-	let show: Show | null = null;
+	let existing: Show | null = null;
 	try {
-		const existing = JSON.parse(await readFile(showPath(result.id), 'utf8')) as Show;
-		const author = existing.authoredBy ?? (existing.generatedEffects.length > 0 ? 'claude' : 'engine');
-		// Keep paid model shows across engine versions; invalidate engine shows when either the grid or
-		// engine changes.
-		if (
-			existing.analysisHash === result.analysis.hash &&
-			(author !== 'engine' || (existing.version === SHOW_VERSION && result.fromCache))
-		) {
-			show = existing;
-		}
+		existing = JSON.parse(await readFile(showPath(result.id), 'utf8')) as Show;
 	} catch {
-		// No show yet, or one written against a grid that has since been re-analysed.
+		// No readable saved show.
 	}
 
+	const candidate = refreshShow(result.analysis, {
+		existing,
+		analysisChanged: !result.fromCache,
+		arrangementUnchanged: result.arrangementUnchanged,
+		artHue: result.meta.artHue,
+		context: result.context
+	});
+	let show: Show | null = candidate === existing ? existing : null;
 	if (!show) {
 		onStage('composing');
-		const composed = composeShow(result.analysis, {
-			artHue: result.meta.artHue,
-			context: result.context
-		});
-		const verdict = lintShow(composed, {
+		const verdict = lintShow(candidate, {
 			analysis: result.analysis,
 			effects: new Map(BUILT_IN_EFFECTS.map((e) => [e.id, e])),
 			context: result.context
 		});
 		// A show the linter rejects would be rejected on load too; better to say so here.
 		if (verdict.ok) {
-			await writeFile(showPath(result.id), JSON.stringify(composed, null, '\t'));
-			show = composed;
+			await writeFile(showPath(result.id), JSON.stringify(candidate, null, '\t'));
+			show = candidate;
 		}
 	}
 

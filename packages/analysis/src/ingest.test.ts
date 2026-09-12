@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -61,6 +61,32 @@ async function saveTrack(id = youtubeId, source = youtubeSource, version = ANALY
 }
 
 describe('queue cache refresh', () => {
+	it('reports compatible arrangement inputs across fresh analysis without persisting that verdict', async () => {
+		await saveTrack();
+		const fresh = { ...fixtureAnalysis(), tempo: { ...fixtureAnalysis().tempo, barTimes: [0, 160] }, moments: [] };
+		await writeFile(join(cache.dir, `${youtubeId}.analysis.json`), JSON.stringify({ ...fresh, version: ANALYSIS_VERSION - 1 }));
+		vi.mocked(analyzeTrack).mockReturnValue(fresh);
+		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(result.fromCache).toBe(false);
+		expect(result.arrangementUnchanged).toBe(true);
+		const stored = JSON.parse(await readFile(join(cache.dir, `${youtubeId}.analysis.json`), 'utf8'));
+		expect(stored.arrangementUnchanged).toBeUndefined();
+	});
+
+	it.each(['grid', 'sections', 'punctuation', 'malformed'] as const)('does not retain an arrangement after %s inputs change', async (kind) => {
+		await saveTrack();
+		const fresh = { ...fixtureAnalysis(), tempo: { ...fixtureAnalysis().tempo, barTimes: [0, 160] }, moments: [] };
+		const previous = JSON.parse(JSON.stringify({ ...fresh, version: ANALYSIS_VERSION - 1 }));
+		if (kind === 'grid') previous.tempo.barTimes[1] = 159;
+		if (kind === 'sections') previous.sections = [{ kind: 'intro', startBar: 0, endBar: 1 }];
+		if (kind === 'punctuation') previous.moments = [{ kind: 'crash', bar: 0 }];
+		if (kind === 'malformed') previous.bars = [null];
+		await writeFile(join(cache.dir, `${youtubeId}.analysis.json`), JSON.stringify(previous));
+		vi.mocked(analyzeTrack).mockReturnValue(fresh);
+		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId });
+		expect(result.arrangementUnchanged).toBeUndefined();
+	});
+
 	it('reanalyses downloaded audio without resolving an unavailable YouTube source', async () => {
 		await saveTrack();
 		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId });
@@ -87,6 +113,35 @@ describe('queue cache refresh', () => {
 		expect(result.fromCache).toBe(false);
 		expect(decodeAudio).toHaveBeenCalledWith(join(cache.dir, `${id}.m4a`));
 		await expect(ingest(source)).rejects.toThrow('No such file');
+	});
+
+	it('reapplies listener section edits and leaves saved shows and settings untouched', async () => {
+		await saveTrack();
+		const analysisFile = join(cache.dir, `${youtubeId}.analysis.json`);
+		const saved = JSON.parse(await readFile(analysisFile, 'utf8')) as TrackAnalysis;
+		saved.beats = Array.from({ length: 320 }, (_, i) => i * 0.5);
+		saved.tempo.barTimes = Array.from({ length: 81 }, (_, i) => i * 2);
+		await writeFile(analysisFile, JSON.stringify(saved));
+		await mkdir(join(cache.dir, 'judge'));
+		const artifacts = [
+			[join(cache.dir, 'judge', `${youtubeId}.json`), JSON.stringify({
+				analysisHash: saved.hash,
+				sections: [{ kind: 'intro', startTime: 0 }, { kind: 'verse', startTime: 8 }],
+				movements: [64], movementVetoes: [100]
+			})],
+			[join(cache.dir, `${youtubeId}.show.json`), '{"seed":7654321,"saved":"owner choice"}'],
+			[join(cache.dir, 'settings.json'), '{"outputBrightness":0.61,"outputOffsetMs":17}']
+		];
+		for (const [path, body] of artifacts) await writeFile(path, body);
+		await ingest(youtubeSource, { cachedTrackId: youtubeId });
+		expect(analyzeTrack).toHaveBeenCalledWith(expect.objectContaining({
+			handSections: [
+				{ kind: 'intro', startTime: 0, offGrid: false },
+				{ kind: 'verse', startTime: 8, offGrid: false }
+			],
+			movements: [64], movementVetoes: [100]
+		}));
+		for (const [path, body] of artifacts) expect(await readFile(path, 'utf8')).toBe(body);
 	});
 
 	it('does not redo analysis when the saved version is already current', async () => {
