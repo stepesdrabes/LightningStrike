@@ -11,7 +11,7 @@ import type { DrumStream } from './drums.ts';
  */
 const MODEL_FILE = 'adtof_frame_rnn.onnx';
 
-/** The model's spectrogram contract, from the training frontend. Not tunable. */
+/** Frontend parameters of the locally exported ADTOF-pytorch port. */
 const SAMPLE_RATE = 44100;
 const FPS = 100;
 const FRAME_SIZE = 2048;
@@ -22,6 +22,19 @@ const FMAX = 20000;
 
 /** Per-class peak thresholds from the port's defaults: kick, snare, tom, hat, cymbal. */
 const THRESHOLDS = [0.22, 0.24, 0.32, 0.22, 0.3] as const;
+/**
+ * The hat class ships below the port's fitted threshold: on MDB Drums 0.15 keeps pooled F and
+ * lifts track-mean F from 0.73 to 0.75. Kick is at its optimum; snare at 0.20 would gain
+ * 0.015 F but its extra weak hits moved section labels on four library tracks.
+ */
+const HAT_THRESHOLD = 0.15;
+/**
+ * A hi-hat click at a backbeat raises the snare class a little through the model's metrical
+ * prior. Below this activation, a peak the hat class outscores by this factor is suspect;
+ * the analysis keeps it only with snare-band evidence, so a clap under an open hat survives.
+ */
+const CLICK_SNARE_MAX = 0.4;
+const CLICK_HAT_RATIO = 1.5;
 const STRONG_ONSET_EXCESS = 0.6;
 const CLASSES = 5;
 
@@ -29,15 +42,20 @@ export interface AdtofOnsets {
 	kick: DrumStream;
 	snare: DrumStream;
 	hat: DrumStream;
-	/** Crash/ride activations, kept for the crash-event work even though no stream ships. */
-	cymbalTimes: number[];
+	/** Ride and crash strikes; the analysis folds them into the hat stream as timekeeping. */
+	cymbal: DrumStream;
+	/** Snare times that read as hi-hat clicks by activation; absent in older evidence. */
+	snareClicks?: number[];
 }
 
-/**
- * Match the training filterbank exactly: snap log-spaced frequencies to unique ascending FFT
- * bins, then use unit-area triangles at interior bins.
- */
-function buildFilterbank(): { filters: Float32Array; nBins: number; fftBins: number } {
+export interface AdtofFilterbank {
+	filters: Float32Array;
+	nBins: number;
+	fftBins: number;
+}
+
+/** The PyTorch port anchors its logarithmic bands at 20 Hz. */
+export function adtofFilterbank(): AdtofFilterbank {
 	const fftBins = FRAME_SIZE / 2;
 	const binHz = SAMPLE_RATE / FRAME_SIZE;
 
@@ -93,6 +111,29 @@ function hannSymmetric(size: number): Float32Array {
 	return w;
 }
 
+/** Centred 44.1 kHz PCM to the 100 Hz log-magnitude model input. */
+export function adtofSpectrogram(mono: Float32Array, bank: AdtofFilterbank): Float32Array {
+	const frames = 1 + Math.floor(mono.length / HOP);
+	const spec = new Float32Array(frames * bank.nBins);
+	const fft = new RealFft(FRAME_SIZE);
+	const window = hannSymmetric(FRAME_SIZE);
+	const mags = new Float32Array(FRAME_SIZE / 2 + 1);
+
+	for (let t = 0; t < frames; t++) {
+		// centre-aligned like librosa's center=True, zero-padded past either end.
+		fft.magnitudes(mono, t * HOP - FRAME_SIZE / 2, window, mags, 1);
+		const out = t * bank.nBins;
+		for (let i = 0; i < bank.nBins; i++) {
+			const row = i * bank.fftBins;
+			let acc = 0;
+			for (let b = 0; b < bank.fftBins; b++) acc += bank.filters[row + b] * mags[b];
+			spec[out + i] = Math.log10(1 + acc);
+		}
+	}
+
+	return spec;
+}
+
 /** madmom-style peaks: exceed the trailing average, win a local window, and merge nearby groups. */
 function pickActivationPeaks(
 	act: Float32Array,
@@ -146,12 +187,55 @@ export function activationStream(activation: Float32Array, threshold: number): D
 	const { frames: peaks, heights } = pickActivationPeaks(activation, threshold);
 	const sorted = peaks.map((i) => heights[i]).sort((a, b) => a - b);
 	const top = Math.max(STRONG_ONSET_EXCESS, sorted[Math.floor(sorted.length * 0.9)] ?? 0);
+	const levelCurve = Float32Array.from(heights, (height) =>
+		Math.min(1, height / top) * Math.min(1, height / STRONG_ONSET_EXCESS)
+	);
 	return {
 		times: peaks.map((i) => i / FPS),
 		levels: peaks.map((i) => Math.min(1, heights[i] / top) * Math.min(1, heights[i] / STRONG_ONSET_EXCESS)),
 		// Pattern completion needs a fresh onset, not sustained class activation.
 		curve: heights,
+		levelCurve,
 		fps: FPS
+	};
+}
+
+/** Snare peaks that look like hi-hat clicks read through the model's backbeat prior. */
+export function hatClickSuspects(
+	snare: DrumStream,
+	snareAct: Float32Array,
+	hatAct: Float32Array
+): number[] {
+	const suspects: number[] = [];
+	for (const time of snare.times) {
+		const frame = Math.round(time * snare.fps);
+		const act = snareAct[frame] ?? 0;
+		let hat = 0;
+		for (let k = Math.max(0, frame - 1); k <= Math.min(hatAct.length - 1, frame + 1); k++) {
+			if (hatAct[k] > hat) hat = hatAct[k];
+		}
+		if (act < CLICK_SNARE_MAX && hat > CLICK_HAT_RATIO * act) suspects.push(time);
+	}
+	return suspects;
+}
+
+/** The shipped streams from a whole-track activation matrix (frames x CLASSES, 100 Hz). */
+export function onsetsFromActivations(act: Float32Array): AdtofOnsets {
+	const frames = Math.floor(act.length / CLASSES);
+	const classActivation = (c: number): Float32Array => {
+		const out = new Float32Array(frames);
+		for (let t = 0; t < frames; t++) out[t] = act[t * CLASSES + c];
+		return out;
+	};
+	const snareAct = classActivation(1);
+	const hatAct = classActivation(3);
+	const snare = activationStream(snareAct, THRESHOLDS[1]);
+	return {
+		kick: activationStream(classActivation(0), THRESHOLDS[0]),
+		snare,
+		hat: activationStream(hatAct, HAT_THRESHOLD),
+		cymbal: activationStream(classActivation(4), THRESHOLDS[4]),
+		snareClicks: hatClickSuspects(snare, snareAct, hatAct)
 	};
 }
 
@@ -175,17 +259,12 @@ function loadOrt(): Ort {
 export class Adtof {
 	private readonly session: Session;
 	private readonly Tensor: TensorCtor;
-	private readonly filters: Float32Array;
-	private readonly nBins: number;
-	private readonly fftBins: number;
+	private readonly bank: AdtofFilterbank;
 
 	private constructor(session: Session, Tensor: TensorCtor) {
 		this.session = session;
 		this.Tensor = Tensor;
-		const fb = buildFilterbank();
-		this.filters = fb.filters;
-		this.nBins = fb.nBins;
-		this.fftBins = fb.fftBins;
+		this.bank = adtofFilterbank();
 	}
 
 	/** Null when the model file is absent: the DSP detector is the life without it. */
@@ -210,45 +289,13 @@ export class Adtof {
 		probe?: { activations?: Float32Array }
 	): Promise<AdtofOnsets> {
 		const frames = 1 + Math.floor(mono.length / HOP);
-		const spec = new Float32Array(frames * this.nBins);
-		const fft = new RealFft(FRAME_SIZE);
-		const window = hannSymmetric(FRAME_SIZE);
-		const mags = new Float32Array(FRAME_SIZE / 2 + 1);
-
-		for (let t = 0; t < frames; t++) {
-			// centre-aligned like librosa's center=True, zero-padded past either end.
-			fft.magnitudes(mono, t * HOP - FRAME_SIZE / 2, window, mags, 1);
-			const out = t * this.nBins;
-			for (let i = 0; i < this.nBins; i++) {
-				const row = i * this.fftBins;
-				let acc = 0;
-				for (let b = 0; b < this.fftBins; b++) acc += this.filters[row + b] * mags[b];
-				spec[out + i] = Math.log10(1 + acc);
-			}
-		}
+		const spec = adtofSpectrogram(mono, this.bank);
 
 		const result = await this.session.run({
-			spectrogram: new this.Tensor('float32', spec, [1, frames, this.nBins, 1]) as never
+			spectrogram: new this.Tensor('float32', spec, [1, frames, this.bank.nBins, 1]) as never
 		});
 		const act = result.activations.data as Float32Array;
 		if (probe) probe.activations = act;
-
-		const classActivation = (c: number): Float32Array => {
-			const out = new Float32Array(frames);
-			for (let t = 0; t < frames; t++) out[t] = act[t * CLASSES + c];
-			return out;
-		};
-
-		const stream = (c: number): DrumStream => {
-			return activationStream(classActivation(c), THRESHOLDS[c]);
-		};
-
-		const cymbal = pickActivationPeaks(classActivation(4), THRESHOLDS[4]);
-		return {
-			kick: stream(0),
-			snare: stream(1),
-			hat: stream(3),
-			cymbalTimes: cymbal.frames.map((i) => i / FPS)
-		};
+		return onsetsFromActivations(act);
 	}
 }

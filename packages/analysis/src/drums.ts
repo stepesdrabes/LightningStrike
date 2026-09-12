@@ -13,6 +13,8 @@ export interface DrumStream {
 	levels: number[];
 	/** Detection function minus its local floor, clamped at zero, at `fps`. */
 	curve: Float32Array;
+	/** Optional rendered confidence at each evidence frame, in the same units as `levels`. */
+	levelCurve?: Float32Array;
 	fps: number;
 }
 
@@ -31,6 +33,13 @@ const BASS_NOTE = [110, 260] as const;
 const SNARE_BODY = [150, 400] as const;
 const SNARE_CRACK = [1500, 8000] as const;
 const HAT = [6000, 20000] as const;
+
+/** Deafness rule bounds: model hats per beat, DSP hats per beat, and the half-heard share. */
+const DEAF_MODEL_MAX = 0.6;
+const DEAF_DSP_MIN = 0.75;
+const DEAF_HEARD_MIN = 0.1;
+const DEAF_EVIDENCE_S = 0.03;
+const DEAF_EVIDENCE = 0.05;
 
 /** How much of the bass band's rise is charged against the kick band's, per band. */
 const BASS_WEIGHT = 4;
@@ -189,6 +198,89 @@ export function snapTimesToOnsets(
 		}
 		return best;
 	});
+}
+
+/** Keep hits whose evidence curve rises to at least `floor` within `radiusSec`. */
+export function gateByEvidence(
+	stream: DrumStream,
+	evidence: DrumStream,
+	radiusSec: number,
+	floor: number
+): DrumStream {
+	const radius = Math.max(1, Math.round(radiusSec * evidence.fps));
+	const keep: number[] = [];
+	for (let i = 0; i < stream.times.length; i++) {
+		const centre = Math.round(stream.times[i] * evidence.fps);
+		let best = 0;
+		const to = Math.min(evidence.curve.length - 1, centre + radius);
+		for (let k = Math.max(0, centre - radius); k <= to; k++) {
+			if (evidence.curve[k] > best) best = evidence.curve[k];
+		}
+		if (best >= floor) keep.push(i);
+	}
+	if (keep.length === stream.times.length) return stream;
+	return { ...stream, times: keep.map((i) => stream.times[i]), levels: keep.map((i) => stream.levels[i]) };
+}
+
+/** Keep every hit except the suspects that `evidence` does not confirm within `radiusSec`. */
+export function dropUnconfirmed(
+	stream: DrumStream,
+	suspects: readonly number[],
+	evidence: DrumStream,
+	radiusSec: number,
+	floor: number
+): DrumStream {
+	if (suspects.length === 0) return stream;
+	const suspect = new Set(suspects);
+	const confirmed = new Set(
+		gateByEvidence({ ...stream, times: [...suspects], levels: suspects.map(() => 1) }, evidence, radiusSec, floor).times
+	);
+	const keep: number[] = [];
+	for (let i = 0; i < stream.times.length; i++) {
+		const t = stream.times[i];
+		if (!suspect.has(t) || confirmed.has(t)) keep.push(i);
+	}
+	if (keep.length === stream.times.length) return stream;
+	return { ...stream, times: keep.map((i) => stream.times[i]), levels: keep.map((i) => stream.levels[i]) };
+}
+
+/**
+ * Sampled trap hats are out of the model's vocabulary: it hears a dense DSP hat pattern only
+ * faintly, whereas sibilance and piano hammers, which the DSP band also fires on, leave the
+ * hat class silent. `heard` is the share of DSP hats with faint model evidence within 30 ms.
+ */
+export function modelDeafToHats(
+	model: DrumStream,
+	dsp: DrumStream,
+	beats: number
+): { deaf: boolean; heard: number } {
+	const modelPerBeat = model.times.length / Math.max(1, beats);
+	const dspPerBeat = dsp.times.length / Math.max(1, beats);
+	const heard = dsp.times.length > 0
+		? gateByEvidence(dsp, model, DEAF_EVIDENCE_S, DEAF_EVIDENCE).times.length / dsp.times.length
+		: 0;
+	return {
+		deaf: modelPerBeat < DEAF_MODEL_MAX && dspPerBeat >= DEAF_DSP_MIN && heard >= DEAF_HEARD_MIN,
+		heard
+	};
+}
+
+/** Union of two streams in time order; within `gapSec` the stronger hit stands for both. */
+export function mergeStreams(a: DrumStream, b: DrumStream, gapSec: number): DrumStream {
+	const hits = a.times
+		.map((time, i) => ({ time, level: a.levels[i] ?? 1 }))
+		.concat(b.times.map((time, i) => ({ time, level: b.levels[i] ?? 1 })))
+		.sort((x, y) => x.time - y.time);
+	const out: { time: number; level: number }[] = [];
+	for (const hit of hits) {
+		const last = out[out.length - 1];
+		if (last && hit.time - last.time < gapSec) {
+			if (hit.level > last.level) out[out.length - 1] = hit;
+			continue;
+		}
+		out.push(hit);
+	}
+	return { ...a, times: out.map((h) => h.time), levels: out.map((h) => h.level) };
 }
 
 /** HPSS distinguishes sustained bass from kicks by time behaviour where frequency bands overlap. */

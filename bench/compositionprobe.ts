@@ -49,7 +49,10 @@ for (const file of readdirSync(cache).filter((name) => name.endsWith('.analysis.
 		}
 		for (const spec of cue.layers.master || cue.note === 'the breath before it lands' ? [] : Object.values(cue.layers)) {
 			const kit = effects.get(spec!.effect)?.taste.kit;
-			if (kit && (kit === 'any' ? Math.max(drums('kicks'), drums('snares')) : drums(kit === 'kick' ? 'kicks' : kit === 'snare' ? 'snares' : 'hats')) < 0.2) {
+			const density = kit === 'any' ? Math.max(drums('kicks'), drums('snares'))
+				: kit === 'percussion' ? Math.max(drums('kicks'), drums('snares'), drums('hats'))
+					: drums(kit === 'kick' ? 'kicks' : kit === 'snare' ? 'snares' : 'hats');
+			if (kit && density < 0.2) {
 				silentKit++;
 				if (process.argv.includes('--details')) console.log(`Kit ${id} ${cue.section}@${cue.bar}: ${spec!.effect}`);
 			}

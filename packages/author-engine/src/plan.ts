@@ -54,6 +54,10 @@ const MAX_CUE_BARS = 8;
 const MAX_CUE_S = 30;
 /** A stub is a cue of its own only when it lasts long enough to read as one: a two-bar tag. */
 const MIN_STUB_S = 6;
+/** An opening this short is a count-in or a pickup, and what follows it arrives. */
+const SHORT_INTRO_BARS = 4;
+/** Energy step, 0..1, above which the passage after a short opening lands rather than fades. */
+const ARRIVAL_STEP = 0.3;
 /** Matches the linter: punctuation inside this many bars spends the biggest card too early. */
 const SETTLE_BARS = 16;
 /** Kicks/beat threshold shared by slam treatment and the effect energy-band override. */
@@ -80,6 +84,9 @@ interface Slot {
 	peak: boolean;
 	/** What was playing before, which decides how fast this one is allowed to arrive. */
 	from: SectionKind | null;
+	/** Length and level of the cue before, for arrivals out of a short opening. */
+	fromBars: number;
+	fromEnergy: number;
 	/** Which drop this is, counting from zero; -1 when the slot is not a drop. */
 	dropIndex: number;
 	/** True when this section is the LAST appearance of its material: the final chorus. */
@@ -404,6 +411,7 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 	plantWildcard(cues, slots, picker, analysis, byId, exclude);
 	inheritWhereEmpty(cues);
 	trackTheLeaving(cues, analysis);
+	answerIntroKit(cues, analysis, effects, seed, profile, signatures, avoid, exclude);
 
 	return {
 		version: SHOW_VERSION,
@@ -419,6 +427,42 @@ export function composeShow(analysis: TrackAnalysis, opts: EngineOptions = {}): 
 		cues,
 		hits: planHits(analysis, slots, profile, flashes, peakTreatment)
 	};
+}
+
+
+/**
+ * An opening's hits deserve an answer even where the picker would not spend a transient:
+ * a count-in ticks, a riff's snares stroke. Only intro cues without a kit voice change, with
+ * a picker of their own so every later draw stays where it was.
+ */
+function answerIntroKit(
+	cues: Cue[], analysis: TrackAnalysis, effects: readonly EffectDef[], seed: number,
+	profile: GenreProfile, prefer: readonly string[], avoid: readonly string[],
+	exclude: readonly string[]
+): void {
+	if (profile.transientEvery === 0) return;
+	const byId = new Map(effects.map((effect) => [effect.id, effect]));
+	const picker = new EffectPicker(
+		effects.filter((effect) => effect.role === 'transient' && effect.taste.kit !== undefined),
+		new Rng(seed ^ 0x736e6172)
+	);
+	for (let index = 0; index < cues.length; index++) {
+		const cue = cues[index];
+		if (cue.section !== 'intro' || cue.layers.transient || cue.layers.master) continue;
+		const layers = Object.values(cue.layers).map((spec) => byId.get(spec!.effect));
+		if (layers.some((effect) => effect?.taste.kit)) continue;
+		const endBar = cues[index + 1]?.bar ?? analysis.bars.length;
+		const drums = drumDensity(analysis, cue.bar, endBar);
+		if (Math.max(drums.kick, drums.snare, drums.hat) < KIT_FLOOR) continue;
+		const span = analysis.sections.find((s) => cue.bar >= s.startBar && cue.bar < s.endBar);
+		const energy = (span?.meanEnergy ?? 0) / 100;
+		const busy = layers.reduce((sum, effect) => sum + (effect?.taste.activity ?? 0), 0);
+		const voice = picker.pick({
+			role: 'transient', section: 'intro', lengthBars: endBar - cue.bar,
+			energy: Math.min(energy, 0.45), drums, busy, noCharacter: true, prefer, avoid, exclude
+		});
+		if (voice) cue.layers.transient = { effect: voice.id };
+	}
 }
 
 
@@ -552,6 +596,8 @@ function buildSlots(
 				of: 0,
 				peak: isPeak && index === 0,
 				from: slots[slots.length - 1]?.section ?? null,
+				fromBars: slots.length > 0 ? slots[slots.length - 1].endBar - slots[slots.length - 1].bar : 0,
+				fromEnergy: slots[slots.length - 1]?.energy ?? 0,
 				dropIndex,
 				finalOfGroup: span.group >= 0 && lastOfGroup.get(span.group) === span.index,
 				movement,
@@ -679,6 +725,11 @@ function fadeFor(slot: Slot, profile?: GenreProfile): number {
 	if (slot.index > 0) return 4;
 	if (slot.section === 'intro' || slot.section === 'outro') return 8;
 	if (slot.from === 'drop' || slot.from === 'chorus') return 2;
+	// A count-in ends in an arrival, not a dissolve: the band stepping in hard lands on one
+	// beat, a softer entry over half the opening, so the intro look is seen before it goes.
+	if (slot.from === 'intro' && slot.fromBars <= SHORT_INTRO_BARS) {
+		return slot.energy - slot.fromEnergy >= ARRIVAL_STEP ? 1 : slot.fromBars * 2;
+	}
 	// A quiet section dissolving into anything short of a drop reads abrupt at two bars:
 	// both sides are near-still, the eye has nothing else to watch, and the change IS the
 	// event. Three bars makes it weather. Two listening notes, both at exactly this seam.

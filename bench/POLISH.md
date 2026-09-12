@@ -13,6 +13,21 @@ analyses, shows or user settings. Cache selection defaults to the desktop cache;
 - `node bench/quietprobe.ts --limit 8 --effects chorusBloom,ambientDrift` measures responsiveness
   in real quiet passages. Compare the whole candidate pool on the same corpus before updating
   ranking metadata.
+- `node bench/drumscore.ts --label=NAME` scores every drum stage (DSP, raw model, snapped model,
+  the shipped analysis and a frozen `--before` analyser) against the labelled MDB Drums corpus
+  under `bench/corpus/mdb-drums` at the 50 ms mir_eval tolerance, writing
+  `bench/reports/audio-reliability/mdb/results-NAME.{json,md}`. Model activations and beats are
+  cached per track, so variants re-run in seconds. `bench/lab/mdb.ts` exposes the same corpus,
+  caches and scoring for experiments; `bench/lab/example.ts` is the template.
+- `MV_CACHE_DIR=<library> node bench/lab/library-reanalyse.ts --out=DIR` re-analyses every
+  library track with the working-tree analyser from its cached model beats and the cached
+  ADTOF activations under `bench/reports/audio-reliability/library-activations`, composes its
+  show, and writes both with copies of context and meta into a scratch cache that
+  `compositionprobe`, `lintsweep` and `showreview --analysis/--show` can read. `summary.json`
+  lists per track whether beats, bar lines and sections changed and how the onset counts moved.
+- `node bench/audibility.ts --id ID --from S --to S` writes a 10 ms timeline of level, onset
+  strength, DSP and model drum evidence and per-attack spectral snapshots for one passage, to
+  judge by evidence what is audible where no labels exist.
 - `node bench/showreview.ts ID --out bench/reports/review.html` exports audio with actual ceiling
   and bounce-lamp output. `--analysis FILE` and `--show FILE` select diagnostic inputs. The HTML
   is self-contained, with opening/chorus/breakdown selection, seeking and optional snare clicks.

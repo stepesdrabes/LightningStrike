@@ -103,6 +103,7 @@ export function scriptFrames(bpm = 130): ShowFrame[] {
 			f.kick = kick;
 			f.snare = snare;
 			f.hat = hat;
+			f.level = clamp(stage.energy * (0.55 + 0.45 * kickEnv));
 			f.kickEnv = kickEnv;
 			f.snareEnv = snareEnv;
 			f.hatEnv = hatEnv;
@@ -271,6 +272,7 @@ export function quietFrames(bpm = 96, bars = 16): ShowFrame[] {
 		f.kick = false;
 		f.snare = false;
 		f.hat = false;
+		f.level = clamp(0.3 + 0.1 * Math.sin(t * 0.9));
 		f.kickEnv = 0;
 		f.snareEnv = 0;
 		f.hatEnv = 0;

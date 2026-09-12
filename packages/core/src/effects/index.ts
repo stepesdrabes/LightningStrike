@@ -46,6 +46,7 @@ import { iridescence } from './iridescence.ts';
 import { kickCannon } from './kickCannon.ts';
 import { kickTunnel } from './kickTunnel.ts';
 import { kitStage } from './kitStage.ts';
+import { kitTicks } from './kitTicks.ts';
 import { laidbackWave } from './laidbackWave.ts';
 import { lanterns } from './lanterns.ts';
 import { lavaBlobs } from './lavaBlobs.ts';
@@ -151,6 +152,7 @@ export const BUILT_IN_EFFECTS: readonly EffectDef[] = [
 	crossbeam,
 	rippleTank,
 	kitStage,
+	kitTicks,
 	shockwave,
 	splash,
 	beamFlick,

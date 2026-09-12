@@ -58,7 +58,9 @@ export function kitSilent(e: EffectDef, drums: PickRequest['drums']): boolean {
 				? drums.snare
 				: kit === 'hat'
 					? drums.hat
-					: Math.max(drums.kick, drums.snare);
+					: kit === 'percussion'
+						? Math.max(drums.kick, drums.snare, drums.hat)
+						: Math.max(drums.kick, drums.snare);
 	return density < KIT_FLOOR;
 }
 

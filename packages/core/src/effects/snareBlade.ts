@@ -21,7 +21,7 @@ export const snareBlade: EffectDef = {
 	blurb: 'A feathered coloured stroke crosses one wall on the snare, with a softer opposing reply.',
 	taste: {
 		energy: 4,
-		sections: ['groove', 'verse', 'build', 'drop', 'chorus'],
+		sections: ['intro', 'groove', 'verse', 'build', 'drop', 'chorus'],
 		minBars: 2,
 		maxBars: 32,
 		peakReserved: false,

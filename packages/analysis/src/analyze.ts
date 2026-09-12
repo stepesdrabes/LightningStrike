@@ -6,6 +6,7 @@ import {
 	type Moment,
 	type MovementSpan,
 	type OnsetStream,
+	type SectionKind,
 	type SectionSpan,
 	type TrackAnalysis,
 	type TrackContext
@@ -19,10 +20,19 @@ import {
 	type LabelTuning
 } from './arrange.ts';
 import { spectrumTrack } from './spectrum.ts';
+import { levelTrack } from './level.ts';
 import { detectBeats, type BeatGrid } from './beats.ts';
 import { beatSynchronous } from './beatsync.ts';
 import { chromagram, estimateKey, estimateKeySpan } from './chroma.ts';
-import { detectDrums, snapTimesToOnsets, type DrumStream } from './drums.ts';
+import {
+	detectDrums,
+	dropUnconfirmed,
+	gateByEvidence,
+	mergeStreams,
+	modelDeafToHats,
+	snapTimesToOnsets,
+	type DrumStream
+} from './drums.ts';
 import { extractFeatures } from './features.ts';
 import { detectMeter, type Meter } from './downbeats.ts';
 import { barStartsAtCuts, deriveGridCuts, resyncedCuts } from './gridedits.ts';
@@ -89,8 +99,17 @@ interface AnalyzeInput {
 	/** External beat/downbeat times, seconds. Supplied by an async caller; absent uses the DSP tracker. */
 	beats?: readonly number[];
 	downbeats?: readonly number[];
-	/** Optional model drum streams; absent uses band-flux DSP. Broadband onsets place model hits. */
-	drums?: { kick: DrumStream; snare: DrumStream; hat: DrumStream };
+	/**
+	 * Optional model drum streams; absent uses band-flux DSP. Broadband onsets place model hits.
+	 * Cymbals join the hat stream as timekeeping; evidence recorded before them has none.
+	 */
+	drums?: {
+		kick: DrumStream;
+		snare: DrumStream;
+		hat: DrumStream;
+		cymbal?: DrumStream;
+		snareClicks?: number[];
+	};
 	/** Optional genre family and synced lyrics for section vocabulary and chorus location. */
 	context?: TrackContext;
 	/** False prevents recursive compound-meter correction after the octave guard fires. */
@@ -138,8 +157,30 @@ interface AnalyzeInput {
 		stages?: { name: string; bounds: number[] }[];
 		/** The downbeat phase walk's runs and the restarts the grid took, as beat indices. */
 		phase?: { runs: PhaseRun[]; cuts: number[]; opening: number };
+		drums?: {
+			dsp: { kick: DrumStream; snare: DrumStream; hat: DrumStream };
+			detected: { kick: DrumStream; snare: DrumStream; hat: DrumStream };
+			quantiseOptions: Parameters<typeof quantiseOnsets>[1];
+			final: { kick: ReturnType<typeof quantiseOnsets>; snare: ReturnType<typeof quantiseOnsets>; hat: ReturnType<typeof quantiseOnsets> };
+		};
 	};
 }
+
+/** Pattern-completion floors per class; see quantiseOptions. */
+const KICK_PROMOTE_FLOOR = 0.4;
+const SNARE_DEMOTE_FLOOR = 0.9;
+/**
+ * A model hat needs some flux in the DSP hat band within this window: a sidechain swell
+ * raises the class without a transient. Cymbals then join as timekeeping.
+ */
+const HAT_EVIDENCE_S = 0.03;
+const HAT_EVIDENCE_FLOOR = 0.05;
+const CYMBAL_MERGE_S = 0.03;
+/**
+ * A snare the model half-hears under a hat click stays only with this much DSP snare-band
+ * flux: a count-in click reads about 0.2 there, a clap under an open hat 0.3 and above.
+ */
+const CLICK_SNARE_EVIDENCE = 0.3;
 
 /** A detection within this of a mark defers to the mark; within this of a veto it is refused. */
 const MARK_REACH_S = 8;
@@ -303,13 +344,28 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	bars ??= barSynchronous(beatFeatures, meter.beatsPerBar, barPhase);
 
 	// Detect drums before refining boundaries; quantisation waits for repeat groups.
-	// Use model kick/snare only: ADTOF hats are a weak class and would thin subdivision patterns.
 	const dspDrums = detectDrums(features.spec, { beatPeriod: grid.beatPeriod, odf: features.odf });
 	const detected = input.drums
 		? {
 				kick: snapStream(input.drums.kick, features.odf, features.curves.fps, grid.beatPeriod),
-				snare: snapStream(input.drums.snare, features.odf, features.curves.fps, grid.beatPeriod),
-				hat: dspDrums.hat
+				snare: snapStream(
+					dropUnconfirmed(
+						input.drums.snare,
+						input.drums.snareClicks ?? [],
+						dspDrums.snare,
+						HAT_EVIDENCE_S,
+						CLICK_SNARE_EVIDENCE
+					),
+					features.odf,
+					features.curves.fps,
+					grid.beatPeriod
+				),
+				hat: snapStream(
+					hatStream(input.drums, dspDrums.hat, grid.beats.length),
+					features.odf,
+					features.curves.fps,
+					grid.beatPeriod
+				)
 			}
 		: dspDrums;
 	const rawKicks = countPerBar(detected.kick.times, bars.time, bars.count);
@@ -427,19 +483,22 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	const groups = groupSegments(sim, bars.count, bounds, movementBars);
 	const barGroup = barGroups(bounds, groups.group, bars.count);
 
-	const quantise = (stream: DrumStream) =>
-		quantiseOnsets(stream, {
-			beats: grid.beats,
-			beatsPerBar: meter.beatsPerBar,
-			downbeatPhase: barPhase,
-			barGroup,
-			duration
-		});
-	const drums = {
-		kick: quantise(detected.kick),
-		snare: quantise(detected.snare),
-		hat: quantise(detected.hat)
+	const quantiseOptions = {
+		beats: grid.beats,
+		beatsPerBar: meter.beatsPerBar,
+		downbeatPhase: barPhase,
+		barGroup,
+		barTimes: bars.time,
+		duration
 	};
+	// Measured on MDB Drums: kick completion in cohorts under 0.4 is mostly false, snare
+	// thinning outside near-certain cohorts mostly removes real ghost notes.
+	const drums = {
+		kick: quantiseOnsets(detected.kick, { ...quantiseOptions, promoteFloor: KICK_PROMOTE_FLOOR }),
+		snare: quantiseOnsets(detected.snare, { ...quantiseOptions, demoteFloor: SNARE_DEMOTE_FLOOR }),
+		hat: quantiseOnsets(detected.hat, quantiseOptions)
+	};
+	if (input.probe) input.probe.drums = { dsp: dspDrums, detected, quantiseOptions, final: drums };
 	const kicks = countPerBar(drums.kick.times, bars.time, bars.count);
 	const snares = countPerBar(drums.snare.times, bars.time, bars.count);
 	const hats = countPerBar(drums.hat.times, bars.time, bars.count);
@@ -738,6 +797,10 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 				})
 			: undefined;
 
+	const sectionAt = (t: number): SectionKind => {
+		for (const s of sections) if (t >= s.startTime && t < s.endTime) return s.kind;
+		return 'groove';
+	};
 	return {
 		version: ANALYSIS_VERSION,
 		hash: input.hash,
@@ -785,10 +848,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 			energy: Array.from(beat.energy, pct),
 			bands: Array.from(beat.bands, pct)
 		},
-		spectrum: spectrumTrack(features.spec, input.duration, (t) => {
-			for (const s of sections) if (t >= s.startTime && t < s.endTime) return s.kind;
-			return 'groove';
-		}),
+		spectrum: spectrumTrack(features.spec, input.duration, sectionAt),
+		level: levelTrack(mono, sampleRate, input.duration, sectionAt),
 		stereo: {
 			fps: round3(stereo.fps),
 			pan: Array.from(stereo.pan, round2),
@@ -900,6 +961,23 @@ function meterFromDownbeats(beats: Float64Array, downbeats: readonly number[]): 
 
 	const total = indices.length || 1;
 	return { beatsPerBar, phase, confidence: Math.max(0, Math.min(1, votes[phase] / total)) };
+}
+
+/**
+ * The shipped hat stream: model hats with an air transient, or the DSP hats where the model
+ * is deaf to the kit's sampled hats, plus ride and crash strikes either way.
+ */
+function hatStream(
+	drums: NonNullable<AnalyzeInput['drums']>,
+	dspHat: DrumStream,
+	beats: number
+): DrumStream {
+	// A ride or crash keeping time counts as the model hearing the top kit.
+	const heard = drums.cymbal ? mergeStreams(drums.hat, drums.cymbal, CYMBAL_MERGE_S) : drums.hat;
+	const hats = modelDeafToHats(heard, dspHat, beats).deaf
+		? dspHat
+		: gateByEvidence(drums.hat, dspHat, HAT_EVIDENCE_S, HAT_EVIDENCE_FLOOR);
+	return drums.cymbal ? mergeStreams(hats, drums.cymbal, CYMBAL_MERGE_S) : hats;
 }
 
 /** Align model hits to broadband onsets, removing the low-band window's timing bias. */

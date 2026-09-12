@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { detectDrums, snapTimesToOnsets } from './drums.ts';
+import { dropUnconfirmed, gateByEvidence, mergeStreams, modelDeafToHats } from './drums.ts';
 import { extractFeatures } from './features.ts';
 import { applyBiquad, lowpass } from './dsp/filters.ts';
 import { fMeasure } from './fixture.ts';
@@ -151,5 +152,45 @@ describe('model onset placement', () => {
 		odf[105] = 1;
 		odf[106] = 0.9;
 		expect(snapTimesToOnsets([1], odf, 100, 0.05)).toEqual([1]);
+	});
+});
+
+describe('stream evidence gate and merge', () => {
+	const stream = (times: number[], levels = times.map(() => 0.8)) =>
+		({ times, levels, curve: new Float32Array(500), fps: 100 });
+
+	it('keeps hits with flux in the evidence band and drops swells without one', () => {
+		const evidence = stream([]);
+		evidence.curve[101] = 0.3;
+		evidence.curve[299] = 0.04;
+		const kept = gateByEvidence(stream([1, 2, 3]), evidence, 0.03, 0.05);
+		expect(kept.times).toEqual([1]);
+	});
+
+	it('drops only the suspects the evidence band cannot confirm', () => {
+		const evidence = stream([]);
+		evidence.curve[201] = 0.45;
+		evidence.curve[301] = 0.2;
+		const kept = dropUnconfirmed(stream([1, 2, 3, 4]), [2, 3], evidence, 0.03, 0.3);
+		expect(kept.times).toEqual([1, 2, 4]);
+	});
+
+	it('calls the model deaf only to a dense DSP hat pattern it half-hears', () => {
+		const dense = stream(Array.from({ length: 16 }, (_, i) => 0.25 + i * 0.25));
+		const faint = stream([1, 2, 3]);
+		for (const t of [0.5, 1.5, 2.5, 3.5]) faint.curve[Math.round(t * 100)] = 0.08;
+		expect(modelDeafToHats(faint, dense, 8).deaf).toBe(true);
+		const silent = stream([1, 2, 3]);
+		expect(modelDeafToHats(silent, dense, 8).deaf).toBe(false);
+		expect(modelDeafToHats(faint, stream([1, 3]), 8).deaf).toBe(false);
+		const hearing = stream(Array.from({ length: 12 }, (_, i) => 0.5 + i * 0.25));
+		for (const t of [0.5, 1.5, 2.5, 3.5]) hearing.curve[Math.round(t * 100)] = 0.08;
+		expect(modelDeafToHats(hearing, dense, 8).deaf).toBe(false);
+	});
+
+	it('merges two streams in time order and lets the stronger hit stand within the gap', () => {
+		const merged = mergeStreams(stream([1, 2], [0.5, 0.9]), stream([1.01, 2.5], [0.7, 0.4]), 0.03);
+		expect(merged.times).toEqual([1.01, 2, 2.5]);
+		expect(merged.levels).toEqual([0.7, 0.9, 0.4]);
 	});
 });

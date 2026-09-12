@@ -14,6 +14,7 @@ export { SLOT } from './contracts/palette.ts';
 export type {
 	BarRow,
 	EventTag,
+	LevelTrack,
 	Moment,
 	MovementSpan,
 	OnsetStream,

@@ -8,6 +8,7 @@ import { blockChase } from './effects/blockChase.ts';
 import { moshSlam } from './effects/moshSlam.ts';
 import { doubleKickGatling } from './effects/doubleKickGatling.ts';
 import { fixtureAnalysis, fixtureShow } from './ambient/fixture.ts';
+import { encodeBase64 } from './base64.ts';
 
 const g = buildGeometry(DEFAULT_ROOM);
 
@@ -107,5 +108,71 @@ describe('hits across cue boundaries', () => {
 			if (t >= boundaryTime && f.kick) kickOnOrAfterBoundary = true;
 		}
 		expect(kickOnOrAfterBoundary).toBe(true);
+	});
+});
+
+describe('momentary level', () => {
+	it('interpolates the level track between frame centres and reads zero without one', () => {
+		const analysis = fixtureAnalysis();
+		const player = new ShowPlayer(new Mixer(g), new EffectRegistry());
+		player.load(analysis, fixtureShow(analysis));
+		expect(player.update(1, 1 / 60).level).toBe(0);
+
+		const bytes = new Uint8Array(400);
+		bytes.fill(51, 100, 200);
+		bytes.fill(255, 200, 300);
+		analysis.level = { fps: 100, data: encodeBase64(bytes) };
+		player.load(analysis, fixtureShow(analysis));
+		expect(player.update(0.5, 1 / 60).level).toBe(0);
+		expect(player.update(1.505, 1 / 60).level).toBeCloseTo(0.2, 5);
+		expect(player.update(2.505, 1 / 60).level).toBe(1);
+		// Sampled 40 ms ahead, with the drum lead, so 1.96 s reads the midpoint of frames 199 and 200.
+		expect(player.update(1.96, 1 / 60).level).toBeCloseTo(0.6, 5);
+	});
+});
+
+describe('intro articulation', () => {
+	const clicks = () => {
+		const bytes = new Uint8Array(1200);
+		for (let f = 0; f < bytes.length; f++) bytes[f] = f % 50 < 4 ? 190 : 0;
+		return bytes;
+	};
+
+	it('follows the momentary level inside intro cues and nowhere else', () => {
+		const analysis = fixtureAnalysis();
+		analysis.level = { fps: 100, data: encodeBase64(clicks()) };
+		const show = fixtureShow(analysis);
+		show.cues = [
+			{ bar: 0, section: 'intro', note: '', layers: { bed: { effect: 'wash' } }, intensity: 0.6, fadeBeats: 0 },
+			{ bar: 4, section: 'groove', note: '', layers: { bed: { effect: 'wash' } }, intensity: 0.6, fadeBeats: 0 }
+		];
+		const director = new RoomDirector(g);
+		director.load(analysis, show);
+		const state = { playing: true, hasShow: true, lounge: false, rest: true };
+		const introLevels: number[] = [];
+		for (let k = 0; k < 120; k++) {
+			director.update(k / 60, 1 / 60, state);
+			introLevels.push(director.showMix.intensity);
+		}
+		expect(Math.max(...introLevels)).toBeGreaterThan(0.55);
+		expect(Math.min(...introLevels)).toBeLessThan(0.3);
+		const grooveStart = analysis.bars[4].t;
+		for (let k = 0; k < 60; k++) {
+			director.update(grooveStart + 0.5 + k / 60, 1 / 60, state);
+			expect(director.showMix.intensity).toBeCloseTo(0.6, 6);
+		}
+	});
+
+	it('leaves legacy analyses without a level track at cue intensity', () => {
+		const analysis = fixtureAnalysis();
+		const show = fixtureShow(analysis);
+		show.cues = [{ bar: 0, section: 'intro', note: '', layers: { bed: { effect: 'wash' } }, intensity: 0.6, fadeBeats: 0 }];
+		const director = new RoomDirector(g);
+		director.load(analysis, show);
+		const state = { playing: true, hasShow: true, lounge: false, rest: true };
+		for (let k = 0; k < 60; k++) {
+			director.update(k / 60, 1 / 60, state);
+			expect(director.showMix.intensity).toBeCloseTo(0.6, 6);
+		}
 	});
 });

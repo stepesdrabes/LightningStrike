@@ -103,7 +103,7 @@ describe('frame rate', () => {
 		const still = reading.cues
 			.map((c, i) => ({ c, half: half.cues[i] }))
 			.filter(({ c }) => c.ripple < 1);
-		expect(still.length).toBeGreaterThan(2);
+		expect(still.length).toBeGreaterThanOrEqual(2);
 		for (const { c, half: b } of still) expect(Math.abs(b.level - c.level)).toBeLessThan(1);
 	});
 

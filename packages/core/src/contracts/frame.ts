@@ -85,6 +85,12 @@ export interface ShowFrame {
 	spectrum: Float32Array;
 
 	/**
+	 * Momentary level, 0..1: 1 is the track's loud reference, 0 is 48 dB under it or silence.
+	 * Follows attacks and rests inside a beat, unlike `energy`. Zero on analyses without it.
+	 */
+	level: number;
+
+	/**
 	 * Pan: -1 left to +1 right; panWidth: 0 mono to 1 decorrelated.
 	 * Bias positions rather than mapping directly, to avoid lurching with wide mixes.
 	 */
@@ -126,6 +132,7 @@ export function createShowFrame(): ShowFrame {
 		energy: 0,
 		bands: new Float32Array(NUM_BANDS),
 		spectrum: new Float32Array(SPECTRUM_BANDS),
+		level: 0,
 		pan: 0,
 		panWidth: 0,
 		kick: false,

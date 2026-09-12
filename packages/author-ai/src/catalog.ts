@@ -129,6 +129,11 @@ Frame (ctx.f)
     a chopped vocal flicked hard left and right every sixteenth is invisible to every other
     field here, because the sum of the two channels does not move at all.
   kick snare hat (booleans, one frame) · kickEnv snareEnv hatEnv (use these for brightness)
+  level (0..1, momentary)
+    How loud it is RIGHT NOW against the track's loud passages: 1.0 there, 0.0 forty-eight
+    decibels under, sampled every 10 ms so a stick click and the rest after it both show.
+    energy is the passage; level is this instant. Pass it through a Follower and drive
+    brightness or reach with it where the kit is sparse, and let a rest go dark.
 
 Also on ctx: g, p (your params), palette, hueShift, motion (multiply your speeds by it).`;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { activationStream } from './adtof.ts';
+import { activationStream, hatClickSuspects, onsetsFromActivations } from './adtof.ts';
 import { quantiseOnsets } from './quantise.ts';
 
 const FPS = 100;
@@ -43,10 +43,10 @@ describe('model drum evidence', () => {
 			beatsPerBar: 4,
 			duration: 12
 		});
-		const recovered = onsets.times.indexOf(5.5);
+		const recovered = onsets.times.findIndex((time) => Math.abs(time - 5.5) < 0.005);
 		expect(recovered).toBeGreaterThanOrEqual(0);
 		expect(onsets.invented[recovered]).toBe(true);
-		expect(onsets.levels[recovered]).toBeLessThan(0.6);
+		expect(onsets.levels[recovered]).toBeLessThanOrEqual(stream.levelCurve![550] * 0.55);
 	});
 
 	it('keeps weak detections subtle even if no confident hit exists in the track', () => {
@@ -71,7 +71,7 @@ describe('model drum evidence', () => {
 			beatsPerBar: 4,
 			duration: 12
 		});
-		const recovered = onsets.times.indexOf(5.5);
+		const recovered = onsets.times.findIndex((time) => Math.abs(time - 5.5) < 0.005);
 		expect(onsets.invented[recovered]).toBe(true);
 		expect(onsets.levels[recovered]).toBeLessThan(Math.min(...stream.levels));
 	});
@@ -82,5 +82,38 @@ describe('model drum evidence', () => {
 		const stream = activationStream(activation, 0.24);
 		expect(stream.times).toEqual([1, 1.06, 1.12, 2]);
 		expect(Math.min(...stream.levels)).toBeGreaterThan(0.75);
+	});
+});
+
+describe('hat clicks read as snares', () => {
+	const act = new Float32Array(400);
+	pulse(act, 1, 0.35);
+	pulse(act, 2, 0.35);
+	pulse(act, 3, 0.9);
+	const hat = new Float32Array(400);
+	pulse(hat, 1, 0.7);
+	pulse(hat, 3, 0.95);
+
+	it('flags a weak snare peak the hat class outscores and no other', () => {
+		const snare = activationStream(act, 0.24);
+		expect(snare.times).toEqual([1, 2, 3]);
+		expect(hatClickSuspects(snare, act, hat)).toEqual([1]);
+	});
+
+	it('reports click suspects and applies the lower hat threshold to whole-track activations', () => {
+		const frames = 400;
+		const soft = Float32Array.from(hat);
+		pulse(soft, 1.5, 0.2);
+		const matrix = new Float32Array(frames * 5);
+		for (let t = 0; t < frames; t++) {
+			matrix[t * 5 + 1] = act[t];
+			matrix[t * 5 + 3] = soft[t];
+		}
+		const onsets = onsetsFromActivations(matrix);
+		expect(onsets.snare.times).toEqual([1, 2, 3]);
+		expect(onsets.snareClicks).toEqual([1]);
+		expect(activationStream(soft, 0.22).times).toEqual([1, 3]);
+		expect(onsets.hat.times).toEqual([1, 1.5, 3]);
+		expect(onsets.cymbal.times).toEqual([]);
 	});
 });

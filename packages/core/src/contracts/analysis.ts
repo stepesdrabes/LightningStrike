@@ -1,6 +1,6 @@
 import type { SectionKind } from './frame.ts';
 
-export const ANALYSIS_VERSION = 32;
+export const ANALYSIS_VERSION = 33;
 
 export interface TempoGrid {
 	/** Median over the track. For display and for a default time constant, never for timing. */
@@ -149,6 +149,17 @@ export interface SpectrumTrack {
 	data: string;
 }
 
+/**
+ * Short-term K-weighted level at `fps`, one byte per frame, base64. 255 is the loud reference
+ * (q95 of drop/groove frames); each byte is 48/255 dB and 0 is 48 dB below or silence.
+ * Unlike Envelopes.energy this follows attacks and rests inside a beat.
+ */
+export interface LevelTrack {
+	fps: number;
+	/** `frames` bytes, base64. Entry f is centred on (f + 0.5) / fps. */
+	data: string;
+}
+
 export interface Moment {
 	bar: number;
 	beat: number;
@@ -202,6 +213,8 @@ export interface TrackAnalysis {
 	heard?: { beats: number[]; downbeats: number[] };
 	envelopes: Envelopes;
 	spectrum: SpectrumTrack;
+	/** Absent before analysis v33; the frame's level reads zero without it. */
+	level?: LevelTrack;
 	stereo: StereoImage;
 	onsets: {
 		kick: OnsetStream;

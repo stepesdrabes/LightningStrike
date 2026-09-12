@@ -1,55 +1,82 @@
-import type { OnsetStream } from '@mv/core';
-import type { DrumStream } from './drums.ts';
-import { refinePeakTime } from './onsets.ts';
+// Local copy of packages/analysis/src/quantise.ts quantiseOnsets with its constants exposed,
+// so an experiment can sweep pattern completion without touching the shipped source. With
+// SHIPPED it must reproduce quantiseOnsets bit for bit (exp-completion.ts asserts this).
+import type { DrumStream } from '../../packages/analysis/src/drums.ts';
+import { refinePeakTime } from '../../packages/analysis/src/onsets.ts';
 
-/**
- * Pattern correction follows Yoshii et al. (ICASSP 2006): patterns propose additions/removals;
- * audio verifies every candidate so fills and breaks survive. Detected hits keep their times.
- * Missing-hit slots use actual beat times, not an averaged period that drifts on live music.
- */
-interface QuantiseOptions {
+export interface VariantOptions {
 	beats: Float64Array;
 	beatsPerBar: number;
-	/** Which beat index mod beatsPerBar starts a bar, so invented hits land in real bars. */
 	downbeatPhase?: number;
-	/** Subdivisions per beat. Four resolves a sixteenth, which is as fine as a kit is placed. */
 	perBeat?: number;
-	/** Fraction of a subdivision an onset may sit from the grid and still be called on it. */
 	tolerance?: number;
-	/** Repeat identity per bar; negative or absent ids use a fixed-window fallback. */
 	barGroup?: Int32Array;
-	/** Authoritative bar boundaries, including the end, after phase changes and short bars. */
 	barTimes?: Float64Array;
-	/** Bars considered together when there is no repeat identity to use instead. */
 	windowBars?: number;
-	/** Track length. Completing a pattern must not invent hits past the end of the audio. */
 	duration: number;
-	/**
-	 * Mean level per bar at a cohort's most-supported slot, below which the cohort may not
-	 * complete or, respectively, thin its pattern. A sparse, uncertain cohort must not vote.
-	 */
-	promoteFloor?: number;
-	demoteFloor?: number;
 }
 
-interface QuantisedOnsets extends OnsetStream {
-	/** True where the hit was completed from the pattern rather than detected. */
+export interface VariantParams {
+	promote: boolean;
+	demote: boolean;
+	patternSupport: number;
+	promoteEvidence: number;
+	/** Bars a cohort needs before it votes; shipped is 2. */
+	minCohort: number;
+	inventedLevel: number;
+	/** Inventions whose scaled level falls below this are dropped; 0 keeps every one. */
+	inventedFloor: number;
+	demoteSupport: number;
+	demoteLevel: number;
+	/** 'segmenter' uses barGroup as shipped; 'fixed' pools windowBars consecutive bars. */
+	cohort: 'segmenter' | 'fixed';
+	windowBars: number;
+	/** Absolute mean level a slot needs across the cohort before it can promote; shipped 0. */
+	minSupport: number;
+	/** Fraction of cohort bars that must have a detection in the slot before it promotes; 0 off. */
+	minCount: number;
+	/** Cohort strongest-slot support below which nothing is demoted; 0 off. */
+	demoteStrongest: number;
+	/** Cohort strongest-slot support below which nothing is promoted; 0 off. */
+	minStrongest: number;
+}
+
+export const SHIPPED: VariantParams = {
+	promote: true, demote: true, patternSupport: 0.45, promoteEvidence: 0.12, minCohort: 2,
+	inventedLevel: 0.55, inventedFloor: 0, demoteSupport: 0.12, demoteLevel: 0.22,
+	cohort: 'segmenter', windowBars: 8, minSupport: 0, minCount: 0, demoteStrongest: 0, minStrongest: 0
+};
+
+export interface Decision {
+	time: number;
+	level: number;
+	support: number;
+	strongest: number;
+	share: number;
+	/** Fraction of cohort bars with a detection in this slot. */
+	count: number;
+	members: number;
+	evidence: number;
+}
+
+export interface VariantResult {
+	times: number[];
+	levels: number[];
 	invented: boolean[];
+	/** Times of detected hits the pattern removed. */
+	demoted: number[];
+	/** Inventions dropped by inventedFloor, for accounting. */
+	floored: number[];
+	inventedInfo: Decision[];
+	demotedInfo: Decision[];
 }
 
-/**
- * Pattern claims need group support; promotion also needs audible local energy. A nonzero
- * floor prevents completing a pattern across a deliberate gap.
- */
-const PATTERN_SUPPORT = 0.45;
-const PROMOTE_EVIDENCE = 0.12;
-/** Remove only weak, unexpected detections; strong unpatterned hits may be genuine fills. */
-const DEMOTE_SUPPORT = 0.12;
-const DEMOTE_LEVEL = 0.22;
-/** What an invented hit is worth, as a fraction of the support that asked for it. */
-const INVENTED_LEVEL = 0.55;
+interface Hit {
+	time: number;
+	level: number;
+	invented: boolean;
+}
 
-/** Time of subdivision `slot`, interpolated inside the real beat it falls in. */
 function slotTimeOf(beats: Float64Array, perBeat: number, slot: number): number {
 	const beat = Math.floor(slot / perBeat);
 	const frac = (slot - beat * perBeat) / perBeat;
@@ -65,30 +92,26 @@ function slotTimeOf(beats: Float64Array, perBeat: number, slot: number): number 
 	return beats[beat] + (beats[beat + 1] - beats[beat]) * frac;
 }
 
-interface Hit {
-	time: number;
-	level: number;
-	invented: boolean;
-}
-
-export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): QuantisedOnsets {
+export function quantiseVariant(stream: DrumStream, opts: VariantOptions, p: VariantParams = SHIPPED): VariantResult {
 	const { beats, beatsPerBar } = opts;
 	const perBeat = opts.perBeat ?? 4;
 	const tolerance = opts.tolerance ?? 0.5;
-	const windowBars = opts.windowBars ?? 8;
+	const windowBars = p.cohort === 'fixed' ? p.windowBars : (opts.windowBars ?? 8);
 	const downbeatPhase = opts.downbeatPhase ?? 0;
 	const { times, levels, curve, fps } = stream;
 
-	const empty = (): QuantisedOnsets => ({
+	const empty = (): VariantResult => ({
 		times: [...times],
 		levels: [...levels],
-		invented: times.map(() => false)
+		invented: times.map(() => false),
+		demoted: [],
+		floored: [],
+		inventedInfo: [],
+		demotedInfo: []
 	});
 	if (beats.length < 2 || times.length === 0) return empty();
 
 	const slotsPerBar = beatsPerBar * perBeat;
-	// Slot 0 is the first downbeat, so a bar of slots is a real bar and a pattern read off it
-	// is the pattern the drummer played rather than one rotated by a beat or two.
 	const firstSlot = downbeatPhase * perBeat;
 	const totalSlots = Math.max(0, (beats.length - 1 - downbeatPhase) * perBeat + slotsPerBar);
 	if (totalSlots <= 0) return empty();
@@ -105,7 +128,6 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 		return Math.abs(slotTime(lo) - t) <= Math.abs(slotTime(hi) - t) ? lo : hi;
 	};
 
-	// Each detection is assigned to a slot for the pattern vote, and its own time is kept.
 	const detected = new Map<number, Hit>();
 	const unquantised: Hit[] = [];
 	for (let i = 0; i < times.length; i++) {
@@ -113,9 +135,6 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 		const hit: Hit = { time: t, level: levels[i] ?? 1, invented: false };
 		const slot = slotOf(t);
 		const span = Math.max(1e-6, slotTime(slot + 1) - slotTime(slot));
-		// Genuinely unquantised, or a detector artefact. Either way it is not part of a pattern,
-		// so it does not vote and the pattern cannot remove it; it is still reported, because it
-		// was heard.
 		if (slot < 0 || slot >= totalSlots || Math.abs(t - slotTime(slot)) > span * tolerance) {
 			unquantised.push(hit);
 			continue;
@@ -150,12 +169,11 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 		if (barIndex < bars && slot >= starts[barIndex]) barActive[barIndex] = 1;
 	}
 
-	// Pool repeating bars instead of mixing different groove patterns within a fixed window.
 	const cohorts = new Map<number, number[]>();
 	for (let bar = 0; bar < bars; bar++) {
-		// Short bars retain detections but cannot vote as full repetitions of the groove.
 		if (!barActive[bar] || starts[bar + 1] - starts[bar] !== slotsPerBar) continue;
-		const id = opts.barGroup && opts.barGroup[bar] >= 0 ? opts.barGroup[bar] : -1 - Math.floor(bar / windowBars);
+		const grouped = p.cohort === 'segmenter' && opts.barGroup && opts.barGroup[bar] >= 0;
+		const id = grouped ? opts.barGroup![bar] : -1 - Math.floor(bar / windowBars);
 		const list = cohorts.get(id);
 		if (list) list.push(bar);
 		else cohorts.set(id, [bar]);
@@ -166,7 +184,7 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 		const centre = Math.round(t * fps);
 		let best = -1;
 		for (let i = Math.max(1, centre - radius); i <= Math.min(curve.length - 2, centre + radius); i++) {
-			if (curve[i] < PROMOTE_EVIDENCE || curve[i] <= curve[i - 1] || curve[i] < curve[i + 1]) continue;
+			if (curve[i] < p.promoteEvidence || curve[i] <= curve[i - 1] || curve[i] < curve[i + 1]) continue;
 			const time = refinePeakTime(curve, i, fps);
 			if (Math.abs(time - t) > span * 0.5 || slotOf(time) !== slotOf(t)) continue;
 			if (best < 0 || curve[i] > curve[best]) best = i;
@@ -178,15 +196,20 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 	};
 
 	const out = new Map<number, Hit>(detected);
+	const demoted: number[] = [];
+	const floored: number[] = [];
+	const inventedInfo: Decision[] = [];
+	const demotedInfo: Decision[] = [];
 	for (const members of cohorts.values()) {
-		if (members.length < 2) continue;
+		if (members.length < p.minCohort) continue;
 
-		// Confidence-weighted, so one certain hit outvotes two marginal ones rather than three
-		// detections of unknown quality being counted as three.
 		const support = new Float64Array(slotsPerBar);
+		const count = new Float64Array(slotsPerBar);
 		for (const bar of members) {
 			for (let k = 0; k < slotsPerBar; k++) {
-				support[k] += detected.get(starts[bar] + k)?.level ?? 0;
+				const hit = detected.get(starts[bar] + k);
+				support[k] += hit?.level ?? 0;
+				if (hit) count[k] += 1 / members.length;
 			}
 		}
 		let strongest = 0;
@@ -195,8 +218,6 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 			if (support[k] > strongest) strongest = support[k];
 		}
 		if (!(strongest > 0)) continue;
-		const mayPromote = strongest >= (opts.promoteFloor ?? 0);
-		const mayDemote = strongest >= (opts.demoteFloor ?? 0);
 
 		for (let k = 0; k < slotsPerBar; k++) {
 			const share = support[k] / strongest;
@@ -207,22 +228,28 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 				const span = Math.max(1e-6, slotTime(slot + 1) - t);
 				const here = detected.get(slot);
 
+				const info = (time: number, level: number, evidence: number): Decision => ({
+					time, level, support: support[k], strongest, share, count: count[k], members: members.length, evidence
+				});
 				if (here) {
-					// Demote: the passage does not play this slot and the detection barely cleared
-					// the floor. Removing it is the half of the correction that never existed.
-					if (mayDemote && share < DEMOTE_SUPPORT && here.level < DEMOTE_LEVEL) out.delete(slot);
+					if (p.demote && strongest >= p.demoteStrongest && share < p.demoteSupport && here.level < p.demoteLevel
+						&& out.delete(slot)) {
+						demoted.push(here.time);
+						demotedInfo.push(info(here.time, here.level, 0));
+					}
 					continue;
 				}
-				if (!mayPromote || share < PATTERN_SUPPORT) continue;
+				if (!p.promote || share < p.patternSupport || strongest < p.minStrongest) continue;
+				if (support[k] < p.minSupport || count[k] < p.minCount) continue;
 				const evidence = evidenceAt(t, span);
 				if (!evidence) continue;
-				// Promote, at the confidence that asked for it rather than at full strength: a
-				// completed hit is an inference, and the room should not be told otherwise.
-				out.set(slot, {
-					time: evidence.time,
-					level: Math.min(support[k], evidence.level) * INVENTED_LEVEL,
-					invented: true
-				});
+				const level = Math.min(support[k], evidence.level) * p.inventedLevel;
+				if (level < p.inventedFloor) {
+					floored.push(evidence.time);
+					continue;
+				}
+				out.set(slot, { time: evidence.time, level, invented: true });
+				inventedInfo.push(info(evidence.time, level, evidence.level));
 			}
 		}
 	}
@@ -237,20 +264,10 @@ export function quantiseOnsets(stream: DrumStream, opts: QuantiseOptions): Quant
 	return {
 		times: hits.map((h) => h.time),
 		levels: hits.map((h) => h.level),
-		invented: hits.map((h) => h.invented)
+		invented: hits.map((h) => h.invented),
+		demoted,
+		floored,
+		inventedInfo,
+		demotedInfo
 	};
-}
-
-/** Repeat identity per bar, from the segmenter's bounds and groups. */
-export function barGroups(
-	bounds: readonly number[],
-	group: readonly number[],
-	barCount: number
-): Int32Array {
-	const out = new Int32Array(barCount).fill(-1);
-	for (let i = 0; i + 1 < bounds.length; i++) {
-		const id = group[i] ?? -1;
-		for (let b = bounds[i]; b < Math.min(bounds[i + 1], barCount); b++) out[b] = id;
-	}
-	return out;
 }

@@ -172,7 +172,7 @@ describe('the arrangement', () => {
 		const track = fixture();
 		for (const row of track.bars.filter((row) => row.section === 'intro')) row.kicks = 4;
 		expect(composeShow(track).cues[0].layers.rhythm).toBeDefined();
-		for (const row of track.bars.filter((row) => row.section === 'intro')) row.kicks = row.snares = 0;
+		for (const row of track.bars.filter((row) => row.section === 'intro')) row.kicks = row.snares = row.hats = 0;
 		const fallback = composeShow(track, { effects: BUILT_IN_EFFECTS.filter((effect) => !effect.taste.noteReactive) }).cues[0];
 		expect(fallback.layers.rhythm).toBeDefined();
 		expect(fallback.layers.bed).toBeDefined();
@@ -181,7 +181,7 @@ describe('the arrangement', () => {
 
 	it('retains a moving rhythm when the carrying bed already articulates notes', () => {
 		const track = fixture();
-		for (const row of track.bars.filter((row) => row.section === 'intro')) row.kicks = row.snares = 0;
+		for (const row of track.bars.filter((row) => row.section === 'intro')) row.kicks = row.snares = row.hats = 0;
 		const pool = BUILT_IN_EFFECTS.map((effect) => effect.role === 'bed'
 			? { ...effect, taste: { ...effect.taste, noteReactive: true } } : effect);
 		const opening = composeShow(track, { effects: pool }).cues[0];
@@ -192,7 +192,7 @@ describe('the arrangement', () => {
 
 	it('prefers a continuous kinetic voice over an unresponsive bed before adding a note field', () => {
 		const track = fixture();
-		for (const row of track.bars.filter((row) => row.section === 'intro')) row.kicks = row.snares = 0;
+		for (const row of track.bars.filter((row) => row.section === 'intro')) row.kicks = row.snares = row.hats = 0;
 		const pool = BUILT_IN_EFFECTS.map((effect) => effect.role === 'bed'
 			? { ...effect, taste: { ...effect.taste, noteReactive: false } } : effect);
 		const opening = composeShow(track, { effects: pool }).cues[0];

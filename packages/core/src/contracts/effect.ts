@@ -73,10 +73,11 @@ interface EffectTaste {
 	/** Peak-master treatment; absent accepts either. Ordinary layer selection ignores it. */
 	peakStyle?: 'slam' | 'bloom';
 	/**
-	 * Required drum stream for the whole gesture; any means kick or snare.
+	 * Required drum stream for the whole gesture; any means kick or snare, percussion means
+	 * whichever of kick, snare or hat is playing.
 	 * Effects that only season a continuing look with drums leave this absent.
 	 */
-	kit?: 'kick' | 'snare' | 'hat' | 'any';
+	kit?: 'kick' | 'snare' | 'hat' | 'any' | 'percussion';
 	/** Brightens on individual detected kicks, independently of the beat grid. */
 	kickAccent?: boolean;
 	/** Continuously articulates notes from the high-rate spectrum without drum hits or beat events. */

@@ -81,6 +81,12 @@ Re-measure `taste.quiet` with `bench/quietprobe.ts` when changing effects in the
 `f.spectrum` is high-rate spectral evidence; `f.bands` contains coarse per-beat envelopes.
 Their scales differ. Use a `Follower` for spectral response; do not substitute either input
 at the same gain. Preserve the distinction between local articulation and passage energy.
+`f.level` is the momentary K-weighted level against the track's loud passages, sampled every
+10 ms; it articulates attacks and rests, `f.energy` describes the passage. The player already
+follows it for intro cues, so effects need not duplicate that gain there.
+
+`taste.kit: 'percussion'` means the gesture answers whichever of kick, snare or hat is
+playing; `'any'` still means kick or snare.
 
 The `SLOT` ramp is not a hue wheel. `base..glow` changes saturation at near-constant light;
 crossing toward `white` or `third` changes brightness. Prefer spatial colour variation;

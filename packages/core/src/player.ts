@@ -6,8 +6,8 @@ import type { SectionKind, ShowFrame } from './contracts/frame.ts';
 import { NUM_BANDS, createShowFrame, sectionBase } from './contracts/frame.ts';
 import { decodeBase64 } from './base64.ts';
 import { blendPalettes, makePalette, swapped } from './color/palette.ts';
-import { FlashEnvelope } from './dsl/env.ts';
-import { clamp, frac } from './dsl/math.ts';
+import { FlashEnvelope, Follower } from './dsl/env.ts';
+import { clamp, frac, smoothstep } from './dsl/math.ts';
 import { barAtTime, barDurationAt, barTimeAt } from './grid.ts';
 import type { Mixer } from './mixer.ts';
 import type { EffectRegistry } from './effects/index.ts';
@@ -68,6 +68,16 @@ const HIT_LEAD_BEATS = 0.06;
 const HIT_LEAD_FLOOR = 0.04;
 const HIT_LEAD_CAP = 0.045;
 
+/**
+ * Intro cues follow the momentary level: a count-in ticks, a rest before the band goes
+ * quiet, and the entry lands at full cue intensity. The floor keeps the room lit between.
+ */
+const ARTICULATION_FLOOR = 0.45;
+
+function hitLead(beatPeriod: number): number {
+	return Math.min(HIT_LEAD_CAP, Math.max(HIT_LEAD_FLOOR, HIT_LEAD_BEATS * beatPeriod));
+}
+
 function floorFor(section: SectionKind): number {
 	return Math.min(1, SECTION_FLOOR[section] ?? 0);
 }
@@ -117,6 +127,10 @@ export class ShowPlayer {
 	private spectrumData: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
 	private spectrumBands = 0;
 	private spectrumFps = 50;
+	private levelData: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
+	private levelFps = 100;
+	private readonly articulation = new Follower(0.012, 0.22);
+	private levelGain = 1;
 
 	private beatEnergy = new Float32Array(0);
 	private beatBands = new Float32Array(0);
@@ -224,6 +238,9 @@ export class ShowPlayer {
 		this.spectrumData = spectrum?.data ? decodeBase64(spectrum.data) : new Uint8Array(0);
 		this.spectrumBands = spectrum?.bands ?? 0;
 		this.spectrumFps = spectrum?.fps || 50;
+		const level = analysis.level;
+		this.levelData = level?.data ? decodeBase64(level.data) : new Uint8Array(0);
+		this.levelFps = level?.fps || 100;
 
 		this.panCurve = Float32Array.from(analysis.stereo?.pan ?? []);
 		this.widthCurve = Float32Array.from(analysis.stereo?.width ?? []);
@@ -290,6 +307,8 @@ export class ShowPlayer {
 		this.kickEnv.reset();
 		this.snareEnv.reset();
 		this.hatEnv.reset();
+		this.articulation.reset();
+		this.levelGain = 1;
 		this.lastKickAt = -Infinity;
 		this.lastSnareAt = -Infinity;
 		this.lastHatAt = -Infinity;
@@ -322,6 +341,7 @@ export class ShowPlayer {
 		this.updateGrid(t, a.tempo);
 		this.updateEnergy();
 		this.updateSpectrum(t);
+		this.updateLevel(t, dt);
 		this.updateStereo(t);
 		this.updateDrums(t, dt, a);
 		this.updateStructure(t);
@@ -335,6 +355,8 @@ export class ShowPlayer {
 		this.kickEnv.reset();
 		this.snareEnv.reset();
 		this.hatEnv.reset();
+		this.articulation.reset();
+		this.levelGain = 1;
 		this.lastKickAt = -Infinity;
 		this.lastSnareAt = -Infinity;
 		this.lastHatAt = -Infinity;
@@ -451,6 +473,24 @@ export class ShowPlayer {
 		}
 	}
 
+	/** Read with the drum lead so level-driven and hit-driven answers to one click coincide. */
+	private updateLevel(t: number, dt: number): void {
+		const f = this.frame;
+		const n = this.levelData.length;
+		if (n === 0) {
+			f.level = 0;
+			this.levelGain = 1;
+			return;
+		}
+		const x = clamp((t + hitLead(f.beatPeriod)) * this.levelFps - 0.5, 0, n - 1);
+		const i0 = Math.floor(x);
+		const i1 = Math.min(i0 + 1, n - 1);
+		const w = x - i0;
+		f.level = (this.levelData[i0] + (this.levelData[i1] - this.levelData[i0]) * w) / 255;
+		const heard = smoothstep(0.08, 0.8, this.articulation.update(f.level, dt));
+		this.levelGain = ARTICULATION_FLOOR + (1 - ARTICULATION_FLOOR) * heard;
+	}
+
 	/** Linear between samples, so a hard pan flick arrives as a ramp rather than a step. */
 	private updateStereo(t: number): void {
 		const f = this.frame;
@@ -471,9 +511,7 @@ export class ShowPlayer {
 	private updateDrums(t: number, dt: number, a: TrackAnalysis): void {
 		const f = this.frame;
 		// Anticipate onsets to cover up to one frame of detection delay plus transport latency.
-		// The beat-relative lead is clamped in seconds; see the anticipation constants.
-		const lead = Math.min(HIT_LEAD_CAP, Math.max(HIT_LEAD_FLOOR, HIT_LEAD_BEATS * f.beatPeriod));
-		const at = t + lead;
+		const at = t + hitLead(f.beatPeriod);
 		// Preserve measured strength so marginal detections do not become accented strikes.
 		const kick = advance(a.onsets.kick, at, this.kickCursor, (c) => (this.kickCursor = c));
 		const snare = advance(a.onsets.snare, at, this.snareCursor, (c) => (this.snareCursor = c));
@@ -561,15 +599,17 @@ export class ShowPlayer {
 			if (t >= fadeStart) u = clamp((t - fadeStart) / (next.start - fadeStart));
 		}
 
+		const gainFor = (cue: CompiledCue) => (cue.section === 'intro' ? this.levelGain : 1);
 		if (u > 0 && next) {
 			blendPalettes(this.paletteScratch, active.palette, next.palette, u);
 			this.mixer.palette = this.paletteScratch;
-			this.mixer.intensity = active.intensity + (next.intensity - active.intensity) * u;
+			const from = active.intensity * gainFor(active);
+			this.mixer.intensity = from + (next.intensity * gainFor(next) - from) * u;
 			this.mixer.motion = active.motion + (next.motion - active.motion) * u;
 			this.mixer.floor = lerpFloor(active, next, u);
 		} else {
 			this.mixer.palette = active.palette;
-			this.mixer.intensity = active.intensity;
+			this.mixer.intensity = active.intensity * gainFor(active);
 			this.mixer.motion = active.motion;
 			this.mixer.floor = floorFor(active.section);
 		}
