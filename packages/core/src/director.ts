@@ -4,7 +4,7 @@ import type { Geometry } from './contracts/room.ts';
 import type { Show } from './contracts/show.ts';
 import { SLOT } from './contracts/palette.ts';
 import { sample } from './color/palette.ts';
-import { smoothstep } from './dsl/math.ts';
+import { clamp, smoothstep } from './dsl/math.ts';
 import { BounceLamp } from './bounce.ts';
 import { EffectRegistry } from './effects/index.ts';
 import { Mixer } from './mixer.ts';
@@ -12,14 +12,29 @@ import { BrightnessSlew, GAMMA, MASTER, MeanLevel, compressHighlights, quantize 
 import { ShowPlayer } from './player.ts';
 import { AmbientPlayer, type AmbientSettings } from './ambient/player.ts';
 import { IdleClock } from './ambient/idle.ts';
+import type { RoomSync } from './sync.ts';
 
-/** Seconds to hold the show across ordinary fetch/decode gaps between tracks. */
-const REST_GRACE = 2.5;
+/** Seconds to hold the last look across ordinary fetch/decode gaps between tracks. */
+const REST_GRACE = 3.5;
 
 /** Seconds to dissolve into rest, and to come back out of it. */
 const REST_DISSOLVE = 5;
 /** Return faster because the music is already playing. */
 const WAKE_DISSOLVE = 1.5;
+
+/**
+ * Why the show restarts, and how long the held picture takes to dissolve into it. A new
+ * track arrives unhurried; a seek or a resume follows the music at once.
+ */
+type Restart = 'track' | 'resume' | 'seek' | 'reload';
+const DISSOLVE: Record<Restart, number> = { track: 1.5, resume: 0.6, seek: 0.45, reload: 0.6 };
+
+/** Position jumps beyond these are seeks; anything smaller is transport jitter or a stall. */
+const SEEK_JUMP = 0.5;
+const SEEK_SLACK = 0.05;
+
+/** Seconds over which a synced crossfade position is absorbed rather than stepped. */
+const FOLLOW_TAU = 0.5;
 
 export interface DirectorState {
 	/** Whether the audio is actually sounding. */
@@ -35,6 +50,11 @@ export interface DirectorState {
 /**
  * Crossfade separate show and ambient mixers; their persistent layer buffers cannot be shared.
  * Run the output chain once on the blend so exposure follows the combined picture.
+ *
+ * The show side is a deterministic function of the track position: every start, seek and
+ * resume restarts it from a fixed pre-roll, and the picture the room was holding dissolves
+ * into the restart. That is what lets a hardware renderer fed only positions match the
+ * preview.
  */
 export class RoomDirector {
 	readonly showMix: Mixer;
@@ -55,14 +75,33 @@ export class RoomDirector {
 	private readonly lamp = new BounceLamp();
 	private readonly tint = new Float32Array(3);
 
+	/** The show side of the room: the live show, or what it last showed while it is not live. */
+	private readonly show: Float32Array;
+	private readonly held: Float32Array;
+	private readonly showAccent: [number, number, number] = [0, 0, 0];
+	private readonly heldAccent: [number, number, number] = [0, 0, 0];
+	private readonly liveAccent: [number, number, number] = [0, 0, 0];
+	private readonly ambientAccent: [number, number, number] = [0, 0, 0];
+	/** 0 the held picture, 1 the live show. Linear; the blend weight is this eased. */
+	private handover = 1;
+	private handoverSpeed = 1;
+	/** Whether the show side has ever been composed, so a first start is not a fade from black. */
+	private lit = false;
+
 	/** 0 the show, 1 ambient. Linear; the blend weight is this eased. */
 	private u = 0;
+	private pendingU = 0;
 	private stopped = 0;
 	/**
 	 * Remember whether any show has loaded: temporary unloads between tracks must retain the
 	 * grace.
 	 */
 	private everLoaded = false;
+	private wasLive = false;
+	private lastT = 0;
+	private fresh = false;
+	private reload = false;
+	private seekPending = false;
 
 	constructor(geometry: Geometry, registry = new EffectRegistry()) {
 		this.showMix = new Mixer(geometry);
@@ -70,6 +109,8 @@ export class RoomDirector {
 		this.player = new ShowPlayer(this.showMix, registry);
 		this.ambient = new AmbientPlayer(this.ambientMix, registry);
 		this.frame = new Float32Array(geometry.count * 3);
+		this.show = new Float32Array(geometry.count * 3);
+		this.held = new Float32Array(geometry.count * 3);
 		this.bytes = new Uint8Array(geometry.count * 3);
 		this.slew = new BrightnessSlew(geometry.count * 3);
 	}
@@ -104,6 +145,9 @@ export class RoomDirector {
 		this.player.load(analysis, show);
 		this.ambient.trackPalette = show.palette;
 		this.everLoaded = true;
+		// A show replaced under a playing track restarts into it; a new one waits for play.
+		if (this.wasLive) this.reload = true;
+		else this.fresh = true;
 	}
 
 	clearShow(): void {
@@ -111,14 +155,44 @@ export class RoomDirector {
 		this.ambient.trackPalette = null;
 	}
 
+	/** The position is about to jump: restart the show there on the next update. */
+	seek(): void {
+		this.seekPending = true;
+	}
+
+	/** What this room decided, for another room to follow. */
+	sync(): RoomSync {
+		const scene = this.ambient.sync();
+		return {
+			ambience: this.u,
+			stopped: this.stopped,
+			scene: scene.scene,
+			sceneCounter: scene.counter,
+			sceneHeld: scene.held,
+			idleT: this.idle.t
+		};
+	}
+
+	/** Follow another room's decisions. The crossfade position is absorbed, never stepped. */
+	follow(s: RoomSync): void {
+		this.pendingU = clamp(s.ambience) - this.u;
+		this.stopped = Math.max(0, s.stopped);
+		this.ambient.follow({ scene: s.scene, counter: s.sceneCounter, held: s.sceneHeld });
+		this.idle.follow(s.idleT);
+	}
+
 	/**
 	 * Returns the track frame for readouts and cue highlighting, even while ambient owns the
 	 * room.
 	 */
 	update(t: number, dt: number, state: DirectorState): ShowFrame {
-		const f = this.player.update(Math.max(0, t), dt);
-
+		t = Math.max(0, t);
 		const live = state.playing && state.hasShow;
+		const restart = this.restartFor(t, live);
+		if (restart) this.restart(t, restart);
+		const f = this.player.update(t, dt);
+		this.lastT = t;
+
 		// Lounge and a never-loaded room skip the grace. Keep it spent when lounge ends during
 		// a pause.
 		if (state.lounge || !this.everLoaded) this.stopped = REST_GRACE;
@@ -129,83 +203,100 @@ export class RoomDirector {
 		const target = wantAmbient ? 1 : 0;
 		const speed = dt / (target > this.u ? REST_DISSOLVE : WAKE_DISSOLVE);
 		this.u = target > this.u ? Math.min(target, this.u + speed) : Math.max(target, this.u - speed);
+		if (this.pendingU !== 0) {
+			const step = this.pendingU * Math.min(1, dt / FOLLOW_TAU);
+			this.u = clamp(this.u + step);
+			this.pendingU -= step;
+			if (Math.abs(this.pendingU) < 1e-4) this.pendingU = 0;
+		}
 
-		// Compose only contributing stages; freeze the idle clock while it is unused.
-		const loungeLive = state.lounge && state.playing && state.hasShow;
+		// Compose only contributing stages. The idle grid always runs so an outgoing resting
+		// scene keeps its rhythm while it fades, and so another room can follow it.
 		const w = this.ambience;
-
-		if (w < 1) this.composeShow(f, dt, state.playing);
+		const idleF = this.idle.update(dt);
+		if (live && w < 1) this.composeShow(f, dt);
+		// Follow the show's palette while audio sounds, whether or not the scenes are showing,
+		// so a dissolve into them never crosses hues; rest holds the last colour.
+		this.ambient.cuePalette = live ? this.showMix.palette : null;
 		if (w > 0) {
 			// Lounge uses the track frame; rest uses an unmeasured synthetic grid.
-			const af = loungeLive ? f : this.idle.update(dt);
-			// Follow the show palette only while audio sounds; rest holds the last colour.
-			this.ambient.cuePalette = loungeLive ? this.showMix.palette : null;
-			this.ambient.update(af, loungeLive);
-			this.ambientMix.compose(af);
+			const loungeLive = state.lounge && live;
+			this.ambient.update(loungeLive ? f : idleF, loungeLive, loungeLive ? idleF : f);
+			this.ambientMix.compose(loungeLive ? f : idleF);
+		} else {
+			this.ambient.tick(dt);
 		}
+		this.wasLive = live;
 
 		this.blend(w);
 
 		// Rest has a chosen level, so auto-exposure must not pull it toward the music target.
-		const exposed = w < 1 && state.playing && f.energy > 0.02;
+		const exposed = w < 1 && live && f.energy > 0.02;
 		this.finish(f, w, dt, exposed);
 		return f;
 	}
 
-	/**
-	 * Pass dt = 0 while paused to freeze effect integrators and decays, then restore the
-	 * caller's dt.
-	 */
-	private composeShow(f: ShowFrame, dt: number, playing: boolean): void {
-		if (playing) {
-			this.showMix.compose(f);
-			return;
+	private restartFor(t: number, live: boolean): Restart | null {
+		if (!live) return null;
+		if (!this.wasLive) return this.fresh ? 'track' : 'resume';
+		if (this.reload) return 'reload';
+		if (this.seekPending || t > this.lastT + SEEK_JUMP || t < this.lastT - SEEK_SLACK) {
+			return 'seek';
 		}
-		f.dt = 0;
-		this.showMix.compose(f);
-		f.dt = dt;
+		return null;
 	}
 
 	/**
-	 * Mix squared values and take the root to avoid a brightness dip between disjoint looks.
-	 * The square approximates gamma without three Math.pow calls per channel.
+	 * Warm the show at its new position and dissolve what the room was holding into it. When
+	 * ambient has the whole room, the wake dissolve already covers the restart.
 	 */
+	private restart(t: number, kind: Restart): void {
+		this.fresh = false;
+		this.reload = false;
+		this.seekPending = false;
+		this.player.warm(t);
+		if (this.ambience < 1 && this.lit) {
+			this.held.set(this.show);
+			this.heldAccent[0] = this.showAccent[0];
+			this.heldAccent[1] = this.showAccent[1];
+			this.heldAccent[2] = this.showAccent[2];
+			this.handover = 0;
+			this.handoverSpeed = 1 / DISSOLVE[kind];
+		} else {
+			this.handover = 1;
+		}
+	}
+
+	private composeShow(f: ShowFrame, dt: number): void {
+		this.showMix.compose(f);
+		sample(this.showMix.palette, SLOT.accent, 1, this.liveAccent);
+		this.lit = true;
+		if (this.handover >= 1) {
+			this.show.set(this.showMix.frame);
+			this.showAccent[0] = this.liveAccent[0];
+			this.showAccent[1] = this.liveAccent[1];
+			this.showAccent[2] = this.liveAccent[2];
+			return;
+		}
+		this.handover = Math.min(1, this.handover + dt * this.handoverSpeed);
+		const k = smoothstep(0, 1, this.handover);
+		mixLight(this.show, this.held, this.showMix.frame, k, this.contrast);
+		mixLight(this.showAccent, this.heldAccent, this.liveAccent, k, this.contrast);
+	}
+
 	private blend(w: number): void {
-		const show = this.showMix.frame;
-		const amb = this.ambientMix.frame;
-		const out = this.frame;
-		if (w <= 0) {
-			out.set(show);
-			return;
-		}
-		if (w >= 1) {
-			out.set(amb);
-			return;
-		}
-		const a = 1 - w;
-		for (let i = 0; i < out.length; i++) {
-			const s = show[i];
-			const b = amb[i];
-			out[i] = Math.sqrt(a * s * s + w * b * b);
-		}
+		if (w <= 0) this.frame.set(this.show);
+		else if (w >= 1) this.frame.set(this.ambientMix.frame);
+		else mixLight(this.frame, this.show, this.ambientMix.frame, w, this.contrast);
 	}
 
 	/** Use the same light-domain blend for the accent so the lamp does not dim midway. */
 	private accent(w: number): Float32Array {
 		const out = this.tint;
-		if (w < 1) sample(this.showMix.palette, SLOT.accent, 1, SHOW_ACCENT);
-		if (w > 0) sample(this.ambientMix.palette, SLOT.accent, 1, AMBIENT_ACCENT);
-
-		if (w <= 0) out.set(SHOW_ACCENT);
-		else if (w >= 1) out.set(AMBIENT_ACCENT);
-		else {
-			const a = 1 - w;
-			for (let c = 0; c < 3; c++) {
-				const s = SHOW_ACCENT[c];
-				const b = AMBIENT_ACCENT[c];
-				out[c] = Math.sqrt(a * s * s + w * b * b);
-			}
-		}
+		if (w > 0) sample(this.ambientMix.palette, SLOT.accent, 1, this.ambientAccent);
+		if (w <= 0) out.set(this.showAccent);
+		else if (w >= 1) out.set(this.ambientAccent);
+		else mixLight(out, this.showAccent, this.ambientAccent, w, this.contrast);
 		return out;
 	}
 
@@ -219,6 +310,24 @@ export class RoomDirector {
 	}
 }
 
-/** Refilled per call. Two, because the dissolve needs both at once. */
-const SHOW_ACCENT: [number, number, number] = [0, 0, 0];
-const AMBIENT_ACCENT: [number, number, number] = [0, 0, 0];
+/**
+ * Mix in delivered light, through the same exponent the wire is encoded with, so the bytes
+ * of a dissolve are the linear mix of its two ends and disjoint looks cannot dip between.
+ * Only dissolves pay for the pow calls.
+ */
+function mixLight(
+	out: { [i: number]: number; length: number },
+	a: ArrayLike<number>,
+	b: ArrayLike<number>,
+	w: number,
+	gamma: number
+): void {
+	const keep = 1 - w;
+	const inv = 1 / gamma;
+	for (let i = 0; i < out.length; i++) {
+		const s = a[i];
+		const v = b[i];
+		const light = keep * (s > 0 ? Math.pow(s, gamma) : 0) + w * (v > 0 ? Math.pow(v, gamma) : 0);
+		out[i] = light > 0 ? Math.pow(light, inv) : 0;
+	}
+}

@@ -14,13 +14,22 @@ const IDLE_SWELL = 0.06;
 const IDLE_SWELL_PERIOD = 26;
 
 /**
+ * Following another room's idle time: small differences slew at a tenth of real time, so
+ * the grid never steps; a difference this large is a fresh start and steps once.
+ */
+const FOLLOW_TAU = 1.5;
+const FOLLOW_RATE = 0.1;
+const FOLLOW_STEP = 30;
+
+/**
  * Deterministic idle grid accumulated from dt. Bands and spectrum stay zero because there
  * is no audio measurement; calm effects may still use the grid.
  */
 export class IdleClock {
 	readonly frame: ShowFrame = createShowFrame();
 
-	private t = 0;
+	private time = 0;
+	private pending = 0;
 	private lastBeat = Number.NaN;
 	private lastBar = Number.NaN;
 	private lastPhrase = Number.NaN;
@@ -29,14 +38,36 @@ export class IdleClock {
 		this.reset();
 	}
 
+	get t(): number {
+		return this.time;
+	}
+
 	update(dt: number): ShowFrame {
-		this.t += dt;
+		let adjust = this.pending * Math.min(1, dt / FOLLOW_TAU);
+		const limit = FOLLOW_RATE * dt;
+		if (adjust > limit) adjust = limit;
+		else if (adjust < -limit) adjust = -limit;
+		this.time += dt + adjust;
+		this.pending -= adjust;
+		if (Math.abs(this.pending) < 1e-4) this.pending = 0;
 		this.write(dt);
 		return this.frame;
 	}
 
+	/** Follow another room's idle time. */
+	follow(t: number): void {
+		const err = t - this.time;
+		if (Math.abs(err) > FOLLOW_STEP) {
+			this.time = t;
+			this.pending = 0;
+		} else {
+			this.pending = err;
+		}
+	}
+
 	reset(): void {
-		this.t = 0;
+		this.time = 0;
+		this.pending = 0;
 		this.write(0);
 		// The first update owes beat, downbeat and phrase edges, just like ShowPlayer.
 		this.lastBeat = Number.NaN;
@@ -48,10 +79,10 @@ export class IdleClock {
 		const f = this.frame;
 		const beatPeriod = 60 / IDLE_BPM;
 
-		f.t = this.t;
+		f.t = this.time;
 		f.dt = dt;
 
-		const beatsF = this.t / beatPeriod;
+		const beatsF = this.time / beatPeriod;
 		const barsF = beatsF / BEATS_PER_BAR;
 		const phrasesF = barsF / BARS_PER_PHRASE;
 
@@ -82,7 +113,7 @@ export class IdleClock {
 		f.timeToDrop = Infinity;
 		f.timeSinceDrop = Infinity;
 
-		f.energy = IDLE_ENERGY + IDLE_SWELL * (sinewave(this.t / IDLE_SWELL_PERIOD) - 0.5) * 2;
+		f.energy = IDLE_ENERGY + IDLE_SWELL * (sinewave(this.time / IDLE_SWELL_PERIOD) - 0.5) * 2;
 		f.bands.fill(0);
 		f.spectrum.fill(0);
 

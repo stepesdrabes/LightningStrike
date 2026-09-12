@@ -53,6 +53,7 @@ export { Rng, hash01 } from './dsl/rng.ts';
 export { DEFAULT_OPACITY, Mixer } from './mixer.ts';
 export { ShowPlayer } from './player.ts';
 export { RoomDirector } from './director.ts';
+export { RemoteClock, type ClockReading, type RoomSync } from './sync.ts';
 export { DEFAULT_AMBIENT, DWELL_MAX, DWELL_MIN, type AmbientSettings } from './ambient/player.ts';
 export type { ColourSource } from './ambient/colour.ts';
 export { BUILT_IN_EFFECTS, EffectRegistry } from './effects/index.ts';

@@ -1,7 +1,8 @@
 <script lang="ts">
-	import type { Show, TrackAnalysis, TrackContext } from '@mv/core';
+	import type { RoomSync, Show, TrackAnalysis, TrackContext } from '@mv/core';
 	import { tempoSegments } from '@mv/core';
 	import { Viz, type Readout } from '$lib/viz.svelte.ts';
+	import { every } from '$lib/ticker.ts';
 	import { createArrangementEditor } from '$lib/arrangement.svelte.ts';
 	import { QueueClient } from '$lib/queue.svelte.ts';
 	import { HardwareClient } from '$lib/hardware.svelte.ts';
@@ -509,21 +510,49 @@
 		if (viz) viz.artHue = meta?.artHue ?? null;
 	});
 
+	/**
+	 * A tab that starts leading the hardware adopts what the hardware is doing first, so a
+	 * fresh page, or one coming back from the background where it stopped rendering, cannot
+	 * drag the room back to its own stale state.
+	 */
+	async function adoptRoom(v: Viz) {
+		try {
+			const res = await fetch('/api/output');
+			if (!res.ok) return;
+			const status = (await res.json()) as { running: boolean; room?: RoomSync };
+			if (status.running && status.room) v.follow(status.room);
+		} catch {
+			// The next sync carries on regardless.
+		}
+	}
+
 	// Sync heard audio every 500 ms; the server extrapolates. Read plain Viz fields so 20 Hz readout
-	// updates cannot restart the interval.
+	// updates cannot restart the interval. The timer lives in a worker so a hidden tab keeps the
+	// hardware informed; its decisions carry their age, so a tab that has stopped rendering
+	// stops leading.
 	$effect(() => {
 		const v = viz;
 		if (!ddpRunning || !v) return;
+		void adoptRoom(v);
 		const send = () =>
 			postJson('/api/output', {
 				action: 'sync',
 				position: v.heardPosition,
 				playing: v.isPlaying,
-				offsetMs: wireOffsetMs
+				offsetMs: wireOffsetMs,
+				room: v.roomSync(),
+				roomAge: v.roomAge
 			}).catch(() => {});
 		void send();
-		const timer = setInterval(send, 500);
-		return () => clearInterval(timer);
+		const stop = every(500, send);
+		const onVisible = () => {
+			if (document.visibilityState === 'visible') void adoptRoom(v);
+		};
+		document.addEventListener('visibilitychange', onVisible);
+		return () => {
+			stop();
+			document.removeEventListener('visibilitychange', onVisible);
+		};
 	});
 
 	/**
@@ -560,7 +589,6 @@
 		show = null;
 		analysis = null;
 		context = null;
-		viz.clearShow();
 		setPhase('analysing', 'Loading');
 
 		try {
@@ -577,8 +605,12 @@
 				meta: TrackMeta | null;
 				context: TrackContext | null;
 			};
+			const audio = await audioRes.arrayBuffer();
 
-			await viz.loadAudio(await audioRes.arrayBuffer());
+			// The outgoing show runs until its replacement is in hand; the room then holds its
+			// last look through the decode and dissolves into the new opening.
+			viz.clearShow();
+			await viz.loadAudio(audio);
 			trackId = id;
 			analysis = bundle.analysis;
 			meta = bundle.meta;

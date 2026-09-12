@@ -33,7 +33,7 @@ export const AMBIENT_SCENES: readonly AmbientScene[] = [
 		id: 'hearth',
 		name: 'Hearth',
 		layers: {
-			bed: { effect: 'hearth', params: { intensity: 0.8, flicker: 0.55, settle: 0.6 } },
+			bed: { effect: 'hearth', params: { intensity: 0.8, flicker: 0.45, settle: 0.65 } },
 			accent: { effect: 'embers', opacity: 0.42, params: { intensity: 0.62, pool: 0.3 } }
 		}
 	},
@@ -62,11 +62,8 @@ export const AMBIENT_SCENES: readonly AmbientScene[] = [
 		name: 'Dusk',
 		layers: {
 			bed: { effect: 'dusk', params: { intensity: 0.74, turn: 0.42, depth: 0.55 } },
-			accent: {
-				effect: 'sparkle',
-				opacity: 0.3,
-				params: { intensity: 0.5, rate: 25, decay: 0.5, white: 0.35 }
-			}
+			// The first stars: slow white flares rather than sparks popping in.
+			accent: { effect: 'mirrorBall', opacity: 0.28, params: { intensity: 0.5, density: 0.4 } }
 		}
 	},
 	{

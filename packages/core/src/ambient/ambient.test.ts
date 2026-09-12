@@ -280,3 +280,88 @@ describe('AmbientPlayer', () => {
 		expect(dark).toEqual([]);
 	});
 });
+
+describe('AmbientPlayer mode changes', () => {
+	function playerFor() {
+		const mixer = new Mixer(g);
+		const player = new AmbientPlayer(mixer, new EffectRegistry());
+		player.settings = { ...DEFAULT_AMBIENT };
+		return { mixer, player };
+	}
+
+	it('eases the floor and the motion between rest and lounge rather than stepping', () => {
+		const { mixer, player } = playerFor();
+		const idle = new IdleClock();
+		const track = new IdleClock();
+		for (let i = 0; i < 120; i++) player.update(idle.update(1 / 60), false, track.frame);
+		const restFloor = mixer.floor;
+		const restMotion = mixer.motion;
+		let floorStep = 0;
+		let motionStep = 0;
+		for (let i = 0; i < 60 * 8; i++) {
+			const floor = mixer.floor;
+			const motion = mixer.motion;
+			player.update(track.update(1 / 60), true, idle.frame);
+			floorStep = Math.max(floorStep, Math.abs(mixer.floor - floor));
+			motionStep = Math.max(motionStep, Math.abs(mixer.motion - motion));
+		}
+		expect(mixer.floor).toBeLessThan(restFloor - 0.1);
+		expect(mixer.motion).toBeGreaterThan(restMotion + 0.2);
+		expect(floorStep).toBeLessThan(0.01);
+		expect(motionStep).toBeLessThan(0.02);
+	});
+
+	it('keeps an outgoing scene on the grid it was made for while it fades', () => {
+		const { mixer, player } = playerFor();
+		const idle = new IdleClock();
+		const track = new IdleClock();
+		player.update(idle.update(1 / 60), false, track.frame);
+		expect(mixer.outgoingFrame).toBeNull();
+		player.update(track.update(1 / 60), true, idle.frame);
+		expect(mixer.outgoingFrame).toBe(idle.frame);
+		player.next();
+		player.update(track.update(1 / 60), true, idle.frame);
+		expect(mixer.outgoingFrame).toBeNull();
+	});
+
+	it('follows another player onto its scene and then picks as it does', () => {
+		const a = playerFor().player;
+		const b = playerFor().player;
+		const clock = new IdleClock();
+		a.next();
+		a.next();
+		a.next();
+		b.follow(a.sync());
+		b.update(clock.update(1 / 60), false);
+		expect(b.sceneId).toBe(a.sceneId);
+		for (let i = 0; i < 6; i++) {
+			a.next();
+			b.next();
+			expect(b.sceneId).toBe(a.sceneId);
+		}
+	});
+});
+
+describe('AmbientColour cue palettes', () => {
+	it('eases back onto its own colours when the cue palette goes, rather than snapping', () => {
+		const c = new AmbientColour();
+		c.settings = { source: 'track', hue: 0, sat: 0.8, drift: 0 };
+		c.trackPalette = { base: 200, accent: 30 };
+		c.snap();
+		const own = Float32Array.from(c.palette);
+		c.cuePalette = makePalette({ base: 20, accent: 200 });
+		for (let i = 0; i < 60 * 20; i++) c.update(1 / 60);
+		const onCue = Float32Array.from(c.palette);
+		let moved = 0;
+		for (let i = 0; i < own.length; i++) moved = Math.max(moved, Math.abs(onCue[i] - own[i]));
+		expect(moved).toBeGreaterThan(0.3);
+
+		c.cuePalette = null;
+		c.update(1 / 60);
+		let step = 0;
+		for (let i = 0; i < own.length; i++) step = Math.max(step, Math.abs(c.palette[i] - onCue[i]));
+		expect(step).toBeLessThan(0.02);
+		for (let i = 0; i < 60 * 30; i++) c.update(1 / 60);
+		expect(Array.from(c.palette)).toEqual(Array.from(own));
+	});
+});

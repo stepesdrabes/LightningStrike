@@ -32,11 +32,13 @@
 <style>
 	.row {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 6px;
 	}
 
+	/* Three to a row on a phone once there are more effects than fit one. */
 	button {
-		flex: 1;
+		flex: 1 1 calc(33.333% - 6px);
 		display: flex;
 		align-items: center;
 		justify-content: center;

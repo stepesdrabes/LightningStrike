@@ -3,12 +3,14 @@ import { readFile } from 'node:fs/promises';
 import {
 	DEFAULT_ROOM,
 	EffectRegistry,
+	RemoteClock,
 	RoomDirector,
 	buildGeometry,
 	compileGenerated,
 	roomRegions,
 	type LedSink,
 	type RoomRegion,
+	type RoomSync,
 	type Show,
 	type TrackAnalysis
 } from '@mv/core';
@@ -36,28 +38,33 @@ import type { RequestHandler } from './$types';
 const SYNC_STALE_MS = 3000;
 
 /**
- * Render deterministic shows server-side for UDP output; the browser supplies only audio
- * position.
+ * A browser whose director has not rendered for this long is hidden or throttled; its room
+ * decisions are stale and this room decides for itself until it comes back.
+ */
+const FOLLOW_MAX_AGE = 1;
+
+/**
+ * Render deterministic shows server-side for UDP output; the browser supplies the audio
+ * position and the decisions its own director made, so both rooms agree.
  */
 class Output {
 	private geometry = buildGeometry(DEFAULT_ROOM);
 	private registry = new EffectRegistry();
 	private director = new RoomDirector(this.geometry, this.registry);
+	private readonly clock = new RemoteClock(SYNC_STALE_MS);
 	private sink: LedSink | null = null;
 	/** The Bounce Lamp's own stream, one pixel wide. */
 	private bounce: LedSink | null = null;
 	private timer: NodeJS.Timeout | null = null;
 
-	private position = 0;
-	private syncedAt = 0;
-	private playing = false;
-	private offsetMs = 0;
 	private frames = 0;
 	private lounge = false;
 	/** The current track's own verdict: its grid is lost, so lounge carries it. */
 	loungeOnly = false;
 	private rest = true;
 	private fps = DEFAULT_OUTPUT_FPS;
+	/** The show the director holds, so the same file is not restarted under a playing track. */
+	private loadedShow = '';
 
 	targets: DdpTarget[] = [];
 	/** Which wire those targets are being addressed on, so the readout names the right port. */
@@ -67,19 +74,16 @@ class Output {
 		return this.timer !== null;
 	}
 
-	/** What a browser is telling us, or nothing at all if it has stopped telling us anything. */
-	private get sounding(): boolean {
-		return this.playing && performance.now() - this.syncedAt < SYNC_STALE_MS;
-	}
-
 	get status() {
 		return {
 			running: this.running,
-			playing: this.sounding,
-			position: this.position,
+			playing: this.clock.sounding(performance.now()),
+			position: this.clock.position,
 			frames: this.frames,
 			resting: this.director.resting,
 			scene: this.director.sceneName,
+			/** What this room decided, for a browser that starts leading to adopt first. */
+			room: this.director.sync(),
 			targets: this.targets.map(
 				(t) => `${t.host}:${t.port ?? (this.protocol === 'sacn' ? SACN_PORT : DDP_PORT)}`
 			)
@@ -102,6 +106,10 @@ class Output {
 	}
 
 	load(analysis: TrackAnalysis, show: Show): void {
+		// The queue and a stream start both load the current track; only a changed show counts.
+		const key = JSON.stringify(show);
+		if (key === this.loadedShow) return;
+		this.loadedShow = key;
 		this.registry.clearGenerated();
 		for (const gen of show.generatedEffects) {
 			const compiled = compileGenerated(gen, this.geometry);
@@ -114,6 +122,7 @@ class Output {
 	clearShow(): void {
 		this.registry.clearGenerated();
 		this.director.clearShow();
+		this.loadedShow = '';
 		this.trackId = null;
 	}
 
@@ -130,7 +139,7 @@ class Output {
 		await this.stop();
 		this.targets = targets;
 		this.protocol = protocol;
-		this.offsetMs = offsetMs;
+		this.clock.trim(offsetMs / 1000);
 		this.frames = 0;
 		this.sink =
 			protocol === 'sacn' ? createSacnSink({ targets: universesFor(targets) }) : createDdpSink({ targets });
@@ -156,12 +165,10 @@ class Output {
 			const now = performance.now();
 			const dt = Math.min((now - last) / 1000, 0.05);
 			last = now;
-			const sounding = this.sounding;
-			const t = sounding
-				? this.position + (now - this.syncedAt) / 1000 + this.offsetMs / 1000
-				: this.position;
-			this.director.update(Math.max(0, t), dt, {
-				playing: sounding,
+			const reading = this.clock.read(now);
+			if (reading.seek) this.director.seek();
+			this.director.update(reading.t, dt, {
+				playing: reading.playing,
 				hasShow: this.director.player.loaded !== null,
 				lounge: this.lounge || this.loungeOnly,
 				rest: this.rest
@@ -184,13 +191,12 @@ class Output {
 
 	/**
 	 * Apply trim during sync without restarting output; an absent value preserves the current
-	 * trim.
+	 * trim. The browser's room decisions come along so the scenes and dissolves agree.
 	 */
-	sync(position: number, playing: boolean, offsetMs?: number): void {
-		this.position = position;
-		this.playing = playing;
-		this.syncedAt = performance.now();
-		if (typeof offsetMs === 'number' && Number.isFinite(offsetMs)) this.offsetMs = offsetMs;
+	sync(position: number, playing: boolean, offsetMs?: number, room?: RoomSync, roomAge = 0): void {
+		this.clock.sync(position, playing, performance.now());
+		if (typeof offsetMs === 'number' && Number.isFinite(offsetMs)) this.clock.trim(offsetMs / 1000);
+		if (room && roomAge <= FOLLOW_MAX_AGE) this.director.follow(room);
 	}
 
 	async stop(): Promise<void> {
@@ -270,6 +276,29 @@ async function loadTrack(id: string): Promise<{ analysis: TrackAnalysis; show: S
 	}
 }
 
+/** The browser's room decisions, taken only in the shape the director expects. */
+function roomSyncFrom(value: unknown): RoomSync | undefined {
+	if (typeof value !== 'object' || value === null) return undefined;
+	const o = value as Record<string, unknown>;
+	const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+	const ambience = num(o.ambience);
+	const stopped = num(o.stopped);
+	const sceneCounter = num(o.sceneCounter);
+	const sceneHeld = num(o.sceneHeld);
+	const idleT = num(o.idleT);
+	if (
+		ambience === null ||
+		stopped === null ||
+		sceneCounter === null ||
+		sceneHeld === null ||
+		idleT === null ||
+		typeof o.scene !== 'string'
+	) {
+		return undefined;
+	}
+	return { ambience, stopped, scene: o.scene, sceneCounter, sceneHeld, idleT };
+}
+
 /** Follow the server queue directly so track changes need no browser relay. */
 queue.subscribe((state) => {
 	if (!output.running) return;
@@ -303,6 +332,8 @@ export const POST: RequestHandler = async (event) => {
 		protocol?: string;
 		position?: number;
 		playing?: boolean;
+		room?: unknown;
+		roomAge?: number;
 	};
 
 	if (body.action === 'stop') {
@@ -312,7 +343,8 @@ export const POST: RequestHandler = async (event) => {
 	}
 
 	if (body.action === 'sync') {
-		output.sync(body.position ?? 0, body.playing ?? false, body.offsetMs);
+		const age = typeof body.roomAge === 'number' && body.roomAge >= 0 ? body.roomAge : Infinity;
+		output.sync(body.position ?? 0, body.playing ?? false, body.offsetMs, roomSyncFrom(body.room), age);
 		return json(output.status);
 	}
 

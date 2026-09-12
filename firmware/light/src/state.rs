@@ -31,16 +31,36 @@ pub enum EffectKind {
 	Wash,
 	Twinkle,
 	Fire,
+	Breathe,
+	Aurora,
+	Sparkle,
+	Chase,
+	Candle,
 }
 
 impl EffectKind {
-	pub const ALL: [Self; 3] = [Self::Wash, Self::Twinkle, Self::Fire];
+	pub const ALL: [Self; 8] = [
+		Self::Wash,
+		Self::Twinkle,
+		Self::Fire,
+		Self::Breathe,
+		Self::Aurora,
+		Self::Sparkle,
+		Self::Chase,
+		Self::Candle,
+	];
 
+	/// Stored in the settings blob: never renumber.
 	pub fn id(self) -> u8 {
 		match self {
 			Self::Wash => 0,
 			Self::Twinkle => 1,
 			Self::Fire => 2,
+			Self::Breathe => 3,
+			Self::Aurora => 4,
+			Self::Sparkle => 5,
+			Self::Chase => 6,
+			Self::Candle => 7,
 		}
 	}
 
@@ -53,6 +73,11 @@ impl EffectKind {
 			Self::Wash => "wash",
 			Self::Twinkle => "twinkle",
 			Self::Fire => "fire",
+			Self::Breathe => "breathe",
+			Self::Aurora => "aurora",
+			Self::Sparkle => "sparkle",
+			Self::Chase => "chase",
+			Self::Candle => "candle",
 		}
 	}
 

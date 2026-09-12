@@ -8,6 +8,7 @@ import {
 	sample,
 	type AmbientSettings,
 	type Geometry,
+	type RoomSync,
 	type Show,
 	type ShowFrame,
 	type TrackAnalysis
@@ -54,9 +55,16 @@ export class Viz {
 	private startedAt = 0;
 	private startOffset = 0;
 	private playing = false;
+	/**
+	 * Output latency, smoothed: the browser's estimate jitters by more than a frame, and a
+	 * heard position that stepped back would rewind the show.
+	 */
+	private latency = Number.NaN;
 
 	private raf = 0;
 	private last = 0;
+	/** When the director last rendered; a hidden tab stops rendering and its decisions go stale. */
+	private lastFrameAt = Number.NaN;
 	private fpsAcc = 0;
 	private fpsFrames = 0;
 	private fps = 0;
@@ -94,6 +102,22 @@ export class Viz {
 	/** Skip to the next ambient scene. */
 	nextScene(): void {
 		this.director.ambient.next();
+	}
+
+	/** This room's decisions, for the hardware renderer to follow. */
+	roomSync(): RoomSync {
+		return this.director.sync();
+	}
+
+	/** Seconds since this room last decided anything; infinite before the first frame. */
+	get roomAge(): number {
+		if (!Number.isFinite(this.lastFrameAt)) return Infinity;
+		return (performance.now() - this.lastFrameAt) / 1000;
+	}
+
+	/** Adopt the hardware room's decisions, so a tab that starts leading does not drag it back. */
+	follow(room: RoomSync): void {
+		this.director.follow(room);
 	}
 
 	/** One slot of the room's live palette, as CSS. Allocation-free apart from the string. */
@@ -150,14 +174,18 @@ export class Viz {
 		src.onended = () => {
 			if (this.source !== src) return;
 			// A seek stops the node too, so reaching the end is what distinguishes the two.
+			// The position stays at the end, so the room holds the last look rather than
+			// rewinding to the opening while the next track loads.
 			const finished = this.position >= this.duration - 0.25;
 			this.pause();
-			if (finished) {
-				this.startOffset = 0;
-				this.onEnded?.();
-			}
+			if (finished) this.onEnded?.();
 		};
-		src.start(0, Math.min(this.startOffset, this.buffer.duration - 0.01));
+		// Playing again from the end starts over.
+		if (this.startOffset >= this.buffer.duration - 0.05) this.startOffset = 0;
+		const offset = Math.min(this.startOffset, this.buffer.duration - 0.01);
+		// Say how much is left: started into a long buffer with only an offset, Chromium never
+		// reports the end, and the queue would wait forever after a seek.
+		src.start(0, offset, this.buffer.duration - offset);
 		this.source = src;
 		this.startedAt = this.ctx.currentTime;
 		this.playing = true;
@@ -182,7 +210,8 @@ export class Viz {
 		const wasPlaying = this.playing;
 		this.pause();
 		this.startOffset = target;
-		this.player.reset();
+		// The director restarts the show there and dissolves into it, as the hardware will.
+		this.director.seek();
 		if (wasPlaying) void this.play();
 	}
 
@@ -213,6 +242,8 @@ export class Viz {
 	}
 
 	private frame(dt: number): void {
+		this.lastFrameAt = performance.now();
+		this.followLatency(dt);
 		const frame: ShowFrame = this.director.update(this.heardPosition, dt, {
 			playing: this.playing,
 			hasShow: this.show !== null,
@@ -228,11 +259,16 @@ export class Viz {
 	 * this heard instant.
 	 */
 	get heardPosition(): number {
-		const latency =
+		return this.position - (Number.isFinite(this.latency) ? this.latency : 0.02);
+	}
+
+	private followLatency(dt: number): void {
+		const reported =
 			(this.ctx as (AudioContext & { outputLatency?: number }) | null)?.outputLatency ??
-			this.ctx?.baseLatency ??
-			0.02;
-		return this.position - latency;
+			this.ctx?.baseLatency;
+		const measured = typeof reported === 'number' && Number.isFinite(reported) ? reported : 0.02;
+		if (!Number.isFinite(this.latency)) this.latency = measured;
+		else this.latency += (measured - this.latency) * Math.min(1, dt);
 	}
 
 	private publishReadout(dt: number, frame: ShowFrame): void {

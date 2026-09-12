@@ -16,8 +16,12 @@ was before the party. Source is in `firmware/`.
 
 The engine (`firmware/light/src/engine.rs`) is one state machine, identical on both boards:
 
-- **Smart** is the standalone life. On means the remembered effect - `wash`, `twinkle` or
-  `fire` on the frame, `wash` on the lamp - tinted by the remembered colour and brightness.
+- **Smart** is the standalone life. On means the remembered effect - `wash`, `twinkle`,
+  `fire`, `breathe`, `aurora`, `sparkle`, `chase` or `candle` on the frame, `wash` on the
+  lamp - tinted by the remembered colour and brightness. Everything but the wash moves, and
+  none of it moves fast: a breath is six seconds, a lap of the chase twenty, and the glints
+  of the sparkle rise and fall over half a second rather than blinking. Breathe, sparkle,
+  chase and candle spend the warm-white emitters as well as the colour dies.
   Soft-off fades out over half a second and is saved to flash immediately, because off is the
   state a power cut must find. Turning on fades in over 1.2 s.
 - **Party** is entered by DDP arriving, never by hand, and it overrides a soft-off: start the
@@ -452,9 +456,9 @@ strips against real shows since 2026-09-08, but `led` has not been read off the 
 joins once at boot and that is all. Note `is_link_up()` always returns true after the first
 connect (embassy #4612), so it cannot be the trigger.
 
-**Effects are tuned by eye, not yet judged.** Fire's spark rate and cooling shipped at
-plausible constants; the room outranks the suite, so expect to touch
-`light/src/effects/fire.rs` after an evening with it.
+**Effects are tuned by eye, not yet judged.** Fire's spark rate and cooling, and the periods
+of the five slow effects beside it, shipped at plausible constants; the room outranks the
+suite, so expect to touch `light/src/effects/` after an evening with them.
 
 **A watchdog**, so a wedged radio recovers without someone walking to the board. **Static IP**
 as an alternative to DHCP reservations. **A page at `/`** - the API was shaped so one can sit

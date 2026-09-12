@@ -1,7 +1,7 @@
 import type { EffectDef } from '../contracts/effect.ts';
 import { SLOT } from '../contracts/palette.ts';
 import { addSample } from '../color/palette.ts';
-import { clamp, lerp } from '../dsl/math.ts';
+import { clamp, lerp, smoothstep } from '../dsl/math.ts';
 import { hash01 } from '../dsl/rng.ts';
 import { INTENSITY, param } from './helpers.ts';
 
@@ -83,7 +83,8 @@ export const ripple: EffectDef = {
 				const fade = clamp(1 - front / reach);
 				if (fade <= 0) return;
 
-				const gain = (0.7 + p.intensity * 1.2) * fade * fade;
+				// A stone dropped, not a light switched on: the ring swells over its first moments.
+				const gain = (0.7 + p.intensity * 1.2) * fade * fade * smoothstep(0, 0.7, clock);
 				const width = 0.34 + front * 0.09;
 				const twoSigmaSq = 2 * width * width;
 

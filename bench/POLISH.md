@@ -33,6 +33,14 @@ analyses, shows or user settings. Cache selection defaults to the desktop cache;
 - `node bench/audibility.ts --id ID --from S --to S` writes a 10 ms timeline of level, onset
   strength, DSP and model drum evidence and per-attack spectral snapshots for one passage, to
   judge by evidence what is audible where no labels exist.
+- `node bench/transitionprobe.ts --ids ID,ID,ID --out bench/reports/transitions-after.json` walks
+  the room through every transition it makes on cached tracks: track to track, a queue jump,
+  pause and resume, seeks, lounge on and off, the dissolve into rest and the wake, hardware
+  clock jitter and a stale sync, cue boundaries and a scene handover at rest. Each case reports
+  the worst single-frame byte move against the show's own movement, the frames that moved more
+  than a dissolve can, and the darkest frame. `--core DIR` renders with another checkout's
+  `packages/core/src` (a git worktree of the baseline) and `--compare FILE` prints both runs
+  side by side.
 - `node bench/showreview.ts ID --out bench/reports/review.html` exports audio with actual ceiling
   and bounce-lamp output. `--analysis FILE` and `--show FILE` select diagnostic inputs. The HTML
   is self-contained, with opening/chorus/breakdown selection, seeking and optional snare clicks.

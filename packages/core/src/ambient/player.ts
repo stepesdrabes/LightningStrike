@@ -53,6 +53,9 @@ const REST_MOTION = 0.35;
 /** Enough motion to follow the track while staying below show intensity. */
 const LOUNGE_MOTION = 0.72;
 
+/** Seconds the floor and the motion take to move between rest and lounge, so neither steps. */
+const MODE_TAU = 2;
+
 export interface AmbientSettings extends ColourSettings {
 	/** Seconds a scene holds when nothing is playing. */
 	dwell: number;
@@ -69,6 +72,13 @@ export const DEFAULT_AMBIENT: AmbientSettings = {
 	drift: 6,
 	dwell: 150
 };
+
+/** The choices another room has to make the same way. */
+export interface SceneSync {
+	scene: string;
+	counter: number;
+	held: number;
+}
 
 /**
  * Ambient scene player shared by rest and lounge. Rest uses the idle grid and unmeasured
@@ -89,6 +99,8 @@ export class AmbientPlayer {
 	private lastSection: SectionKind | null = null;
 	private wasLive = false;
 	private level = 0;
+	private floor = 0;
+	private motion = 0;
 	private settled = false;
 
 	constructor(mixer: Mixer, registry: EffectRegistry) {
@@ -138,8 +150,33 @@ export class AmbientPlayer {
 		this.held = 0;
 	}
 
-	/** live means audio is playing: lounge gets the track frame, rest gets the idle frame. */
-	update(f: ShowFrame, live: boolean): void {
+	sync(): SceneSync {
+		return { scene: this.scene.id, counter: this.counter, held: this.held };
+	}
+
+	/** Make the choices another room made; a different scene arrives through the usual fade. */
+	follow(s: SceneSync): void {
+		this.counter = s.counter;
+		this.held = s.held;
+		if (s.scene === this.scene.id) return;
+		const found = AMBIENT_SCENES.find((scene) => scene.id === s.scene);
+		if (found) this.scene = found;
+	}
+
+	/**
+	 * Keep the colour following while the scenes are not composed, so a dissolve into them
+	 * starts on the colour the room already has.
+	 */
+	tick(dt: number): void {
+		this.mixer.palette = this.colour.update(dt);
+	}
+
+	/**
+	 * live means audio is playing: lounge gets the track frame, rest gets the idle frame.
+	 * `other` is the other mode's frame, which an outgoing scene keeps while it fades.
+	 */
+	update(f: ShowFrame, live: boolean, other: ShowFrame | null = null): void {
+		let crossed = false;
 		if (live !== this.wasLive) {
 			// The pool changed under it. A scene that needs a spectrum has to go when the music
 			// does, and a track starting deserves one that can answer it.
@@ -148,6 +185,7 @@ export class AmbientPlayer {
 			this.scene = this.pick(live);
 			this.held = 0;
 			this.lastSection = null;
+			crossed = true;
 		}
 
 		this.held += f.dt;
@@ -159,22 +197,33 @@ export class AmbientPlayer {
 		this.lastSection = live ? sectionBase(f.section) : null;
 
 		if (this.installed !== this.scene) {
+			this.mixer.outgoingFrame = crossed ? other : null;
 			this.install(this.scene, this.installed === null ? 0 : SCENE_FADE);
 			this.installed = this.scene;
 		}
 
-		this.mixer.palette = this.colour.update(f.dt);
+		this.tick(f.dt);
 		this.mixer.brightness = REST_LEVEL;
-		this.mixer.motion = live ? LOUNGE_MOTION : REST_MOTION;
 
 		// Keep rest level constant; lounge follows passage energy slowly.
 		const want = live ? LOUNGE_CEIL - LOUNGE_LIFT + LOUNGE_LIFT * this.lounge(f) : REST_INTENSITY;
-		// Start at the first reading to avoid an extra fade; asymmetric smoothing softens
-		// section changes.
-		this.level = this.settled ? envelope(this.level, want, f.dt, 0.9, 2.1) : want;
-		this.settled = true;
+		const floor = live ? LOUNGE_FLOOR : REST_FLOOR;
+		const motion = live ? LOUNGE_MOTION : REST_MOTION;
+		if (this.settled) {
+			// Asymmetric smoothing softens section changes; the mode itself moves at one pace.
+			this.level = envelope(this.level, want, f.dt, 0.9, 2.1);
+			this.floor = envelope(this.floor, floor, f.dt, MODE_TAU, MODE_TAU);
+			this.motion = envelope(this.motion, motion, f.dt, MODE_TAU, MODE_TAU);
+		} else {
+			// Start at the first reading to avoid an extra fade.
+			this.level = want;
+			this.floor = floor;
+			this.motion = motion;
+			this.settled = true;
+		}
 		this.mixer.intensity = this.level;
-		this.mixer.floor = live ? LOUNGE_FLOOR : REST_FLOOR;
+		this.mixer.floor = this.floor;
+		this.mixer.motion = this.motion;
 	}
 
 	/** How much of the lounge lift this passage has earned, 0..1. */

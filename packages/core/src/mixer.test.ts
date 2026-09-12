@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { EffectDef } from './contracts/effect.ts';
 import { createShowFrame } from './contracts/frame.ts';
 import { DEFAULT_ROOM, buildGeometry } from './geometry.ts';
+import { SLOT } from './contracts/palette.ts';
+import { sample } from './color/palette.ts';
 import { Mixer } from './mixer.ts';
 
 const g = buildGeometry(DEFAULT_ROOM);
@@ -164,5 +166,112 @@ describe('Mixer.finish', () => {
 		};
 		// Auto-exposure only ever lifts, so the difference is one-directional and unambiguous.
 		expect(lift(true)).toBeGreaterThan(lift(false));
+	});
+});
+
+describe('Layer replacement', () => {
+	/** An effect that low-passes toward a level, the way trail and field effects do. */
+	function settling(id: string, level: number, rate: number): EffectDef {
+		return {
+			...flat(id, level),
+			create: () => ({
+				reset() {},
+				render(out) {
+					for (let i = 0; i < out.length; i++) out[i] += (level - out[i]) * rate;
+				}
+			})
+		};
+	}
+
+	it('starts a replacement from the frame it replaces rather than from black', () => {
+		const m = mixerAt(1);
+		const f = createShowFrame();
+		f.dt = 1 / 60;
+		m.layers.master.setEffect(A, g);
+		m.compose(f);
+		m.layers.master.setEffect(settling('s', 0.2, 0.5), g);
+		m.compose(f);
+		expect(m.frame[0]).toBeCloseTo(0.5 * 1.4, 5);
+	});
+
+	it('starts a layer that was empty from black', () => {
+		const m = mixerAt(1);
+		const f = createShowFrame();
+		f.dt = 1 / 60;
+		m.layers.master.setEffect(settling('s', 0.2, 0.5), g);
+		m.compose(f);
+		expect(m.frame[0]).toBeCloseTo(0.1 * 1.4, 5);
+	});
+
+	it('fades a new layer in from black when a scene adds one', () => {
+		const m = mixerAt(1);
+		const f = createShowFrame();
+		f.dt = 0.5;
+		m.layers.master.setEffect(A, g, 1);
+		m.compose(f);
+		expect(m.frame[0]).toBeCloseTo(Math.sqrt(0.5 * 0.64) * 1.4, 5);
+	});
+
+	it('renders an outgoing effect on the frame it was made for', () => {
+		const byBar: EffectDef = {
+			...flat('bar', 0),
+			create: () => ({
+				reset() {},
+				render(out, ctx) {
+					out.fill(ctx.f.barIndex / 10);
+				}
+			})
+		};
+		const m = mixerAt(1);
+		const f = createShowFrame();
+		f.dt = 0.5;
+		f.barIndex = 5;
+		m.layers.master.setEffect(byBar, g);
+		m.compose(f);
+		m.layers.master.setEffect(B, g, 1);
+		const other = createShowFrame();
+		other.barIndex = 8;
+		m.outgoingFrame = other;
+		f.barIndex = 0;
+		m.compose(f);
+		expect(m.frame[0]).toBeCloseTo(Math.sqrt(0.5 * 0.04 + 0.5 * 0.64) * 1.4, 5);
+	});
+});
+
+describe('the transport fade', () => {
+	it('takes the hits down with it but leaves the house floor lit', () => {
+		const at = (fade: number) => {
+			const m = mixerAt(1);
+			m.floor = 0.5;
+			m.fade = fade;
+			m.layers.master.setEffect(A, g);
+			const f = createShowFrame();
+			f.dt = 1 / 60;
+			m.compose(f);
+			const lift = sample(m.palette, SLOT.base, 1)[0] * 0.5;
+			return { lift, hit: (m.frame[0] - lift) / (1 - lift) };
+		};
+		const full = at(1);
+		const half = at(0.5);
+		expect(half.lift).toBe(full.lift);
+		expect(half.hit).toBeCloseTo(full.hit * 0.5, 5);
+	});
+});
+
+describe('a scene arriving at another opacity', () => {
+	it('crossfades the opacity with the buffers instead of stepping the level', () => {
+		const m = mixerAt(1);
+		const f = createShowFrame();
+		f.dt = 1 / 60;
+		m.layers.master.opacity = 0.4;
+		m.layers.master.setEffect(A, g);
+		m.compose(f);
+		const before = m.frame[0];
+		m.layers.master.setEffect(B, g, 7);
+		m.layers.master.opacity = 1;
+		m.compose(f);
+		expect(Math.abs(m.frame[0] - before)).toBeLessThan(before * 0.02);
+		for (let i = 0; i < 60 * 8; i++) m.compose(f);
+		expect(m.frame[0]).toBeCloseTo(0.2 * 1.4, 5);
 	});
 });

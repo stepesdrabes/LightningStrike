@@ -176,3 +176,113 @@ describe('intro articulation', () => {
 		}
 	});
 });
+
+describe('the end of the audio', () => {
+	/** A full-length level track, loud until `loudUntil`, fading out by `silentFrom`. */
+	function levelled(analysis: ReturnType<typeof fixtureAnalysis>, loudUntil: number, silentFrom: number) {
+		const fps = 100;
+		const bytes = new Uint8Array(Math.ceil(analysis.duration * fps));
+		for (let i = 0; i < bytes.length; i++) {
+			const t = (i + 0.5) / fps;
+			const fade = (silentFrom - t) / Math.max(1e-6, silentFrom - loudUntil);
+			bytes[i] = t < loudUntil ? 200 : t < silentFrom ? Math.round(200 * fade) : 0;
+		}
+		analysis.level = { fps, data: encodeBase64(bytes) };
+	}
+
+	it('eases the show out where the audio really ends, onto the outro floor', () => {
+		const analysis = fixtureAnalysis();
+		levelled(analysis, 12, 12);
+		const mixer = new Mixer(g);
+		const player = new ShowPlayer(mixer, new EffectRegistry());
+		player.load(analysis, fixtureShow(analysis));
+
+		player.update(11, 1 / 60);
+		expect(mixer.fade).toBe(1);
+		expect(mixer.floor).toBeCloseTo(0.34, 5);
+		player.update(11.75, 1 / 60);
+		expect(mixer.fade).toBeGreaterThan(0.4);
+		expect(mixer.fade).toBeLessThan(1);
+		player.update(12, 1 / 60);
+		expect(mixer.fade).toBeCloseTo(0.35, 5);
+		expect(mixer.floor).toBeCloseTo(0.42, 5);
+		// Trailing silence stays settled: the show does not come back after the audio ends.
+		player.update(13, 1 / 60);
+		expect(mixer.fade).toBeCloseTo(0.35, 5);
+	});
+
+	it('follows a fade-out down with the music, in any section', () => {
+		const analysis = fixtureAnalysis();
+		levelled(analysis, 20, 28);
+		const show = fixtureShow(analysis);
+		show.cues = [{ bar: 0, section: 'groove', note: '', layers: { bed: { effect: 'wash' } }, fadeBeats: 0 }];
+		const mixer = new Mixer(g);
+		const player = new ShowPlayer(mixer, new EffectRegistry());
+		player.load(analysis, show);
+		const before: number[] = [];
+		for (let t = 0; t < 27.6; t += 1 / 60) {
+			player.update(t, 1 / 60);
+			if (t > 19 && t < 19.1) before.push(mixer.intensity);
+		}
+		expect(Math.min(...before)).toBeCloseTo(1, 3);
+		expect(mixer.intensity).toBeLessThan(0.5);
+		expect(mixer.fade).toBeLessThan(1);
+	});
+
+	it('lifts an outro that still has energy, and keeps it under a groove', () => {
+		const analysis = fixtureAnalysis();
+		const show = fixtureShow(analysis);
+		show.defaults.intensity = 0.5;
+		const mixer = new Mixer(g);
+		const player = new ShowPlayer(mixer, new EffectRegistry());
+		player.load(analysis, show);
+		const outro = analysis.sections.find((s) => s.kind === 'outro')!;
+		for (let t = outro.startTime - 4; t < outro.startTime + 6; t += 1 / 60) player.update(t, 1 / 60);
+		expect(mixer.intensity).toBeGreaterThan(0.58);
+		expect(mixer.intensity).toBeLessThan(0.66);
+		expect(mixer.motion).toBeGreaterThan(1.05);
+		expect(mixer.motion).toBeLessThan(1.15);
+
+		show.defaults.intensity = 0.95;
+		player.load(analysis, show);
+		for (let t = outro.startTime - 4; t < outro.startTime + 6; t += 1 / 60) player.update(t, 1 / 60);
+		expect(mixer.intensity).toBeCloseTo(0.95, 5);
+	});
+});
+
+describe('restarting', () => {
+	it('warms to the same state on every host', () => {
+		const analysis = fixtureAnalysis();
+		const show = fixtureShow(analysis);
+		const a = new Mixer(g);
+		const b = new Mixer(g);
+		const one = new ShowPlayer(a, new EffectRegistry());
+		const two = new ShowPlayer(b, new EffectRegistry());
+		one.load(analysis, show);
+		two.load(analysis, show);
+		for (let t = 0; t < 20; t += 1 / 60) one.update(t, 1 / 60);
+		one.warm(30);
+		two.warm(30);
+		a.compose(one.update(30, 1 / 60));
+		b.compose(two.update(30, 1 / 60));
+		expect(Array.from(a.frame)).toEqual(Array.from(b.frame));
+		// Near the start there is less to pre-roll, and it must not overshoot the time asked.
+		one.warm(0.1);
+		expect(one.update(0.1, 1 / 60).t).toBe(0.1);
+	});
+
+	it('holds the clock for a frame on a small backward step, and rewinds on a real one', () => {
+		const analysis = fixtureAnalysis();
+		analysis.onsets.kick = { times: [4.7], levels: [1] };
+		analysis.onsets.snare = { times: [], levels: [] };
+		analysis.onsets.hat = { times: [], levels: [] };
+		const player = new ShowPlayer(new Mixer(g), new EffectRegistry());
+		player.load(analysis, fixtureShow(analysis));
+		for (let t = 4; t <= 5; t += 1 / 60) player.update(t, 1 / 60);
+		const held = player.update(4.98, 1 / 60);
+		expect(held.t).toBeCloseTo(5, 5);
+		expect(held.kick).toBe(false);
+		player.update(4.5, 1 / 60);
+		expect(player.update(4.72, 1 / 60).kick).toBe(true);
+	});
+});

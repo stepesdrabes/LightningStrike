@@ -74,6 +74,36 @@ const HIT_LEAD_CAP = 0.045;
  */
 const ARTICULATION_FLOOR = 0.45;
 
+/**
+ * The end of the audio. The last seconds follow the momentary level like an intro, so a
+ * fade-out settles the room with the music, and the final half second eases out to the house
+ * floor either way, so a hard ending never leaves an effect running into silence.
+ */
+const END_LISTEN = 8;
+const END_LISTEN_RAMP = 2;
+const END_EASE = 0.5;
+const END_FADE_FLOOR = 0.35;
+/** Level bytes at or under this are silence when finding where the audio really ends. */
+const SILENT_LEVEL = 6;
+
+/**
+ * Outros carry more while the passage still has energy: the engine composes them calm, and a
+ * song that keeps playing deserves a room that keeps answering it.
+ */
+const OUTRO_LIFT = 0.3;
+const OUTRO_MOTION = 0.15;
+const OUTRO_CAP = 0.8;
+
+/** Backward clock steps under this are transport jitter: hold the time rather than rewind. */
+const REWIND_SLACK = 0.05;
+
+/**
+ * Deterministic pre-roll for a restart, so envelopes, trails and the holds that shape a hit
+ * have settled when it shows. A second covers a bar at most tempos.
+ */
+const WARM_SECONDS = 1;
+const WARM_DT = 1 / 60;
+
 function hitLead(beatPeriod: number): number {
 	return Math.min(HIT_LEAD_CAP, Math.max(HIT_LEAD_FLOOR, HIT_LEAD_BEATS * beatPeriod));
 }
@@ -131,6 +161,9 @@ export class ShowPlayer {
 	private levelFps = 100;
 	private readonly articulation = new Follower(0.012, 0.22);
 	private levelGain = 1;
+	private readonly outroEnergy = new Follower(0.5, 1.5);
+	/** Where the audio really stops; trailing silence is not part of the show. */
+	private audioEnd = 0;
 
 	private beatEnergy = new Float32Array(0);
 	private beatBands = new Float32Array(0);
@@ -241,6 +274,13 @@ export class ShowPlayer {
 		const level = analysis.level;
 		this.levelData = level?.data ? decodeBase64(level.data) : new Uint8Array(0);
 		this.levelFps = level?.fps || 100;
+		this.audioEnd = analysis.duration;
+		// Only a track-length level blob can say where the audio ends; a partial one cannot.
+		if (this.levelData.length / this.levelFps >= analysis.duration - 1) {
+			let last = this.levelData.length - 1;
+			while (last > 0 && this.levelData[last] <= SILENT_LEVEL) last--;
+			this.audioEnd = Math.min(analysis.duration, (last + 1) / this.levelFps);
+		}
 
 		this.panCurve = Float32Array.from(analysis.stereo?.pan ?? []);
 		this.widthCurve = Float32Array.from(analysis.stereo?.width ?? []);
@@ -308,6 +348,7 @@ export class ShowPlayer {
 		this.snareEnv.reset();
 		this.hatEnv.reset();
 		this.articulation.reset();
+		this.outroEnergy.reset();
 		this.levelGain = 1;
 		this.lastKickAt = -Infinity;
 		this.lastSnareAt = -Infinity;
@@ -325,6 +366,21 @@ export class ShowPlayer {
 		this.mixer.reset();
 	}
 
+	/**
+	 * Restart at `t` as if the show had been running: reset, then step the last moments at a
+	 * fixed rate so trails, followers and cue state have settled. Identical on every host.
+	 */
+	warm(t: number): void {
+		this.reset();
+		if (!this.analysis) return;
+		const frames = Math.min(Math.round(WARM_SECONDS / WARM_DT), Math.floor(t / WARM_DT));
+		const from = Math.max(0, t - frames * WARM_DT);
+		for (let i = 0; i < frames; i++) {
+			this.update(from + i * WARM_DT, WARM_DT);
+			this.mixer.compose(this.frame);
+		}
+	}
+
 	update(t: number, dt: number): ShowFrame {
 		const f = this.frame;
 		const a = this.analysis;
@@ -334,8 +390,16 @@ export class ShowPlayer {
 
 		if (!a) return f;
 
-		// Any backward jump invalidates every cursor and every decaying envelope.
-		if (t < this.lastT - 1e-6) this.rewind(t);
+		// A backward jump invalidates every cursor and decaying envelope; a small one is clock
+		// jitter, and holding the time for a frame keeps the picture continuous.
+		if (t < this.lastT - 1e-6) {
+			if (this.lastT - t < REWIND_SLACK) {
+				t = this.lastT;
+				f.t = t;
+			} else {
+				this.rewind(t);
+			}
+		}
 		this.lastT = t;
 
 		this.updateGrid(t, a.tempo);
@@ -356,6 +420,7 @@ export class ShowPlayer {
 		this.snareEnv.reset();
 		this.hatEnv.reset();
 		this.articulation.reset();
+		this.outroEnergy.reset();
 		this.levelGain = 1;
 		this.lastKickAt = -Infinity;
 		this.lastSnareAt = -Infinity;
@@ -599,20 +664,42 @@ export class ShowPlayer {
 			if (t >= fadeStart) u = clamp((t - fadeStart) / (next.start - fadeStart));
 		}
 
-		const gainFor = (cue: CompiledCue) => (cue.section === 'intro' ? this.levelGain : 1);
+		const remaining = this.audioEnd - t;
+		const listen = smoothstep(END_LISTEN, END_LISTEN - END_LISTEN_RAMP, remaining);
+		const ease = smoothstep(0, 1, remaining / END_EASE);
+		const boost = smoothstep(0.2, 0.6, this.outroEnergy.update(f.energy, f.dt));
+		const gainFor = (cue: CompiledCue) => {
+			if (cue.section === 'intro') return this.levelGain;
+			const lift = cue.section === 'outro' ? 1 + OUTRO_LIFT * boost : 1;
+			return lift * (1 + (this.levelGain - 1) * listen);
+		};
+		const intensityFor = (cue: CompiledCue) => {
+			const v = cue.intensity * gainFor(cue);
+			return cue.section === 'outro' ? Math.min(v, Math.max(cue.intensity, OUTRO_CAP)) : v;
+		};
+		const motionFor = (cue: CompiledCue) =>
+			cue.section === 'outro' ? cue.motion * (1 + OUTRO_MOTION * boost) : cue.motion;
+
+		let floor: number;
 		if (u > 0 && next) {
 			blendPalettes(this.paletteScratch, active.palette, next.palette, u);
 			this.mixer.palette = this.paletteScratch;
-			const from = active.intensity * gainFor(active);
-			this.mixer.intensity = from + (next.intensity * gainFor(next) - from) * u;
-			this.mixer.motion = active.motion + (next.motion - active.motion) * u;
-			this.mixer.floor = lerpFloor(active, next, u);
+			const from = intensityFor(active);
+			this.mixer.intensity = from + (intensityFor(next) - from) * u;
+			const motion = motionFor(active);
+			this.mixer.motion = motion + (motionFor(next) - motion) * u;
+			floor = lerpFloor(active, next, u);
 		} else {
 			this.mixer.palette = active.palette;
-			this.mixer.intensity = active.intensity * gainFor(active);
-			this.mixer.motion = active.motion;
-			this.mixer.floor = floorFor(active.section);
+			this.mixer.intensity = intensityFor(active);
+			this.mixer.motion = motionFor(active);
+			floor = floorFor(active.section);
 		}
+		// A bright section ends on the outro floor rather than its own dark one; a void stays
+		// dark.
+		const settled = floor === 0 ? 0 : Math.max(floor, floorFor('outro'));
+		this.mixer.floor = floor + (settled - floor) * (1 - ease);
+		this.mixer.fade = END_FADE_FLOOR + (1 - END_FADE_FLOOR) * ease;
 	}
 
 	private installLayers(cue: CompiledCue): void {

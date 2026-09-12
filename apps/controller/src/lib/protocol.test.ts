@@ -74,6 +74,13 @@ describe('labels', () => {
 	it('keeps an unknown board name rather than inventing one', () => {
 		expect(displayName(parseInfo({ name: 'room-porch', ddpPort: 4048 }), 'x')).toBe('room-porch');
 		expect(effectLabel('shimmer')).toBe('Shimmer');
+		expect(['breathe', 'aurora', 'sparkle', 'chase', 'candle'].map(effectLabel)).toEqual([
+			'Breathe',
+			'Aurora',
+			'Sparkle',
+			'Chase',
+			'Candle'
+		]);
 	});
 });
 

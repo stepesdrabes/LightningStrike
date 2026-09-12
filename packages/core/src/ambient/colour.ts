@@ -52,6 +52,10 @@ const PALETTE_DEFAULTS = { sat: 0.94, shade: 0.08, white: 0.06 };
  */
 export class AmbientColour {
 	readonly palette: Palette = new Float32Array(PALETTE_ANCHORS * 3);
+	/** The palette built from `now`; `palette` eases onto a cue palette and back off it. */
+	private readonly own: Palette = new Float32Array(PALETTE_ANCHORS * 3);
+	/** Whether a cue has pulled `palette` off `own`, so it has to ease back. */
+	private offOwn = false;
 
 	settings: ColourSettings = { source: 'fixed', hue: 28, sat: 0.8, drift: 6 };
 
@@ -105,17 +109,6 @@ export class AmbientColour {
 			this.drifted = 0;
 		}
 
-		// Blend baked cue palettes with a slower fade to preserve their colours and soften cue
-		// cuts.
-		const cue = this.settings.source === 'track' ? this.cuePalette : null;
-		if (cue) {
-			blendPalettes(this.palette, this.palette, cue, alphaFor(dt, CUE_TAU));
-			// Invalidate built state so the next hue-built palette starts from the current
-			// colour.
-			this.built.base = Number.NaN;
-			return this.palette;
-		}
-
 		this.resolve();
 		// User picks arrive immediately; track changes ease.
 		if (this.settings.source === 'track') {
@@ -131,7 +124,27 @@ export class AmbientColour {
 			this.arrive();
 		}
 
-		this.rebuildIfMoved();
+		const moved = this.rebuildIfMoved();
+
+		// Blend baked cue palettes with a slower fade to preserve their colours and soften cue
+		// cuts; when the cue goes, ease back onto the record's own colours the same way.
+		const cue = this.settings.source === 'track' ? this.cuePalette : null;
+		if (cue) {
+			blendPalettes(this.palette, this.palette, cue, alphaFor(dt, CUE_TAU));
+			this.offOwn = true;
+		} else if (this.offOwn) {
+			blendPalettes(this.palette, this.palette, this.own, alphaFor(dt, CUE_TAU));
+			let far = 0;
+			for (let i = 0; i < this.palette.length; i++) {
+				far = Math.max(far, Math.abs(this.palette[i] - this.own[i]));
+			}
+			if (far < 1e-3) {
+				this.palette.set(this.own);
+				this.offOwn = false;
+			}
+		} else if (moved) {
+			this.palette.set(this.own);
+		}
 		return this.palette;
 	}
 
@@ -140,6 +153,8 @@ export class AmbientColour {
 		this.resolve();
 		this.arrive();
 		this.rebuildIfMoved();
+		this.palette.set(this.own);
+		this.offOwn = false;
 	}
 
 	private arrive(): void {
@@ -184,7 +199,7 @@ export class AmbientColour {
 		return this.rampOut;
 	}
 
-	private rebuildIfMoved(): void {
+	private rebuildIfMoved(): boolean {
 		const was = this.built;
 		if (
 			Math.abs(this.now.base - was.base) < HUE_EPSILON &&
@@ -194,9 +209,10 @@ export class AmbientColour {
 			Math.abs(this.now.shade - was.shade) < 0.004 &&
 			Math.abs(this.now.white - was.white) < 0.004
 		) {
-			return;
+			return false;
 		}
-		writePalette(this.palette, this.now);
+		writePalette(this.own, this.now);
 		Object.assign(was, this.now);
+		return true;
 	}
 }

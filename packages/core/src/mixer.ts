@@ -55,9 +55,12 @@ export class Layer {
 	/** Retain outgoing state for optional ambient crossfades; show cues default to hard cuts. */
 	private prevEffect: Effect | null = null;
 	private prevParams: Params = {};
+	private prevOpacity = 0;
 	private readonly prevBuf: Float32Array;
 	private fade = 0;
 	private fadeLength = 0;
+	/** The outgoing share of the last render, so the opacity crossfades with the buffers. */
+	private outgoing = 0;
 
 	constructor(role: LayerRole, count: number) {
 		this.buf = new Float32Array(count * 3);
@@ -68,18 +71,25 @@ export class Layer {
 
 	setEffect(def: EffectDef | null, g: Geometry, fadeSeconds = 0): void {
 		if (def === this.def) return;
-		if (fadeSeconds > 0 && this.effect) {
+		if (fadeSeconds > 0 && (this.effect || def)) {
+			// An empty layer fades its new effect in from black; a dropped one fades out to it.
 			this.prevEffect = this.effect;
 			this.prevParams = this.params;
-			this.prevBuf.set(this.buf);
+			this.prevOpacity = this.opacity;
+			if (this.effect) this.prevBuf.set(this.buf);
+			else this.prevBuf.fill(0);
 			this.fade = fadeSeconds;
 			this.fadeLength = fadeSeconds;
+			this.outgoing = 1;
 		} else {
 			this.dropOutgoing();
 		}
+		// A replaced effect leaves its last frame for the next one to work from: trails decay
+		// out of it and low-passed fields blend from it, instead of every cut dipping through
+		// black. A layer that was empty starts from black.
+		if (!this.effect) this.buf.fill(0);
 		this.def = def;
 		this.effect = def ? def.create(g) : null;
-		this.buf.fill(0);
 		this.params = {};
 		if (def) for (const p of def.params) this.params[p.key] = p.default;
 	}
@@ -88,21 +98,28 @@ export class Layer {
 	 * Mix into scratch before the layer blend mode; only add distributes over a crossfade.
 	 * Squared-light blending avoids midpoint dimming. Keep separate buffers so outgoing trails
 	 * decay against their own history. Without a fade, return the original buffer unchanged.
+	 * An outgoing effect made for another grid keeps rendering on `outgoing`.
 	 */
-	render(ctx: RenderCtx, scratch: Float32Array): Float32Array {
+	render(ctx: RenderCtx, scratch: Float32Array, outgoing: ShowFrame | null = null): Float32Array {
 		ctx.p = this.params;
 		this.effect?.render(this.buf, ctx);
 		if (this.fade <= 0) return this.buf;
 
 		this.fade = Math.max(0, this.fade - ctx.f.dt);
 		const out = this.fadeLength > 0 ? this.fade / this.fadeLength : 0;
+		this.outgoing = out;
 		if (out <= 0) {
 			this.dropOutgoing();
 			return this.buf;
 		}
 
-		ctx.p = this.prevParams;
-		this.prevEffect?.render(this.prevBuf, ctx);
+		if (this.prevEffect) {
+			ctx.p = this.prevParams;
+			const f = ctx.f;
+			if (outgoing) ctx.f = outgoing;
+			this.prevEffect.render(this.prevBuf, ctx);
+			ctx.f = f;
+		}
 		const incoming = 1 - out;
 		for (let i = 0; i < scratch.length; i++) {
 			const a = this.buf[i];
@@ -117,6 +134,15 @@ export class Layer {
 		return this.effect !== null || this.prevEffect !== null;
 	}
 
+	/**
+	 * The opacity to mix the rendered layer at. A scene sets its own opacity when it arrives;
+	 * across a crossfade it moves from the outgoing scene's, or the handover steps in level.
+	 */
+	get mixOpacity(): number {
+		if (this.outgoing <= 0) return this.opacity;
+		return this.prevOpacity + (this.opacity - this.prevOpacity) * (1 - this.outgoing);
+	}
+
 	reset(): void {
 		this.effect?.reset();
 		this.buf.fill(0);
@@ -129,6 +155,7 @@ export class Layer {
 		this.prevBuf.fill(0);
 		this.fade = 0;
 		this.fadeLength = 0;
+		this.outgoing = 0;
 	}
 }
 
@@ -146,12 +173,16 @@ export class Mixer {
 	dim = 1;
 	/** User master fader, 0..1. */
 	brightness = 1;
+	/** Transport fade, 0..1: the end of the audio. Takes the hits down too, not the floor. */
+	fade = 1;
 	/**
 	 * House floor after cue intensity, preserving light when quiet layers cannot carry the
 	 * room.
 	 * Void cues set it to zero.
 	 */
 	floor = 0;
+	/** The grid an outgoing crossfade layer was made for, while it fades on a different one. */
+	outgoingFrame: ShowFrame | null = null;
 
 	private readonly meanLevel = new MeanLevel();
 	private readonly slew: BrightnessSlew;
@@ -204,19 +235,20 @@ export class Mixer {
 			if (!layer.enabled || !layer.busy) continue;
 			if (role === 'master' && hitLast) continue;
 			ctx.palette = this.palette;
-			const out = layer.render(ctx, this.layerScratch);
-			blend(this.frame, out, layer.blendMode, layer.opacity);
+			const out = layer.render(ctx, this.layerScratch, this.outgoingFrame);
+			blend(this.frame, out, layer.blendMode, layer.mixOpacity);
 		}
 
 		// Retain HDR headroom for the preview's bright cores and coloured fringes.
-		const scale = this.intensity * this.dim * this.brightness * 1.4;
+		const scale = this.intensity * this.dim * this.brightness * this.fade * 1.4;
 		if (scale !== 1) for (let i = 0; i < this.frame.length; i++) this.frame[i] *= scale;
 
 		if (hitLast && master.enabled && master.busy) {
 			ctx.palette = this.palette;
-			const out = master.render(ctx, this.layerScratch);
-			const level = Math.max(this.intensity, HIT_INTENSITY_FLOOR) * this.dim * this.brightness * 1.4;
-			blend(this.frame, out, 'add', master.opacity * level);
+			const out = master.render(ctx, this.layerScratch, this.outgoingFrame);
+			const level =
+				Math.max(this.intensity, HIT_INTENSITY_FLOOR) * this.dim * this.brightness * this.fade * 1.4;
+			blend(this.frame, out, 'add', master.mixOpacity * level);
 		}
 
 		if (this.floor > 0) {
@@ -246,6 +278,7 @@ export class Mixer {
 		this.frame.fill(0);
 		this.bytes.fill(0);
 		this.dim = 1;
+		this.fade = 1;
 		this.meanLevel.reset();
 		this.slew.reset();
 	}

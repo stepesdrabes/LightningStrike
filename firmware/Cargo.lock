@@ -1363,7 +1363,7 @@ dependencies = [
 
 [[package]]
 name = "room-node"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "cortex-m-rt",
  "critical-section",

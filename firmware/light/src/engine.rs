@@ -2,7 +2,7 @@
 
 use crate::api::{Command, Patch, StateDto};
 use crate::colour::{lin_rgbw, scale4, widen};
-use crate::effects::{fire, twinkle, wash};
+use crate::effects::{aurora, breathe, candle, chase, fire, sparkle, twinkle, wash};
 use crate::state::{Colour, EffectKind, LightState, Mode, PowerOnPolicy};
 
 const FADE_ON_MS: u64 = 1200;
@@ -298,6 +298,11 @@ impl<const N: usize> Engine<N> {
 			EffectKind::Wash => wash::render(&mut self.out, scale4(tint, env)),
 			EffectKind::Twinkle => self.render_twinkle(tint, env),
 			EffectKind::Fire => fire::render(&mut self.out, &mut self.heat, self.t, tint, env),
+			EffectKind::Breathe => breathe::render(&mut self.out, self.t, tint, env),
+			EffectKind::Aurora => aurora::render(&mut self.out, self.t, tint, env),
+			EffectKind::Sparkle => sparkle::render(&mut self.out, self.t, tint, env),
+			EffectKind::Chase => chase::render(&mut self.out, self.t, tint, env),
+			EffectKind::Candle => candle::render(&mut self.out, self.t, tint, env),
 		}
 	}
 

@@ -110,7 +110,12 @@ export const KNOWN_HOSTS: readonly string[] = ['room-bounce', 'room-frame', 'roo
 const EFFECT_LABELS: Record<string, string> = {
 	wash: 'Wash',
 	twinkle: 'Twinkle',
-	fire: 'Fire'
+	fire: 'Fire',
+	breathe: 'Breathe',
+	aurora: 'Aurora',
+	sparkle: 'Sparkle',
+	chase: 'Chase',
+	candle: 'Candle'
 };
 
 export function effectLabel(effect: string): string {

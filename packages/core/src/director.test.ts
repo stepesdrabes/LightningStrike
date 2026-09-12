@@ -59,21 +59,20 @@ describe('RoomDirector', () => {
 			if (arrived < 0 && d.ambience >= 1) arrived = i / 60;
 		}
 		expect(d.ambience).toBe(1);
-		expect(arrived).toBeGreaterThan(6.5);
-		expect(arrived).toBeLessThan(8.5);
+		expect(arrived).toBeGreaterThan(8);
+		expect(arrived).toBeLessThan(9.5);
 	});
 
 	/**
 	 * A handover must stay at least as bright as either endpoint, including when the show is
-	 * paused.
+	 * paused. Delivered light is what the eye sums, so the measure is every channel's bytes,
+	 * not the strongest one: two hues crossing keep their light while their peaks halve.
 	 */
 	it('never dips below either end of a handover', () => {
 		const d = loaded();
 		const mean = () => {
 			let sum = 0;
-			for (let i = 0; i < d.bytes.length; i += 3) {
-				sum += Math.max(d.bytes[i], d.bytes[i + 1], d.bytes[i + 2]);
-			}
+			for (let i = 0; i < d.bytes.length; i++) sum += d.bytes[i];
 			return sum / (d.bytes.length / 3);
 		};
 
@@ -214,5 +213,156 @@ describe('RoomDirector', () => {
 		walk(120, PLAYING, 12, 'waking');
 		walk(300, LOUNGE, 12, 'lounge');
 		expect(bad).toBe('');
+	});
+});
+
+describe('RoomDirector transitions', () => {
+	const DT = 1 / 60;
+	/** Delivered light per pixel, every channel: the eye sums them. */
+	const light = (d: RoomDirector) => {
+		let sum = 0;
+		for (let i = 0; i < d.bytes.length; i++) sum += d.bytes[i];
+		return sum / (d.bytes.length / 3);
+	};
+	/** Mean absolute byte change between two frames: what a jump looks like on the wire. */
+	const delta = (a: Uint8Array, b: Uint8Array) => {
+		let sum = 0;
+		for (let i = 0; i < a.length; i++) sum += Math.abs(a[i] - b[i]);
+		return sum / a.length;
+	};
+
+	interface Walk {
+		worst: number;
+		darkest: number;
+	}
+
+	/** Step `frames` frames and report the worst single-frame move and the darkest frame. */
+	function walk(d: RoomDirector, frames: number, at: (i: number) => number, state: DirectorState): Walk {
+		let prev = Uint8Array.from(d.bytes);
+		let worst = 0;
+		let darkest = Infinity;
+		for (let i = 0; i < frames; i++) {
+			d.update(at(i), DT, state);
+			worst = Math.max(worst, delta(d.bytes, prev));
+			darkest = Math.min(darkest, light(d));
+			prev = Uint8Array.from(d.bytes);
+		}
+		return { worst, darkest };
+	}
+
+	/** The show's own ordinary movement, so a transition is judged against it. */
+	function steady(d: RoomDirector, from: number): number {
+		for (let i = 0; i < 60 * 3; i++) d.update(from + i * DT, DT, PLAYING);
+		return Math.max(6, walk(d, 60 * 2, (i) => from + 3 + i * DT, PLAYING).worst * 1.5);
+	}
+
+	it('carries one track into the next without a jump or a dark gap', () => {
+		const d = loaded();
+		const second = fixtureAnalysis(100);
+		const end = analysis.duration;
+		const limit = steady(d, end - 12);
+
+		const tail = walk(d, 60, (i) => end - 1 + i * DT, PLAYING);
+		// The audio has ended: the show eased out and the room holds the settled look.
+		expect(d.showMix.fade).toBeCloseTo(0.35, 2);
+		const held = Uint8Array.from(d.bytes);
+		const gap = walk(d, 60, () => end, STOPPED);
+		expect(Array.from(d.bytes)).toEqual(Array.from(held));
+		d.clearShow();
+		const unloaded = walk(d, 30, () => end, { ...STOPPED, hasShow: false });
+		expect(Array.from(d.bytes)).toEqual(Array.from(held));
+		d.load(second, fixtureShow(second));
+		const opening = walk(d, 60 * 3, (i) => i * DT, PLAYING);
+
+		for (const part of [tail, gap, unloaded, opening]) {
+			expect(part.worst).toBeLessThan(limit);
+			expect(part.darkest).toBeGreaterThan(8);
+		}
+	});
+
+	it('holds the picture through a pause and is a pure function of position after resuming', () => {
+		const d = loaded();
+		const limit = steady(d, 10);
+		for (let i = 0; i < 60 * 2; i++) d.update(15 + i * DT, DT, PLAYING);
+		const held = Uint8Array.from(d.bytes);
+		for (let i = 0; i < 60 * 2; i++) {
+			d.update(17, DT, STOPPED);
+			if (i % 20 === 0) expect(Array.from(d.bytes)).toEqual(Array.from(held));
+		}
+
+		expect(walk(d, 60 * 2, (i) => 17 + i * DT, PLAYING).worst).toBeLessThan(limit);
+		const fresh = loaded();
+		for (let i = 0; i < 60 * 2; i++) fresh.update(17 + i * DT, DT, PLAYING);
+		expect(Array.from(d.showMix.frame)).toEqual(Array.from(fresh.showMix.frame));
+	});
+
+	it('restarts on a seek, forward and back, and dissolves into the new position', () => {
+		const d = loaded();
+		const limit = steady(d, 10);
+		const same = (t: number) => {
+			const fresh = loaded();
+			for (let i = 0; i < 60; i++) fresh.update(t + i * DT, DT, PLAYING);
+			expect(Array.from(d.showMix.frame)).toEqual(Array.from(fresh.showMix.frame));
+		};
+
+		d.seek();
+		expect(walk(d, 60, (i) => 40 + i * DT, PLAYING).worst).toBeLessThan(limit);
+		same(40);
+		d.seek();
+		expect(walk(d, 60, (i) => 12 + i * DT, PLAYING).worst).toBeLessThan(limit);
+		same(12);
+
+		// The hardware is not told about seeks; it sees the position jump.
+		const hardware = loaded();
+		steady(hardware, 10);
+		expect(walk(hardware, 60, (i) => 40 + i * DT, PLAYING).worst).toBeLessThan(limit);
+		const fresh = loaded();
+		for (let i = 0; i < 60; i++) fresh.update(40 + i * DT, DT, PLAYING);
+		expect(Array.from(hardware.showMix.frame)).toEqual(Array.from(fresh.showMix.frame));
+	});
+
+	it('absorbs clock jitter without restarting the show', () => {
+		const d = loaded();
+		const limit = steady(d, 0);
+		const bed = d.showMix.layers.bed.effect;
+		const jittered = walk(d, 60 * 3, (i) => 5 + i * DT - (i % 3 === 1 ? 0.02 : 0), PLAYING);
+		expect(jittered.worst).toBeLessThan(limit);
+		expect(d.showMix.layers.bed.effect).toBe(bed);
+	});
+
+	it('eases the lounge floor and motion instead of stepping them', () => {
+		const d = loaded();
+		const limit = steady(d, 0);
+		let floorStep = 0;
+		let motionStep = 0;
+		let prevFloor = Number.NaN;
+		let prevMotion = Number.NaN;
+		const watch = (frames: number, at: (i: number) => number, state: DirectorState) => {
+			let prev = Uint8Array.from(d.bytes);
+			let worst = 0;
+			for (let i = 0; i < frames; i++) {
+				d.update(at(i), DT, state);
+				worst = Math.max(worst, delta(d.bytes, prev));
+				prev = Uint8Array.from(d.bytes);
+				const floor = d.ambientMix.floor;
+				const motion = d.ambientMix.motion;
+				if (Number.isFinite(prevFloor)) {
+					floorStep = Math.max(floorStep, Math.abs(floor - prevFloor));
+					motionStep = Math.max(motionStep, Math.abs(motion - prevMotion));
+				}
+				prevFloor = floor;
+				prevMotion = motion;
+			}
+			return worst;
+		};
+		// Rest first, so the scenes are on their resting floor when the music arrives.
+		for (let i = 0; i < 60 * 12; i++) d.update(5, DT, STOPPED);
+		expect(d.ambience).toBe(1);
+		const restFloor = d.ambientMix.floor;
+		expect(watch(60 * 8, (i) => 5 + i * DT, LOUNGE)).toBeLessThan(limit);
+		expect(d.ambientMix.floor).toBeLessThan(restFloor - 0.1);
+		expect(floorStep).toBeLessThan(0.01);
+		expect(motionStep).toBeLessThan(0.02);
+		expect(watch(60 * 3, (i) => 13 + i * DT, PLAYING)).toBeLessThan(limit);
 	});
 });
