@@ -17,6 +17,7 @@ const STAGES: Record<IngestStage, ItemStatus> = {
 	decoding: 'analysing',
 	'tracking beats': 'analysing',
 	'transcribing drums': 'analysing',
+	'separating drums': 'analysing',
 	analysing: 'analysing'
 };
 
@@ -28,6 +29,7 @@ const LABELS: Record<IngestStage | 'composing', string> = {
 	decoding: 'Decoding',
 	'tracking beats': 'Tracking beats',
 	'transcribing drums': 'Transcribing drums',
+	'separating drums': 'Separating drums',
 	analysing: 'Analysing',
 	composing: 'Composing the show'
 };

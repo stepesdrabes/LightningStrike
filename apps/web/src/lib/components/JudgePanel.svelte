@@ -253,6 +253,7 @@
 
 	{#if trackId}
 		<div class="scroll">
+			<section><a href={`/drums?trackId=${encodeURIComponent(trackId)}`}>Review drum hits →</a></section>
 			<section>
 				<div class="stars" role="radiogroup" aria-label="How the show fit this track">
 					{#each [1, 2, 3, 4, 5] as n (n)}

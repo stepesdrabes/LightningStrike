@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "updated": "2026-09-13",
+  "purpose": "Evaluation-only interpretation of later user feedback. Never rewrite saved review verdicts.",
+  "overrides": [
+    {
+      "trackId": "wy7_PFy-ztQ",
+      "title": "Like a Prayer",
+      "audioHash": "6b8276276e6da4ff8dbf69a6cf278d822ec522bf3350f85b628e3f1a98ccfcde",
+      "analysisSha256": "165119f65e4e1493c4000061fe65393ec2b7f1f72fb4763f50fd4f057d2a131d",
+      "reviewRevision": 2,
+      "kind": "snare",
+      "annotationIds": [
+        "b8919548-e4c5-466d-83e3-e10f0008e0f0",
+        "cc0f71a1-ee5b-48a2-a707-7bb130a09705",
+        "2cbe069a-a934-4b54-9ac1-f69e87cc2eff",
+        "2d4386df-d709-41ed-84c7-9d6421eb30db",
+        "1dd30d34-1d78-4d3a-b9ed-10cdf5335e97",
+        "57e6c671-bbfa-4b9e-90f7-e37a4116005a",
+        "0a121a80-9bcd-4c57-b50e-01180082d238",
+        "ab02d008-5769-47af-9593-5879c4cc2f2a"
+      ],
+      "evaluation": "provisional",
+      "excludeFromConfirmedPositiveAndNegativeCounts": true,
+      "reason": "The user subsequently said all Like a Prayer snare judgments are uncertain. These saved snare labels are listening leads, not confirmed false clicks."
+    }
+  ],
+  "manualPlacementPolicy": "Kick annotations remain usable listening leads. Missed-hit mouse positions are approximate; do not score exact onset timing until acoustically confirmed. Unmarked events remain unjudged."
+}

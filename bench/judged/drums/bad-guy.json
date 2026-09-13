@@ -1,0 +1,9 @@
+{
+	"trackId": "ZD6rXLXZOEI",
+	"title": "Billie Eilish - bad guy",
+	"annotationType": "positive-only",
+	"source": "2026-09-13 listener review of the native-filtered 32-40 second excerpt: I think it sounds correct like that, no wrong clicks.",
+	"timingSource": "Click positions from production source detection snapped to original-audio onsets; not manually annotated millisecond timing.",
+	"limitations": "Partial listening validation of the listed clicks, not exhaustive full-track labels. The earlier review had an audible quick double-click; the delayed candidate at 37.903 was removed before this review.",
+	"snare": [32.446, 33.337, 34.226, 35.115, 35.931, 36.891, 37.783, 38.667, 39.558]
+}

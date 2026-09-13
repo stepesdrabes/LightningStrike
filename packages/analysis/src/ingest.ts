@@ -7,13 +7,14 @@ import type { TrackAnalysis, TrackContext } from '@mv/core';
 import { ANALYSIS_VERSION, CONTEXT_VERSION, gridTrust } from '@mv/core';
 import { analyzeTrack } from './analyze.ts';
 import { artworkHue } from './artwork.ts';
-import { decodeAudio, downloadAudio, probe, type ProbeResult } from './decode.ts';
+import { decodeAudio, downloadAudio, probe, resamplePcm, type ProbeResult } from './decode.ts';
 import { enrichTrack } from './enrich.ts';
 import { mapGenres } from './genreMap.ts';
 import { handMapGrid, type DrawingGrid } from './gridedits.ts';
 import { handMapFingerprint, type HandSection } from './handSections.ts';
 import { medianPeriod } from './metricalLevel.ts';
 import { KICK_CLAIMING_FAMILIES, familyCorroborated, loudKickRate } from './vocabulary.ts';
+import { readDrumEvidence, writeDrumEvidence } from './drumEvidenceCache.ts';
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 const LOCAL_ID = /^file-[a-f0-9]{12}$/;
@@ -209,6 +210,8 @@ export interface IngestResult {
 	fromCache: boolean;
 	/** Previous cached grid, sections and punctuation still match; retained shows must also lint. */
 	arrangementUnchanged?: true;
+	timings?: { totalMs: number; stagesMs: Record<string, number>; drumEvidenceCacheHit: boolean;
+		drumProviders?: Record<string, string> };
 }
 
 function sameArrangementLayout(previous: TrackAnalysis | null, analysis: TrackAnalysis): boolean {
@@ -386,6 +389,7 @@ export type IngestStage =
 	| 'decoding'
 	| 'tracking beats'
 	| 'transcribing drums'
+	| 'separating drums'
 	| 'analysing';
 
 export interface IngestOptions {
@@ -403,6 +407,14 @@ export interface IngestOptions {
 /** A YouTube URL or a local audio file path. */
 export async function ingest(source: string, opts: IngestOptions = {}): Promise<IngestResult> {
 	const log = opts.onProgress ?? (() => {});
+	const started = performance.now();
+	let checkpoint = started;
+	const stagesMs: Record<string, number> = {};
+	const measured = (stage: string) => {
+		const now = performance.now();
+		stagesMs[stage] = Math.round(now - checkpoint);
+		checkpoint = now;
+	};
 	await mkdir(CACHE_DIR, { recursive: true });
 
 	let id: string;
@@ -526,8 +538,10 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		}
 	}
 
+	measured('sourceAndMetadata');
 	log('decoding');
 	const decoded = await decodeAudio(audioPath);
+	measured('decode');
 
 	// Record effnet only after successful classification so failures retry on later ingests.
 	if (!context.sources.includes('effnet')) {
@@ -537,6 +551,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			await writeFile(contextPath(id), JSON.stringify(context, null, '\t'));
 		}
 	}
+	measured('genre');
 
 	// The model finds the beats; everything after it is unchanged. If the weights are missing
 	// or the graph fails, the in-repo tracker runs instead: a worse grid is a worse show, a
@@ -554,16 +569,18 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	} catch (e) {
 		log(`beat model unavailable, falling back: ${e instanceof Error ? e.message : String(e)}`);
 	}
+	measured('beats');
 
 	// Decode model drums at their training rate; upsampling the analysis PCM cannot restore lost bands.
 	let drums: import('./adtof.ts').AdtofOnsets | undefined;
+	let wide: Awaited<ReturnType<typeof decodeAudio>> | undefined;
 	try {
 		const { Adtof } = await import('./adtof.ts');
 		const model = await Adtof.create();
 		if (model) {
 			log('transcribing drums');
 			try {
-				const wide = await decodeAudio(audioPath, 44100);
+				wide = await decodeAudio(audioPath, 44100);
 				drums = await model.run(wide.mono);
 			} finally {
 				await model.close();
@@ -572,6 +589,53 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	} catch (e) {
 		log(`drum model unavailable, falling back: ${e instanceof Error ? e.message : String(e)}`);
 	}
+	measured('transcription');
+	let separatedDrums: import('./separatedDrums.ts').SeparatedDrumAudio | undefined;
+	let drumSeparation: string | undefined;
+	let drumEvidenceCacheHit = false;
+	const drumProviders: Record<string, string> = {};
+	try {
+		const { DrumSeparator, SEPARATION_VERSION } = await import('./separation.ts');
+		const provider = process.env.MV_DRUM_PROVIDER ?? 'cpu';
+		if (provider !== 'cpu' && provider !== 'dml') throw new Error(`Unsupported drum provider: ${provider}`);
+		const arena = process.env.MV_DRUM_CPU_ARENA;
+		if (arena !== undefined && arena !== 'true' && arena !== 'false') throw new Error('MV_DRUM_CPU_ARENA must be true or false.');
+		const separator = await DrumSeparator.create(undefined, { graphCacheDir: join(CACHE_DIR, 'separator-graphs'),
+			provider, cpuArena: arena === undefined ? undefined : arena === 'true' });
+		if (separator) {
+			log('separating drums');
+			try {
+				wide ??= await decodeAudio(audioPath, 44100);
+				const evidenceDir = join(CACHE_DIR, 'drum-evidence');
+				const evidenceKey = { audioHash: wide.hash,
+					modelVersion: provider === 'cpu' ? SEPARATION_VERSION : `${SEPARATION_VERSION}:${provider}`,
+					frames44k: wide.left.length };
+				separatedDrums = await readDrumEvidence(evidenceDir, evidenceKey) ?? undefined;
+				drumEvidenceCacheHit = separatedDrums !== undefined;
+				if (separatedDrums) {
+					log('Reusing separated drums');
+				} else {
+					const isolated = await separator.run(wide.left, wide.right, ({ stage, completed, total, provider: actualProvider }) => {
+						if (actualProvider) drumProviders[stage] = actualProvider;
+						const label = stage === 'drums' ? 'Isolating drums (1/2)' : 'Separating kicks and snares (2/2)';
+						log(`${label}: ${Math.round(100 * completed / Math.max(1, total))}%`);
+					});
+					const kick = await resamplePcm(isolated.kick, isolated.sampleRate);
+					const snare = await resamplePcm(isolated.snare, isolated.sampleRate);
+					const cymbal = isolated.cymbal ? await resamplePcm(isolated.cymbal, isolated.sampleRate) : undefined;
+					separatedDrums = { kick, snare, cymbal, sampleRate: 22050 };
+					await writeDrumEvidence(evidenceDir, evidenceKey, separatedDrums).catch(e =>
+						log(`Could not cache separated drums: ${e instanceof Error ? e.message : String(e)}`));
+				}
+				drumSeparation = SEPARATION_VERSION;
+			} finally {
+				await separator.close();
+			}
+		}
+	} catch (e) {
+		log(`drum separation unavailable, falling back: ${e instanceof Error ? e.message : String(e)}`);
+	}
+	measured('separation');
 
 	// Catalogue metrical corrections follow drum inference for the snare check; explicit listener
 	// corrections retain precedence.
@@ -600,18 +664,29 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		beats: tracked?.beats,
 		downbeats: tracked?.downbeats,
 		drums,
+		separatedDrums,
 		metricalLevel,
 		context,
 		...(await handMapInput(id))
 	});
 
+	if (drumSeparation) analysis.drumSeparation = drumSeparation;
+	measured('analysis');
 	await writeFile(analysisPath(id), JSON.stringify(analysis, null, '\t'));
 	// A fresh grid means a fresh verdict on it; the override, being the owner's, survives.
 	meta.duration = meta.duration || analysis.duration;
 	meta.gridTrust = gridTrust(analysis, context.publishedBpm);
 	await writeFile(metaPath(id), JSON.stringify(meta, null, '\t'));
 	context = await settleGenreFamily(id, context, analysis);
+	measured('persistence');
+	const timings = { totalMs: Math.round(performance.now() - started), stagesMs, drumEvidenceCacheHit,
+		drumProviders: Object.keys(drumProviders).length ? drumProviders : undefined };
+	await writeFile(join(CACHE_DIR, `${id}.preparation.json`), JSON.stringify({
+		trackId: id, audioHash: analysis.hash, analysisVersion: analysis.version,
+		drumSeparation, preparedAt: new Date().toISOString(), ...timings
+	}, null, '\t')).catch(() => {});
 	return { id, audioPath, analysis, meta, context, fromCache: false,
+		timings,
 		...(sameArrangementLayout(cached, analysis) ? { arrangementUnchanged: true as const } : {}) };
 }
 

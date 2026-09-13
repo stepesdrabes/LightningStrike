@@ -53,6 +53,8 @@ builds the web server and assembles its Node 24.11.0 sidecar automatically, pinn
 `apps/desktop/scripts/bundle-support.js`. To prepare desktop
 development separately, run `npm run bundle -w @mv/desktop`, then
 `npm run dev -w @mv/desktop`. The desktop app still expects the audio tools on PATH.
+The bundled native runtimes require macOS 14 or newer. Build on Apple Silicon for a native
+ARM64 application; the drum pipeline runs locally on CPU without Python or an NVIDIA GPU.
 
 ## How it works
 
@@ -112,6 +114,25 @@ model directory. The optional runtime models are:
 - **Discogs-EffNet** for genre evidence, also downloaded with a pinned digest.
 - **ADTOF** for kick/snare transcription, exported locally with
   [bench/export-adtof.py](bench/export-adtof.py).
+- **HTDemucs + DrumSep** for individual kick/snare evidence. The optional native ONNX
+  path improves snare/clap detection using source separation, original-audio attack timing,
+  and existing transcription. Kick recovery also requires independent model, full-mix
+  attack and separated low-frequency evidence. See
+  [setup and model provenance](bench/lab/SEPARATION.md) and
+  [evaluation and known limitations](bench/DRUM_RELIABILITY.md).
+  Preparation can take minutes per song on CPU. Install the models before refreshing
+  tracks; installing them later requires a fresh analysis of previously cached tracks.
+
+Drum listening is available from the Judge panel. It plays the full song with optional kick
+and snare clicks, loops a chosen passage, and keeps missed-hit and timing notes separately
+from the show. Click empty space in either drum lane to mark a missed hit; save notes for
+later comparison. Drafts remain in the browser if the page reloads.
+
+Successful separation also keeps lossless source evidence in `cache/drum-evidence/` (up to
+2 GiB, oldest entries evicted). Detector reanalysis can reuse it when the audio and models
+match. Hardware-specific optimized CPU graphs live in `cache/separator-graphs/`; these
+are derived files, not portable models. Per-track `.preparation.json` records stage timings.
+See [performance measurements and M1 Pro profiling](bench/lab/SEPARATION-PERFORMANCE.md).
 
 Analysis retains fallback paths when models are unavailable. Discogs-EffNet and ADTOF
 weights carry CC BY-NC-SA terms; preserve their upstream licenses and export restrictions.

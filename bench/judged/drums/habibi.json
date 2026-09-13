@@ -1,0 +1,16 @@
+{
+	"trackId": "tWEaUKCQ8Fg",
+	"title": "Habibi",
+	"artist": "STEIN27",
+	"annotationType": "partial",
+	"source": "Owner listening judgement, 2026-09-12: first three diagnostic clicks coincide with real claps/snares. Follow-up 2026-09-13 confirms the later attack at 46.940 after identifying the earlier 46.744 click as too soon.",
+	"snare": [39.5939347329198, 40.41035192058396, 41.22410007970149, 46.94009113839003],
+	"probableSnare": [18.397516, 68.980284, 84.487801],
+	"probablePositiveSource": "Owner 2026-09-13: I think they all sound correct, hard to judge from such short clips. These three residual-source candidates remain provisional rather than scored positives.",
+	"probableNonSnare": [43.477812381227714, 44.301358031301206],
+	"nonSnare": [45.92511651871228, 46.74456775932199],
+	"confirmedNegativeSource": "Owner listening judgement, 2026-09-13: 45.925 is not a snare. The full-chorus click at 46.744 is too soon; the subsequent isolated review confirmed 46.940 as the correct clap attack.",
+	"negativeSource": "Owner: I think all three are other sounds; third at the end is hard to tell. These are provisional judgements, not scored negative ground truth.",
+	"timingSource": "Nearest measured broadband attack; owner confirmed class presence, not millisecond alignment.",
+	"limitations": "Partial labels only. Unlisted events are not negatives; this cannot measure precision or full-passage recall."
+}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { dropUnconfirmed, type DrumStream } from './drums.ts';
 import { quantiseOnsets } from './quantise.ts';
+import { analyzeTrack } from './analyze.ts';
 
 const beats = Float64Array.from({ length: 25 }, (_, i) => i * 0.5);
 const options = { beats, beatsPerBar: 4, duration: 12 };
@@ -12,6 +13,27 @@ function stream(times: number[], levels = times.map(() => 0.9)): DrumStream {
 }
 
 describe('pattern evidence and played timing', () => {
+	it('keeps kick model evidence ownership through analysis before pattern completion', () => {
+		const sampleRate = 22050;
+		const mono = new Float32Array(sampleRate * 12);
+		const kick = stream([0.5, 0.625, 2.5, 2.625, 4.57, 6.5, 6.625]);
+		for (let i = 0; i < mono.length; i++) mono[i] = 0.02 * Math.sin(2 * Math.PI * 220 * i / sampleRate);
+		const probe: Record<string, any> = {};
+		analyzeTrack({ mono, sampleRate, duration: 12, hash: 'kick-ownership-test',
+			trackId: 'file-000000000000', title: 'Kick evidence ownership',
+			beats: [...beats], downbeats: [0, 2, 4, 6, 8, 10],
+			drums: { kick, snare: stream([]), hat: stream([]) }, probe });
+		const detected = probe.drums.detected.kick as DrumStream;
+		expect(detected.sourceFrames).toEqual(kick.times.map((t) => Math.round(t * kick.fps)));
+		// A source peak and its acoustically aligned attack straddle a subdivision boundary.
+		// Use the actual analysis output's provenance; only the observed time moves here.
+		const shifted = { ...detected, times: kick.times.map((t) => t === 4.57 ? 4.55 : t) };
+		const output = quantiseOnsets(shifted, options);
+		expect(output.times).toEqual(shifted.times);
+		expect(output.invented.every((value) => !value)).toBe(true);
+		expect(kick.sourceFrames).toBeUndefined();
+	});
+
 	it('retains every separately detected flam and fast roll inside one grid slot', () => {
 		const input = stream([0.48, 0.52, 1, 1.05, 1.1, 1.15, 2.5, 3.5]);
 		const output = quantiseOnsets(input, options);

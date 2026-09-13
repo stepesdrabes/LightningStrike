@@ -18,9 +18,11 @@ interface DecodedAudio {
  */
 export const ANALYSIS_RATE = 22050;
 
-function run(cmd: string, args: string[]): Promise<{ stdout: Buffer; stderr: string }> {
+function run(cmd: string, args: string[], input?: Buffer): Promise<{ stdout: Buffer; stderr: string }> {
 	return new Promise((resolve, reject) => {
-		const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+		const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+		child.stdin.on('error', () => { /* Process errors are reported by error/close below. */ });
+		child.stdin.end(input);
 		const out: Buffer[] = [];
 		let err = '';
 		child.stdout.on('data', (d: Buffer) => out.push(d));
@@ -33,6 +35,20 @@ function run(cmd: string, args: string[]): Promise<{ stdout: Buffer; stderr: str
 			else resolve({ stdout: Buffer.concat(out), stderr: err });
 		});
 	});
+}
+
+/** Use the same antialiasing filter for isolated stems as for the full analysis audio. */
+export async function resamplePcm(mono: Float32Array, fromRate: number, toRate = ANALYSIS_RATE): Promise<Float32Array> {
+	if (!Number.isFinite(fromRate) || fromRate <= 0 || !Number.isFinite(toRate) || toRate <= 0) {
+		throw new Error('PCM sample rates must be positive.');
+	}
+	if (fromRate === toRate) return mono;
+	if (mono.length === 0) return new Float32Array();
+	const { stdout } = await run('ffmpeg', [
+		'-nostdin', '-v', 'error', '-f', 'f32le', '-ar', String(fromRate), '-ac', '1', '-i', '-',
+		'-af', `aresample=${toRate}:filter_size=64:cutoff=0.98`, '-f', 'f32le', '-'
+	], Buffer.from(mono.buffer, mono.byteOffset, mono.byteLength));
+	return new Float32Array(stdout.buffer.slice(stdout.byteOffset, stdout.byteOffset + stdout.byteLength));
 }
 
 /**

@@ -1,0 +1,235 @@
+# Separation performance measurements
+
+Measurements use the same 24-second stereo Habibi PCM excerpt, the pinned production
+models and production chunking. Outputs and JSON profiles are ignored under
+`bench/reports/audio-reliability/separation-performance`. Run only one neural benchmark
+at a time, with LightningStrike preparation idle: a concurrent app run caused paging and
+invalidated one six-thread measurement on this 16 GB machine.
+
+The tested machine is a Ryzen 5 3600 (six physical cores), 16 GB RAM, RTX 3060 12 GB,
+Windows 11, Node 24.19 and ONNX Runtime Node 1.27.0. These are not M1 Pro measurements.
+The harness records OS/architecture, CPU, ORT versions, provider options and input hash.
+
+## Whole-track measurements
+
+The full 146.946-second Habibi recording was decoded and analyzed in isolated copies of
+the desktop cache, with the app closed. Runs use Node 24.19 and the same saved source
+audio and context. Learned weights are unchanged; the exported graph differs.
+`bench/lab/profile-ingest.ts` runs the real ingest worker and
+records progress, process peak RSS, hashes and stage timing. The older baseline uses the
+installed bundled worker; the candidate uses the workspace worker.
+
+| Pipeline | Wall time | Process peak RSS | Evidence reused |
+|---|---:|---:|---|
+| Installed v35 baseline | 171.37 s | 5.39 GB | No |
+| Final v36 packaged CPU worker, first run | 159.55 s | 3.01 GB | No |
+| Same CPU path, forced detector reanalysis | 15.78 s | 1.98 GB | Yes |
+| Final v36 DirectML on RTX 3060, first run | 51.88 s | 1.74 GB | No |
+
+The final portable CPU path takes 6.9% less time and 44.2% less peak process memory.
+Forced reanalysis with cached source evidence takes 90.8% less time than the old cold run;
+this is not a first-import claim. DirectML takes 69.7% less time on this tested Windows GPU
+and remains explicit opt-in (`MV_DRUM_PROVIDER=dml`). CPU is the portable default.
+Reports: `ingest-performance/{installed-baseline,release-v36-cpu,release-v36-dml}`. The two
+release profiles use the identical built worker and packaged native dependencies on Node
+24.19, matching the baseline benchmark host. Both statuses are verified; packaging and
+all other inference had finished. The actual bundled Node 24.11.0 also completed forced
+cached reanalysis in 15.91 seconds with bit-identical event streams.
+
+Final CPU and DirectML produce identical 301 kick, 138 snare and 546 hat timestamps; one
+snare strength differs by one percentage point. All eight newly recovered Habibi snare
+attacks, four prior confirmed positives and two negative exclusions pass on CPU. Cold
+and warm CPU event streams are bit-identical. Detailed checks are in
+`judgement-correction/{release-provider-parity,pinned-runtime-check,release-cpu-habibi-labels}.json`.
+
+The earlier performance-only CPU run took 153.92 seconds and 3.03 GB, a 10.2% time saving;
+the observed CPU range is therefore about 154–160 seconds, not a guaranteed fixed time.
+Those changes preserved complete snare/hat streams; source-ownership correction removed
+12 duplicate/invented kicks. The earlier clean DirectML run took 51.59 seconds.
+The earlier arena/FFT/cache-only candidate took 184.18 s cold and was a regression;
+`optimized-cpu` is retained as negative evidence. A separate 52.50 s DirectML run overlapped
+two static model exports and is excluded from the clean timing comparison.
+
+Successful 22.05 kHz kick/snare/cymbal evidence is persisted losslessly, keyed by the
+44.1 kHz stereo PCM identity, frame count, separation revision and resampling settings.
+Payload checksums reject truncated/corrupt artifacts. The 2 GiB LRU budget touches only
+derived `.drums` files. Graph and evidence cache errors do not fail song preparation.
+
+```sh
+node bench/lab/profile-ingest.ts --id=TRACK --out=NEW_REPORT_DIRECTORY --runs=2
+```
+
+Use a new report directory each time. The harness copies source audio, metadata, context,
+analysis and any hand-map judgement into its own cache. It never rewrites the source
+library. It records source-module hashes and rejects changes during a workspace benchmark.
+
+## Host-FFT model extraction (current runtime)
+
+The HTDemucs learned network is unchanged, but its dense Fourier-transform convolutions
+and inverse overlap-add graph have moved to the shared host FFT. The extracted model is
+168.5 MB instead of 316.4 MB, with 3,430 nodes instead of 24,765. Its pinned checksum and
+reproducible setup are documented in [SEPARATION.md](SEPARATION.md).
+
+A fixed normalized 7.8-second CPU forward matches the original export with relative RMS
+error 3.70e-7, maximum absolute error 2.06e-6 and correlation 0.99999999999988. Three warm
+host-FFT calls took a median 3.398 seconds versus 3.730 seconds for the original optimized
+graph, approximately 9% faster. Loading the new graph took about 0.9 seconds.
+
+A separate consecutive arena comparison found median 2.766 seconds with the CPU arena
+and 3.051 seconds without it, with identical PCM. Peak RSS was 4.75 GiB with the arena
+versus 2.55 GiB without. The memory-conscious default therefore keeps the HTDemucs arena
+disabled; the explicit `cpuArena` option supports future measurements on other devices.
+These chunk measurements are not a whole-track ingestion speed claim.
+
+## Earlier CPU measurements (original dense-FFT model)
+
+HTDemucs' default CPU arena retained approximately 5.24 GB RSS after inference. Disabling
+that arena retained approximately 0.79 GB and produced **bit-identical** mono drums for
+all 1,058,400 excerpt samples. The clear-window four-thread run took 17.54 seconds for
+five model calls, versus 22.54 seconds in the earlier arena baseline. Because available
+memory also improved between runs, whole-track controlled timings should determine the
+speed claim. The production setting changes HTDemucs only; DrumSep keeps its CPU arena.
+
+Two HTDemucs threads were slower (30.00 seconds of inference). Six threads with its arena
+disabled took 18.35 seconds, so the portable default remains four. A separate six-thread
+run under memory pressure is excluded entirely.
+
+The inverse FFT now packs its even real and odd imaginary spectral components into one
+real transform. On a saved eight-second model tensor, the median time fell from 442 to
+252 ms (43%). Maximum sample error was 2.38e-7 and relative RMS error 4.52e-8. Independent
+NumPy reference tests and a direct complex-bin phase test pass. Models, overlap, source
+normalization and the onset detector are unchanged by these implementation optimizations.
+
+An optimized HTDemucs graph loaded in 0.577 seconds versus 5.4–8.7 seconds for the original
+graph. It occupies 345 MB and includes hardware-specific graph transforms. The optional
+production `graphCacheDir` keeps one graph per model, keyed by original model
+SHA-256, ORT version, platform/architecture/CPU, OS release and CPU session options.
+Reopening requires streaming SHA-256 verification and disables already-applied graph
+transforms. Published filenames include the configuration and graph-content SHA-256;
+an atomic hard link publishes immutable bytes. Concurrent pruning can cause a cache miss,
+but cannot substitute different bytes between verification and native opening. Corrupt
+or unloadable artifacts rebuild from the verified original model. Filesystems without
+hard-link support retain the successfully loaded original session without caching it.
+
+There is no persistent lease to strand after desktop shutdown. Temporary exports include
+the process ID and a UUID. Cleanup removes an orphan only when probing its process returns
+`ESRCH`; live, suspended, inaccessible or reused process IDs are retained conservatively.
+Stale configurations are pruned best-effort, with a 512 MiB published-graph budget per
+model. Oversized exports are discarded; undeletable old graphs can prevent publication.
+Concurrent active exports can temporarily exceed that budget. Only derived graph names
+are eligible for cleanup; user audio and original models are outside this directory.
+The prior real two-pass model test
+compiled both graphs, reopened them and obtained bit-identical PCM for all four outputs.
+The immutable-publication update is covered by simulated loader tests for interruption,
+corruption, concurrent pruning, failed export, unsupported links and oversized output;
+it has not repeated neural inference or an M1 Pro runtime test.
+
+## GPU validation of the extracted graph
+
+The original dense-FFT HTDemucs graph exhausted the 12 GB GPU. The extracted graph fits,
+but DirectML fusion produced severely incorrect finite PCM (relative RMS error above
+13,000). Disabling HTDemucs DirectML graph fusion with
+`extra.ep.dml.disable_graph_fusion='1'` restored accuracy. It is mandatory in the explicit
+Windows DirectML runtime option. CPU remains the default on every platform.
+
+| Two-stage input | Separation wall time | Peak process RSS |
+|---|---:|---:|
+| Habibi 24 s | 11.84 s | 0.98 GiB |
+| Back In Black 24 s | 11.67 s | 0.91 GiB |
+| bad guy 24 s | 13.05 s | 1.01 GiB |
+| Full Habibi 146.946 s | 36.03 s | 1.40 GiB |
+
+These fresh-process runs include graph loading and first-call GPU compilation, both
+separation stages, mono output and diagnostic file writes; they exclude decoding,
+transcription and the final detector. Full Habibi used 12.12 seconds for first-stage drums
+and 19.11 seconds for the kit stage. GPU total-device memory peaked at 3,959 MiB from a
+1,517 MiB desktop baseline. Steady HTDemucs calls including host FFT took roughly 0.35
+seconds; DrumSep neural calls took roughly 0.27 seconds plus host FFT.
+
+All source PCM comparisons passed relative RMS <0.001 and correlation >0.999999.
+Full-Habibi snare relative RMS was 0.000335, with correlation 0.9999999474. The three
+24-second excerpts produced exactly the same kick/snare/hat event times and strengths.
+Full Habibi retained all 296 kick, 129 snare and 543 hat timestamps, all four confirmed
+claps and both excluded false snares. Two snare strengths changed by one percentage
+point; all other strengths matched. This validates the tested device and driver, not
+untested Mac or Windows accelerators.
+
+Reports are under `separation-performance/htcut-dml-{habibi,bib,bad-guy,habibi-full}`.
+`compare-separated-pcm.ts` and `compare-separated-onsets.ts` compare
+each candidate against saved original sources with the identical PCM/grid/transcription.
+The historical cut-graph admission script is preserved in the local cleanup archive;
+current runs use `profile-separation.ts` plus these numerical/event comparisons.
+
+DirectML requires sequential execution and disabled memory patterns; see the
+[official provider documentation](https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html).
+
+## Reproduction and future M1 Pro tests
+
+The desktop package now declares macOS 14.0 as its minimum. Inspection of both native
+ONNX Runtime 1.27 ARM64 Mach-O libraries found deployment target 14.0; this is stricter
+than the bundled Node 24.11 requirement of 13.5. `node bench/lab/check-mac-runtime.ts`
+checks architecture and deployment metadata against the app declaration without executing
+macOS code. Native packaging selects ARM64 Node and ONNX dependencies on an ARM64 build
+host. Copy the updated platform-independent `models/` files or run the pinned setup script
+before building there. Windows optimized graph caches are regenerated for the Mac.
+
+The input is planar stereo float32 PCM at 44.1 kHz. Use the identical PCM file for every
+variant; do not compare excerpt normalization against a different full-track input.
+
+```sh
+node bench/lab/profile-separation.ts --provider=cpu --threads=4 --out=bench/reports/audio-reliability/separation-performance/cpu-4
+node bench/lab/profile-separation.ts --provider=cpu --threads=6 --out=bench/reports/audio-reliability/separation-performance/cpu-6
+node bench/lab/profile-separation-fft.ts
+```
+
+`--stage=drums` profiles only HTDemucs; `--stage=kit` takes previously separated planar
+stereo drums. `--arena=false` disables CPU arenas for the requested stages. The production
+default already disables the HTDemucs arena. `--save-optimized=DIR` writes diagnostic
+optimized ONNX files; it never changes the original pinned models.
+`--arena=true` measures the higher-memory alternative. `--ort-profile=DIR` records the
+native provider/operator trace; `summarize-ort-profile.ts TRACE.json` aggregates it. Trace
+durations can represent GPU host dispatch, so use the main harness for wall time.
+`--graph-cache=DIR` exercises production CPU cache generation and reuse; compare first and
+second runs in the same environment. This flag cannot be combined with GPU providers,
+arena/spinning overrides or diagnostic export paths.
+
+On the user's M1 Pro, first record CPU four/six/eight-thread measurements. The installed
+macOS ARM64 package also advertises CoreML; this harness can test it without changing
+production defaults:
+
+```sh
+uv run --no-project --python 3.12 --with onnx==1.22.0 python bench/lab/static-drumsep.py
+node bench/lab/profile-separation.ts --provider=coreml --coreml-flags=24 --threads=4 --kit-model=bench/reports/audio-reliability/model-exports/drumsep-static-8s.onnx --out=bench/reports/audio-reliability/separation-performance/coreml-24
+node bench/lab/profile-separation.ts --provider=coreml --coreml-flags=56 --threads=4 --kit-model=bench/reports/audio-reliability/model-exports/drumsep-static-8s.onnx --out=bench/reports/audio-reliability/separation-performance/coreml-56
+```
+
+Flags 24 request MLProgram/static shapes; 56 also selects CPU/GPU rather than ANE.
+The stock Node binding accepts these legacy flags, not the modern CoreML model-cache
+options. See the [pinned provider flag definitions](https://github.com/microsoft/onnxruntime/blob/v1.27.0/include/onnxruntime/core/providers/coreml/coreml_provider_factory.h).
+The Node 1.27 session parser does not implement `freeDimensionOverrides`; actual kit
+calls remain fixed at eight seconds, but CoreML static testing needs fixed graph metadata.
+The harness therefore requires `--kit-model` for this test and rejects unavailable bundled
+providers. It does not pass the ignored dimension-override option. Profiling and provider
+partitioning must be checked on the target Mac instead of assuming accelerator coverage.
+Both throughput and PCM/onset fidelity remain unmeasured on Apple hardware. A provider
+being present is not evidence that every operator will run efficiently on that provider.
+
+### Static DrumSep experiment
+
+`static-drumsep.py` creates a separate ignored experiment; it never installs a runtime
+model. Its input shapes are `waveform[1,2,352800]` and `magnitude[1,4,2048,345]`; outputs are
+`freq_output[1,4,4,2048,345]` and `time_output[1,4,2,352800]`. ONNX 1.22.0 validation passes,
+and serialized operation/initializer hashes are unchanged from the verified source.
+
+| Variant | Bytes | SHA-256 |
+|---|---:|---|
+| Fixed input/output metadata | 335,091,950 | `2b511692d79af20344c32cdaf25d27e4fe330c2da815f846b7993015797a0296` |
+| Plus ONNX shape inference | 335,301,078 | `804b6eabfb8cb6544b98993beb76506e18dd96aa1e34083a8d057bad12f45213` |
+
+The inferred variant adds 3,042 intermediate shape records. Reproduce it with
+`--infer-shapes --out=bench/reports/audio-reliability/model-exports/drumsep-static-8s-inferred.onnx`.
+Both retain all 2,988 original operations and learned weights. Static input metadata may
+allow more shape folding or provider placement than the dynamic graph, but CPU timing
+and numerical comparison remain pending. Benchmark with identical saved stereo drums
+using `--stage=kit --input=PATH --kit-model=PATH`; omit `--kit-model` for the dynamic baseline.
+Model overrides are checksum-recorded and cannot be combined with the production graph cache.

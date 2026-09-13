@@ -35,6 +35,7 @@ import {
 	type DrumStream
 } from './drums.ts';
 import { extractFeatures } from './features.ts';
+import { detectSeparatedDrums, mergeSeparatedSnare, type SeparatedDrumAudio } from './separatedDrums.ts';
 import { detectMeter, type Meter } from './downbeats.ts';
 import { barStartsAtCuts, deriveGridCuts, resyncedCuts } from './gridedits.ts';
 import { acceptedRestarts, barLinesFrom, openingRun, phaseRuns, phaseSegments, type PhaseRun } from './downbeatPhase.ts';
@@ -44,6 +45,7 @@ import { applyHeadLabels, type SectionPosteriors } from './headLabels.ts';
 import { assessMetricalLevel } from './metricalLevel.ts';
 import { measureLoudness } from './loudness.ts';
 import { barGroups, quantiseOnsets } from './quantise.ts';
+import { mergeKickEvidence } from './kickEvidence.ts';
 import { analyseStereo } from './stereo.ts';
 import { consolidateSections } from './consolidate.ts';
 import {
@@ -111,6 +113,8 @@ interface AnalyzeInput {
 		cymbal?: DrumStream;
 		snareClicks?: number[];
 	};
+	/** Optional individual drum sources, resampled to 22050 Hz after two-stage separation. */
+	separatedDrums?: SeparatedDrumAudio;
 	/** Optional genre family and synced lyrics for section vocabulary and chorus location. */
 	context?: TrackContext;
 	/** False prevents recursive compound-meter correction after the octave guard fires. */
@@ -346,9 +350,9 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 
 	// Detect drums before refining boundaries; quantisation waits for repeat groups.
 	const dspDrums = detectDrums(features.spec, { beatPeriod: grid.beatPeriod, odf: features.odf });
-	const detected = input.drums
+	const primaryDrums = input.drums
 		? {
-				kick: snapStream(input.drums.kick, features.odf, features.curves.fps, grid.beatPeriod),
+				kick: snapStream(withModelPeakFrames(input.drums.kick), features.odf, features.curves.fps, grid.beatPeriod),
 				snare: snapStream(
 					withModelPeakFrames(
 						dropUnconfirmed(
@@ -371,6 +375,12 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 				)
 			}
 		: dspDrums;
+	const separated = input.separatedDrums
+		? detectSeparatedDrums(input.separatedDrums, input.mono, sampleRate, features.odf, features.curves.fps, primaryDrums,
+			input.drums ? dspDrums.snare : undefined)
+		: undefined;
+	// Kick source evidence is merged after pattern correction with independent model support.
+	const detected = separated ? { ...primaryDrums, snare: separated.snare } : primaryDrums;
 	const rawKicks = countPerBar(detected.kick.times, bars.time, bars.count);
 
 	// Compute lyric coverage before structure so voice entrances can contribute boundary evidence.
@@ -496,9 +506,17 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	};
 	// Measured on MDB Drums: kick completion in cohorts under 0.4 is mostly false, snare
 	// thinning outside near-certain cohorts mostly removes real ghost notes.
+	const legacySnare = quantiseOnsets(primaryDrums.snare, { ...quantiseOptions, demoteFloor: SNARE_DEMOTE_FLOOR });
+	const legacyKick = quantiseOnsets(detected.kick, { ...quantiseOptions, promoteFloor: KICK_PROMOTE_FLOOR });
 	const drums = {
-		kick: quantiseOnsets(detected.kick, { ...quantiseOptions, promoteFloor: KICK_PROMOTE_FLOOR }),
-		snare: quantiseOnsets(detected.snare, { ...quantiseOptions, demoteFloor: SNARE_DEMOTE_FLOOR }),
+		kick: input.drums && input.separatedDrums?.sampleRate === sampleRate
+			? mergeKickEvidence(legacyKick, dspDrums.kick, input.separatedDrums.kick, input.mono,
+				input.drums.kick, sampleRate)
+			: legacyKick,
+		snare: input.separatedDrums
+			? mergeSeparatedSnare(legacySnare, detected.snare, input.separatedDrums, input.mono, sampleRate,
+				input.drums ? dspDrums.snare : undefined)
+			: legacySnare,
 		hat: quantiseOnsets(detected.hat, quantiseOptions)
 	};
 	if (input.probe) input.probe.drums = { dsp: dspDrums, detected, quantiseOptions, final: drums };

@@ -5,17 +5,21 @@ import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { ANALYSIS_VERSION, emptyContext, type TrackAnalysis } from '@mv/core';
 import { analyzeTrack } from './analyze.ts';
-import { decodeAudio, downloadAudio, probe } from './decode.ts';
+import { decodeAudio, downloadAudio, probe, resamplePcm } from './decode.ts';
+import { DrumSeparator } from './separation.ts';
 import { artworkHue } from './artwork.ts';
 import { ingest, type TrackMeta } from './ingest.ts';
 
 const cache = vi.hoisted(() => ({ dir: '' }));
 vi.mock('./paths.ts', () => ({ get CACHE_DIR() { return cache.dir; } }));
-vi.mock('./decode.ts', () => ({ decodeAudio: vi.fn(), downloadAudio: vi.fn(), probe: vi.fn() }));
+vi.mock('./decode.ts', () => ({ decodeAudio: vi.fn(), downloadAudio: vi.fn(), probe: vi.fn(), resamplePcm: vi.fn() }));
 vi.mock('./analyze.ts', () => ({ analyzeTrack: vi.fn() }));
 vi.mock('./artwork.ts', () => ({ artworkHue: vi.fn() }));
 vi.mock('./beatthis.ts', () => ({ BeatThis: { create: vi.fn().mockRejectedValue(new Error('no model')) } }));
 vi.mock('./adtof.ts', () => ({ Adtof: { create: vi.fn().mockResolvedValue(null) } }));
+vi.mock('./separation.ts', () => ({
+	DrumSeparator: { create: vi.fn().mockResolvedValue(null) }, SEPARATION_VERSION: 'fixture-separator'
+}));
 
 const youtubeId = 'abcdefghijk';
 const youtubeSource = `https://www.youtube.com/watch?v=${youtubeId}`;
@@ -29,6 +33,9 @@ function fixtureAnalysis(): TrackAnalysis {
 
 beforeEach(async () => {
 	vi.clearAllMocks();
+	vi.stubEnv('MV_DRUM_PROVIDER', 'cpu');
+	vi.stubEnv('MV_DRUM_CPU_ARENA', undefined);
+	vi.mocked(DrumSeparator.create).mockResolvedValue(null);
 	cache.dir = await mkdtemp(join(tmpdir(), 'lightningstrike-ingest-'));
 	vi.mocked(probe).mockRejectedValue(new Error('YouTube is unavailable'));
 	vi.mocked(decodeAudio).mockResolvedValue({
@@ -41,6 +48,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+	vi.unstubAllEnvs();
 	await rm(cache.dir, { recursive: true, force: true });
 });
 
@@ -61,6 +69,75 @@ async function saveTrack(id = youtubeId, source = youtubeSource, version = ANALY
 }
 
 describe('queue cache refresh', () => {
+	it('reuses lossless source evidence during detector reruns but invalidates changed audio', async () => {
+		await saveTrack();
+		const kick = new Float32Array([0, 1, 0, 0]);
+		const snare = new Float32Array([0, 0, .001, 0]);
+		const cymbal = new Float32Array([.5, 0, 0, 0]);
+		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: kick, kick, snare, cymbal });
+		const close = vi.fn().mockResolvedValue(undefined);
+		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close } as unknown as DrumSeparator);
+		vi.mocked(resamplePcm).mockImplementation(async (pcm) => pcm);
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(run).toHaveBeenCalledOnce();
+		expect(close).toHaveBeenCalledTimes(2);
+		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({ separatedDrums: { kick, snare, cymbal, sampleRate: 22050 } }));
+		expect(result.timings?.drumEvidenceCacheHit).toBe(true);
+		vi.mocked(decodeAudio).mockResolvedValue({
+			mono: new Float32Array(8), left: new Float32Array(8), right: new Float32Array(8),
+			sampleRate: 22050, duration: 160, hash: 'changed-audio'
+		});
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(run).toHaveBeenCalledTimes(2);
+	});
+	it('keeps experimental provider evidence separate from the portable CPU cache', async () => {
+		await saveTrack();
+		const pcm = new Float32Array([0, 1, 0, 0]);
+		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: pcm, kick: pcm, snare: pcm, cymbal: pcm });
+		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close: vi.fn() } as unknown as DrumSeparator);
+		vi.mocked(resamplePcm).mockImplementation(async value => value);
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		vi.stubEnv('MV_DRUM_PROVIDER', 'dml');
+		const firstGpu = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(firstGpu.timings?.drumEvidenceCacheHit).toBe(false);
+		expect(run).toHaveBeenCalledTimes(2);
+		const cachedGpu = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(cachedGpu.timings?.drumEvidenceCacheHit).toBe(true);
+		vi.stubEnv('MV_DRUM_PROVIDER', 'cpu');
+		const cachedCpu = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(cachedCpu.timings?.drumEvidenceCacheHit).toBe(true);
+		expect(run).toHaveBeenCalledTimes(2);
+	});
+
+	it('passes isolated sources into analysis and releases the separator', async () => {
+		await saveTrack();
+		const kick = new Float32Array([0, 1, 0]);
+		const snare = new Float32Array([0, 0, 1]);
+		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: kick, kick, snare });
+		const close = vi.fn().mockResolvedValue(undefined);
+		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close } as unknown as DrumSeparator);
+		vi.mocked(resamplePcm).mockImplementation(async (pcm) => pcm);
+		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(run).toHaveBeenCalledOnce();
+		expect(close).toHaveBeenCalledOnce();
+		expect(result.analysis.drumSeparation).toBe('fixture-separator');
+		expect(analyzeTrack).toHaveBeenCalledWith(expect.objectContaining({ separatedDrums: { kick, snare, cymbal: undefined, sampleRate: 22050 } }));
+	});
+
+	it('completes analysis with the fallback if separation fails and still releases resources', async () => {
+		await saveTrack();
+		const close = vi.fn().mockResolvedValue(undefined);
+		vi.mocked(DrumSeparator.create).mockResolvedValue({
+			run: vi.fn().mockRejectedValue(new Error('inference failed')), close
+		} as unknown as DrumSeparator);
+		const progress = vi.fn();
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true, onProgress: progress });
+		expect(close).toHaveBeenCalledOnce();
+		expect(analyzeTrack).toHaveBeenCalledWith(expect.objectContaining({ separatedDrums: undefined }));
+		expect(progress).toHaveBeenCalledWith('drum separation unavailable, falling back: inference failed');
+	});
+
 	it('reports compatible arrangement inputs across fresh analysis without persisting that verdict', async () => {
 		await saveTrack();
 		const fresh = { ...fixtureAnalysis(), tempo: { ...fixtureAnalysis().tempo, barTimes: [0, 160] }, moments: [] };
