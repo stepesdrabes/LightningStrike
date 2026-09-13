@@ -1,14 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { link, mkdir, readdir, rm, stat, utimes } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { basename, join, toNamespacedPath } from 'node:path';
 import { arch, cpus, platform, release } from 'node:os';
 
 const MAX_GRAPH_BYTES = 512 * 1024 ** 2;
 
 export async function hashFile(path: string): Promise<string> {
 	const hash = createHash('sha256');
-	for await (const chunk of createReadStream(path)) hash.update(chunk);
+	// Large reads verify the multi-hundred-megabyte models much faster than the default size.
+	for await (const chunk of createReadStream(path, { highWaterMark: 8 * 1024 ** 2 })) hash.update(chunk);
 	return hash.digest('hex');
 }
 
@@ -79,7 +80,9 @@ export async function createCachedCpuSession<T>(input: GraphCacheOptions<T>): Pr
 			}
 			// Published graph bytes never change. Concurrent pruning may cause a cache miss,
 			// but cannot substitute different bytes between verification and native opening.
-			const session = await load(graph, { ...sessionOptions, graphOptimizationLevel: 'disabled' });
+			// ONNX Runtime on Windows cannot open paths over 260 characters without the \\?\ prefix.
+			const session = await load(toNamespacedPath(graph),
+				{ ...sessionOptions, graphOptimizationLevel: 'disabled' });
 			const now = new Date();
 			await utimes(graph, now, now).catch(() => {});
 			await trimGraphs(cacheDir, name, graph);

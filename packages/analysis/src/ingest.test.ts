@@ -8,6 +8,7 @@ import { analyzeTrack } from './analyze.ts';
 import { decodeAudio, downloadAudio, probe, resamplePcm } from './decode.ts';
 import { DrumSeparator } from './separation.ts';
 import { artworkHue } from './artwork.ts';
+import { enrichTrack } from './enrich.ts';
 import { ingest, type TrackMeta } from './ingest.ts';
 
 const cache = vi.hoisted(() => ({ dir: '' }));
@@ -15,6 +16,10 @@ vi.mock('./paths.ts', () => ({ get CACHE_DIR() { return cache.dir; } }));
 vi.mock('./decode.ts', () => ({ decodeAudio: vi.fn(), downloadAudio: vi.fn(), probe: vi.fn(), resamplePcm: vi.fn() }));
 vi.mock('./analyze.ts', () => ({ analyzeTrack: vi.fn() }));
 vi.mock('./artwork.ts', () => ({ artworkHue: vi.fn() }));
+vi.mock('./enrich.ts', () => ({ enrichTrack: vi.fn() }));
+vi.mock('./dsp.ts', () => ({
+	preludeBeside: vi.fn(async () => undefined), onsetsBeside: vi.fn(async () => undefined)
+}));
 vi.mock('./beatthis.ts', () => ({ BeatThis: { create: vi.fn().mockRejectedValue(new Error('no model')) } }));
 vi.mock('./adtof.ts', () => ({ Adtof: { create: vi.fn().mockResolvedValue(null) } }));
 vi.mock('./separation.ts', () => ({
@@ -256,6 +261,44 @@ describe('queue cache refresh', () => {
 		await expect(ingest(youtubeSource, { cachedTrackId: youtubeId })).rejects.toThrow('YouTube is unavailable');
 		expect(probe).toHaveBeenCalled();
 		expect(analyzeTrack).not.toHaveBeenCalled();
+	});
+
+	it('decodes audio while catalogue lookups are still running and keeps their result', async () => {
+		await saveTrack();
+		const unenriched = JSON.stringify({ ...emptyContext(), sources: [] });
+		await writeFile(join(cache.dir, `${youtubeId}.context.json`), unenriched);
+		let decodeStarted!: () => void;
+		const decoding = new Promise<void>((resolve) => { decodeStarted = resolve; });
+		const fallback = vi.mocked(decodeAudio).getMockImplementation();
+		vi.mocked(decodeAudio).mockImplementationOnce(async (...args) => {
+			decodeStarted();
+			return fallback!(...args);
+		});
+		vi.mocked(enrichTrack).mockImplementationOnce(async () => {
+			await decoding;
+			return { ...emptyContext(), publishedBpm: 124, sources: ['deezer'] };
+		});
+		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId });
+		expect(result.context.publishedBpm).toBe(124);
+		expect(analyzeTrack).toHaveBeenCalledWith(expect.objectContaining({
+			context: expect.objectContaining({ publishedBpm: 124 })
+		}));
+		const stored = JSON.parse(await readFile(join(cache.dir, `${youtubeId}.context.json`), 'utf8'));
+		expect(stored.publishedBpm).toBe(124);
+	});
+
+	it('keeps finished lookups when the audio cannot be decoded', async () => {
+		await saveTrack();
+		const unenriched = JSON.stringify({ ...emptyContext(), sources: [] });
+		await writeFile(join(cache.dir, `${youtubeId}.context.json`), unenriched);
+		vi.mocked(decodeAudio).mockRejectedValueOnce(new Error('ffmpeg: invalid audio data'));
+		vi.mocked(enrichTrack).mockImplementationOnce(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 20));
+			return { ...emptyContext(), sources: ['itunes'] };
+		});
+		await expect(ingest(youtubeSource, { cachedTrackId: youtubeId })).rejects.toThrow('invalid audio data');
+		const stored = JSON.parse(await readFile(join(cache.dir, `${youtubeId}.context.json`), 'utf8'));
+		expect(stored.sources).toEqual(['itunes']);
 	});
 
 	it('reports corrupt audio and leaves the old analysis available', async () => {

@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { performance } from 'node:perf_hooks';
-import { adtofFilterbank, adtofSpectrogram, activationStream } from '../packages/analysis/src/adtof.ts';
+import { adtofFilterbank, adtofSpectrogram, activationStream, filterbankSpans } from '../packages/analysis/src/adtof.ts';
 import { decodeAudio } from '../packages/analysis/src/decode.ts';
 import { MODEL_DIR } from '../packages/analysis/src/paths.ts';
 import * as ort from 'onnxruntime-node';
@@ -68,7 +68,8 @@ writeFileSync(join(out, 'inputs.json'), JSON.stringify({ audio, cases: cases.map
 const oracle = spawnSync('uv', ['run', '--no-project', '--python', '3.12', '--with', 'numpy', '--with', 'librosa',
 	'python', 'bench/adtof-parity.py', out], { stdio: 'inherit', shell: false });
 if (oracle.status !== 0) throw new Error(`Python oracle exited ${oracle.status}`);
-const original = { filters: readFloats(join(out, 'original-bank.f32')), nBins: 84, fftBins: 1024 };
+const originalFilters = readFloats(join(out, 'original-bank.f32'));
+const original = { filters: originalFilters, nBins: 84, fftBins: 1024, ...filterbankSpans(originalFilters, 84, 1024) };
 const portBankParity = residual(bank.filters, readFloats(join(out, 'port-bank.f32')));
 if (portBankParity.max > 1e-7) throw new Error('Port filterbank parity failed');
 const reports: object[] = [];

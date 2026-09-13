@@ -2,6 +2,12 @@ export function clamp01(v: number): number {
 	return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
+/** A plain loop: `every(Number.isFinite)` is far slower on whole songs. */
+export function allFinite(a: Float32Array): boolean {
+	for (let i = 0; i < a.length; i++) if (!Number.isFinite(a[i])) return false;
+	return true;
+}
+
 export function mean(a: ArrayLike<number>, from = 0, to = a.length): number {
 	const lo = Math.max(0, from);
 	const hi = Math.min(a.length, to);

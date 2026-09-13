@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 /** Find the workspaces package.json from this module; cwd differs between dev and production. */
@@ -18,6 +18,11 @@ export function workspaceRoot(): string {
 		dir = parent;
 	}
 	return process.cwd();
+}
+
+/** A worker entry beside this module: TypeScript in a checkout, the named bundle in the desktop app. */
+export function workerFile(source: string, bundle: string): string | null {
+	return [join(import.meta.dirname, source), join(import.meta.dirname, bundle)].find(existsSync) ?? null;
 }
 
 /** Decoded audio and analysis blobs. */

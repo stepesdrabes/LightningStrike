@@ -96,3 +96,4 @@ for (const [id, targets] of byTrack) {
 	}
 }
 console.log(`\n${hit} hit, ${closer} closer, ${same} same, ${worse} worse of ${hit + closer + same + worse}`);
+await model?.close();

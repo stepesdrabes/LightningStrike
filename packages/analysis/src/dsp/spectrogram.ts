@@ -138,17 +138,19 @@ export function computeSpectrogram(
 		rms[f] = Math.sqrt(acc);
 	}
 
-	const fps = sampleRate / hop;
-	return {
+	return withFrameClock({
 		sampleRate,
 		hop,
-		fps,
+		fps: sampleRate / hop,
 		frames,
 		bands: bank.bands,
 		mag,
 		centreHz: bank.centreHz,
-		rms,
-		timeOf: (frame) => frame / fps,
-		frameOf: (time) => Math.round(time * fps)
-	};
+		rms
+	});
+}
+
+export function withFrameClock(spec: Omit<Spectrogram, 'timeOf' | 'frameOf'>): Spectrogram {
+	const { fps } = spec;
+	return { ...spec, timeOf: (frame) => frame / fps, frameOf: (time) => Math.round(time * fps) };
 }

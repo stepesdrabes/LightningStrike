@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, readFile, readdir, rename, stat, unlink, utimes } from 'node:fs/promises';
 import { join } from 'node:path';
+import { allFinite } from './dsp/stats.ts';
 import type { SeparatedDrumAudio } from './separatedDrums.ts';
 
 const FORMAT = 1;
@@ -55,7 +56,7 @@ export async function readDrumEvidence(root: string, key: DrumEvidenceKey): Prom
 		const pcm = payload.byteOffset % 4 === 0
 			? new Float32Array(payload.buffer, payload.byteOffset, payload.byteLength / 4)
 			: new Float32Array(payload.buffer.slice(payload.byteOffset, payload.byteOffset + payload.byteLength));
-		if (!pcm.every(Number.isFinite)) return null;
+		if (!allFinite(pcm)) return null;
 		const now = new Date();
 		await utimes(path, now, now).catch(() => {});
 		return { sampleRate: 22050, kick: pcm.subarray(0, header.frames),
@@ -71,7 +72,7 @@ export async function writeDrumEvidence(
 	const { kick, snare, cymbal, sampleRate } = sources;
 	if (!cymbal || sampleRate !== 22050 || !kick.length || snare.length !== kick.length
 		|| cymbal.length !== kick.length || Math.abs(kick.length - key.frames44k / 2) > 1
-		|| [kick, snare, cymbal].some(pcm => !pcm.every(Number.isFinite))) return;
+		|| [kick, snare, cymbal].some(pcm => !allFinite(pcm))) return;
 	const payload = [kick, snare, cymbal].map(pcm => Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength));
 	const hasher = createHash('sha256');
 	for (const buffer of payload) hasher.update(buffer);

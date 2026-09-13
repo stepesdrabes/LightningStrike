@@ -96,6 +96,19 @@ export function mergeSeparatedSnare(
 	return { times: hits.map((hit) => hit.time), levels: hits.map((hit) => hit.level), invented: hits.map((hit) => hit.invented) };
 }
 
+export interface SourceOnsets {
+	odf: Float32Array;
+	fps: number;
+}
+
+/** A separated source's conditioned onset curve depends only on that source. */
+export function sourceOnsets(source: Float32Array, rate: number): SourceOnsets {
+	const bank = logFilterBank(2048, rate, 24, 30, 17000);
+	const spec = computeSpectrogram(source, rate, { fftSize: 2048, hop: Math.round(rate / 100), bank });
+	const curves = onsetStrength(spec);
+	return { odf: conditionCurve(curves.flux, curves.fps), fps: curves.fps };
+}
+
 /** Source separation provides class evidence; original audio supplies the final attack time. */
 export function detectSeparatedDrums(
 	sources: SeparatedDrumAudio,
@@ -104,25 +117,24 @@ export function detectSeparatedDrums(
 	mixOdf: Float32Array,
 	mixFps: number,
 	primary: Record<'kick' | 'snare', DrumStream>,
-	independentDspSnare?: Pick<DrumStream, 'times'>
+	independentDspSnare?: Pick<DrumStream, 'times'>,
+	/** `sourceOnsets` of the same sources, computed ahead. */
+	onsets?: Record<'kick' | 'snare', SourceOnsets>
 ): { kick: DrumStream; snare: DrumStream } {
 	const rate = sources.sampleRate;
 	if (rate !== 22050) throw new Error('Separated drum onset analysis requires 22050 Hz audio.');
-	const bank = logFilterBank(2048, rate, 24, 30, 17000);
 	const snareMidPower = midrangePower(sources.snare, rate);
 	const cymbalLeakage = snareCymbalVeto(sources, snareMidPower);
 	const streams = {} as { kick: DrumStream; snare: DrumStream };
 	let kickAttacks: number[] = [];
 	for (const kind of ['kick', 'snare'] as const) {
 		const source = sources[kind];
-		const spec = computeSpectrogram(source, rate, { fftSize: 2048, hop: Math.round(rate / 100), bank });
-		const curves = onsetStrength(spec);
-		const odf = conditionCurve(curves.flux, curves.fps);
-		const peaks = pickPeaks(odf, curves.fps, {
+		const { odf, fps } = onsets?.[kind] ?? sourceOnsets(source, rate);
+		const peaks = pickPeaks(odf, fps, {
 			localMaxSec: 0.025, movingMeanSec: 0.15, refractorySec: 0.06,
 			delta: kind === 'snare' ? 0.1 : 0.4
 		});
-		const times = peaks.map((peak) => refinePeakTime(odf, peak.frame, curves.fps));
+		const times = peaks.map((peak) => refinePeakTime(odf, peak.frame, fps));
 		if (kind === 'kick') kickAttacks = times;
 		const energy = times.map((time) => rms(source, rate, time)).sort((a, b) => a - b);
 		const reference = Math.max(1e-8, energy[Math.floor(energy.length * 0.9)] ?? 0);
@@ -181,7 +193,7 @@ export function detectSeparatedDrums(
 		}
 		streams[kind] = {
 			times: accepted.map((event) => event.time), levels: accepted.map((event) => event.level),
-			curve: odf, fps: curves.fps
+			curve: odf, fps
 		};
 	}
 	return streams;

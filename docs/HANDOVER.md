@@ -1,18 +1,20 @@
-# LightningStrike handover: performance, then drum accuracy
+# LightningStrike handover: drum accuracy next
 
-Updated 2026-09-13. Read `README.md` and `CLAUDE.md` first. This replaces the old v30
-handover; historical arrangement/lighting work remains in git and `bench/judged/`.
+Updated 2026-09-13 after the preparation performance session. Read `README.md` and
+`CLAUDE.md` first. This replaces the old v30 handover; historical arrangement/lighting work
+remains in git and `bench/judged/`.
 
 ## Session order and user preferences
 
-1. **Next session: optimize preparation performance**, preserving the current drum gains.
-2. **Following session: improve drum accuracy further**, using the listening harness and
+1. **Done: preparation performance.** First-time preparation overlaps independent work and
+   produces byte-identical analyses; see [Preparation performance](#preparation-performance).
+2. **Next session: improve drum accuracy further**, using the listening harness and
    the owner's hearing. Do not mix a threshold sweep into an implementation speed comparison.
 
-The show is on September 19 on a **MacBook Pro M1 Pro**, currently in service. Its memory
-capacity has not been confirmed. The owner will test the Mac after it returns. Accuracy
-matters more than minimum latency; minutes are acceptable, but the 3–4 minute waits need
-improvement. Significant progress is sufficient; perfection is not a release requirement.
+The show is on September 19 on a **MacBook Pro M1 Pro with 16 GB unified memory**, currently
+in service. The owner will test the Mac after it returns. Accuracy matters more than minimum
+latency; minutes are acceptable, but the 3–4 minute waits need improvement. Significant
+progress is sufficient; perfection is not a release requirement.
 The owner heard improvements in nearly every song, especially fewer gaps between hits.
 Ask for judgements when sound classification is ambiguous. Use useful 8–20 second context,
 not tiny isolated clips. Rim/side-stick hits are allowed as quieter snare accents.
@@ -20,8 +22,14 @@ not tiny isolated clips. Rim/side-stick hits are allowed as quieter snare accent
 ## Current production state
 
 - Analysis **36**, show **34**, context **3**. No changes to lighting composition this round.
-- `packages/analysis/src/separation.ts`: CPU default, four threads; HTDemucs CPU arena off,
-  DrumSep arena on. Fixed 7.8/8 second chunks, 25% overlap, centered tail context.
+- `packages/analysis/src/separation.ts`: CPU default, four threads per session; HTDemucs CPU
+  arena off, DrumSep arena on. Fixed 7.8/8 second chunks, 25% overlap, centered tail context.
+  Two CPU lanes with at least eight logical CPUs and 12 GiB (`MV_DRUM_CPU_LANES`).
+- `onnxSession.ts` / `onnxWorker.ts`: every ONNX session runs in a worker thread.
+  `prelude.ts` / `dsp.ts` / `dspWorker.ts`: audio-only analysis steps run in workers, and
+  analysis computes them itself if a worker fails. The desktop bundle ships
+  `onnx-worker.mjs` and `dsp-worker.mjs` beside `ingest-worker.mjs`
+  (`apps/desktop/scripts/bundle.js`); without them everything still runs on the ingest thread.
 - `dsp/separationFft.ts`: host FFT replaces dense Fourier operations in the HTDemucs export;
   packed inverse FFT and bounded denominator cache. Learned weights are unchanged.
 - `cpuGraphCache.ts`: checksummed immutable CPU graphs keyed by model, runtime and hardware;
@@ -38,7 +46,6 @@ provider and restart the affected stage on CPU on native errors/non-finite outpu
 **Do not remove HTDemucs `extra.ep.dml.disable_graph_fusion='1'`: without it, ORT 1.27
 produced severely wrong but finite audio.** Node 1.27 ignores `freeDimensionOverrides`;
 the no-op setting was removed in pre-commit cleanup. Actual kit inputs remain fixed-size.
-No runtime tuning changed during cleanup; the existing verified installers remain valid.
 
 Model revision: `htdemucs-a6eabce3-drumsep-e35619ce-v4`.
 
@@ -51,55 +58,43 @@ See [model setup and correctness constraints](../bench/lab/SEPARATION.md). Model
 large reports are ignored by git. A fresh clone needs the updated `models/` directory
 or the pinned setup script; old HTDemucs exports do not pass the new checksum.
 
-## Measured baseline for the performance session
+## Preparation performance
 
-Windows 11, Ryzen 5 3600, 16 GB RAM, RTX 3060 12 GB, ORT Node 1.27.0. Same saved Habibi
-audio (146.946 s), context and benchmark host Node 24.19, isolated caches, app closed.
-These are preparation from saved audio, excluding new downloads/metadata lookups.
+First-time preparation now overlaps independent work: ONNX sessions run in worker threads,
+CPU separation uses two lanes, DirectML compiles both separation models ahead of their
+stages, and audio-only analysis steps run in workers. Every analysis stays byte-identical.
+Design, measurements, rejected experiments and commands are in
+[SEPARATION-PERFORMANCE.md](../bench/lab/SEPARATION-PERFORMANCE.md).
 
-| Run | Wall time | Peak process RSS |
-|---|---:|---:|
-| Installed v35 CPU baseline | 171.373 s | 5.39 GB |
-| Final v36 packaged CPU worker, cold | 159.549 s | 3.01 GB |
-| Same worker, cached evidence / forced reanalysis | 15.781 s | 1.98 GB |
-| Final v36 DirectML, cold | 51.876 s | 1.74 GB (GPU memory separate) |
+Habibi (146.946 s) on this PC (Ryzen 5 3600, 16 GB, RTX 3060) from saved audio, warm CPU graph
+cache, separation evidence deleted before every run; final A/B against the previous commit:
 
-CPU cold time improved 6.9%, memory 44.2%; forced reanalysis 90.8%; DirectML time 69.7%.
-An earlier optimized CPU run took 153.924 s, so observed cold CPU range is 154–160 s.
-Do not promise sub-minute CPU preparation or call cached reanalysis a first-import result.
-The packaged Node 24.11.0 additionally reproduced identical events in 15.912 s cached.
-Final CPU/DML timestamps match exactly (301 kick / 138 snare / 546 hat); one snare level
-differs by one percentage point. Cold/warm CPU event streams match exactly.
+| Pipeline | Previous | Now | Peak RSS previous / now |
+|---|---:|---:|---:|
+| CPU (`MV_DRUM_PROVIDER=cpu`) | 125.9-127.5 s | 83.8-86.4 s | 2.81-2.92 / 6.68-6.81 GB |
+| DirectML (this PC's app setting) | 47.3-47.5 s | 17.9-18.4 s | 1.75-2.08 / 2.83-2.94 GB |
 
-Reports under `bench/reports/audio-reliability/`:
+A final behavior-preserving refactor came after these runs; an interleaved recheck on a busier
+machine kept the final bundle within noise of the previous one, with identical analyses.
 
-- `ingest-performance/{installed-baseline,release-v36-cpu,release-v36-dml}/timings.json`
-- `judgement-correction/{release-provider-parity,pinned-runtime-check,release-manifest}.json`
-- `separation-performance/`: chunk tests, original tensor captures and rejected approaches.
+Constraints that keep shows identical: separation sessions keep four intra-op threads,
+input tensors keep `byteOffset` 0 and `session.disable_prepacking` stays unset. Costs: CPU
+preparation peaks near 6.8 GB, and a 10 ms main-thread timer standing in for the 60 fps LED
+loop fired up to 13-17 ms late at the 99th percentile (6.6-6.9 ms before, 9-11 ms with
+DirectML). `MV_DRUM_CPU_LANES=1` restores one CPU lane. Reports:
+`bench/reports/audio-reliability/ingest-performance/perf-0913/`.
 
-The arena/FFT-only early candidate was slower cold (184.18 s). A 52.50 s DML run overlapped
-model export and is excluded; the final 51.876 s run is clean. No new inference should run
-concurrently with the application, another benchmark, a build, or tests.
+Remaining leads, none implemented:
 
-### Next performance experiments
-
-- Start with a stable, isolated whole-track baseline using `bench/lab/profile-ingest.ts`.
-  Set `MV_DRUM_PROVIDER=cpu` explicitly for CPU measurements: this Windows user's delivered
-  app configuration uses DirectML. `--worker` can test a built worker; use a new `--out`
-  directory and require report status `verified`. Source/model changes invalidate a run.
-- `profile-separation.ts` measures individual stages, graph cache, provider and thread
-  choices. `compare-separated-pcm.ts` and `compare-separated-onsets.ts` check fidelity.
-- `profile-ht-cpu-arena.ts` is **prepared but unrun**. Its four arena/pattern/initializer
-  configurations depend on the local ignored captures named in `FILES`. Run `--prepare`
-  before `--run`; no gains from this experiment have been established.
-- `static-drumsep.py` exports bench-only fixed-shape metadata, optionally shape inference.
-  It preserves operations/weights but has **not** passed neural parity or timing. Do not
-  install it as the production model based only on ONNX validation.
-- Node 1.27 does not expose arena shrink/cap controls or RunOptions.extra. Do not silently
-  benchmark ignored flags. Keep provider fallback visible; successful execution is not
-  numerical or acoustic validation.
-
-See [full measurements and commands](../bench/lab/SEPARATION-PERFORMANCE.md).
+- First-time URLs call yt-dlp twice (`probe`, then `downloadAudio`); one call printing JSON
+  before download would remove a YouTube extraction. Model verification and the DirectML
+  HTDemucs session could also start when a download starts. Untested: both need downloads.
+- `analyzeTrack` stages that do not read separated drums (grid, meter, sections, mix drums)
+  could run once Beat This! and ADTOF finish, beside separation: at most 0.7 s, and only
+  with its operation order unchanged.
+- CPU lanes re-hash the same cached graph per lane (about 0.3 s of CPU per song).
+- The queue prepares only the current and next rows; preparing further ahead is a product
+  decision, not a speed-up of one song.
 
 ## Mac requirements and unverified work
 
@@ -109,7 +104,13 @@ The pinned ONNX ARM64 binaries declare **macOS 14.0**, stricter than Node 24.11'
 and minimum OS metadata. **Nothing has executed on the M1 Pro in this effort.**
 
 Build natively on Apple Silicon with the updated models and the normal Tauri prerequisites.
-Measure CPU four/six/eight threads and RAM pressure before selecting a Mac default. CoreML
+Keep four intra-op threads per session. Compare `MV_DRUM_CPU_LANES=1` and `2` with
+`profile-ingest.ts` (wall time, peak RSS, timer lateness); the default is two lanes on the
+M1 Pro. On the 16 GB PC with only 6.8 GB free, one lane took 129 s at a 4.3 GB peak and two
+lanes 94 s at 6.7 GB (84 s with more memory free), so close other apps before preparing a
+queue. Finder-launched apps ignore shell exports, so set a lane override with
+`launchctl setenv MV_DRUM_CPU_LANES 1` before opening the app. Watch the LEDs while a
+track prepares during playback; one lane is the fallback if frames hitch. CoreML
 is a future experiment, not a shipping speed claim: the harness supports legacy flags 24
 (MLProgram/static) and 56 (plus CPU/GPU), and requires the separately exported static kit
 model. Verify actual provider placement and cold compilation, then PCM and onset parity.
@@ -172,18 +173,20 @@ strict validation of manually imported scorer JSON; verify current behavior befo
 
 ## Delivery, checks and cleanup
 
-The v36 Windows installers are under `apps/desktop/src-tauri/target/release/bundle/`.
-`judgement-correction/release-manifest.json` records their hashes and verified worker.
-Pre-commit cleanup changed documentation and removed only an ignored native option and
-formatting from runtime source; numerical behavior and version constants are unchanged.
-After this commit the requested installation target is
-`%LOCALAPPDATA%/Programs/LightningStrike`, with user `MV_DRUM_PROVIDER=dml` configured.
-Read `judgement-correction/installation-receipt.json` for post-commit install verification;
-that local receipt is written by the delivery step, not stored in git.
+On 2026-09-13 the owner had the Windows app rebuilt from the uncommitted preparation
+performance work and installed over v36 in `%LOCALAPPDATA%/Programs/LightningStrike`;
+user `MV_DRUM_PROVIDER=dml` stays configured and the app library was untouched. Installers
+are under `apps/desktop/src-tauri/target/release/bundle/`. The local receipt
+`bench/reports/audio-reliability/ingest-performance/perf-0913/installation-receipt.json`
+records installer and file hashes, the byte-for-byte comparison of the installed server,
+runtime and models with the build, and prepared-track checks with the installed runtime
+whose analyses equal the references. The NSIS upgrade leaves files from earlier builds in
+`server/`; 387 such unreferenced files were moved to the Recycle Bin. The v36 release
+records remain in `judgement-correction/`.
 
-The final pre-commit run passed 1,385 tests (two optional skips), clean TypeScript/Svelte
-checks, and `git diff --check`. Release validation also includes full CPU/DML event
-comparison and pinned Node runtime replay. Run `npm test`, `npm run check`, and
+After the preparation performance work, 1,402 tests passed (two optional skips) with clean
+TypeScript/Svelte checks and `git diff --check`. Release validation also includes full
+CPU/DML event comparison and pinned Node runtime replay. Run `npm test`, `npm run check`, and
 `git diff --check` before future commits. No cached models, datasets,
 audio, optimized graphs, built runtime or installers belong in git.
 

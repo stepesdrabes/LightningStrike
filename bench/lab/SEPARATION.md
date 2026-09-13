@@ -2,8 +2,13 @@
 
 The optional production path runs HTDemucs on stereo 44.1 kHz PCM, then DrumSep on the
 stereo drum estimate. `DrumSeparator` returns mono drums, kick, snare and cymbal PCM at the original
-sample positions. It releases the first ONNX session before opening the second, uses 25%
-overlap with Demucs triangle weights, and bounds each neural call to 7.8 or 8 seconds.
+sample positions. On CPU it releases the first model's sessions before opening the second's,
+uses 25% overlap with Demucs triangle weights, and bounds each neural call to 7.8 or 8 seconds.
+Sessions run in worker threads; chunk inputs are prepared while earlier chunks run, and
+results are committed in chunk order. CPU separation uses two concurrent sessions per
+model on machines with at least eight logical CPUs and 12 GiB (`lanes`, or
+`MV_DRUM_CPU_LANES`). Each keeps four intra-op threads because DrumSep's CPU output changes
+with that count.
 Partial chunks use the same centered context padding as `demucs.apply_model`.
 Both graph calls always receive their validated fixed lengths. Although DrumSep declares
 dynamic axes, arbitrary final lengths can fail in internal traced padding branches.
@@ -76,8 +81,10 @@ uses fixed-length DrumSep inputs and disables HTDemucs DirectML graph fusion. Th
 correctness requirement: ORT 1.27's fused HTDemucs graph produced large, finite incorrect
 values on the tested RTX 3060. Native errors or non-finite output restart the affected
 stage on CPU; progress identifies the actual provider. CPU graph caches are not used by
-DirectML. Successful execution on an untested GPU/driver is not itself numerical validation.
-No CoreML or GPU default is enabled on macOS.
+DirectML. DirectML opens HTDemucs while the model checksums run, and opens DrumSep while
+HTDemucs runs and compiles it on an all-zero chunk; later outputs are unchanged. Successful
+execution on an untested GPU/driver is not itself numerical validation. No CoreML or GPU
+default is enabled on macOS.
 
 Validation tools:
 

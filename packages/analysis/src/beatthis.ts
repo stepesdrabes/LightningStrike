@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { RealFft, hannWindow } from './dsp/fft.ts';
+import { QUIET_THREADS, openSession, type OnnxSession } from './onnxSession.ts';
 import { MODEL_DIR } from './paths.ts';
 
 /**
@@ -101,13 +101,23 @@ function logMelSpectrogram(mono: Float32Array): { frames: number; data: Float32A
 	const out = new Float32Array(frames * MEL_BINS);
 	// torchaudio's normalized='frame_length' divides the magnitude by sqrt(win_length).
 	const scale = 1 / Math.sqrt(N_FFT);
+	// Zero weights add nothing to the finite, ascending sum, so each band reads only its span.
+	const first = new Int32Array(MEL_BINS).fill(bins);
+	const last = new Int32Array(MEL_BINS).fill(-1);
+	for (let j = 0; j < MEL_BINS; j++) {
+		for (let i = 0; i < bins; i++) {
+			if (fb[i * MEL_BINS + j] === 0) continue;
+			first[j] = Math.min(first[j], i);
+			last[j] = i;
+		}
+	}
 
 	for (let f = 0; f < frames; f++) {
 		fft.magnitudes(padded, f * HOP, window, mags, scale);
 		const o = f * MEL_BINS;
 		for (let j = 0; j < MEL_BINS; j++) {
 			let acc = 0;
-			for (let i = 0; i < bins; i++) acc += mags[i] * fb[i * MEL_BINS + j];
+			for (let i = first[j]; i <= last[j]; i++) acc += mags[i] * fb[i * MEL_BINS + j];
 			out[o + j] = Math.log1p(LOG_MULTIPLIER * acc);
 		}
 	}
@@ -164,45 +174,25 @@ function pickPeaks(logits: Float32Array): number[] {
 	return deduplicatePeaks(raw, 1);
 }
 
-interface Session {
-	run(feeds: Record<string, unknown>): Promise<Record<string, { data: Float32Array }>>;
-	release?(): Promise<void>;
-}
-type TensorCtor = new (type: string, data: Float32Array, dims: number[]) => unknown;
-
-interface Ort {
-	InferenceSession: { create(path: string, opts: unknown): Promise<Session> };
-	Tensor: TensorCtor;
-}
-
-/** Load the native addon through createRequire so bundlers cannot replace it with a throwing stub. */
-function loadOrt(): Ort {
-	const require = createRequire(import.meta.url);
-	return require('onnxruntime-node') as Ort;
-}
-
 export class BeatThis {
 	// Node strips types rather than compiling them, so no parameter properties here, any more
 	// than in the packages this repo consumes as source.
-	private session!: Session;
-	private Tensor!: TensorCtor;
+	private session!: OnnxSession;
 
 	/** Bench-only checkpoint override. Downloads always use the shipping model name. */
 	static async create(file = 'beat_this.onnx'): Promise<BeatThis> {
 		if (file === 'beat_this.onnx' && !modelsPresent()) await ensureModels();
-		const ort = loadOrt();
-		const session = await ort.InferenceSession.create(join(MODEL_DIR, file), {
-			executionProviders: ['cpu'],
-			graphOptimizationLevel: 'all'
-		});
 		const self = new BeatThis();
-		self.session = session as unknown as Session;
-		self.Tensor = ort.Tensor as unknown as TensorCtor;
+		self.session = await openSession(join(MODEL_DIR, file), {
+			executionProviders: ['cpu'],
+			graphOptimizationLevel: 'all',
+			...QUIET_THREADS
+		});
 		return self;
 	}
 
 	async close(): Promise<void> {
-		await this.session.release?.();
+		await this.session.release();
 	}
 
 	/** 22050 Hz mono, the arithmetic mean of the channels. */
@@ -228,9 +218,7 @@ export class BeatThis {
 
 			// One window per call: batching them materialises an attention tensor of
 			// windows x 32 x 1500 x 1500 floats, which is gigabytes on a long track.
-			const out = await this.session.run({
-				spect: new this.Tensor('float32', window, [1, CHUNK, MEL_BINS]) as never
-			});
+			const out = await this.session.run({ spect: { data: window, dims: [1, CHUNK, MEL_BINS] } });
 
 			for (let t = BORDER; t < CHUNK - BORDER; t++) {
 				const dst = start + t;

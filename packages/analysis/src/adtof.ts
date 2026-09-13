@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { RealFft } from './dsp/fft.ts';
+import { QUIET_THREADS, openSession, type OnnxSession } from './onnxSession.ts';
 import { MODEL_DIR } from './paths.ts';
 import type { DrumStream } from './drums.ts';
 
@@ -52,6 +52,9 @@ export interface AdtofFilterbank {
 	filters: Float32Array;
 	nBins: number;
 	fftBins: number;
+	/** Inclusive nonzero span of each band's row; zero weights add nothing to its sum. */
+	first: Int32Array;
+	last: Int32Array;
 }
 
 /** The PyTorch port anchors its logarithmic bands at 20 Hz. */
@@ -101,7 +104,23 @@ export function adtofFilterbank(): AdtofFilterbank {
 		for (let b = 0; b < fftBins; b++) sum += filters[row + b];
 		if (sum > 0) for (let b = 0; b < fftBins; b++) filters[row + b] /= sum;
 	}
-	return { filters, nBins, fftBins };
+	return { filters, nBins, fftBins, ...filterbankSpans(filters, nBins, fftBins) };
+}
+
+/** Each band row's inclusive nonzero span, for a bank laid out as nBins rows of fftBins weights. */
+export function filterbankSpans(
+	filters: Float32Array, nBins: number, fftBins: number
+): Pick<AdtofFilterbank, 'first' | 'last'> {
+	const first = new Int32Array(nBins).fill(fftBins);
+	const last = new Int32Array(nBins).fill(-1);
+	for (let i = 0; i < nBins; i++) {
+		for (let b = 0; b < fftBins; b++) {
+			if (filters[i * fftBins + b] === 0) continue;
+			first[i] = Math.min(first[i], b);
+			last[i] = b;
+		}
+	}
+	return { first, last };
 }
 
 /** np.hanning: symmetric, unlike the analysis stack's periodic COLA window. */
@@ -126,7 +145,7 @@ export function adtofSpectrogram(mono: Float32Array, bank: AdtofFilterbank): Flo
 		for (let i = 0; i < bank.nBins; i++) {
 			const row = i * bank.fftBins;
 			let acc = 0;
-			for (let b = 0; b < bank.fftBins; b++) acc += bank.filters[row + b] * mags[b];
+			for (let b = bank.first[i]; b <= bank.last[i]; b++) acc += bank.filters[row + b] * mags[b];
 			spec[out + i] = Math.log10(1 + acc);
 		}
 	}
@@ -239,31 +258,12 @@ export function onsetsFromActivations(act: Float32Array): AdtofOnsets {
 	};
 }
 
-interface Session {
-	run(feeds: Record<string, unknown>): Promise<Record<string, { data: Float32Array }>>;
-	release?(): Promise<void>;
-}
-type TensorCtor = new (type: string, data: Float32Array, dims: number[]) => unknown;
-
-interface Ort {
-	InferenceSession: { create(path: string, opts: unknown): Promise<Session> };
-	Tensor: TensorCtor;
-}
-
-/** Load the native addon through createRequire so bundlers cannot replace it with a throwing stub. */
-function loadOrt(): Ort {
-	const require = createRequire(import.meta.url);
-	return require('onnxruntime-node') as Ort;
-}
-
 export class Adtof {
-	private readonly session: Session;
-	private readonly Tensor: TensorCtor;
+	private readonly session: OnnxSession;
 	private readonly bank: AdtofFilterbank;
 
-	private constructor(session: Session, Tensor: TensorCtor) {
+	private constructor(session: OnnxSession) {
 		this.session = session;
-		this.Tensor = Tensor;
 		this.bank = adtofFilterbank();
 	}
 
@@ -271,16 +271,12 @@ export class Adtof {
 	static async create(): Promise<Adtof | null> {
 		const path = join(MODEL_DIR, MODEL_FILE);
 		if (!existsSync(path)) return null;
-		const ort = loadOrt();
-		const session = await ort.InferenceSession.create(path, {
-			// Serialise inference: competing graphs saturate CPU and slow each other.
-			intraOpNumThreads: 0
-		});
-		return new Adtof(session, ort.Tensor);
+		const session = await openSession(path, { intraOpNumThreads: 0, ...QUIET_THREADS });
+		return new Adtof(session);
 	}
 
 	async close(): Promise<void> {
-		await this.session.release?.();
+		await this.session.release();
 	}
 
 	/** `mono` must be 44.1 kHz: the filterbank is a property of the training frontend. */
@@ -292,9 +288,9 @@ export class Adtof {
 		const spec = adtofSpectrogram(mono, this.bank);
 
 		const result = await this.session.run({
-			spectrogram: new this.Tensor('float32', spec, [1, frames, this.bank.nBins, 1]) as never
-		});
-		const act = result.activations.data as Float32Array;
+			spectrogram: { data: spec, dims: [1, frames, this.bank.nBins, 1] }
+		}, { transfer: true });
+		const act = result.activations.data;
 		if (probe) probe.activations = act;
 		return onsetsFromActivations(act);
 	}

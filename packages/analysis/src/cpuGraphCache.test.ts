@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, truncateSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, toNamespacedPath } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createCachedCpuSession } from './cpuGraphCache.ts';
 
@@ -52,7 +52,7 @@ describe('optional CPU graph cache', () => {
 		await createCachedCpuSession(input);
 		const cached = graph();
 		await createCachedCpuSession(input);
-		expect(calls.map(call => call.path)).toEqual([input.modelPath, cached]);
+		expect(calls.map(call => call.path)).toEqual([input.modelPath, toNamespacedPath(cached)]);
 		expect(calls[1].options.graphOptimizationLevel).toBe('disabled');
 		expect(graphs()).toHaveLength(1);
 		expect(readdirSync(input.cacheDir)).toEqual(graphs());
@@ -82,7 +82,7 @@ describe('optional CPU graph cache', () => {
 		await createCachedCpuSession(input);
 		const cached = graph();
 		const result = await createCachedCpuSession({ ...input, load: async (path, options) => {
-			if (path === cached) throw new Error('unsupported compiled operator');
+			if (path === toNamespacedPath(cached)) throw new Error('unsupported compiled operator');
 			return input.load(path, options);
 		} });
 		expect(result.path).toBe(input.modelPath);
@@ -125,7 +125,7 @@ describe('optional CPU graph cache', () => {
 		await createCachedCpuSession(input);
 		expect(readdirSync(input.cacheDir)).not.toContain(dead);
 		expect(readdirSync(input.cacheDir)).toEqual(expect.arrayContaining([live, denied, 'htdemucs.lock']));
-		expect((await createCachedCpuSession(input)).path).toBe(graph());
+		expect((await createCachedCpuSession(input)).path).toBe(toNamespacedPath(graph()));
 	});
 
 	it('does not publish oversized exports and retains valid inference', async () => {
@@ -145,7 +145,7 @@ describe('optional CPU graph cache', () => {
 		let announce!: () => void; const entered = new Promise<void>(resolve => { announce = resolve; });
 		let resume!: () => void; const paused = new Promise<void>(resolve => { resume = resolve; });
 		const first = createCachedCpuSession({ ...input, load: async (path, options) => {
-			if (path === cached) { announce(); await paused; }
+			if (path === toNamespacedPath(cached)) { announce(); await paused; }
 			return input.load(path, options);
 		} });
 		await entered;

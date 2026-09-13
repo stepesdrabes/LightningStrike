@@ -23,7 +23,7 @@ import { spectrumTrack } from './spectrum.ts';
 import { levelTrack } from './level.ts';
 import { detectBeats, type BeatGrid } from './beats.ts';
 import { beatSynchronous } from './beatsync.ts';
-import { chromagram, estimateKey, estimateKeySpan } from './chroma.ts';
+import { estimateKey, estimateKeySpan } from './chroma.ts';
 import {
 	detectDrums,
 	dropUnconfirmed,
@@ -34,8 +34,12 @@ import {
 	snapTimesToOnsets,
 	type DrumStream
 } from './drums.ts';
-import { extractFeatures } from './features.ts';
-import { detectSeparatedDrums, mergeSeparatedSnare, type SeparatedDrumAudio } from './separatedDrums.ts';
+import {
+	detectSeparatedDrums,
+	mergeSeparatedSnare,
+	type SeparatedDrumAudio,
+	type SourceOnsets
+} from './separatedDrums.ts';
 import { detectMeter, type Meter } from './downbeats.ts';
 import { barStartsAtCuts, deriveGridCuts, resyncedCuts } from './gridedits.ts';
 import { acceptedRestarts, barLinesFrom, openingRun, phaseRuns, phaseSegments, type PhaseRun } from './downbeatPhase.ts';
@@ -43,10 +47,9 @@ import { handMapFingerprint, handSectionBars, type HandSection } from './handSec
 import { judgeSeams, proposeSeams, repairGrid, witnessBarLines } from './movements.ts';
 import { applyHeadLabels, type SectionPosteriors } from './headLabels.ts';
 import { assessMetricalLevel } from './metricalLevel.ts';
-import { measureLoudness } from './loudness.ts';
 import { barGroups, quantiseOnsets } from './quantise.ts';
 import { mergeKickEvidence } from './kickEvidence.ts';
-import { analyseStereo } from './stereo.ts';
+import { analysisPrelude, type AnalysisPrelude } from './prelude.ts';
 import { consolidateSections } from './consolidate.ts';
 import {
 	DEFAULT_TUNING,
@@ -115,6 +118,10 @@ interface AnalyzeInput {
 	};
 	/** Optional individual drum sources, resampled to 22050 Hz after two-stage separation. */
 	separatedDrums?: SeparatedDrumAudio;
+	/** `sourceOnsets` of separatedDrums' kick and snare, computed ahead. */
+	separatedOnsets?: Record<'kick' | 'snare', SourceOnsets>;
+	/** `analysisPrelude` of mono, left, right and sampleRate, computed ahead. */
+	prelude?: AnalysisPrelude;
 	/** Optional genre family and synced lyrics for section vocabulary and chorus location. */
 	context?: TrackContext;
 	/** False prevents recursive compound-meter correction after the octave guard fires. */
@@ -191,33 +198,14 @@ const CLICK_SNARE_EVIDENCE = 0.3;
 const MARK_REACH_S = 8;
 const VETO_REACH_S = 5;
 
-const TARGET_LUFS = -14;
 /** What a silent track reports rather than negative infinity, which is not JSON. */
 const SILENCE_LUFS = -70;
 
 export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	const { sampleRate, duration } = input;
-
-	// Loudness is measured on the mono stream that is actually analysed. Measuring the stereo
-	// original instead, which is what asking ffmpeg would give, is up to 3 dB out depending on
-	// how correlated the channels are.
-	const loudness = measureLoudness(input.mono, sampleRate);
-
-	// Normalise first so detector thresholds transfer across mastering levels.
-	const mono = Float32Array.from(input.mono);
-	const gain = Math.pow(10, (TARGET_LUFS - loudness.integrated) / 20);
-	if (Number.isFinite(gain) && Math.abs(gain - 1) > 0.01) {
-		const g = Math.min(gain, 40);
-		for (let i = 0; i < mono.length; i++) mono[i] *= g;
-	}
-
-	const stereo =
-		input.left && input.right
-			? analyseStereo(input.left, input.right, sampleRate)
-			: { fps: 25, pan: new Float32Array(0), width: new Float32Array(0) };
-
-	const features = extractFeatures(mono, sampleRate);
-	const chroma = chromagram(mono, sampleRate);
+	const { loudness, mono, stereo, features } =
+		input.prelude ?? analysisPrelude(input.mono, input.left, input.right, sampleRate);
+	const chroma = features.chroma;
 	let grid =
 		input.beats && input.beats.length > 8
 			? gridFromBeats(input.beats, features.odf, features.curves.fps)
@@ -255,7 +243,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		meter.beatsPerBar === 3 &&
 		grid.bpm >= 130
 	) {
-		return analyzeTrack({ ...input, metricalLevel: 1 / 3, octaveGuard: false });
+		// Recompute the prelude rather than share arrays this pass may have modified.
+		return analyzeTrack({ ...input, prelude: undefined, metricalLevel: 1 / 3, octaveGuard: false });
 	}
 	// Listener cuts absorb inserted beats as short bars. Broadband onset votes cannot establish
 	// half-bar changes because the backbeat is symmetric under that shift.
@@ -377,7 +366,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		: dspDrums;
 	const separated = input.separatedDrums
 		? detectSeparatedDrums(input.separatedDrums, input.mono, sampleRate, features.odf, features.curves.fps, primaryDrums,
-			input.drums ? dspDrums.snare : undefined)
+			input.drums ? dspDrums.snare : undefined, input.separatedOnsets)
 		: undefined;
 	// Kick source evidence is merged after pattern correction with independent model support.
 	const detected = separated ? { ...primaryDrums, snare: separated.snare } : primaryDrums;

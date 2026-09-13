@@ -52,7 +52,10 @@ export function separate(
 	return { percussive, harmonic };
 }
 
-/** Maintain a sorted median window: O(w) insertion/deletion avoids re-sorting millions of cells. */
+/**
+ * Maintain a sorted median window: O(w) insertion/deletion avoids re-sorting millions of cells.
+ * Plain shift loops are much faster than copyWithin calls on windows this small.
+ */
 function movingMedian(src: Float32Array, len: number, radius: number, out: Float32Array): void {
 	if (radius <= 0 || len === 0) {
 		out.set(src.subarray(0, len));
@@ -70,7 +73,7 @@ function movingMedian(src: Float32Array, len: number, radius: number, out: Float
 			if (window[mid] < v) lo = mid + 1;
 			else hi = mid;
 		}
-		window.copyWithin(lo + 1, lo, size);
+		for (let i = size; i > lo; i--) window[i] = window[i - 1];
 		window[lo] = v;
 		size++;
 	};
@@ -83,8 +86,8 @@ function movingMedian(src: Float32Array, len: number, radius: number, out: Float
 			if (window[mid] < v) lo = mid + 1;
 			else hi = mid;
 		}
-		window.copyWithin(lo, lo + 1, size);
 		size--;
+		for (let i = lo; i < size; i++) window[i] = window[i + 1];
 	};
 
 	for (let i = 0; i <= Math.min(radius, len - 1); i++) insert(src[i]);

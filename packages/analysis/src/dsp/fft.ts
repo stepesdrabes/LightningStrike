@@ -49,15 +49,15 @@ class Fft {
 			}
 		}
 
+		// A level's butterflies touch disjoint pairs, so visiting them twiddle by twiddle computes
+		// identical values while loading each twiddle once.
 		for (let len = 2; len <= n; len <<= 1) {
 			const half = len >> 1;
 			const step = n / len;
-			for (let i = 0; i < n; i += len) {
-				for (let k = 0; k < half; k++) {
-					const tw = k * step;
-					const wr = tcos[tw];
-					const wi = tsin[tw];
-					const a = i + k;
+			for (let k = 0; k < half; k++) {
+				const wr = tcos[k * step];
+				const wi = tsin[k * step];
+				for (let a = k; a < n; a += len) {
 					const b = a + half;
 					const xr = re[b] * wr - im[b] * wi;
 					const xi = re[b] * wi + im[b] * wr;
@@ -107,11 +107,19 @@ export class RealFft {
 		const re = this.re;
 		const im = this.im;
 		const n = signal.length;
-		for (let k = 0; k < h; k++) {
-			const a = offset + 2 * k;
-			const b = a + 1;
-			re[k] = a >= 0 && a < n ? signal[a] * window[2 * k] : 0;
-			im[k] = b >= 0 && b < n ? signal[b] * window[2 * k + 1] : 0;
+		if (offset >= 0 && offset + this.size <= n) {
+			for (let k = 0; k < h; k++) {
+				const a = offset + 2 * k;
+				re[k] = signal[a] * window[2 * k];
+				im[k] = signal[a + 1] * window[2 * k + 1];
+			}
+		} else {
+			for (let k = 0; k < h; k++) {
+				const a = offset + 2 * k;
+				const b = a + 1;
+				re[k] = a >= 0 && a < n ? signal[a] * window[2 * k] : 0;
+				im[k] = b >= 0 && b < n ? signal[b] * window[2 * k + 1] : 0;
+			}
 		}
 		this.half.transform(re, im);
 	}

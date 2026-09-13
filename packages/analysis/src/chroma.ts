@@ -76,8 +76,12 @@ export function chromagram(mono: Float32Array, sampleRate: number, targetFps = 5
 		}
 	}
 
-	const fps = sr / hop;
-	return { fps, frames, values, energy, timeOf: (frame) => frame / fps };
+	return withChromaClock({ fps: sr / hop, frames, values, energy });
+}
+
+export function withChromaClock(chroma: Omit<Chromagram, 'timeOf'>): Chromagram {
+	const { fps } = chroma;
+	return { ...chroma, timeOf: (frame) => frame / fps };
 }
 
 /**

@@ -87,22 +87,27 @@ const build = join(root, 'apps/web/build');
 if (!existsSync(build)) throw new Error('the web build produced no apps/web/build');
 
 // Bundle the ingest worker beside the server so native addons resolve from its node_modules.
-console.log('building the ingest worker');
+// Analysis looks for its ONNX and DSP workers next to the ingest bundle.
+console.log('building the ingest workers');
 {
 	const { rolldown } = await import('rolldown');
-	const worker = await rolldown({
-		input: join(root, 'packages/analysis/src/ingestWorker.ts'),
-		platform: 'node',
-		external: ['onnxruntime-node']
-	});
-	await worker.write({
-		file: join(build, 'ingest-worker.mjs'),
-		format: 'esm',
-		codeSplitting: false
-	});
-	await worker.close();
-	if (!existsSync(join(build, 'ingest-worker.mjs'))) {
-		throw new Error('rolldown produced no ingest-worker.mjs');
+	for (const [input, file] of [
+		['packages/analysis/src/ingestWorker.ts', 'ingest-worker.mjs'],
+		['packages/analysis/src/onnxWorker.ts', 'onnx-worker.mjs'],
+		['packages/analysis/src/dspWorker.ts', 'dsp-worker.mjs']
+	]) {
+		const worker = await rolldown({
+			input: join(root, input),
+			platform: 'node',
+			external: ['onnxruntime-node']
+		});
+		await worker.write({
+			file: join(build, file),
+			format: 'esm',
+			codeSplitting: false
+		});
+		await worker.close();
+		if (!existsSync(join(build, file))) throw new Error(`rolldown produced no ${file}`);
 	}
 }
 

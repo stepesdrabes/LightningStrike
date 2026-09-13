@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { ANALYSIS_RATE } from './decode.ts';
 import { MEL_BANDS, melSpectrogram96, resampleTo16k } from './dsp/mel.ts';
+import { QUIET_THREADS, openSession, type OnnxSession, type OnnxTensor } from './onnxSession.ts';
 import { MODEL_DIR } from './paths.ts';
 
 /**
@@ -471,42 +471,17 @@ interface AudioGenreResult {
 	top: GenreActivation[];
 }
 
-interface OrtTensor {
-	data: Float32Array;
-	dims: readonly number[];
-}
-
-interface Session {
-	inputNames: readonly string[];
-	inputMetadata?: readonly { name: string; shape?: readonly (number | string)[] }[];
-	run(feeds: Record<string, unknown>): Promise<Record<string, OrtTensor>>;
-	release?(): Promise<void>;
-}
-type TensorCtor = new (type: string, data: Float32Array, dims: number[]) => unknown;
-
-interface Ort {
-	InferenceSession: { create(path: string, opts: unknown): Promise<Session> };
-	Tensor: TensorCtor;
-}
-
-/** Load the native addon through createRequire so bundlers cannot replace it with a throwing stub. */
-function loadOrt(): Ort {
-	const require = createRequire(import.meta.url);
-	return require('onnxruntime-node') as Ort;
-}
-
 export class GenreClassifier {
-	private session!: Session;
-	private Tensor!: TensorCtor;
+	private session!: OnnxSession;
 	private inputName!: string;
 	private rank4 = false;
 
 	static async create(): Promise<GenreClassifier> {
 		if (!genreModelPresent()) await ensureGenreModel();
-		const ort = loadOrt();
-		const session = await ort.InferenceSession.create(join(MODEL_DIR, MODEL_NAME), {
+		const session = await openSession(join(MODEL_DIR, MODEL_NAME), {
 			executionProviders: ['cpu'],
-			graphOptimizationLevel: 'all'
+			graphOptimizationLevel: 'all',
+			...QUIET_THREADS
 		});
 
 		// Essentia's own conversions call this 'serving_default_melspectrogram'; the dynamic
@@ -514,12 +489,12 @@ export class GenreClassifier {
 		// and fail loudly if the graph is not the expected one.
 		const input = session.inputNames.find((n) => n.endsWith('melspectrogram'));
 		if (!input) {
+			await session.release();
 			throw new Error(`no melspectrogram input, graph has: ${session.inputNames.join(', ')}`);
 		}
 
 		const self = new GenreClassifier();
 		self.session = session;
-		self.Tensor = ort.Tensor;
 		self.inputName = input;
 		// Some conversions keep a channel axis, [n, 1, 128, 96]: same bytes, one more dim.
 		const shape = session.inputMetadata?.find((m) => m.name === input)?.shape;
@@ -528,7 +503,7 @@ export class GenreClassifier {
 	}
 
 	async close(): Promise<void> {
-		await this.session.release?.();
+		await this.session.release();
 	}
 
 	/** `mono22k` is mono at 22050 Hz; only the first three minutes are read. */
@@ -548,13 +523,11 @@ export class GenreClassifier {
 		}
 
 		const dims = this.rank4 ? [n, 1, PATCH_FRAMES, MEL_BANDS] : [n, PATCH_FRAMES, MEL_BANDS];
-		const out = await this.session.run({
-			[this.inputName]: new this.Tensor('float32', batch, dims) as never
-		});
+		const out = await this.session.run({ [this.inputName]: { data: batch, dims } }, { transfer: true });
 
 		// Resolved by shape rather than name: the activations head is the [n, 400] output,
 		// and the [n, 1280] one is the embedding this module has no use for.
-		let acts: OrtTensor | null = null;
+		let acts: OnnxTensor | null = null;
 		for (const name of Object.keys(out)) {
 			if (out[name].dims[out[name].dims.length - 1] === STYLE_COUNT) acts = out[name];
 		}

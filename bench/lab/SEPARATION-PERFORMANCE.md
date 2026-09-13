@@ -10,6 +10,91 @@ The tested machine is a Ryzen 5 3600 (six physical cores), 16 GB RAM, RTX 3060 1
 Windows 11, Node 24.19 and ONNX Runtime Node 1.27.0. These are not M1 Pro measurements.
 The harness records OS/architecture, CPU, ORT versions, provider options and input hash.
 
+## Concurrent preparation (current runtime)
+
+Preparation overlaps work that does not depend on other work. The Node binding runs
+`session.run()` synchronously on its calling thread, so every ONNX session lives in its own
+worker thread (`onnxSession.ts`, `onnxWorker.ts`). Cover-art and catalogue lookups run beside
+the audio work, and EffNet, ADTOF and Beat This! run beside separation. Loudness, the stereo
+image, the mix spectrogram, onset curves and chroma need only decoded audio, so a DSP worker
+computes them beside the models (`prelude.ts`, `dsp.ts`, `dspWorker.ts`); two more compute
+the separated kick and snare onset curves while the evidence cache is written. Separation
+prepares each chunk's normalized input and STFT while earlier chunks run, then commits
+chunks strictly in order, so every overlap-add accumulates in the original order.
+
+CPU separation uses two lanes on machines with at least eight logical CPUs and 12 GiB:
+two sessions of the same model with four intra-op threads each, sharing one chunk queue and
+with intra-op spinning disabled. `MV_DRUM_CPU_LANES=1..4` overrides the count. DirectML
+keeps one lane; a second DirectML session on the RTX 3060 did not add throughput. Creating
+the HTDemucs DirectML session takes about two seconds, so it starts while the model
+checksums run; CPU sessions wait, because an unverified model must never publish a cached
+CPU graph. DirectML also opens DrumSep while HTDemucs runs and compiles it on an all-zero
+chunk: its first real run otherwise spends about 2.6 seconds compiling kernels.
+
+Every change below was accepted only with byte-identical `.analysis.json`:
+
+- DrumSep CPU output depends on `intraOpNumThreads`: 1-3 threads agree, 4, 6, 8 and 12 each
+  differ. HTDemucs, Beat This! and ADTOF were identical at every tested count on x64, but
+  ARM64 lacks the NCHWc convolution path, so no count change is assumed safe on the Mac.
+- Concurrent sessions with identical options match sequential runs bit for bit, on CPU and
+  DirectML. Arena, memory pattern and spinning settings do not change output. A DirectML
+  warm-up run does not change later outputs.
+- Input tensors alias JS memory; keep their `byteOffset` at zero. Research against the
+  1.27 source also found that `session.disable_prepacking` changes output.
+
+Habibi, isolated caches, warm CPU graph cache, separation evidence deleted before each run.
+Each A/B alternated the previous commit (a `git worktree`) with the candidate, two rounds of
+two runs; each row adds to the one above. The previous-commit range spans all three A/B
+sessions, and the DirectML warm-up row is one pair of runs without its own baseline:
+
+| Candidate | CPU wall time | CPU peak RSS | DirectML wall time | DirectML peak RSS |
+|---|---:|---:|---:|---:|
+| Previous commit | 125.9-135.8 s | 2.81-2.92 GB | 47.3-48.6 s | 1.75-2.08 GB |
+| Worker sessions, CPU lanes, concurrent stages | 93.3-97.1 s | 5.64-6.18 GB | 26.6-26.9 s | 2.26-2.32 GB |
+| DrumSep DirectML warm-up | | | 22.7-23.1 s | 2.64-2.71 GB |
+| FFT loop order, earlier decode, quiet threads | 89.3-92.2 s | 6.62-6.76 GB | | |
+| Prelude and onset curves in workers, earlier DirectML HTDemucs session | 83.8-86.4 s | 6.68-6.81 GB | 17.9-18.4 s | 2.83-2.94 GB |
+
+Every analysis in these runs equals the previous commit's analysis for its provider; the CPU
+analyses also equal the release v36 CPU analysis. Reports, one directory per A/B variant:
+`bench/reports/audio-reliability/ingest-performance/perf-0913/ab/`. With `--fresh-genre`
+(the local EffNet stage of a new track, 0.76 s before) the previous commit took
+124.6-125.2 s on CPU and 47.8-48.2 s on DirectML; the final candidate 84.0-85.4 s and
+17.9-18.3 s, with identical analyses, contexts and metadata. The bundled `ingest-worker.mjs`,
+`onnx-worker.mjs` and `dsp-worker.mjs` on the pinned Node 24.11.0 runtime matched as well.
+A behavior-preserving review refactor followed these runs. Rechecked later on a busier machine
+(38-95 s of other CPU per run instead of about 16 s), DirectML took 21.4-21.8 s with the final
+bundle and 20.4-21.6 s with the previous one from the same folder; interleaved with the previous
+bundle (21.3-21.9 s), the installed app folder took 21.7-23.1 s. All analyses stayed identical
+(`perf-0913/refactor-check/`).
+
+- HTDemucs keeps about 2.2 GB of activations per call without its arena, so two lanes peak
+  near 6 GB in separation alone and whole preparation at 6.7-6.8 GB; with its arena, two
+  lanes kept 10.2 GB. DrumSep keeps its arena.
+- Two lanes: HTDemucs 2.21 s per chunk against 3.05 s alone; DrumSep 1.20 against 1.76 s.
+  Three lanes added 5-7% at a much higher memory cost.
+- Spinning off kept two-lane separation throughput and saved about a quarter of its CPU
+  time. Whole-song runs took 96-97 s against 95 s with spinning, but peaked at 5.7 against
+  6.7 GB with less timer lateness (99th percentile 16-19 against 21-27 ms).
+- `Float32Array.from(source, map)` spent 4.2 seconds on the separator's four mono downmixes;
+  a loop takes 60 ms. `every(Number.isFinite)` spent about 0.2 s checking whole-song PCM.
+- Visiting each FFT level's butterflies twiddle-first is bit-identical and about 27% faster.
+- Sparse filterbank spans: ADTOF's spectrogram fell from 1.80 to 0.54 s and Beat This!'s
+  mel frontend from 0.77 to 0.16 s. Analysis reuses its chromagram and shifts HPSS median
+  windows with loops. With its prelude and onset curves computed ahead, `analyzeTrack` takes
+  0.7 s instead of 2.8 s; the analysis stage, which includes waiting for those workers,
+  fell from about 3.7 to 1.3 s.
+- Computing ADTOF's half-second spectrogram in a worker removed one stalled DirectML chunk, but
+  preparation did not get shorter (DirectML 17.8-18.3 s, CPU 85.9-86.8 s); it was not kept.
+- A 10 ms main-thread timer, standing in for the hardware renderer, fired late by at most
+  6.6-6.9 ms at the 99th percentile before; during CPU preparation it reached 13.4-15.5 ms,
+  and 9.2-10.3 ms with DirectML.
+
+ONNX Runtime on Windows cannot open a path longer than 260 characters. Graph cache names
+are long, so every earlier benchmark under `bench/reports/audio-reliability/ingest-performance`
+recompiled both graphs; the app's default cache path was short enough. Cached graphs now
+open through `\\?\` paths.
+
 ## Whole-track measurements
 
 The full 146.946-second Habibi recording was decoded and analyzed in isolated copies of
@@ -57,11 +142,17 @@ derived `.drums` files. Graph and evidence cache errors do not fail song prepara
 
 ```sh
 node bench/lab/profile-ingest.ts --id=TRACK --out=NEW_REPORT_DIRECTORY --runs=2
+node bench/lab/profile-ingest.ts --id=TRACK --out=NEW_REPORT_DIRECTORY --runs=2 --fresh-evidence --graphs=GRAPH_DIR --fresh-genre
 ```
 
 Use a new report directory each time. The harness copies source audio, metadata, context,
 analysis and any hand-map judgement into its own cache. It never rewrites the source
 library. It records source-module hashes and rejects changes during a workspace benchmark.
+`--fresh-evidence` deletes separated drums before each run, `--graphs` seeds verified CPU
+graphs as in a warm app, `--fresh-context` reruns catalogue enrichment (network lookups),
+`--fresh-genre` reruns only the local genre model and `--worker` times a bundled
+`ingest-worker.mjs` with its sibling worker bundles. For an A/B, run the previous commit from a
+`git worktree` and alternate it with the candidate, then `cmp` the `run-*.analysis.json` files.
 
 ## Host-FFT model extraction (current runtime)
 
@@ -177,10 +268,13 @@ The input is planar stereo float32 PCM at 44.1 kHz. Use the identical PCM file f
 variant; do not compare excerpt normalization against a different full-track input.
 
 ```sh
-node bench/lab/profile-separation.ts --provider=cpu --threads=4 --out=bench/reports/audio-reliability/separation-performance/cpu-4
-node bench/lab/profile-separation.ts --provider=cpu --threads=6 --out=bench/reports/audio-reliability/separation-performance/cpu-6
+node bench/lab/profile-separation.ts --provider=cpu --lanes=1 --out=bench/reports/audio-reliability/separation-performance/cpu-lanes-1
+node bench/lab/profile-separation.ts --provider=cpu --lanes=2 --out=bench/reports/audio-reliability/separation-performance/cpu-lanes-2
 node bench/lab/profile-separation-fft.ts
 ```
+
+`--threads` remains for numerical experiments only; any value other than four changes
+DrumSep's CPU output. With several lanes, summed call time exceeds wall time.
 
 `--stage=drums` profiles only HTDemucs; `--stage=kit` takes previously separated planar
 stereo drums. `--arena=false` disables CPU arenas for the requested stages. The production
@@ -193,9 +287,15 @@ durations can represent GPU host dispatch, so use the main harness for wall time
 second runs in the same environment. This flag cannot be combined with GPU providers,
 arena/spinning overrides or diagnostic export paths.
 
-On the user's M1 Pro, first record CPU four/six/eight-thread measurements. The installed
-macOS ARM64 package also advertises CoreML; this harness can test it without changing
-production defaults:
+`profile-ht-cpu-arena.ts` is prepared but unrun: its four arena, memory-pattern and
+initializer configurations depend on local ignored captures named in its `FILES`. Run
+`--prepare` before `--run`; no gain from it is established. Node 1.27 exposes neither arena
+shrink/cap controls nor `RunOptions.extra`, so do not benchmark those flags. Never run
+inference benchmarks beside the app, another benchmark, a build or tests.
+
+The M1 Pro lane comparison is described in the [handover](../../docs/HANDOVER.md). The
+installed macOS ARM64 package also advertises CoreML, whose kernels would change the
+analysis; this harness can test it without changing production defaults:
 
 ```sh
 uv run --no-project --python 3.12 --with onnx==1.22.0 python bench/lab/static-drumsep.py

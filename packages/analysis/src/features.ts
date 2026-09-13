@@ -7,7 +7,7 @@ const FEATURE_FPS = 100;
 const FFT_SIZE = 2048;
 const BANDS_PER_OCTAVE = 24;
 
-interface AnalysisFeatures {
+export interface AnalysisFeatures {
 	sampleRate: number;
 	duration: number;
 	spec: Spectrogram;
