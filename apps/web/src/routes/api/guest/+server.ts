@@ -43,6 +43,11 @@ export const POST: RequestHandler = async ({ request }) => {
 	if (body.action === 'add') {
 		const item = body.item;
 		if (!item?.source?.trim()) error(400, 'nothing to add');
+		const now = await queue.ready();
+		const from = Math.max(0, now.items.findIndex((i) => i.key === now.currentKey));
+		if (item.trackId && now.items.slice(from).some((i) => i.trackId === item.trackId)) {
+			error(409, 'That one is already coming up.');
+		}
 
 		const state = await queue.add(await enrichFromLibrary([fromRequest(item, name)]));
 		autopilot.handAdded();

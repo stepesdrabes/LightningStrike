@@ -2,6 +2,35 @@
 
 import type { Authored } from '$lib/types.ts';
 
+/** What a row plays. Absent means a song, which is every row outside an evening. */
+export type RowKind = 'song' | 'pause' | 'hold' | 'moment' | 'narration' | 'sting';
+
+/** Why an evening placed a row where it is. */
+export type RowRole =
+	| 'named'
+	| 'fill'
+	| 'request'
+	| 'music'
+	| 'tail'
+	| 'wait'
+	| 'pause'
+	| 'hold'
+	| 'moment'
+	| 'narration'
+	| 'sting';
+
+/** Present on rows an evening owns; the evening's own state says what they play. */
+export interface EveningTag {
+	/** The evening run, so rows from another night never collide. */
+	run: string;
+	/** The segment's stable id, and its name for the queue and the rail. */
+	segment: string;
+	name: string;
+	/** Where in the segment: 'i0' a named item, 'i1.2' a fill pick, 'm0' pause music, 's' a sting. */
+	slot: string;
+	role: RowRole;
+}
+
 export type ItemStatus =
 	| 'pending'
 	| 'resolving'
@@ -39,6 +68,8 @@ export interface QueueItem {
 	/** Set only by the radio topping the queue up, so a row nobody chose can say so. */
 	auto?: true;
 	addedAt: number;
+	kind?: RowKind;
+	evening?: EveningTag;
 }
 
 export interface QueueState {
@@ -205,6 +236,21 @@ export function moveItem(state: QueueState, key: string, to: number): QueueState
 export function playNext(state: QueueState, key: string): QueueState {
 	const at = indexOfKey(state, state.currentKey);
 	return moveItem(state, key, at === -1 ? 0 : at + 1);
+}
+
+export function kindOf(item: QueueItem): RowKind {
+	return item.kind ?? 'song';
+}
+
+/** Replace every row at once, which is how an evening starts, ends and restores a queue. */
+export function replaceItems(state: QueueState, items: QueueItem[], currentKey: string | null): QueueState {
+	const current = currentKey !== null && items.some((i) => i.key === currentKey) ? currentKey : (items[0]?.key ?? null);
+	return { items, currentKey: current, revision: state.revision + 1 };
+}
+
+/** Step past a row only while it is still current, so two reports of one ending advance once. */
+export function advanceFrom(state: QueueState, key: string): QueueState {
+	return state.currentKey === key ? step(state, 1) : state;
 }
 
 export function jumpTo(state: QueueState, key: string): QueueState {

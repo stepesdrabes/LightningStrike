@@ -59,8 +59,9 @@ export class QueueClient {
 		return this.post({ action: 'jump', key });
 	}
 
-	next(): Promise<Response> {
-		return this.post({ action: 'next' });
+	/** `from` names the row that ended, so a repeated or late report cannot skip another. */
+	next(from?: string): Promise<Response> {
+		return this.post({ action: 'next', ...(from ? { from } : {}) });
 	}
 
 	prev(): Promise<Response> {

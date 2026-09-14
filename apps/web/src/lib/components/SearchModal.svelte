@@ -20,14 +20,20 @@
 		query = $bindable(''),
 		library = [],
 		suggestions = [],
+		evening = false,
 		onpick
 	}: {
 		open?: boolean;
 		query?: string;
 		library?: LibraryEntry[];
 		suggestions?: SearchResult[];
+		/** While an evening runs, a pick either plays next or joins the requests. */
+		evening?: boolean;
 		onpick: (candidate: Candidate, how: 'queue' | 'now' | 'next') => void;
 	} = $props();
+
+	/** The row whose choice between playing next and the requests is open. */
+	let choosing = $state<number | null>(null);
 
 	let results = $state<SearchResult[]>([]);
 	let searching = $state(false);
@@ -108,6 +114,7 @@
 		onpick(candidate, how);
 		open = false;
 		query = '';
+		choosing = null;
 	}
 
 	function move(delta: number) {
@@ -167,7 +174,10 @@
 				class="row"
 				class:active={cursor === i}
 				onmouseenter={() => (cursor = i)}
-				onclick={(e) => pick(candidate, e.metaKey || e.ctrlKey ? 'now' : 'queue')}>
+				onclick={(e) => {
+					if (evening && !(e.metaKey || e.ctrlKey)) choosing = choosing === i ? null : i;
+					else pick(candidate, e.metaKey || e.ctrlKey ? 'now' : 'queue');
+				}}>
 				<span class="art">
 					{#if candidate.thumbnail}
 						<img src={candidate.thumbnail} alt="" loading="lazy" />
@@ -204,6 +214,18 @@
 					<span class="mono subtle">{clock(candidate.duration)}</span>
 				{/if}
 			</button>
+			{#if choosing === i}
+				<div class="choice">
+					<button onclick={() => pick(candidate, 'next')}>
+						<Icon name="playNext" size={14} />
+						Play next
+					</button>
+					<button onclick={() => pick(candidate, 'queue')}>
+						<Icon name="plus" size={14} />
+						Add to requests
+					</button>
+				</div>
+			{/if}
 		{/each}
 
 		{#if candidates.length === 0 && !searching}
@@ -215,7 +237,7 @@
 
 	<div class="footer">
 		<span><kbd>↑</kbd><kbd>↓</kbd> move</span>
-		<span><kbd>↵</kbd> add to queue</span>
+		<span><kbd>↵</kbd> {evening ? 'add to requests' : 'add to queue'}</span>
 		<span><kbd>⌘</kbd><kbd>↵</kbd> play now</span>
 		<span><kbd>⌥</kbd><kbd>↵</kbd> play next</span>
 		<span class="right"><kbd>esc</kbd> close</span>
@@ -270,6 +292,26 @@
 		color: var(--foreground);
 	}
 	.row.active {
+		background: var(--hover);
+	}
+	.choice {
+		display: flex;
+		gap: 6px;
+		padding: 2px 10px 8px 65px;
+	}
+	.choice button {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 28px;
+		padding: 0 10px;
+		border-radius: var(--radius-sm);
+		border: 1px solid var(--border);
+		background: var(--muted);
+		font-size: 12.5px;
+		color: var(--foreground);
+	}
+	.choice button:hover {
 		background: var(--hover);
 	}
 	.art {

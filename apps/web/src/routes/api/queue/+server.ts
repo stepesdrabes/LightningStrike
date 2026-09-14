@@ -6,6 +6,7 @@ import { queue } from '$lib/server/queueStore.ts';
 import { enrichFromLibrary, fromRequest } from '$lib/server/queueAdd.ts';
 import { autopilot } from '$lib/server/autopilot.ts';
 import { runner } from '$lib/server/ingestRunner.ts';
+import { evening } from '$lib/server/evening/store.ts';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async () => json(await queue.ready());
@@ -26,6 +27,8 @@ interface Body {
 	key?: string;
 	to?: number;
 	keepCurrent?: boolean;
+	/** For next: the row that ended, so a late or repeated report cannot skip its successor. */
+	from?: string;
 }
 
 export const POST: RequestHandler = async (event) => {
@@ -48,6 +51,7 @@ export const POST: RequestHandler = async (event) => {
 		}
 		case 'remove':
 			if (!body.key) error(400, 'key required');
+			await evening.forget(body.key);
 			state = await queue.remove(body.key);
 			break;
 		case 'move':
@@ -60,15 +64,18 @@ export const POST: RequestHandler = async (event) => {
 			break;
 		case 'jump':
 			if (!body.key) error(400, 'key required');
-			state = await queue.jump(body.key);
+			await evening.jump(body.key);
+			state = queue.snapshot;
 			break;
 		case 'next':
-			state = await queue.step(1);
+			state = body.from ? await queue.advanceFrom(body.from) : await queue.step(1);
 			break;
 		case 'prev':
 			state = await queue.step(-1);
 			break;
 		case 'clear':
+			await evening.ready();
+			if (evening.running) error(409, 'end the evening before clearing its queue');
 			state = await queue.clear(body.keepCurrent ?? true);
 			break;
 		case 'retry':

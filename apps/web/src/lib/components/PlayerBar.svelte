@@ -2,6 +2,8 @@
 	import type { Show, TrackAnalysis } from '@mv/core';
 	import { bpmAt, tempoSegments } from '@mv/core';
 	import type { TrackMeta } from '$lib/types.ts';
+	import type { RowKind } from '$lib/queueModel.ts';
+	import { ROW_ICON } from '$lib/evening/format.ts';
 	import type { Readout } from '$lib/viz.svelte.ts';
 	import { titleCase } from '$lib/format.ts';
 	import { FULL_WINDOW, type TimeWindow } from '$lib/timeline.ts';
@@ -26,6 +28,8 @@
 		queued = 0,
 		hasPrev = false,
 		hasNext = false,
+		kind = 'song',
+		ongo,
 		ontoggle,
 		onseek,
 		onprev,
@@ -45,6 +49,9 @@
 		queued?: number;
 		hasPrev?: boolean;
 		hasNext?: boolean;
+		/** What the loaded row plays; a hold waits for Go rather than playing. */
+		kind?: RowKind;
+		ongo?: () => void;
 		ontoggle: () => void;
 		onseek: (t: number) => void;
 		onprev: () => void;
@@ -88,7 +95,7 @@
 				{#if meta?.thumbnail}
 					<img src={meta.thumbnail} alt="" />
 				{:else}
-					<Icon name="music" size={18} />
+					<Icon name={ROW_ICON[kind]} size={18} />
 				{/if}
 			</div>
 			<div class="meta">
@@ -97,7 +104,7 @@
 				<span class="sub truncate muted">
 					{#if meta}
 						{meta.uploader}
-						{#if analysis}
+						{#if analysis && (kind === 'song' || kind === 'narration')}
 							<span class="dot">·</span>
 							<!-- Show local tempo across movements rather than the track median. -->
 							<span class="mono">{localBpm.toFixed(0)}</span> bpm
@@ -116,6 +123,15 @@
 		</div>
 
 		<div class="controls">
+			{#if kind === 'hold'}
+				<div class="buttons">
+					<button class="go" onclick={ongo} aria-label="Go">
+						<Icon name="play" size={15} fill strokeWidth={1.5} />
+						Go
+					</button>
+				</div>
+				<p class="waiting">The evening waits here until you press Go.</p>
+			{:else}
 			<div class="buttons">
 				<button
 					class="step"
@@ -147,10 +163,11 @@
 				duration={readout.duration}
 				{view}
 				{onseek} />
+			{/if}
 		</div>
 
 		<div class="right">
-			{#if ready}
+			{#if ready && kind !== 'hold'}
 				<Badge colour={`var(--sec-${readout.section})`}>{titleCase(readout.section)}</Badge>
 				<span class="mono subtle bar">bar {readout.bar}</span>
 			{/if}
@@ -313,6 +330,33 @@
 	}
 	.play:active:not(:disabled) {
 		transform: scale(0.95);
+	}
+	.go {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		height: var(--h-lg);
+		padding: 0 22px;
+		border-radius: 999px;
+		background: var(--primary);
+		color: var(--primary-foreground);
+		font-size: 14px;
+		font-weight: 600;
+		box-shadow: 0 2px 10px #00000059;
+		transition:
+			transform 0.12s cubic-bezier(0.16, 1, 0.3, 1),
+			background-color 0.12s ease;
+	}
+	.go:hover {
+		background: #fff;
+		transform: scale(1.04);
+	}
+	.go:active {
+		transform: scale(0.97);
+	}
+	.waiting {
+		font-size: 12px;
+		color: var(--subtle-foreground);
 	}
 	.play:disabled {
 		background: var(--muted);

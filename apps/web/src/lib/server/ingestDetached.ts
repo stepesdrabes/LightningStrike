@@ -1,7 +1,14 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
-import { ingest, workspaceRoot, type IngestOptions, type IngestResult } from '@mv/analysis';
+import type { MeasuredAudio } from '@mv/core';
+import {
+	ingest,
+	prepareNarration,
+	workspaceRoot,
+	type IngestOptions,
+	type IngestResult
+} from '@mv/analysis';
 
 /**
  * Serialize all ingest callers and use a worker to keep DSP off the server thread. Dev uses
@@ -64,5 +71,40 @@ function ingestInWorker(source: string, opts: IngestOptions): Promise<IngestResu
 			if (!sawMessage) finish(() => resolve(ingest(source, opts)));
 			else finish(() => reject(new Error(`ingest worker exited with code ${code}`)));
 		});
+	});
+}
+
+/** Measure a narration's audio in the same serialized worker, for the same reason. */
+export function narrationDetached(path: string): Promise<MeasuredAudio> {
+	const run = inFlight.then(() => narrationInWorker(path));
+	inFlight = run.catch(() => {});
+	return run;
+}
+
+function narrationInWorker(path: string): Promise<MeasuredAudio> {
+	const bundled = process.env.MV_INGEST_WORKER;
+	const workerPath =
+		bundled && existsSync(bundled)
+			? bundled
+			: join(workspaceRoot(), 'packages', 'analysis', 'src', 'ingestWorker.ts');
+	if (!existsSync(workerPath)) return prepareNarration(path);
+	return new Promise((resolve, reject) => {
+		const worker = new Worker(workerPath, {
+			workerData: { source: path, opts: {}, task: 'narration' },
+			execArgv: []
+		});
+		let settled = false;
+		const finish = (act: () => void) => {
+			if (settled) return;
+			settled = true;
+			act();
+			void worker.terminate();
+		};
+		worker.on('message', (m: { type: string; result?: MeasuredAudio; message?: string }) => {
+			if (m.type === 'done' && m.result) finish(() => resolve(m.result as MeasuredAudio));
+			else if (m.type === 'error') finish(() => reject(new Error(m.message ?? 'narration failed')));
+		});
+		worker.on('error', (e) => finish(() => reject(e)));
+		worker.on('exit', (code) => finish(() => reject(new Error(`narration worker exited with code ${code}`))));
 	});
 }

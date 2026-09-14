@@ -5,6 +5,7 @@ import {
 	EffectRegistry,
 	RemoteClock,
 	RoomDirector,
+	RowClock,
 	buildGeometry,
 	compileGenerated,
 	roomRegions,
@@ -14,7 +15,7 @@ import {
 	type Show,
 	type TrackAnalysis
 } from '@mv/core';
-import { analysisPath, isValidId, showPath } from '@mv/analysis';
+import { analysisPath, isValidId, preparedNarration, showPath } from '@mv/analysis';
 import {
 	DDP_PORT,
 	SACN_PIXELS_PER_UNIVERSE,
@@ -24,7 +25,9 @@ import {
 	type DdpTarget
 } from '@mv/transport';
 import { DEFAULT_OUTPUT_FPS, isWireProtocol, type WireProtocol } from '$lib/hardware.ts';
-import { currentItem } from '$lib/queueModel.ts';
+import { rowBundle } from '$lib/evening/bundle.ts';
+import { currentItem, type QueueItem } from '$lib/queueModel.ts';
+import { evening } from '$lib/server/evening/store.ts';
 import { queue } from '$lib/server/queueStore.ts';
 import { hardware } from '$lib/server/hardware.ts';
 import { settings, type PublicSettings } from '$lib/server/settings.ts';
@@ -52,15 +55,19 @@ class Output {
 	private registry = new EffectRegistry();
 	private director = new RoomDirector(this.geometry, this.registry);
 	private readonly clock = new RemoteClock(SYNC_STALE_MS);
+	private readonly rows = new RowClock(this.clock);
 	private sink: LedSink | null = null;
 	/** The Bounce Lamp's own stream, one pixel wide. */
 	private bounce: LedSink | null = null;
 	private timer: NodeJS.Timeout | null = null;
 
 	private frames = 0;
+	private failed = false;
 	private lounge = false;
 	/** The current track's own verdict: its grid is lost, so lounge carries it. */
 	loungeOnly = false;
+	/** An evening row lit calmly. */
+	rowLounge = false;
 	private rest = true;
 	private fps = DEFAULT_OUTPUT_FPS;
 	/** The show the director holds, so the same file is not restarted under a playing track. */
@@ -105,7 +112,7 @@ class Output {
 		}
 	}
 
-	load(analysis: TrackAnalysis, show: Show): void {
+	load(analysis: TrackAnalysis, show: Show, dissolve?: number): void {
 		// The queue and a stream start both load the current track; only a changed show counts.
 		const key = JSON.stringify(show);
 		if (key === this.loadedShow) return;
@@ -115,7 +122,7 @@ class Output {
 			const compiled = compileGenerated(gen, this.geometry);
 			if (compiled.def) this.registry.add(compiled.def);
 		}
-		this.director.load(analysis, show);
+		this.director.load(analysis, show, dissolve);
 	}
 
 	/** Clear the track while retaining the loop; a showless director enters ambient immediately. */
@@ -167,12 +174,18 @@ class Output {
 			last = now;
 			const reading = this.clock.read(now);
 			if (reading.seek) this.director.seek();
-			this.director.update(reading.t, dt, {
-				playing: reading.playing,
-				hasShow: this.director.player.loaded !== null,
-				lounge: this.lounge || this.loungeOnly,
-				rest: this.rest
-			});
+			try {
+				this.director.update(reading.t, dt, {
+					playing: reading.playing,
+					hasShow: this.director.player.loaded !== null,
+					lounge: this.lounge || this.loungeOnly,
+					rest: this.rest
+				});
+			} catch (e) {
+				// A frame that failed to compose keeps the last bytes; the server and the stream stay up.
+				if (!this.failed) console.error('hardware frame failed', e);
+				this.failed = true;
+			}
 			this.sink?.send({
 				rgb: this.director.bytes,
 				dt,
@@ -193,10 +206,20 @@ class Output {
 	 * Apply trim during sync without restarting output; an absent value preserves the current
 	 * trim. The browser's room decisions come along so the scenes and dissolves agree.
 	 */
-	sync(position: number, playing: boolean, offsetMs?: number, room?: RoomSync, roomAge = 0): void {
-		this.clock.sync(position, playing, performance.now());
+	sync(position: number, playing: boolean, offsetMs?: number, room?: RoomSync, roomAge = 0, key?: string, currentKey?: string): void {
 		if (typeof offsetMs === 'number' && Number.isFinite(offsetMs)) this.clock.trim(offsetMs / 1000);
 		if (room && roomAge <= FOLLOW_MAX_AGE) this.director.follow(room);
+		this.rows.sync(position, playing, performance.now(), key, currentKey);
+	}
+
+	/** The same show under another queue row: nothing reloads, the positions just carry its key. */
+	renameRow(key: string | null): void {
+		this.rows.rename(key);
+	}
+
+	/** A row has loaded: it starts where the browser already has it, or at its own beginning. */
+	arrive(key: string | null): void {
+		this.rows.arrive(key, performance.now());
 	}
 
 	async stop(): Promise<void> {
@@ -208,8 +231,13 @@ class Output {
 		this.bounce = null;
 	}
 
-	/** Which track this output is currently rendering, so the queue can tell when to re-point. */
+	/** The track or evening row this output renders, so the queue can tell when to re-point. */
 	trackId: string | null = null;
+
+	/** A bail untagged the evening row this output renders; the same song carries on. */
+	carriesOn(item: QueueItem): boolean {
+		return !item.evening && this.trackId === `row:${item.key}` && this.director.player.loaded?.show.trackId === item.trackId;
+	}
 }
 
 const output = new Output();
@@ -296,7 +324,39 @@ function roomSyncFrom(value: unknown): RoomSync | undefined {
 	) {
 		return undefined;
 	}
-	return { ambience, stopped, scene: o.scene, sceneCounter, sceneHeld, idleT };
+	const exposure = num(o.exposure);
+	return { ambience, stopped, scene: o.scene, sceneCounter, sceneHeld, idleT, ...(exposure !== null ? { exposure } : {}) };
+}
+
+interface LoadedRow {
+	analysis: TrackAnalysis;
+	show: Show;
+	dissolve?: number;
+	lounge: boolean;
+}
+
+/** What a queue row renders: its track's show, or an evening row built from its plan. */
+async function loadRow(item: QueueItem): Promise<LoadedRow | null> {
+	if (!item.evening) {
+		const loaded = item.trackId ? await loadTrack(item.trackId) : null;
+		return loaded ? { ...loaded, lounge: false } : null;
+	}
+	const lighting = await evening.lightingSoon(item.key);
+	if (!lighting) return null;
+	const plan = lighting.plan;
+	const track = plan.kind === 'song' ? await loadTrack(plan.trackId) : null;
+	if (plan.kind === 'song' && !track) return null;
+	const audio = plan.kind === 'narration' ? evening.narrationAudio(item.key) : null;
+	const measured = audio ? await preparedNarration(audio).catch(() => null) : null;
+	const bundle = rowBundle(item.key, plan, track, measured);
+	if (!bundle?.show) return null;
+	return { analysis: bundle.analysis, show: bundle.show, dissolve: lighting.light, lounge: bundle.lounge };
+}
+
+/** An evening row is its own identity; a plain row is its track, so metadata edits do not reload. */
+function identityOf(item: QueueItem | null): string | null {
+	if (!item) return null;
+	return item.evening ? `row:${item.key}` : item.trackId;
 }
 
 /** Follow the server queue directly so track changes need no browser relay. */
@@ -304,15 +364,22 @@ queue.subscribe((state) => {
 	if (!output.running) return;
 	const item = currentItem(state);
 	// Refresh trust before same-track early returns so the host override applies immediately.
+	const identity = identityOf(item);
+	if (item && output.carriesOn(item)) output.trackId = identity;
+	if (identity === output.trackId) {
+		output.loungeOnly = (item?.loungeOnly ?? false) || output.rowLounge;
+		output.renameRow(item?.key ?? null);
+		return;
+	}
 	output.loungeOnly = item?.loungeOnly ?? false;
-	const id = item?.trackId ?? null;
-	if (!id || id === output.trackId) return;
-	void loadTrack(id).then((loaded) => {
-		if (!loaded || !output.running) return;
-		output.load(loaded.analysis, loaded.show);
-		output.trackId = id;
-		// A new track starts at its own beginning, not wherever the last one had got to.
-		output.sync(0, false);
+	if (!item || !identity || item.status !== 'ready') return;
+	void loadRow(item).then((loaded) => {
+		if (!loaded || !output.running || identityOf(currentItem(queue.snapshot)) !== identity) return;
+		output.load(loaded.analysis, loaded.show, loaded.dissolve);
+		output.rowLounge = loaded.lounge;
+		output.loungeOnly = (item.loungeOnly ?? false) || loaded.lounge;
+		output.trackId = identity;
+		output.arrive(item.key);
 	});
 });
 
@@ -334,6 +401,7 @@ export const POST: RequestHandler = async (event) => {
 		playing?: boolean;
 		room?: unknown;
 		roomAge?: number;
+		key?: string;
 	};
 
 	if (body.action === 'stop') {
@@ -344,7 +412,8 @@ export const POST: RequestHandler = async (event) => {
 
 	if (body.action === 'sync') {
 		const age = typeof body.roomAge === 'number' && body.roomAge >= 0 ? body.roomAge : Infinity;
-		output.sync(body.position ?? 0, body.playing ?? false, body.offsetMs, roomSyncFrom(body.room), age);
+		const key = typeof body.key === 'string' ? body.key : undefined;
+		output.sync(body.position ?? 0, body.playing ?? false, body.offsetMs, roomSyncFrom(body.room), age, key, queue.snapshot.currentKey ?? undefined);
 		return json(output.status);
 	}
 
@@ -361,10 +430,20 @@ export const POST: RequestHandler = async (event) => {
 
 	// Load persisted settings at stream start; subscriptions report only subsequent changes.
 	output.apply(await settings.read());
-	output.loungeOnly = currentItem(await queue.ready())?.loungeOnly ?? false;
-	if (loaded && id !== null) {
+	const current = currentItem(await queue.ready());
+	output.loungeOnly = current?.loungeOnly ?? false;
+	const row = current?.evening && current.status === 'ready' ? await loadRow(current) : null;
+	if (row && current) {
+		output.load(row.analysis, row.show, row.dissolve);
+		output.rowLounge = row.lounge;
+		output.loungeOnly = (current.loungeOnly ?? false) || row.lounge;
+		output.trackId = identityOf(current);
+		output.arrive(current.key);
+	} else if (loaded && id !== null) {
 		output.load(loaded.analysis, loaded.show);
+		output.rowLounge = false;
 		output.trackId = id;
+		output.arrive(current?.trackId === id ? current.key : null);
 	} else {
 		output.clearShow();
 	}
