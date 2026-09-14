@@ -36,6 +36,9 @@ const SEEK_SLACK = 0.05;
 /** Seconds over which a synced crossfade position is absorbed rather than stepped. */
 const FOLLOW_TAU = 0.5;
 
+/** The shortest ease between the room's exposure and an authored show's unity; a dissolve stretches it. */
+const FIXED_EXPOSURE_TAU = 0.1;
+
 export interface DirectorState {
 	/** Whether the audio is actually sounding. */
 	playing: boolean;
@@ -102,6 +105,14 @@ export class RoomDirector {
 	private fresh = false;
 	private reload = false;
 	private seekPending = false;
+	/** The next track's own dissolve, seconds, when its loader named one. */
+	private arrival: number | null = null;
+	/** Whether the loaded show plays its authored levels without auto-exposure. */
+	private fixedExposure = false;
+	private exposureTau = FIXED_EXPOSURE_TAU;
+	/** 0 renders at the room's exposure, 1 at unity; the exposure itself is kept for the next song. */
+	private unity = 0;
+	private pendingExposure = 0;
 
 	constructor(geometry: Geometry, registry = new EffectRegistry()) {
 		this.showMix = new Mixer(geometry);
@@ -141,7 +152,10 @@ export class RoomDirector {
 		this.ambient.settings = s;
 	}
 
-	load(analysis: TrackAnalysis, show: Show): void {
+	/** `dissolve` sets how long the held picture takes to give way to this show; 0 cuts. */
+	load(analysis: TrackAnalysis, show: Show, dissolve?: number): void {
+		this.arrival = dissolve ?? null;
+		this.fixedExposure = show.exposure === 'fixed';
 		this.player.load(analysis, show);
 		this.ambient.trackPalette = show.palette;
 		this.everLoaded = true;
@@ -153,6 +167,7 @@ export class RoomDirector {
 	clearShow(): void {
 		this.player.clear();
 		this.ambient.trackPalette = null;
+		this.fixedExposure = false;
 	}
 
 	/** The position is about to jump: restart the show there on the next update. */
@@ -169,13 +184,15 @@ export class RoomDirector {
 			scene: scene.scene,
 			sceneCounter: scene.counter,
 			sceneHeld: scene.held,
-			idleT: this.idle.t
+			idleT: this.idle.t,
+			exposure: this.meanLevel.gain
 		};
 	}
 
 	/** Follow another room's decisions. The crossfade position is absorbed, never stepped. */
 	follow(s: RoomSync): void {
 		this.pendingU = clamp(s.ambience) - this.u;
+		if (s.exposure !== undefined && Number.isFinite(s.exposure)) this.pendingExposure = s.exposure - this.meanLevel.gain;
 		this.stopped = Math.max(0, s.stopped);
 		this.ambient.follow({ scene: s.scene, counter: s.sceneCounter, held: s.sceneHeld });
 		this.idle.follow(s.idleT);
@@ -230,8 +247,16 @@ export class RoomDirector {
 
 		this.blend(w);
 
+		if (this.pendingExposure !== 0) {
+			const step = this.pendingExposure * Math.min(1, dt / FOLLOW_TAU);
+			this.meanLevel.gain += step;
+			this.pendingExposure -= step;
+			if (Math.abs(this.pendingExposure) < 1e-4) this.pendingExposure = 0;
+		}
+		// An authored show plays at unity while the songs' exposure waits, unchanged, for the next song.
+		if (live && w < 1) this.unity += ((this.fixedExposure ? 1 : 0) - this.unity) * Math.min(1, dt / this.exposureTau);
 		// Rest has a chosen level, so auto-exposure must not pull it toward the music target.
-		const exposed = w < 1 && live && f.energy > 0.02;
+		const exposed = w < 1 && live && f.energy > 0.02 && !this.fixedExposure;
 		this.finish(f, w, dt, exposed);
 		return f;
 	}
@@ -255,13 +280,18 @@ export class RoomDirector {
 		this.reload = false;
 		this.seekPending = false;
 		this.player.warm(t);
-		if (this.ambience < 1 && this.lit) {
+		// A loader's own dissolve applies to the restart its show arrives with, however it arrives:
+		// loaded onto a live room it is a reload or a resume, not a track.
+		const seconds = this.arrival !== null && kind !== 'seek' ? this.arrival : DISSOLVE[kind];
+		if (kind !== 'seek') this.arrival = null;
+		this.exposureTau = Math.max(FIXED_EXPOSURE_TAU, seconds / 3);
+		if (this.ambience < 1 && this.lit && seconds > 0) {
 			this.held.set(this.show);
 			this.heldAccent[0] = this.showAccent[0];
 			this.heldAccent[1] = this.showAccent[1];
 			this.heldAccent[2] = this.showAccent[2];
 			this.handover = 0;
-			this.handoverSpeed = 1 / DISSOLVE[kind];
+			this.handoverSpeed = 1 / seconds;
 		} else {
 			this.handover = 1;
 		}
@@ -303,6 +333,11 @@ export class RoomDirector {
 	private finish(f: ShowFrame, w: number, dt: number, exposed: boolean): void {
 		this.slew.apply(this.frame, dt);
 		this.meanLevel.apply(this.frame, dt, exposed);
+		const gain = this.meanLevel.gain;
+		if (this.unity > 0 && gain !== 1) {
+			const scale = (gain + (1 - gain) * this.unity) / gain;
+			for (let i = 0; i < this.frame.length; i++) this.frame[i] *= scale;
+		}
 		compressHighlights(this.frame);
 		quantize(this.frame, this.bytes, this.contrast, this.brightness);
 		// Reduce the delivered level after the output chain.

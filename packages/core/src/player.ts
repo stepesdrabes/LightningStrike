@@ -9,7 +9,7 @@ import { blendPalettes, makePalette, swapped } from './color/palette.ts';
 import { FlashEnvelope, Follower } from './dsl/env.ts';
 import { clamp, frac, smoothstep } from './dsl/math.ts';
 import { barAtTime, barDurationAt, barTimeAt } from './grid.ts';
-import type { Mixer } from './mixer.ts';
+import { DEFAULT_OPACITY, type Mixer } from './mixer.ts';
 import type { EffectRegistry } from './effects/index.ts';
 
 interface CompiledCue {
@@ -22,6 +22,7 @@ interface CompiledCue {
 	intensity: number;
 	motion: number;
 	fadeBeats: number;
+	floor: number;
 }
 
 interface CompiledHit {
@@ -281,6 +282,7 @@ export class ShowPlayer {
 			while (last > 0 && this.levelData[last] <= SILENT_LEVEL) last--;
 			this.audioEnd = Math.min(analysis.duration, (last + 1) / this.levelFps);
 		}
+		if (show.ending === 'hold') this.audioEnd = Infinity;
 
 		this.panCurve = Float32Array.from(analysis.stereo?.pan ?? []);
 		this.widthCurve = Float32Array.from(analysis.stereo?.width ?? []);
@@ -321,7 +323,8 @@ export class ShowPlayer {
 				palette: resolvePalette(show.palette, cue),
 				intensity: cue.intensity ?? defaults.intensity,
 				motion: cue.motion ?? defaults.motion,
-				fadeBeats: cue.fadeBeats ?? defaults.fadeBeats
+				fadeBeats: cue.fadeBeats ?? defaults.fadeBeats,
+				floor: cue.floor === undefined ? floorFor(cue.section) : clamp(cue.floor)
 			};
 		});
 
@@ -693,7 +696,7 @@ export class ShowPlayer {
 			this.mixer.palette = active.palette;
 			this.mixer.intensity = intensityFor(active);
 			this.mixer.motion = motionFor(active);
-			floor = floorFor(active.section);
+			floor = active.floor;
 		}
 		// A bright section ends on the outro floor rather than its own dark one; a void stays
 		// dark.
@@ -714,7 +717,8 @@ export class ShowPlayer {
 			const def = this.registry.get(spec.effect);
 			layer.setEffect(def, this.mixer.geometry);
 			if (!def) continue;
-			layer.opacity = spec.opacity ?? layer.opacity;
+			// A cue that names no opacity plays at its role's own, not whatever the cue before set.
+			layer.opacity = spec.opacity ?? DEFAULT_OPACITY[role];
 			if (spec.params) for (const [k, v] of Object.entries(spec.params)) layer.params[k] = v;
 		}
 	}
@@ -760,9 +764,7 @@ export class ShowPlayer {
 
 /** Fade the floor with the cue to avoid a level step. */
 function lerpFloor(from: CompiledCue, to: CompiledCue, u: number): number {
-	const a = floorFor(from.section);
-	const b = floorFor(to.section);
-	return a + (b - a) * u;
+	return from.floor + (to.floor - from.floor) * u;
 }
 
 function seekCursor(times: readonly number[], t: number): number {

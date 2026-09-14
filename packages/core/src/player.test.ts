@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ROOM, buildGeometry } from './geometry.ts';
 import { EffectRegistry } from './effects/index.ts';
-import { Mixer } from './mixer.ts';
+import { DEFAULT_OPACITY, Mixer } from './mixer.ts';
 import { ShowPlayer } from './player.ts';
 import { RoomDirector } from './director.ts';
 import { blockChase } from './effects/blockChase.ts';
@@ -59,6 +59,25 @@ describe('seeking within a cue', () => {
 		player.reset();
 		const frame = player.update(0.1, 1 / 60);
 		expect([frame.kick, frame.snare, frame.hat]).toEqual([false, false, false]);
+	});
+});
+
+describe('layer opacity', () => {
+	it('plays a cue that names no opacity at the role default, whatever the cue before set', () => {
+		const analysis = fixtureAnalysis();
+		const show = fixtureShow(analysis);
+		const second = analysis.sections[1].startBar;
+		show.cues = [
+			{ bar: 0, section: 'intro', note: 'an evening look', layers: { bed: { effect: 'wash', opacity: 1 } } },
+			{ bar: second, section: 'groove', note: 'the engine again', layers: { bed: { effect: 'wash' } } }
+		];
+		const mixer = new Mixer(g);
+		const player = new ShowPlayer(mixer, new EffectRegistry());
+		player.load(analysis, show);
+		player.update(0.5, 1 / 60);
+		expect(mixer.layers.bed.opacity).toBe(1);
+		player.update(analysis.tempo.barTimes[second] + 0.5, 1 / 60);
+		expect(mixer.layers.bed.opacity).toBe(DEFAULT_OPACITY.bed);
 	});
 });
 
