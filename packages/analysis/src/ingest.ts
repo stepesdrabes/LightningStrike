@@ -14,9 +14,12 @@ import { handMapGrid, type DrawingGrid } from './gridedits.ts';
 import { handMapFingerprint, type HandSection } from './handSections.ts';
 import { medianPeriod } from './metricalLevel.ts';
 import { KICK_CLAIMING_FAMILIES, familyCorroborated, loudKickRate } from './vocabulary.ts';
-import { readDrumEvidence, writeDrumEvidence } from './drumEvidenceCache.ts';
+import { NO_TRANSCRIBER, readDrumEvidence, writeDrumEvidence, type DrumEvidence } from './drumEvidenceCache.ts';
+import { Adtof, adtofIdentity } from './adtof.ts';
+import { fusionCurrent, readInstalledFusion } from './fusionModel.ts';
 import { onsetsBeside, preludeBeside } from './dsp.ts';
 import type { SeparatedDrumAudio, SourceOnsets } from './separatedDrums.ts';
+import type { SeparatedDrums } from './separation.ts';
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 const LOCAL_ID = /^file-[a-f0-9]{12}$/;
@@ -88,6 +91,23 @@ export async function readMeta(id: string): Promise<TrackMeta | null> {
 		return JSON.parse(await readFile(metaPath(id), 'utf8')) as TrackMeta;
 	} catch {
 		return null;
+	}
+}
+
+/** ADTOF on the separated drum stem and on each 44.1 kHz source, for the drum fusion. */
+async function transcribeKit(isolated: SeparatedDrums): Promise<NonNullable<DrumEvidence['activations']>> {
+	const model = await Adtof.create();
+	if (!model) throw new Error('the transcription model is not installed');
+	try {
+		const activations = {} as NonNullable<DrumEvidence['activations']>;
+		for (const name of ['stem', 'kick', 'snare', 'hat', 'cymbal'] as const) {
+			const result = await model.run(name === 'stem' ? isolated.drums : isolated[name]);
+			if (!result.activations) throw new Error('the transcription returned no activations');
+			activations[name] = result.activations;
+		}
+		return activations;
+	} finally {
+		await model.close();
 	}
 }
 
@@ -539,7 +559,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	}
 	if (!opts.force && !relevel) {
 		// Invalidate stale versions and changed hand maps even when their JSON shape still looks compatible.
-		if (cached && cached.version === ANALYSIS_VERSION && cached.handMap === (await handMapStamp(id))) {
+		if (cached && cached.version === ANALYSIS_VERSION && cached.handMap === (await handMapStamp(id))
+			&& (!cached.drumFusion || fusionCurrent(cached.drumFusion, await readInstalledFusion()))) {
 			let [, context] = await metadata;
 			log('cached');
 			// Backfill legacy duration/trust metadata to avoid analysis reads for every library row.
@@ -574,7 +595,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		const modelLog = (stage: string) => { if (!separating) log(stage); };
 
 		let separatedDrums: SeparatedDrumAudio | undefined;
-		let separatedOnsets: Promise<Record<'kick' | 'snare', SourceOnsets> | undefined> =
+		let kitActivations: DrumEvidence['activations'] | undefined;
+		let separatedOnsets: Promise<Record<'kick' | 'snare' | 'hat' | 'cymbal', SourceOnsets> | undefined> =
 			Promise.resolve(undefined);
 		let drumSeparation: string | undefined;
 		let drumEvidenceCacheHit = false;
@@ -603,36 +625,50 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 				separating = true;
 				log('separating drums');
 				try {
-					const audio = await wide;
+					const [audio, stemModel] = await Promise.all([wide, adtofIdentity()]);
 					const evidenceDir = join(CACHE_DIR, 'drum-evidence');
 					const evidenceKey = { audioHash: audio.hash,
 						modelVersion: provider === 'cpu' ? SEPARATION_VERSION : `${SEPARATION_VERSION}:${provider}`,
-						frames44k: audio.left.length };
-					separatedDrums = await readDrumEvidence(evidenceDir, evidenceKey) ?? undefined;
-					drumEvidenceCacheHit = separatedDrums !== undefined;
-					if (separatedDrums) {
+						frames44k: audio.left.length, stemModel: stemModel ?? NO_TRANSCRIBER };
+					const reused = await readDrumEvidence(evidenceDir, evidenceKey);
+					drumEvidenceCacheHit = reused !== null;
+					let sources: SeparatedDrumAudio & { hat: Float32Array; cymbal: Float32Array };
+					if (reused) {
 						log('Reusing separated drums');
+						sources = reused.sources;
+						kitActivations = reused.activations;
 					} else {
 						const isolated = await separator.run(audio.left, audio.right, (progress) => {
 							const { stage, completed, total, provider: actualProvider } = progress;
 							if (actualProvider) drumProviders[stage] = actualProvider;
 							const label = stage === 'drums' ? 'Isolating drums (1/2)'
-								: 'Separating kicks and snares (2/2)';
+								: 'Separating the drum kit (2/2)';
 							log(`${label}: ${Math.round(100 * completed / Math.max(1, total))}%`);
 						});
-						const [kick, snare, cymbal] = await Promise.all([
+						const [kick, snare, hat, cymbal, transcribed] = await Promise.all([
 							resamplePcm(isolated.kick, isolated.sampleRate),
 							resamplePcm(isolated.snare, isolated.sampleRate),
-							isolated.cymbal ? resamplePcm(isolated.cymbal, isolated.sampleRate) : undefined
+							resamplePcm(isolated.hat, isolated.sampleRate),
+							resamplePcm(isolated.cymbal, isolated.sampleRate),
+							stemModel ? transcribeKit(isolated).catch((e) => {
+								const reason = e instanceof Error ? e.message : String(e);
+								log(`drum transcription of separated sources unavailable: ${reason}`);
+								return undefined;
+							}) : undefined
 						]);
-						separatedDrums = { kick, snare, cymbal, sampleRate: 22050 };
+						sources = { kick, snare, hat, cymbal, sampleRate: 22050 };
+						kitActivations = transcribed;
 					}
+					separatedDrums = sources;
 					// Analysis waits for these onset curves, not for the cache write below.
-					const { kick, snare, sampleRate } = separatedDrums;
-					separatedOnsets = Promise.all([onsetsBeside(kick, sampleRate), onsetsBeside(snare, sampleRate)])
-						.then(([k, s]) => k && s ? { kick: k, snare: s } : undefined);
-					if (!drumEvidenceCacheHit) {
-						await writeDrumEvidence(evidenceDir, evidenceKey, separatedDrums).catch(e =>
+					const { kick, snare, hat, cymbal, sampleRate } = sources;
+					const onsets = [kick, snare, hat, cymbal].map((pcm) => onsetsBeside(pcm, sampleRate));
+					separatedOnsets = Promise.all(onsets)
+						.then(([k, s, h, c]) => (k && s && h && c ? { kick: k, snare: s, hat: h, cymbal: c } : undefined));
+					// With a transcriber installed, only complete evidence is kept, so a transient failure retries.
+					if (!drumEvidenceCacheHit && (kitActivations || !stemModel)) {
+						const evidence = kitActivations ? { sources, activations: kitActivations } : { sources };
+						await writeDrumEvidence(evidenceDir, evidenceKey, evidence).catch(e =>
 							log(`Could not cache separated drums: ${e instanceof Error ? e.message : String(e)}`));
 					}
 					drumSeparation = SEPARATION_VERSION;
@@ -675,7 +711,6 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 
 			const drums = await timed('transcription', async () => {
 				try {
-					const { Adtof } = await import('./adtof.ts');
 					const model = await Adtof.create();
 					if (!model) return undefined;
 					modelLog('transcribing drums');
@@ -717,6 +752,11 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 
 		log('analysing');
 		const handMap = await handMapInput(id);
+		const installedFusion = drums?.activations && kitActivations ? await readInstalledFusion() : null;
+		if (installedFusion && 'error' in installedFusion) {
+			log(`drum fusion unavailable, falling back: ${installedFusion.error.message}`);
+		}
+		const drumFusion = installedFusion && 'model' in installedFusion ? installedFusion.model : null;
 		const analysis = await timed('analysis', async () => analyzeTrack({
 			mono: decoded.mono,
 			left: decoded.left,
@@ -731,6 +771,12 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			drums,
 			separatedDrums,
 			separatedOnsets: await separatedOnsets,
+			stemActivations: kitActivations?.stem,
+			sourceActivations: kitActivations && {
+				kick: kitActivations.kick, snare: kitActivations.snare,
+				hat: kitActivations.hat, cymbal: kitActivations.cymbal
+			},
+			drumFusion: drumFusion ?? undefined,
 			prelude: await prelude,
 			metricalLevel,
 			context,
@@ -755,7 +801,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			drumProviders: Object.keys(drumProviders).length ? drumProviders : undefined };
 		await writeFile(join(CACHE_DIR, `${id}.preparation.json`), JSON.stringify({
 			trackId: id, audioHash: analysis.hash, analysisVersion: analysis.version,
-			drumSeparation, preparedAt: new Date().toISOString(), ...timings
+			drumSeparation, drumFusion: analysis.drumFusion, preparedAt: new Date().toISOString(), ...timings
 		}, null, '\t')).catch(() => {});
 		return { id, audioPath, analysis, meta, context, fromCache: false,
 			timings,

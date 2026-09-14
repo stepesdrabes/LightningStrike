@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { decodeAudio, resamplePcm } from '../../packages/analysis/src/decode.ts';
 import { DrumSeparator, SEPARATION_VERSION } from '../../packages/analysis/src/separation.ts';
-import { readDrumEvidence, writeDrumEvidence } from '../../packages/analysis/src/drumEvidenceCache.ts';
+import { NO_TRANSCRIBER, readDrumEvidence, writeDrumEvidence } from '../../packages/analysis/src/drumEvidenceCache.ts';
 import { hashFile } from '../../packages/analysis/src/cpuGraphCache.ts';
 import { benchmarkCache } from '../cache.ts';
 
@@ -42,7 +42,8 @@ if (existsSync(judgement) && !existsSync(join(cache, 'judge', id + '.json'))) {
 }
 const audioPath = join(cache, audio[0]);
 const wide = await decodeAudio(audioPath, 44100);
-const key = { audioHash: wide.hash, modelVersion: `${SEPARATION_VERSION}:dml`, frames44k: wide.left.length };
+const key = { audioHash: wide.hash, modelVersion: `${SEPARATION_VERSION}:dml`, frames44k: wide.left.length,
+ stemModel: NO_TRANSCRIBER };
 const manifestPath = join(output, 'manifest.json');
 if (existsSync(manifestPath)) {
  const previous = JSON.parse(await readFile(manifestPath, 'utf8'));
@@ -58,7 +59,8 @@ await appendFile(join(output, 'mix.stereo.f32'), raw(wide.right));
 await writeFile(join(output, 'mix.f32'), raw(wide.mono));
 const mono22 = await decodeAudio(audioPath, 22050);
 await writeFile(join(output, 'mix22.f32'), raw(mono22.mono));
-const runtimeFiles = ['packages/analysis/src/separation.ts', 'packages/analysis/src/dsp/separationFft.ts'];
+const runtimeFiles = ['packages/analysis/src/separation.ts', 'packages/analysis/src/dsp/separationFft.ts',
+ 'packages/analysis/src/dsp/mdxFft.ts'];
 const runtimeHashes = Object.fromEntries(await Promise.all(runtimeFiles.map(async file => [file, await hashFile(file)])));
 const started = performance.now();
 const providers: Record<string, string> = {};
@@ -78,10 +80,16 @@ try {
   providers[p.stage] = p.provider;
   if (p.completed === 0 || p.completed === p.total || p.completed % 5 === 0) console.log(JSON.stringify({ id, ...p }));
  });
- for (const name of ['drums', 'kick', 'snare', 'cymbal'] as const) await writeFile(join(output, name + '.f32'), raw(separated[name]));
- const kick = await resamplePcm(separated.kick, 44100), snare = await resamplePcm(separated.snare, 44100), cymbal = await resamplePcm(separated.cymbal, 44100);
- for (const [name, pcm] of Object.entries({ kick, snare, cymbal })) await writeFile(join(output, name + '22.f32'), raw(pcm));
- await writeDrumEvidence(join(cache, 'drum-evidence'), key, { sampleRate: 22050, kick, snare, cymbal });
+ for (const name of ['drums', 'kick', 'snare', 'hat', 'cymbal'] as const) {
+  await writeFile(join(output, name + '.f32'), raw(separated[name]));
+ }
+ const kick = await resamplePcm(separated.kick, 44100), snare = await resamplePcm(separated.snare, 44100);
+ const hat = await resamplePcm(separated.hat, 44100), cymbal = await resamplePcm(separated.cymbal, 44100);
+ for (const [name, pcm] of Object.entries({ kick, snare, hat, cymbal })) {
+  await writeFile(join(output, name + '22.f32'), raw(pcm));
+ }
+ await writeDrumEvidence(join(cache, 'drum-evidence'), key,
+  { sources: { sampleRate: 22050, kick, snare, hat, cymbal } });
  if (!await readDrumEvidence(join(cache, 'drum-evidence'), key)) throw new Error('Evidence cache read-back failed.');
  for (const file of runtimeFiles) if (await hashFile(file) !== runtimeHashes[file]) throw new Error('Separator changed during source preparation.');
  const manifest = { id, title: JSON.parse(await readFile(join(cache, id + '.meta.json'), 'utf8')).title,

@@ -112,30 +112,35 @@ model directory. The optional runtime models are:
 
 - **Beat This!** for beats and downbeats, downloaded on demand with pinned digests.
 - **Discogs-EffNet** for genre evidence, also downloaded with a pinned digest.
-- **ADTOF** for kick/snare transcription, exported locally with
+- **ADTOF** for kick/snare/hi-hat transcription, exported locally with
   [bench/export-adtof.py](bench/export-adtof.py).
-- **HTDemucs + DrumSep** for individual kick/snare evidence. The optional native ONNX
-  path improves snare/clap detection using source separation, original-audio attack timing,
-  and existing transcription. Kick recovery also requires independent model, full-mix
-  attack and separated low-frequency evidence. See
-  [setup and model provenance](bench/lab/SEPARATION.md) and
+- **HTDemucs + MDX23C DrumSep** separate the drums and then kick, snare, hi-hat and cymbal
+  sources; ADTOF also transcribes the drum stem and each source. With `drum-fusion.json`,
+  trained by [bench/drumeval](bench/drumeval/README.md), a learned classifier picks the kick,
+  snare and hi-hat hits from all of that evidence; without it, rule-based source recovery runs.
+  See [setup and model provenance](bench/lab/SEPARATION.md) and
   [evaluation and known limitations](bench/DRUM_RELIABILITY.md).
   Preparation can take minutes per song on CPU. Install the models before refreshing
-  tracks; installing them later requires a fresh analysis of previously cached tracks.
+  tracks; installing them later requires a fresh analysis of previously cached tracks. Songs
+  classified by a different `drum-fusion.json` are re-analysed when next prepared; a model file
+  that fails to load leaves them as they are.
 
 Drum listening is available from the Judge panel. It plays the full song with optional kick
 and snare clicks, loops a chosen passage, and keeps missed-hit and timing notes separately
 from the show. Click empty space in either drum lane to mark a missed hit; save notes for
 later comparison. Drafts remain in the browser if the page reloads.
 
-Successful separation also keeps lossless source evidence in `cache/drum-evidence/` (up to
-2 GiB, oldest entries evicted). Detector reanalysis can reuse it when the audio and models
-match. Hardware-specific optimized CPU graphs live in `cache/separator-graphs/`; these
-are derived files, not portable models. Per-track `.preparation.json` records stage timings.
+Successful separation also keeps lossless source evidence and its transcriptions in
+`cache/drum-evidence/` (up to 2 GiB, oldest entries evicted). Detector reanalysis can reuse
+it when the audio, separator and ADTOF model match. Hardware-specific optimized CPU graphs
+live in `cache/separator-graphs/`; these are derived files, not portable models. Per-track
+`.preparation.json` records stage timings and the separator and fusion model versions.
 See [performance measurements and M1 Pro profiling](bench/lab/SEPARATION-PERFORMANCE.md).
 
 Analysis retains fallback paths when models are unavailable. Discogs-EffNet and ADTOF
-weights carry CC BY-NC-SA terms; preserve their upstream licenses and export restrictions.
+weights carry CC BY-NC-SA terms and the MDX23C DrumSep weights are non-commercial too; preserve
+their upstream licenses and export restrictions. Desktop builds bundle all of `models/`, so never
+distribute a build that contains them.
 
 Optional Claude authoring uses the Claude Agent SDK with local Claude authentication.
 For DeepSeek, enter a key in the app; it is saved in the cache's `settings.json`.

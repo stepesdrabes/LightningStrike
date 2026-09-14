@@ -37,6 +37,29 @@ describe('optional drum separator', () => {
 			expect(releases).toHaveBeenCalledOnce();
 		} finally { warn.mockRestore(); }
 	});
+	it('feeds the kit model the raw stereo drum spectrogram and keeps kick, snare, hi-hat and cymbal stems', async () => {
+		const separator = Object.assign(Object.create(DrumSeparator.prototype), {
+			provider: 'cpu', modelDir: 'mock-models', threads: 4, lanes: 1
+		}) as DrumSeparator;
+		const length = 30000;
+		const left = Float32Array.from({ length }, (_, i) => 3 * Math.sin(.013 * i));
+		const right = Float32Array.from({ length }, (_, i) => 2 * Math.cos(.007 * i));
+		const open = async () => ({ detached: true, inputNames: [], release: async () => undefined, run: async (feeds: any) => {
+			expect(feeds.spec.dims).toEqual([1, 4, 1024, 1024]);
+			// Stem s answers (s + 1) times the input, so each kept stem names the network output it came from.
+			const spec = feeds.spec.data as Float32Array;
+			const sources = new Float32Array(5 * spec.length);
+			for (let s = 0; s < 5; s++) for (let i = 0; i < spec.length; i++) sources[s * spec.length + i] = (s + 1) * spec[i];
+			return { sources: { data: sources, dims: [1, 5, 4, 1024, 1024] } };
+		} });
+		const [kick, snare, hat, cymbal] = await (separator as any).stage([left, right], 'kit', open);
+		for (const [stem, gain] of [[kick, 1], [snare, 2], [hat, 4], [cymbal, 5]] as const) {
+			for (const i of [0, 777, 15000, length - 1]) {
+				expect(Math.abs(stem[0][i] - gain * left[i])).toBeLessThan(2e-3 * gain);
+				expect(Math.abs(stem[1][i] - gain * right[i])).toBeLessThan(2e-3 * gain);
+			}
+		}
+	}, 60_000);
 	it('commits concurrent lanes in chunk order, identical to one lane', async () => {
 		const length = 343980 * 3 + 1234;
 		const left = Float32Array.from({ length }, (_, i) => .3 * Math.sin(.013 * i) + .01 * Math.cos(i));
@@ -109,7 +132,7 @@ describe('optional drum separator', () => {
 			const fresh = await separator!.run(input, input);
 			expect(readdirSync(dir).filter(name => name.endsWith('.onnx'))).toHaveLength(2);
 			const cached = await separator!.run(input, input);
-			for (const kind of ['drums', 'kick', 'snare', 'cymbal'] as const) {
+			for (const kind of ['drums', 'kick', 'snare', 'hat', 'cymbal'] as const) {
 				expect(Buffer.from(cached[kind].buffer).equals(Buffer.from(fresh[kind].buffer))).toBe(true);
 			}
 		} finally { await separator!.close(); }
@@ -126,7 +149,7 @@ describe('optional drum separator', () => {
 		const dir = mkdtempSync(join(tmpdir(), 'lightningstrike-separation-'));
 		directories.push(dir);
 		writeFileSync(join(dir, 'htdemucs.onnx'), 'wrong export');
-		writeFileSync(join(dir, 'drumsep.onnx'), 'wrong attention mask');
+		writeFileSync(join(dir, 'drumsep-mdx23c.onnx'), 'wrong export');
 		await expect(DrumSeparator.create(dir)).rejects.toThrow('checksum mismatch');
 	});
 	it.skipIf(!process.env.MV_SEPARATION_TEST_MODELS)('keeps silence silent, validates inputs and preserves a very short tail', async () => {
@@ -145,7 +168,7 @@ describe('optional drum separator', () => {
 				const events: string[] = [];
 				const result = await separator!.run(input, input,
 					p => events.push(`${p.stage}:${p.completed}/${p.total}`));
-				for (const pcm of [result.drums, result.kick, result.snare, result.cymbal]) {
+				for (const pcm of [result.drums, result.kick, result.snare, result.hat, result.cymbal]) {
 					expect(pcm.length).toBe(input.length);
 					expect(pcm.every(Number.isFinite)).toBe(true);
 				}

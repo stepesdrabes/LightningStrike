@@ -25,11 +25,12 @@ await model?.close();
 const mono = await resamplePcm(mix, 44100);
 const kick = await resamplePcm(rawKick, 44100);
 const snare = await resamplePcm(rawSnare, 44100);
+const hat = existsSync(join(dir, 'hat.f32')) ? await resamplePcm(readF32(join(dir, 'hat.f32')), 44100) : undefined;
 const cymbal = existsSync(join(dir, 'cymbal.f32')) ? await resamplePcm(readF32(join(dir, 'cymbal.f32')), 44100) : undefined;
 const duration = mono.length / 22050;
 const beats = baseline.beats.filter((time: number) => time >= offset && time < offset + duration).map((time: number) => time - offset);
 const analysis = analyzeTrack({ mono, sampleRate: 22050, duration, hash: audio.hash, trackId: id,
-	title: baseline.title, beats, drums, separatedDrums: { kick, snare, cymbal, sampleRate: 22050 } });
+	title: baseline.title, beats, drums, separatedDrums: { kick, snare, hat, cymbal, sampleRate: 22050 } });
 for (const kind of ['kick', 'snare', 'hat'] as const) analysis.onsets[kind].times = analysis.onsets[kind].times.map((time) => time + offset);
 writeFileSync(join(dir, 'review-analysis.json'), JSON.stringify(analysis, null, 2));
 console.log(JSON.stringify({ id, offset, duration, snare: analysis.onsets.snare }, null, 2));

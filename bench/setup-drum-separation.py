@@ -11,8 +11,29 @@ ROOT = Path(__file__).resolve().parent.parent
 EXPORTS = ROOT / 'bench/reports/audio-reliability/model-exports'
 DEMUCS_SOURCE_SHA = '68d0bf16428ef66e692cdff8a9ccf28f1ef3f69440d57e58605a4cc55fcc5e74'
 DEMUCS_SHA = 'a6eabce31c0866a7ad7ac545dc7b12fbe4ccd0c86731e94e99fd5b583da504df'
-DRUMSEP_SHA = 'e35619cef17d1aeaf410dae9d9895f3814cccc51b7a0deecbf543fe0131d7002'
-SOURCE_SHA = '313dcb93e0ed60f52280cd20f2145f32110ffa6f450ce157a69846e16642dd5f'
+KIT_SHA = 'e2ec140f5487c79b0be512d705746e2ac017bf3ab06d899d561ca963d91755c2'
+# jarredou's MDX23C 5-stem DrumSep weights (CC BY-NC-SA; the checkpoints were published as CC BY-NC-ND)
+# as mirrored by EverlastEngineering/DrumToMIDI, with Music-Source-Separation-Training's model code (MIT).
+KIT_SOURCES = [
+    ('drumsep_5stems_mdx23c_jarredou.ckpt',
+     'https://media.githubusercontent.com/media/EverlastEngineering/DrumToMIDI/'
+     '62ca57f8335942ebcc1fe6070af4e5249d845369/mdx_models/drumsep_5stems_mdx23c_jarredou.ckpt',
+     '1f8e636fb674b88a52c8399fde9a4ebe2b72b065ca07eed4e03ab1c9f0bfb2e0'),
+    ('config_mdx23c.yaml',
+     'https://raw.githubusercontent.com/EverlastEngineering/DrumToMIDI/'
+     '62ca57f8335942ebcc1fe6070af4e5249d845369/mdx_models/config_mdx23c.yaml',
+     'd2962f43d6682e8ea84e77fb50a2680e4641ba1749ee95f8ea6e96bba3278944'),
+    ('mdx23c_tfc_tdf_v3.py',
+     'https://raw.githubusercontent.com/ZFTurbo/Music-Source-Separation-Training/'
+     '756168cd51c2edd305d669d042c99d8a52bd3d62/models/mdx23c_tfc_tdf_v3.py',
+     '5b29c37cbba4b06e49dcd6bef668d372501df2517392b71b93804355cb7d535e'),
+]
+KIT_NOTICE = '''drumsep-mdx23c.onnx is an ONNX export of jarredou's MDX23C 5-stem DrumSep model
+(kick, snare, toms, hi-hat, cymbals), checkpoint drumsep_5stems_mdx23c_jarredou.ckpt.
+The weights are licensed for non-commercial use only (CC BY-NC-SA 4.0; the checkpoints were
+published as CC BY-NC-ND 4.0). Do not distribute this export or builds that contain it.
+Model code: Music-Source-Separation-Training by Roman Solovyev (ZFTurbo), MIT License.
+'''
 
 def digest(path):
     with path.open('rb') as stream:
@@ -65,31 +86,33 @@ def main():
         partial = models / 'htdemucs.onnx.partial'
         shutil.copyfile(portable, partial)
         partial.replace(demucs)
-    if not already_verified(models / 'drumsep.onnx', DRUMSEP_SHA):
-        download(
-            'https://huggingface.co/splitzo/drumsep/resolve/'
-            'f510fb1dbdd968e3218f64e8d7ac1af0fafdb6e2/drumsep.onnx?download=true',
-            EXPORTS / 'drumsep.onnx', SOURCE_SHA)
-        portable = EXPORTS / 'drumsep-portable.onnx'
-        if not already_verified(portable, DRUMSEP_SHA):
-            subprocess.run([sys.executable, str(ROOT / 'bench/lab/patch-drumsep-onnx.py'),
-                            '--source', str(EXPORTS / 'drumsep.onnx'), '--out', str(portable)], check=True)
-        if digest(portable) != DRUMSEP_SHA:
-            raise RuntimeError('Patched export checksum mismatch; use onnx==1.22.0.')
-        partial = models / 'drumsep.onnx.partial'
+    if not already_verified(models / 'drumsep-mdx23c.onnx', KIT_SHA):
+        kit = EXPORTS / 'mdx23c'
+        for name, url, sha in KIT_SOURCES:
+            download(url, kit / name, sha)
+        portable = EXPORTS / 'drumsep-mdx23c.onnx'
+        if not already_verified(portable, KIT_SHA):
+            subprocess.run([sys.executable, str(ROOT / 'bench/lab/export-mdx23c.py'),
+                            f'--ckpt={kit / KIT_SOURCES[0][0]}', f'--config={kit / KIT_SOURCES[1][0]}',
+                            f'--model-code={kit}', f'--out={portable}'], check=True)
+        if digest(portable) != KIT_SHA:
+            raise RuntimeError('MDX23C export checksum mismatch; use torch==2.11.0 and onnx==1.22.0, '
+                               'or copy drumsep-mdx23c.onnx from a verified installation.')
+        partial = models / 'drumsep-mdx23c.onnx.partial'
         shutil.copyfile(portable, partial)
-        partial.replace(models / 'drumsep.onnx')
+        partial.replace(models / 'drumsep-mdx23c.onnx')
+    (models / 'drumsep-mdx23c.NOTICE').write_text(KIT_NOTICE, encoding='utf-8')
     licenses = [
         ('htdemucs.LICENSE', 'facebookresearch/demucs', 'e976d93ecc3865e5757426930257e200846a520a',
          'cf9b17822d1fcd4ff32ccbe14183386fb3adf6f2ff92dc184130823f7fc28173'),
-        ('drumsep.LICENSE', 'inagoy/drumsep', 'c1cea3f47bacd410412c7f563109f0a227b0e784',
-         '8b5475f2ece740eea1760ddc4dcc0cecc5087e09d424abd3bbcb8f47a78ba2cd'),
+        ('mdx23c-code.LICENSE', 'ZFTurbo/Music-Source-Separation-Training', '756168cd51c2edd305d669d042c99d8a52bd3d62',
+         '3282dc057695ef5b9a64909a7092ca40b2c292c232580fc6ace6e5d665cc0207'),
         ('htdemucs-export.LICENSE', 'StemSplit/demucs-onnx', '85db5c80aba33f0f2bdf88034a4be6539feec85b',
          '002e90589e1030d13e3708342c89faf67b520273793b6a2c77c4d9bd9a5ec7e7'),
     ]
     for name, repository, revision, sha in licenses:
         download(f'https://raw.githubusercontent.com/{repository}/{revision}/LICENSE', models / name, sha)
-    print(f'Verified HTDemucs and corrected DrumSep installed in {models}', flush=True)
+    print(f'Verified HTDemucs and MDX23C DrumSep installed in {models}', flush=True)
 
 if __name__ == '__main__':
     main()

@@ -24,9 +24,6 @@ const input = option('input') ?? 'bench/reports/audio-reliability/habibi-stem/mi
 const onlyStage = option('stage');
 if (onlyStage && !['drums', 'kit'].includes(onlyStage)) throw new Error(`Unsupported stage: ${onlyStage}`);
 const kitModel = option('kit-model');
-if (provider === 'coreml' && onlyStage !== 'drums' && !kitModel) {
- throw new Error('CoreML static testing requires --kit-model=PATH to the fixed-eight-second export; Node ignores freeDimensionOverrides.');
-}
 const out = option('out') ?? `bench/reports/audio-reliability/separation-performance/${provider}-${threads}`;
 mkdirSync(out, { recursive: true });
 const buffer = readFileSync(input);
@@ -109,11 +106,11 @@ try {
    return warm;
   };
   const stereo = await internal.stage([pcm.subarray(0, frames), pcm.subarray(frames)], onlyStage, warmOrOpen);
-  const names = onlyStage === 'drums' ? ['drums'] : ['kick', 'snare', 'cymbal'];
+  const names = onlyStage === 'drums' ? ['drums'] : ['kick', 'snare', 'hat', 'cymbal'];
   result = Object.fromEntries(stereo.map((s: Float32Array[], i: number) => [names[i], Float32Array.from(s[0], (v, f) => .5 * (v + s[1][f]))]));
  } else result = await separator.run(pcm.subarray(0, frames), pcm.subarray(frames));
  report.totalMs = performance.now() - started;
- for (const kind of ['drums', 'kick', 'snare', 'cymbal'] as const) {
+ for (const kind of ['drums', 'kick', 'snare', 'hat', 'cymbal'] as const) {
   if (result[kind]) writeFileSync(join(out, `${kind}.f32`), Buffer.from(result[kind].buffer));
  }
 } catch (error) {

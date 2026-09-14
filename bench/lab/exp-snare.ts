@@ -57,8 +57,7 @@ function pick(act: Float32Array, threshold: number, o: PickOptions): { frames: n
 		let acc = 0;
 		for (let k = -preAvg; k <= postAvg; k++) {
 			const j = i + k;
-			if (o.madmom) acc += j >= 0 && j < n ? act[j] : 0;
-			else acc += act[Math.min(n - 1, Math.max(0, j))];
+			if (j >= 0 && j < n) acc += act[j];
 		}
 		proc[i] = Math.max(0, act[i] - acc / win);
 		if (o.madmom) det[i] = act[i] - acc / win >= threshold ? act[i] : 0;

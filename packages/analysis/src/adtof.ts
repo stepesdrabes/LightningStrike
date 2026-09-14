@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { hashFile } from './cpuGraphCache.ts';
 import { RealFft } from './dsp/fft.ts';
 import { QUIET_THREADS, openSession, type OnnxSession } from './onnxSession.ts';
 import { MODEL_DIR } from './paths.ts';
@@ -35,7 +36,7 @@ const HAT_THRESHOLD = 0.15;
  */
 const CLICK_SNARE_MAX = 0.4;
 const CLICK_HAT_RATIO = 1.5;
-const STRONG_ONSET_EXCESS = 0.6;
+export const STRONG_ONSET_EXCESS = 0.6;
 const CLASSES = 5;
 
 export interface AdtofOnsets {
@@ -46,6 +47,8 @@ export interface AdtofOnsets {
 	cymbal: DrumStream;
 	/** Snare times that read as hi-hat clicks by activation; absent in older evidence. */
 	snareClicks?: number[];
+	/** frames x CLASSES at 100 Hz, the matrix the streams were picked from. */
+	activations?: Float32Array;
 }
 
 export interface AdtofFilterbank {
@@ -170,8 +173,9 @@ function pickActivationPeaks(
 	for (let i = 0; i < n; i++) {
 		let acc = 0;
 		for (let k = -preAvg; k <= postAvg; k++) {
-			const j = Math.min(n - 1, Math.max(0, i + k));
-			acc += act[j];
+			// Frames outside the audio are silence, so a hit on the first frame still stands out.
+			const j = i + k;
+			if (j >= 0 && j < n) acc += act[j];
 		}
 		proc[i] = Math.max(0, act[i] - acc / win);
 	}
@@ -254,8 +258,15 @@ export function onsetsFromActivations(act: Float32Array): AdtofOnsets {
 		snare,
 		hat: activationStream(hatAct, HAT_THRESHOLD),
 		cymbal: activationStream(classActivation(4), THRESHOLDS[4]),
-		snareClicks: hatClickSuspects(snare, snareAct, hatAct)
+		snareClicks: hatClickSuspects(snare, snareAct, hatAct),
+		activations: act
 	};
+}
+
+/** Content hash of the installed model, or null without one; cached stem activations are keyed by it. */
+export async function adtofIdentity(): Promise<string | null> {
+	const path = join(MODEL_DIR, MODEL_FILE);
+	return existsSync(path) ? hashFile(path) : null;
 }
 
 export class Adtof {

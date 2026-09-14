@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drum judging</title>
+<style>
+	:root {
+		--bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1f; --muted: #6e6e73; --line: #dedcd6;
+		--a: #2f6fdd; --b: #c2410c; --good: #15803d; --bad: #b91c1c; --accent: #111;
+	}
+	@media (prefers-color-scheme: dark) {
+		:root { --bg: #161618; --panel: #202023; --ink: #f2f2f2; --muted: #9a9aa0; --line: #34343a;
+			--a: #6ea1ff; --b: #fb923c; --good: #4ade80; --bad: #f87171; --accent: #fff; }
+	}
+	* { box-sizing: border-box; }
+	body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 system-ui, sans-serif; }
+	main { max-width: 1040px; margin: 0 auto; padding: 20px 16px 60px; }
+	header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+	h1 { font-size: 20px; margin: 0; }
+	.muted { color: var(--muted); }
+	.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-top: 14px; }
+	.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+	button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px;
+		padding: 7px 12px; cursor: pointer; }
+	button:hover { border-color: var(--muted); }
+	button.on { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+	button.pick { min-width: 110px; }
+	canvas { width: 100%; height: 190px; display: block; border-radius: 8px; background: var(--bg); cursor: pointer; }
+	textarea { width: 100%; min-height: 54px; font: inherit; background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+		border-radius: 8px; padding: 8px; }
+	.chip { display: inline-block; padding: 1px 8px; border-radius: 99px; background: var(--bg); border: 1px solid var(--line); font-size: 13px; }
+	.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; }
+	.num { font-variant-numeric: tabular-nums; font-family: ui-monospace, monospace; font-size: 13px; }
+	kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+	.help { font-size: 13px; }
+	.saved { color: var(--good); }
+</style>
+</head>
+<body>
+<main>
+	<header>
+		<h1 id="title">Drum judging</h1>
+		<span class="muted num" id="progress"></span>
+	</header>
+	<p class="muted" id="prompt"></p>
+	<div class="panel">
+		<div class="row" style="justify-content: space-between">
+			<div><strong id="track"></strong> <span class="muted" id="where"></span> <span class="chip" id="kind"></span></div>
+			<div class="row">
+				<button id="prev">Previous</button>
+				<select id="jump"></select>
+				<button id="next">Next</button>
+			</div>
+		</div>
+		<canvas id="timeline" width="2000" height="380"></canvas>
+		<div class="row" style="margin-top: 10px; justify-content: space-between">
+			<div class="row">
+				<button id="play">Play</button>
+				<button id="loop" class="on">Loop</button>
+				<span class="muted">Clicks</span>
+				<button data-mode="none">None</button>
+				<button data-mode="A"><span class="dot" style="background: var(--a)"></span>A</button>
+				<button data-mode="B"><span class="dot" style="background: var(--b)"></span>B</button>
+				<span class="num muted" id="clock">0.00</span>
+			</div>
+			<div class="row">
+				<span class="muted">Click volume</span>
+				<input type="range" id="volume" min="0" max="1" step="0.05" value="0.5">
+			</div>
+		</div>
+	</div>
+	<div class="panel">
+		<div class="row">
+			<button class="pick" data-verdict="A">A is better</button>
+			<button class="pick" data-verdict="B">B is better</button>
+			<button class="pick" data-verdict="same">Both equally good</button>
+			<button class="pick" data-verdict="bothWrong">Both wrong</button>
+			<button class="pick" data-verdict="unsure">Can't tell</button>
+		</div>
+		<p class="help muted">Highlighted markers are the clicks only one side has. Click one on the timeline to mark it
+			<span style="color: var(--good)">real</span>, <span style="color: var(--bad)">not real</span>, or clear it.
+			Click empty space in a row while paused to set the play position.</p>
+		<textarea id="note" placeholder="Optional note, e.g. the clap at 12 s is late"></textarea>
+		<div class="row" style="justify-content: space-between; margin-top: 8px">
+			<span class="help muted"><kbd>Space</kbd> play, <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> clicks none/A/B,
+				<kbd>L</kbd> loop, <kbd>←</kbd> <kbd>→</kbd> question</span>
+			<span id="status" class="help"></span>
+		</div>
+	</div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+let session, answers = new Map(), index = 0;
+let ctx, buffers = new Map(), source = null, clicks = [], startedAt = 0, offset = 0, playing = false, loopTimer = null;
+let mode = 'A', loop = true, peaks = null;
+const colors = () => { const s = getComputedStyle(document.documentElement);
+	return { a: s.getPropertyValue('--a'), b: s.getPropertyValue('--b'), good: s.getPropertyValue('--good'),
+		bad: s.getPropertyValue('--bad'), ink: s.getPropertyValue('--ink'), muted: s.getPropertyValue('--muted'),
+		line: s.getPropertyValue('--line') }; };
+
+async function init() {
+	session = await (await fetch('/session.json')).json();
+	for (const a of await (await fetch('/answers')).json()) answers.set(a.question, a);
+	$('title').textContent = session.title;
+	$('prompt').textContent = session.prompt;
+	session.questions.forEach((q, i) => {
+		const opt = document.createElement('option');
+		opt.value = i;
+		opt.textContent = `${i + 1}. ${q.title}`;
+		$('jump').append(opt);
+	});
+	const first = session.questions.findIndex((q) => !answers.has(q.id));
+	await show(first < 0 ? 0 : first);
+}
+
+const question = () => session.questions[index];
+const draft = () => {
+	const q = question();
+	const saved = answers.get(q.id);
+	return saved ? structuredClone(saved) : { question: q.id, verdict: null, events: {}, note: '' };
+};
+let current = null;
+
+async function show(i) {
+	stop();
+	index = Math.max(0, Math.min(session.questions.length - 1, i));
+	const q = question();
+	current = draft();
+	$('jump').value = index;
+	$('track').textContent = q.title;
+	$('where').textContent = `${q.start.toFixed(1)}-${q.end.toFixed(1)} s`;
+	$('kind').textContent = { kick: 'Kick', snare: 'Snare or clap', hat: 'Hi-hat or cymbal' }[q.kind] ?? q.kind;
+	$('note').value = current.note ?? '';
+	offset = 0;
+	refresh();
+	ctx ??= new AudioContext();
+	if (!buffers.has(q.clip)) {
+		$('status').textContent = 'Loading audio';
+		const data = await (await fetch(q.clip)).arrayBuffer();
+		buffers.set(q.clip, await ctx.decodeAudioData(data));
+		$('status').textContent = '';
+	}
+	const buffer = buffers.get(q.clip);
+	const channel = buffer.getChannelData(0);
+	const bins = 1000;
+	peaks = new Float32Array(bins);
+	const step = Math.floor(channel.length / bins);
+	for (let b = 0; b < bins; b++) {
+		let m = 0;
+		for (let k = b * step; k < (b + 1) * step; k++) m = Math.max(m, Math.abs(channel[k]));
+		peaks[b] = m;
+	}
+	draw();
+}
+
+function refresh() {
+	const done = session.questions.filter((q) => answers.has(q.id)).length;
+	$('progress').textContent = `${done} of ${session.questions.length} judged`;
+	for (const b of document.querySelectorAll('[data-verdict]')) b.classList.toggle('on', current?.verdict === b.dataset.verdict);
+	for (const b of document.querySelectorAll('[data-mode]')) b.classList.toggle('on', mode === b.dataset.mode);
+	$('loop').classList.toggle('on', loop);
+	$('play').textContent = playing ? 'Pause' : 'Play';
+}
+
+const duration = () => buffers.get(question().clip)?.duration ?? (question().end - question().start);
+const position = () => (playing ? Math.min(duration(), ctx.currentTime - startedAt) : offset);
+
+function clickAt(when, level) {
+	const osc = ctx.createOscillator();
+	const gain = ctx.createGain();
+	const q = question();
+	osc.frequency.value = q.kind === 'kick' ? 1400 : q.kind === 'snare' ? 2600 : 4200;
+	const peak = Number($('volume').value) * (0.35 + 0.65 * Math.min(1, level ?? 1));
+	gain.gain.setValueAtTime(0, when);
+	gain.gain.linearRampToValueAtTime(peak, when + 0.002);
+	gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.035);
+	osc.connect(gain).connect(ctx.destination);
+	osc.start(when);
+	osc.stop(when + 0.04);
+	clicks.push(osc);
+}
+
+function play(from = offset) {
+	stop(false);
+	const buffer = buffers.get(question().clip);
+	if (!buffer) return;
+	ctx.resume();
+	source = ctx.createBufferSource();
+	source.buffer = buffer;
+	source.connect(ctx.destination);
+	const now = ctx.currentTime + 0.06;
+	source.start(now, from);
+	startedAt = now - from;
+	playing = true;
+	if (mode !== 'none') {
+		const q = question();
+		q.events[mode].forEach((t, i) => { if (t >= from) clickAt(now + (t - from), q.levels?.[mode]?.[i]); });
+	}
+	loopTimer = setTimeout(() => { if (loop) play(0); else { stop(); offset = 0; } }, (buffer.duration - from) * 1000 + 60);
+	refresh();
+	requestAnimationFrame(tick);
+}
+
+function stop(keep = true) {
+	if (loopTimer) clearTimeout(loopTimer);
+	loopTimer = null;
+	if (playing && keep) offset = position();
+	try { source?.stop(); } catch {}
+	for (const c of clicks) { try { c.stop(); } catch {} }
+	clicks = [];
+	source = null;
+	playing = false;
+	refresh();
+	draw();
+}
+
+function tick() {
+	if (!playing) return;
+	draw();
+	$('clock').textContent = (question().start + position()).toFixed(2);
+	requestAnimationFrame(tick);
+}
+
+const layout = () => {
+	const c = $('timeline');
+	return { c, w: c.width, h: c.height, wave: [10, 170], rows: { A: [200, 270], B: [290, 360] } };
+};
+
+function draw() {
+	if (!current) return;
+	const { c, w, h, wave, rows } = layout();
+	const g = c.getContext('2d');
+	const col = colors();
+	const q = question();
+	const d = duration();
+	g.clearRect(0, 0, w, h);
+	g.fillStyle = col.line;
+	for (let s = 0; s <= d; s += 1) g.fillRect((s / d) * w, 0, 1, h);
+	if (peaks) {
+		g.fillStyle = col.muted;
+		const mid = (wave[0] + wave[1]) / 2;
+		const scale = (wave[1] - wave[0]) / 2;
+		for (let b = 0; b < peaks.length; b++) {
+			const y = peaks[b] * scale;
+			g.fillRect((b / peaks.length) * w, mid - y, Math.max(1, w / peaks.length - 1), 2 * y);
+		}
+	}
+	for (const side of ['A', 'B']) {
+		const [top, bottom] = rows[side];
+		g.fillStyle = side === 'A' ? col.a : col.b;
+		g.font = '26px system-ui';
+		g.fillText(side, 6, bottom - 20);
+		const only = new Set(q.only[side]);
+		q.events[side].forEach((t, i) => {
+			const x = (t / d) * w;
+			const verdict = current.events[`${side}:${i}`];
+			const differs = only.has(i);
+			g.globalAlpha = differs ? 1 : 0.45;
+			g.fillStyle = verdict === 'real' ? col.good : verdict === 'wrong' ? col.bad : side === 'A' ? col.a : col.b;
+			const width = differs ? 7 : 3;
+			g.fillRect(x - width / 2, top + (differs ? 0 : 14), width, bottom - top - (differs ? 0 : 28));
+			g.globalAlpha = 1;
+		});
+	}
+	g.fillStyle = col.ink;
+	g.fillRect((position() / d) * w - 1, 0, 3, h);
+}
+
+$('timeline').addEventListener('click', (e) => {
+	const { c, w, rows } = layout();
+	const r = c.getBoundingClientRect();
+	const x = ((e.clientX - r.left) / r.width) * w;
+	const y = ((e.clientY - r.top) / r.height) * c.height;
+	const q = question();
+	const d = duration();
+	for (const side of ['A', 'B']) {
+		const [top, bottom] = rows[side];
+		if (y < top - 8 || y > bottom + 8) continue;
+		let best = -1, bestDx = 14;
+		for (const i of q.only[side]) {
+			const dx = Math.abs((q.events[side][i] / d) * w - x);
+			if (dx < bestDx) { bestDx = dx; best = i; }
+		}
+		if (best >= 0) {
+			const key = `${side}:${best}`;
+			const next = { undefined: 'real', real: 'wrong', wrong: undefined }[current.events[key]];
+			if (next) current.events[key] = next; else delete current.events[key];
+			save();
+			draw();
+			return;
+		}
+	}
+	offset = Math.max(0, Math.min(d, (x / w) * d));
+	if (playing) play(offset); else draw();
+});
+
+async function save() {
+	current.note = $('note').value;
+	const q = question();
+	const payload = { ...current, question: q.id, track: q.track, kind: q.kind,
+		eventTimes: Object.fromEntries(Object.keys(current.events).map((k) => {
+			const [side, i] = k.split(':');
+			return [k, q.start + q.events[side][Number(i)]];
+		})) };
+	const res = await fetch('/answer', { method: 'POST', body: JSON.stringify(payload) });
+	if (res.ok) {
+		answers.set(q.id, payload);
+		$('status').innerHTML = '<span class="saved">Saved</span>';
+	} else $('status').textContent = 'Not saved: ' + await res.text();
+	refresh();
+}
+
+for (const b of document.querySelectorAll('[data-verdict]')) b.addEventListener('click', () => {
+	current.verdict = current.verdict === b.dataset.verdict ? null : b.dataset.verdict;
+	save();
+});
+for (const b of document.querySelectorAll('[data-mode]')) b.addEventListener('click', () => {
+	mode = b.dataset.mode;
+	if (playing) play(position()); else refresh();
+});
+$('note').addEventListener('change', save);
+$('play').addEventListener('click', () => (playing ? stop() : play()));
+$('loop').addEventListener('click', () => { loop = !loop; refresh(); });
+$('prev').addEventListener('click', () => show(index - 1));
+$('next').addEventListener('click', () => show(index + 1));
+$('jump').addEventListener('change', (e) => show(Number(e.target.value)));
+document.addEventListener('keydown', (e) => {
+	if (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+	if (e.code === 'Space') { e.preventDefault(); playing ? stop() : play(); }
+	else if (e.key === '1' || e.key === '2' || e.key === '3') {
+		mode = { 1: 'none', 2: 'A', 3: 'B' }[e.key];
+		if (playing) play(position()); else refresh();
+	}
+	else if (e.key === 'l' || e.key === 'L') { loop = !loop; refresh(); }
+	else if (e.key === 'ArrowLeft') show(index - 1);
+	else if (e.key === 'ArrowRight') show(index + 1);
+});
+init();
+</script>
+</body>
+</html>

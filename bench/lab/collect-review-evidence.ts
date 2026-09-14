@@ -39,8 +39,10 @@ for (const id of requested) {
 		writeFileSync(metadataPath, JSON.stringify(identity, null, 2));
 	}
 	const drums = onsetsFromActivations(activations);
+	const hatPath = join(directory, 'hat22.f32');
 	const sources = { sampleRate: 22050, kick: readF32(join(directory, 'kick22.f32')),
-		snare: readF32(join(directory, 'snare22.f32')), cymbal: readF32(join(directory, 'cymbal22.f32')) };
+		snare: readF32(join(directory, 'snare22.f32')), hat: existsSync(hatPath) ? readF32(hatPath) : undefined,
+		cymbal: readF32(join(directory, 'cymbal22.f32')) };
 	const probe: NonNullable<Parameters<typeof analyzeTrack>[0]['probe']> = {};
 	const analysis = analyzeTrack({ mono, sampleRate: 22050, duration: mono.length / 22050,
 		hash: manifest.analysisHash, title: baseline.title, trackId: id, beats: baseline.beats,

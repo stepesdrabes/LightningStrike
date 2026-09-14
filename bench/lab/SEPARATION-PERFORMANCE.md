@@ -1,5 +1,9 @@
 # Separation performance measurements
 
+Kit-stage and whole-preparation figures below were measured with the earlier inagoy DrumSep
+kit model; HTDemucs figures still apply. The MDX23C kit stage costs are in
+[SEPARATION.md](SEPARATION.md).
+
 Measurements use the same 24-second stereo Habibi PCM excerpt, the pinned production
 models and production chunking. Outputs and JSON profiles are ignored under
 `bench/reports/audio-reliability/separation-performance`. Run only one neural benchmark
@@ -17,8 +21,9 @@ Preparation overlaps work that does not depend on other work. The Node binding r
 worker thread (`onnxSession.ts`, `onnxWorker.ts`). Cover-art and catalogue lookups run beside
 the audio work, and EffNet, ADTOF and Beat This! run beside separation. Loudness, the stereo
 image, the mix spectrogram, onset curves and chroma need only decoded audio, so a DSP worker
-computes them beside the models (`prelude.ts`, `dsp.ts`, `dspWorker.ts`); two more compute
-the separated kick and snare onset curves while the evidence cache is written. Separation
+computes them beside the models (`prelude.ts`, `dsp.ts`, `dspWorker.ts`); four more compute
+the separated kick, snare, hi-hat and cymbal onset curves while the evidence cache is written,
+after ADTOF has transcribed the drum stem and each source. Separation
 prepares each chunk's normalized input and STFT while earlier chunks run, then commits
 chunks strictly in order, so every overlap-add accumulates in the original order.
 
@@ -28,8 +33,8 @@ with intra-op spinning disabled. `MV_DRUM_CPU_LANES=1..4` overrides the count. D
 keeps one lane; a second DirectML session on the RTX 3060 did not add throughput. Creating
 the HTDemucs DirectML session takes about two seconds, so it starts while the model
 checksums run; CPU sessions wait, because an unverified model must never publish a cached
-CPU graph. DirectML also opens DrumSep while HTDemucs runs and compiles it on an all-zero
-chunk: its first real run otherwise spends about 2.6 seconds compiling kernels.
+CPU graph. DirectML also opens the kit model while HTDemucs runs and compiles it on an all-zero
+chunk: DrumSep's first real run otherwise spent about 2.6 seconds compiling kernels.
 
 Every change below was accepted only with byte-identical `.analysis.json`:
 
@@ -70,7 +75,7 @@ bundle (21.3-21.9 s), the installed app folder took 21.7-23.1 s. All analyses st
 
 - HTDemucs keeps about 2.2 GB of activations per call without its arena, so two lanes peak
   near 6 GB in separation alone and whole preparation at 6.7-6.8 GB; with its arena, two
-  lanes kept 10.2 GB. DrumSep keeps its arena.
+  lanes kept 10.2 GB. The kit model's arena is off as well.
 - Two lanes: HTDemucs 2.21 s per chunk against 3.05 s alone; DrumSep 1.20 against 1.76 s.
   Three lanes added 5-7% at a much higher memory cost.
 - Spinning off kept two-lane separation throughput and saved about a quarter of its CPU
@@ -179,7 +184,7 @@ that arena retained approximately 0.79 GB and produced **bit-identical** mono dr
 all 1,058,400 excerpt samples. The clear-window four-thread run took 17.54 seconds for
 five model calls, versus 22.54 seconds in the earlier arena baseline. Because available
 memory also improved between runs, whole-track controlled timings should determine the
-speed claim. The production setting changes HTDemucs only; DrumSep keeps its CPU arena.
+speed claim. At the time the setting changed HTDemucs only; both arenas are now off.
 
 Two HTDemucs threads were slower (30.00 seconds of inference). Six threads with its arena
 disabled took 18.35 seconds, so the portable default remains four. A separate six-thread
@@ -273,8 +278,9 @@ node bench/lab/profile-separation.ts --provider=cpu --lanes=2 --out=bench/report
 node bench/lab/profile-separation-fft.ts
 ```
 
-`--threads` remains for numerical experiments only; any value other than four changes
-DrumSep's CPU output. With several lanes, summed call time exceeds wall time.
+`--threads` remains for numerical experiments only; any value other than four changed
+DrumSep's CPU output, and production keeps four for MDX23C too. With several lanes, summed
+call time exceeds wall time.
 
 `--stage=drums` profiles only HTDemucs; `--stage=kit` takes previously separated planar
 stereo drums. `--arena=false` disables CPU arenas for the requested stages. The production
@@ -298,38 +304,19 @@ installed macOS ARM64 package also advertises CoreML, whose kernels would change
 analysis; this harness can test it without changing production defaults:
 
 ```sh
-uv run --no-project --python 3.12 --with onnx==1.22.0 python bench/lab/static-drumsep.py
-node bench/lab/profile-separation.ts --provider=coreml --coreml-flags=24 --threads=4 --kit-model=bench/reports/audio-reliability/model-exports/drumsep-static-8s.onnx --out=bench/reports/audio-reliability/separation-performance/coreml-24
-node bench/lab/profile-separation.ts --provider=coreml --coreml-flags=56 --threads=4 --kit-model=bench/reports/audio-reliability/model-exports/drumsep-static-8s.onnx --out=bench/reports/audio-reliability/separation-performance/coreml-56
+node bench/lab/profile-separation.ts --provider=coreml --coreml-flags=24 --threads=4 --out=bench/reports/audio-reliability/separation-performance/coreml-24
+node bench/lab/profile-separation.ts --provider=coreml --coreml-flags=56 --threads=4 --out=bench/reports/audio-reliability/separation-performance/coreml-56
 ```
 
 Flags 24 request MLProgram/static shapes; 56 also selects CPU/GPU rather than ANE.
 The stock Node binding accepts these legacy flags, not the modern CoreML model-cache
 options. See the [pinned provider flag definitions](https://github.com/microsoft/onnxruntime/blob/v1.27.0/include/onnxruntime/core/providers/coreml/coreml_provider_factory.h).
-The Node 1.27 session parser does not implement `freeDimensionOverrides`; actual kit
-calls remain fixed at eight seconds, but CoreML static testing needs fixed graph metadata.
-The harness therefore requires `--kit-model` for this test and rejects unavailable bundled
+The Node 1.27 session parser does not implement `freeDimensionOverrides`; the MDX23C export
+already has fixed shapes (`spec[1,4,1024,1024]`), so no separate static kit export is needed.
+`--kit-model` remains an optional override, and the harness rejects unavailable bundled
 providers. It does not pass the ignored dimension-override option. Profiling and provider
 partitioning must be checked on the target Mac instead of assuming accelerator coverage.
 Both throughput and PCM/onset fidelity remain unmeasured on Apple hardware. A provider
 being present is not evidence that every operator will run efficiently on that provider.
 
-### Static DrumSep experiment
-
-`static-drumsep.py` creates a separate ignored experiment; it never installs a runtime
-model. Its input shapes are `waveform[1,2,352800]` and `magnitude[1,4,2048,345]`; outputs are
-`freq_output[1,4,4,2048,345]` and `time_output[1,4,2,352800]`. ONNX 1.22.0 validation passes,
-and serialized operation/initializer hashes are unchanged from the verified source.
-
-| Variant | Bytes | SHA-256 |
-|---|---:|---|
-| Fixed input/output metadata | 335,091,950 | `2b511692d79af20344c32cdaf25d27e4fe330c2da815f846b7993015797a0296` |
-| Plus ONNX shape inference | 335,301,078 | `804b6eabfb8cb6544b98993beb76506e18dd96aa1e34083a8d057bad12f45213` |
-
-The inferred variant adds 3,042 intermediate shape records. Reproduce it with
-`--infer-shapes --out=bench/reports/audio-reliability/model-exports/drumsep-static-8s-inferred.onnx`.
-Both retain all 2,988 original operations and learned weights. Static input metadata may
-allow more shape folding or provider placement than the dynamic graph, but CPU timing
-and numerical comparison remain pending. Benchmark with identical saved stereo drums
-using `--stage=kit --input=PATH --kit-model=PATH`; omit `--kit-model` for the dynamic baseline.
 Model overrides are checksum-recorded and cannot be combined with the production graph cache.

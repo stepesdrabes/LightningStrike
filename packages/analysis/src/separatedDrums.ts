@@ -7,6 +7,8 @@ import { conditionCurve, onsetStrength, pickPeaks, refinePeakTime } from './onse
 export interface SeparatedDrumAudio {
 	kick: Float32Array;
 	snare: Float32Array;
+	hat?: Float32Array;
+	/** Ride and crash. */
 	cymbal?: Float32Array;
 	sampleRate: number;
 }
@@ -55,11 +57,21 @@ function snareCymbalVeto(sources: SeparatedDrumAudio, midPower = midrangePower(s
 
 interface FinalDrums { times: number[]; levels: number[]; invented: boolean[] }
 
+/** These rules were tuned on a kit separator whose cymbal stem held hats as well. */
+function withHatsAsCymbal(sources: SeparatedDrumAudio): SeparatedDrumAudio {
+	const { hat, cymbal } = sources;
+	if (!hat || !cymbal) return sources;
+	const metal = new Float32Array(cymbal.length);
+	for (let i = 0; i < metal.length; i++) metal[i] = cymbal[i] + (hat[i] ?? 0);
+	return { ...sources, cymbal: metal };
+}
+
 /** Preserve quiet legacy hits where separation suppresses them, but verify their class and source energy. */
 export function mergeSeparatedSnare(
-	legacy: FinalDrums, source: DrumStream, audio: SeparatedDrumAudio, mix: Float32Array, mixRate: number,
+	legacy: FinalDrums, source: DrumStream, separated: SeparatedDrumAudio, mix: Float32Array, mixRate: number,
 	independentDspSnare?: Pick<DrumStream, 'times'>
 ): FinalDrums {
+	const audio = withHatsAsCymbal(separated);
 	const midPower = midrangePower(audio.snare, audio.sampleRate);
 	const veto = snareCymbalVeto(audio, midPower);
 	const pairs: { a: number; b: number; distance: number }[] = [];
@@ -111,7 +123,7 @@ export function sourceOnsets(source: Float32Array, rate: number): SourceOnsets {
 
 /** Source separation provides class evidence; original audio supplies the final attack time. */
 export function detectSeparatedDrums(
-	sources: SeparatedDrumAudio,
+	separated: SeparatedDrumAudio,
 	mix: Float32Array,
 	mixRate: number,
 	mixOdf: Float32Array,
@@ -121,6 +133,7 @@ export function detectSeparatedDrums(
 	/** `sourceOnsets` of the same sources, computed ahead. */
 	onsets?: Record<'kick' | 'snare', SourceOnsets>
 ): { kick: DrumStream; snare: DrumStream } {
+	const sources = withHatsAsCymbal(separated);
 	const rate = sources.sampleRate;
 	if (rate !== 22050) throw new Error('Separated drum onset analysis requires 22050 Hz audio.');
 	const snareMidPower = midrangePower(sources.snare, rate);

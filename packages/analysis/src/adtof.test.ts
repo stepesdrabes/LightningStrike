@@ -76,6 +76,12 @@ describe('model drum evidence', () => {
 		expect(onsets.levels[recovered]).toBeLessThan(Math.min(...stream.levels));
 	});
 
+	it('finds a hit on the very first frame', () => {
+		const activation = new Float32Array(300);
+		for (let t = 0; t < 4; t++) activation[t] = 0.9 * Math.exp(-t);
+		expect(activationStream(activation, 0.24).times).toEqual([0]);
+	});
+
 	it('preserves confident hits and tightly spaced snare rolls', () => {
 		const activation = new Float32Array(400);
 		for (const time of [1, 1.06, 1.12, 2]) pulse(activation, time, 0.95);

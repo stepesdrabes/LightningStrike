@@ -7,12 +7,13 @@ import { ANALYSIS_VERSION, emptyContext, type TrackAnalysis } from '@mv/core';
 import { analyzeTrack } from './analyze.ts';
 import { decodeAudio, downloadAudio, probe, resamplePcm } from './decode.ts';
 import { DrumSeparator } from './separation.ts';
+import { Adtof, adtofIdentity } from './adtof.ts';
 import { artworkHue } from './artwork.ts';
 import { enrichTrack } from './enrich.ts';
 import { ingest, type TrackMeta } from './ingest.ts';
 
 const cache = vi.hoisted(() => ({ dir: '' }));
-vi.mock('./paths.ts', () => ({ get CACHE_DIR() { return cache.dir; } }));
+vi.mock('./paths.ts', () => ({ get CACHE_DIR() { return cache.dir; }, get MODEL_DIR() { return cache.dir; } }));
 vi.mock('./decode.ts', () => ({ decodeAudio: vi.fn(), downloadAudio: vi.fn(), probe: vi.fn(), resamplePcm: vi.fn() }));
 vi.mock('./analyze.ts', () => ({ analyzeTrack: vi.fn() }));
 vi.mock('./artwork.ts', () => ({ artworkHue: vi.fn() }));
@@ -21,13 +22,25 @@ vi.mock('./dsp.ts', () => ({
 	preludeBeside: vi.fn(async () => undefined), onsetsBeside: vi.fn(async () => undefined)
 }));
 vi.mock('./beatthis.ts', () => ({ BeatThis: { create: vi.fn().mockRejectedValue(new Error('no model')) } }));
-vi.mock('./adtof.ts', () => ({ Adtof: { create: vi.fn().mockResolvedValue(null) } }));
+vi.mock('./adtof.ts', () => ({
+	Adtof: { create: vi.fn().mockResolvedValue(null) }, adtofIdentity: vi.fn().mockResolvedValue('fixture-adtof')
+}));
 vi.mock('./separation.ts', () => ({
 	DrumSeparator: { create: vi.fn().mockResolvedValue(null) }, SEPARATION_VERSION: 'fixture-separator'
 }));
 
 const youtubeId = 'abcdefghijk';
+/** A transcriber whose stem activations fit the fixture's eight 44.1 kHz frames. */
+const stemTranscriber = () => ({ run: vi.fn(async () => ({ activations: new Float32Array(5) })), close: vi.fn() }) as unknown as Adtof;
 const youtubeSource = `https://www.youtube.com/watch?v=${youtubeId}`;
+
+async function installFusionModel(version: string) {
+	const { CANDIDATE_REVISION, FUSION_FEATURES, FUSION_KINDS } = await import('./drumFusion.ts');
+	const tree = { feature: [], threshold: [], left: [], right: [], leaf: [0] };
+	const classes = Object.fromEntries(FUSION_KINDS.map((kind) => [kind, { threshold: 0.5, trees: [tree] }]));
+	const model = { version, candidates: CANDIDATE_REVISION, features: FUSION_FEATURES, classes };
+	await writeFile(join(cache.dir, 'drum-fusion.json'), JSON.stringify(model));
+}
 
 function fixtureAnalysis(): TrackAnalysis {
 	return {
@@ -41,6 +54,7 @@ beforeEach(async () => {
 	vi.stubEnv('MV_DRUM_PROVIDER', 'cpu');
 	vi.stubEnv('MV_DRUM_CPU_ARENA', undefined);
 	vi.mocked(DrumSeparator.create).mockResolvedValue(null);
+	vi.mocked(Adtof.create).mockResolvedValue(null);
 	cache.dir = await mkdtemp(join(tmpdir(), 'lightningstrike-ingest-'));
 	vi.mocked(probe).mockRejectedValue(new Error('YouTube is unavailable'));
 	vi.mocked(decodeAudio).mockResolvedValue({
@@ -78,16 +92,20 @@ describe('queue cache refresh', () => {
 		await saveTrack();
 		const kick = new Float32Array([0, 1, 0, 0]);
 		const snare = new Float32Array([0, 0, .001, 0]);
+		const hat = new Float32Array([0, 0, 0, .25]);
 		const cymbal = new Float32Array([.5, 0, 0, 0]);
-		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: kick, kick, snare, cymbal });
+		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: kick, kick, snare, hat, cymbal });
 		const close = vi.fn().mockResolvedValue(undefined);
 		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close } as unknown as DrumSeparator);
+		vi.mocked(Adtof.create).mockImplementation(async () => stemTranscriber());
 		vi.mocked(resamplePcm).mockImplementation(async (pcm) => pcm);
 		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
 		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
 		expect(run).toHaveBeenCalledOnce();
 		expect(close).toHaveBeenCalledTimes(2);
-		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({ separatedDrums: { kick, snare, cymbal, sampleRate: 22050 } }));
+		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({
+			separatedDrums: { kick, snare, hat, cymbal, sampleRate: 22050 }, stemActivations: new Float32Array(5)
+		}));
 		expect(result.timings?.drumEvidenceCacheHit).toBe(true);
 		vi.mocked(decodeAudio).mockResolvedValue({
 			mono: new Float32Array(8), left: new Float32Array(8), right: new Float32Array(8),
@@ -96,11 +114,29 @@ describe('queue cache refresh', () => {
 		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
 		expect(run).toHaveBeenCalledTimes(2);
 	});
+	it('caches separated sources without a transcription model, and only complete evidence with one', async () => {
+		await saveTrack();
+		const pcm = new Float32Array([0, 1, 0, 0]);
+		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: pcm, kick: pcm, snare: pcm, hat: pcm, cymbal: pcm });
+		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close: vi.fn() } as unknown as DrumSeparator);
+		vi.mocked(resamplePcm).mockImplementation(async value => value);
+		vi.mocked(adtofIdentity).mockResolvedValue(null);
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		const bare = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(bare.timings?.drumEvidenceCacheHit).toBe(true);
+		expect(run).toHaveBeenCalledOnce();
+		vi.mocked(adtofIdentity).mockResolvedValue('fixture-adtof');
+		vi.mocked(Adtof.create).mockRejectedValue(new Error('transcriber failed'));
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(run).toHaveBeenCalledTimes(3);
+	});
 	it('keeps experimental provider evidence separate from the portable CPU cache', async () => {
 		await saveTrack();
 		const pcm = new Float32Array([0, 1, 0, 0]);
-		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: pcm, kick: pcm, snare: pcm, cymbal: pcm });
+		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: pcm, kick: pcm, snare: pcm, hat: pcm, cymbal: pcm });
 		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close: vi.fn() } as unknown as DrumSeparator);
+		vi.mocked(Adtof.create).mockImplementation(async () => stemTranscriber());
 		vi.mocked(resamplePcm).mockImplementation(async value => value);
 		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
 		vi.stubEnv('MV_DRUM_PROVIDER', 'dml');
@@ -115,11 +151,48 @@ describe('queue cache refresh', () => {
 		expect(run).toHaveBeenCalledTimes(2);
 	});
 
+	it('offers the drum fusion only with an installed model and every kit transcription', async () => {
+		await saveTrack();
+		const pcm = new Float32Array([0, 1, 0, 0]);
+		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: pcm, kick: pcm, snare: pcm, hat: pcm, cymbal: pcm });
+		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close: vi.fn() } as unknown as DrumSeparator);
+		vi.mocked(Adtof.create).mockImplementation(async () => stemTranscriber());
+		vi.mocked(resamplePcm).mockImplementation(async value => value);
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({ drumFusion: undefined }));
+		await installFusionModel('fixture-fusion');
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		const activations = new Float32Array(5);
+		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({
+			drumFusion: expect.objectContaining({ version: 'fixture-fusion' }), stemActivations: activations,
+			sourceActivations: { kick: activations, snare: activations, hat: activations, cymbal: activations }
+		}));
+	});
+
+	it('re-analyses cached drums when another or no fusion model is installed, not when its file is unusable', async () => {
+		await saveTrack(youtubeId, youtubeSource, ANALYSIS_VERSION);
+		await installFusionModel('fixture-fusion');
+		const reusedAfter = async (drumFusion?: string) => {
+			const analysis = { ...fixtureAnalysis(), trackId: youtubeId, drumFusion };
+			await writeFile(join(cache.dir, `${youtubeId}.analysis.json`), JSON.stringify(analysis));
+			return (await ingest(youtubeSource, { cachedTrackId: youtubeId })).fromCache;
+		};
+		expect(await reusedAfter('fixture-fusion')).toBe(true);
+		expect(await reusedAfter(undefined)).toBe(true);
+		expect(await reusedAfter('retired-fusion')).toBe(false);
+		await writeFile(join(cache.dir, 'drum-fusion.json'), '{"version": "fixture-fusion"');
+		expect(await reusedAfter('retired-fusion')).toBe(true);
+		await rm(join(cache.dir, 'drum-fusion.json'));
+		expect(await reusedAfter('fixture-fusion')).toBe(false);
+	});
+
 	it('passes isolated sources into analysis and releases the separator', async () => {
 		await saveTrack();
 		const kick = new Float32Array([0, 1, 0]);
 		const snare = new Float32Array([0, 0, 1]);
-		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: kick, kick, snare });
+		const hat = new Float32Array([1, 0, 0]);
+		const cymbal = new Float32Array([.5, 0, 0]);
+		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: kick, kick, snare, hat, cymbal });
 		const close = vi.fn().mockResolvedValue(undefined);
 		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close } as unknown as DrumSeparator);
 		vi.mocked(resamplePcm).mockImplementation(async (pcm) => pcm);
@@ -127,7 +200,7 @@ describe('queue cache refresh', () => {
 		expect(run).toHaveBeenCalledOnce();
 		expect(close).toHaveBeenCalledOnce();
 		expect(result.analysis.drumSeparation).toBe('fixture-separator');
-		expect(analyzeTrack).toHaveBeenCalledWith(expect.objectContaining({ separatedDrums: { kick, snare, cymbal: undefined, sampleRate: 22050 } }));
+		expect(analyzeTrack).toHaveBeenCalledWith(expect.objectContaining({ separatedDrums: { kick, snare, hat, cymbal, sampleRate: 22050 } }));
 	});
 
 	it('completes analysis with the fallback if separation fails and still releases resources', async () => {

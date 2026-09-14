@@ -20,6 +20,16 @@
 				"@mv/controller"
 			],
 			"port": 5181
+		},
+		{
+			"name": "drum-judge",
+			"runtimeExecutable": "node",
+			"runtimeArgs": [
+				"bench/drumeval/judge/server.ts",
+				"--session=bench/reports/drumeval/judge/current",
+				"--port=5199"
+			],
+			"port": 5199
 		}
 	]
 }

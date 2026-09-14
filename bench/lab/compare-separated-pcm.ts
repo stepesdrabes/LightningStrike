@@ -1,9 +1,10 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 const option = (name: string) => process.argv.find(a => a.startsWith(`--${name}=`))?.slice(name.length + 3);
 const reference = option('reference')!, candidate = option('candidate')!;
 const read = (path: string) => { const b = readFileSync(path); return new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4); };
-const sources = Object.fromEntries(['drums', 'kick', 'snare', 'cymbal'].map(name => {
+const hat = [reference, candidate].some(dir => existsSync(join(dir, 'hat.f32')));
+const sources = Object.fromEntries(['drums', 'kick', 'snare', ...(hat ? ['hat'] : []), 'cymbal'].map(name => {
  const a = read(join(reference, name + '.f32')), b = read(join(candidate, name + '.f32'));
  if (a.length !== b.length) throw new Error(`${name} length mismatch`);
  let maxError = 0, mse = 0, energy = 0, actual = 0, dot = 0;

@@ -1,6 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import * as ort from 'onnxruntime-node';
 import { join } from 'node:path';
 import { DrumSeparator, SEPARATION_VERSION } from '../../packages/analysis/src/separation.ts';
 
@@ -15,7 +14,7 @@ mkdirSync(out, { recursive: true });
 const sourceHash = createHash('sha256').update(raw).digest('hex');
 const provider = (flag('provider') ?? 'cpu') as 'cpu' | 'dml';
 const separator = await DrumSeparator.create(undefined, { threads: Number(flag('threads') ?? 4), provider });
-if (!separator) throw new Error('Install the pinned HTDemucs and patched DrumSep exports first.');
+if (!separator) throw new Error('Run bench/setup-drum-separation.py to install HTDemucs and MDX23C.');
 const start = performance.now();
 try {
 	const progress = (p: unknown) => console.log(JSON.stringify(p));
@@ -42,12 +41,13 @@ try {
 		if (saved.byteLength !== frames * 8) throw new Error('First-stage cache PCM is truncated.');
 		const planar = new Float32Array(saved.buffer.slice(saved.byteOffset, saved.byteOffset + saved.byteLength));
 		const drums: [Float32Array, Float32Array] = [planar.subarray(0, frames), planar.subarray(frames)];
-		const [kick, snare, cymbal] = await stage(drums, 'kit', ort, progress);
 		const mono = (stereo: [Float32Array, Float32Array]) => Float32Array.from(stereo[0], (v, i) => .5 * (v + stereo[1][i]));
-		result = { sampleRate: 44100, drums: mono(drums), kick: mono(kick), snare: mono(snare), cymbal: mono(cymbal) };
+		result = { drums: mono(drums), ...await separator.runKit(drums[0], drums[1], progress) };
 	} else {
 		result = await separator.run(pcm.subarray(0, frames), pcm.subarray(frames), progress);
 	}
-	for (const name of ['drums', 'kick', 'snare', 'cymbal'] as const) writeFileSync(join(out, name + '.f32'), Buffer.from(result[name].buffer));
+	for (const name of ['drums', 'kick', 'snare', 'hat', 'cymbal'] as const) {
+		writeFileSync(join(out, name + '.f32'), Buffer.from(result[name].buffer));
+	}
 	writeFileSync(join(out, 'manifest.json'), JSON.stringify({ input, frames, sampleRate: result.sampleRate, version: SEPARATION_VERSION, seconds: (performance.now() - start) / 1000 }, null, 2));
 } finally { await separator.close(); }

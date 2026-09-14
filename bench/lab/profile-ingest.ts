@@ -80,8 +80,9 @@ const provenance = { id, title: meta.title, workerPath, workerSha256: await hash
 	sourceHashes: option('worker') ? undefined : sourceHashes,
 	node: process.version, platform: platform(), arch: arch(), cpu: cpus()[0]?.model,
 	logicalCpus: cpus().length, memoryBytes: totalmem(), inputFiles,
-	models: Object.fromEntries(await Promise.all(['htdemucs.onnx', 'drumsep.onnx'].map(async name =>
-		[name, existsSync(join(modelDir, name)) ? await hash(join(modelDir, name)) : null]))) };
+	models: Object.fromEntries(await Promise.all(
+		['htdemucs.onnx', 'drumsep-mdx23c.onnx', 'adtof_frame_rnn.onnx', 'drum-fusion.json'].map(async name =>
+			[name, existsSync(join(modelDir, name)) ? await hash(join(modelDir, name)) : null]))) };
 const results: unknown[] = [];
 const busyMs = () => cpus().reduce((sum, cpu) => sum + cpu.times.user + cpu.times.nice + cpu.times.sys + cpu.times.irq, 0);
 for (let run = 1; run <= runs; run++) {
@@ -135,9 +136,9 @@ for (let run = 1; run <= runs; run++) {
 	const summary = { run, wallMs: Math.round(performance.now() - started), peakRss, processCpuMs, timerLateMs,
 		otherCpuMs: Math.round(busyMs() - systemBefore - processCpuMs),
 		timings: result.timings, analysisVersion: result.analysis.version,
-		drumSeparation: result.analysis.drumSeparation, events };
-	const expectedModels = provenance.models['htdemucs.onnx'] && provenance.models['drumsep.onnx']
-		? `htdemucs-${provenance.models['htdemucs.onnx'].slice(0, 8)}-drumsep-${provenance.models['drumsep.onnx'].slice(0, 8)}-` : null;
+		drumSeparation: result.analysis.drumSeparation, drumFusion: result.analysis.drumFusion, events };
+	const { 'htdemucs.onnx': demucs, 'drumsep-mdx23c.onnx': kit } = provenance.models;
+	const expectedModels = demucs && kit ? `htdemucs-${demucs.slice(0, 8)}-mdx23c-${kit.slice(0, 8)}-` : null;
 	if (!expectedModels || !summary.drumSeparation?.startsWith(expectedModels)) {
 		await writeFile(join(out, 'timings.json'), JSON.stringify({ status: 'invalid',
 			reason: 'Expected drum separation did not complete; fallback timings are not comparable.',

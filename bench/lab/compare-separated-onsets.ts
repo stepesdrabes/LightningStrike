@@ -1,10 +1,11 @@
 // Compare providers with identical PCM, transcription, beats and detector code.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { Adtof } from '../../packages/analysis/src/adtof.ts';
 import { analyzeTrack } from '../../packages/analysis/src/analyze.ts';
 import { resamplePcm } from '../../packages/analysis/src/decode.ts';
+import type { SeparatedDrumAudio } from '../../packages/analysis/src/separatedDrums.ts';
 import { benchmarkCache } from '../cache.ts';
 import { scoreDrumRegression, type DrumRegressionLabels } from '../drum-regressions.ts';
 import { readF32 } from './mdb.ts';
@@ -34,8 +35,9 @@ const duration = mono.length / 22050;
 const beats = baseline.beats.filter((t: number) => t >= offset && t < offset + duration).map((t: number) => t - offset);
 const analyses = [];
 for (const directory of [reference, candidate]) {
-	const sources = { sampleRate: 22050, kick: new Float32Array(), snare: new Float32Array(), cymbal: new Float32Array() };
-	for (const kind of ['kick', 'snare', 'cymbal'] as const) {
+	const sources: SeparatedDrumAudio = { sampleRate: 22050, kick: new Float32Array(), snare: new Float32Array() };
+	for (const kind of ['kick', 'snare', 'hat', 'cymbal'] as const) {
+		if (kind === 'hat' && !existsSync(join(directory, 'hat.f32'))) continue;
 		const pcm = readF32(join(directory, kind + '.f32'));
 		if (pcm.length !== frames || !pcm.every(Number.isFinite)) throw new Error(`Invalid ${directory}/${kind} PCM.`);
 		sources[kind] = await resamplePcm(pcm, 44100);
@@ -71,7 +73,8 @@ const report = { status: admitted ? 'passed' : 'failed', tolerances: { timeMs: 1
 	baselinePath, baselineSha256: hash(baselinePath), sourceHashes,
 	comparison, labels,
 	pcm: Object.fromEntries([reference, candidate].map(dir => [dir, Object.fromEntries(
-		['kick', 'snare', 'cymbal'].map(kind => [kind, hash(join(dir, kind + '.f32'))]))])) };
+		['kick', 'snare', 'hat', 'cymbal'].filter(kind => existsSync(join(dir, kind + '.f32')))
+			.map(kind => [kind, hash(join(dir, kind + '.f32'))]))])) };
 writeFileSync(join(candidate, 'onset-parity.json'), JSON.stringify(report, null, 2));
 writeFileSync(join(candidate, 'review-analysis.json'), JSON.stringify(analyses[1], null, 2));
 console.log(JSON.stringify({ ...report, pcm: undefined, sourceHashes: undefined,

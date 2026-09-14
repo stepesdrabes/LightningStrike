@@ -1,30 +1,90 @@
-# LightningStrike handover: drum accuracy next
+# LightningStrike handover: drum accuracy
 
-Updated 2026-09-13 after the preparation performance session. Read `README.md` and
-`CLAUDE.md` first. This replaces the old v30 handover; historical arrangement/lighting work
-remains in git and `bench/judged/`.
+Updated 2026-09-14 after the drum accuracy session. Read `README.md` and `CLAUDE.md` first.
+Historical arrangement/lighting work remains in git and `bench/judged/`.
 
 ## Session order and user preferences
 
-1. **Done: preparation performance.** First-time preparation overlaps independent work and
-   produces byte-identical analyses; see [Preparation performance](#preparation-performance).
-2. **Next session: improve drum accuracy further**, using the listening harness and
-   the owner's hearing. Do not mix a threshold sweep into an implementation speed comparison.
+1. **Done: preparation performance** (2026-09-13); see
+   [Preparation performance](#preparation-performance).
+2. **Done: drum accuracy** (2026-09-13 to 14): learned drum fusion and the MDX23C kit separator
+   beat the best published cross-dataset results on every public benchmark with a comparable
+   published result (MDBDrums++'s only number uses an unstated protocol); see
+   [Drum accuracy session](#drum-accuracy-session).
+3. **Next:** the owner judges the blind A/B listening session; then the library is re-prepared
+   and the Mac tested before the party. The Windows app was rebuilt and reinstalled on 2026-09-14.
 
+The owner asked for SOTA drum analysis on every existing benchmark; their hand-made reviews are
+useful but need not be 100% correct. Accuracy matters more than preparation speed.
 The show is on September 19 on a **MacBook Pro M1 Pro with 16 GB unified memory**, currently
-in service. The owner will test the Mac after it returns. Accuracy matters more than minimum
-latency; minutes are acceptable, but the 3–4 minute waits need improvement. Significant
-progress is sufficient; perfection is not a release requirement.
-The owner heard improvements in nearly every song, especially fewer gaps between hits.
-Ask for judgements when sound classification is ambiguous. Use useful 8–20 second context,
-not tiny isolated clips. Rim/side-stick hits are allowed as quieter snare accents.
+in service. The owner will test the Mac after it returns. Significant progress is sufficient;
+perfection is not a release requirement. Ask for judgements when sound classification is
+ambiguous. Use useful 8–20 second context, not tiny isolated clips. Rim/side-stick hits are
+allowed as quieter snare accents; claps and snaps are snares.
+
+## Drum accuracy session
+
+Results, protocol and the training-set findings are in
+[drum reliability](../bench/DRUM_RELIABILITY.md#learned-fusion-and-published-benchmarks-analysis-v37-september-14);
+tooling in [drumeval](../bench/drumeval/README.md). In short, cross-dataset five-class F, fold
+mean and pooled (published best in brackets): MDB 0.858 / 0.854 (0.81), ENST 2/3 mix 0.829 /
+0.832 (0.80), drums-only MDB 0.913 / 0.911 (0.89) and ENST 0.883 / 0.884 (0.85); three-class
+RBMA13 0.747 / 0.753 (0.67), IDMT 0.971 (0.949) and the Groove MIDI test split 0.870 (0.702).
+Older in-dataset protocols at 20 ms or on track-level splits still report higher IDMT and ENST
+numbers; see that document.
+
+- **Listening session for the owner:** `drum-judge` in `.claude/launch.json` serves
+  `http://127.0.0.1:5199`: 28 blind A/B passages (kick, snare, hat) where the v36 rules
+  (`lib-base`, 39 songs) and the installed fusion (`lib-v19`) disagree most, including four
+  passages of Desire's reviewed snares (61-82 s and 171-202 s). Verdicts append to
+  `bench/reports/drumeval/judge/current/answers.jsonl`; read them before retraining.
+- **Owner checks:** `judged.ts` 18/19 confirmed snares (v36 17); `reviews.ts` on the saved
+  reviews: 1/5 confirmed wrong hits still emitted (v36 4), 22/37 missed-hit clicks hit (v36 23).
+  Desire (Gryffin Remix)'s reviewed snares stay missed by every model trained on all corpora.
+- **Installed model:** `models/drum-fusion.json` (version
+  `v12e-a2md-enst-idmt-mdb-rbma-rwc-star-r300-l15-56e52c9c`, SHA-256
+  `5e146d09966c04e695133d7cd61cbdb8074cc274466ab49d8bc39e61055720ad`) is
+  `bench/reports/drumeval/fusion/v19-cv-strict/model.json`, five seeds per class; training is
+  deterministic (a rerun reproduced every classifier bit for bit). Without it the rules run.
+  Songs analysed with another version re-analyse when next prepared (`fusionModel.ts`); a file
+  that fails to load leaves them as they are.
+- **Label traps:** RBMA13 public snare labels omit claps and STAR Drums mixes hide unlabelled
+  clap residue; both made the classifier reject bad guy's snaps (0/9), so neither trains snares
+  (STAR trains only hats and cymbals). Always rerun `judged.ts` and `reviews.ts` after retraining.
+- **Evidence on disk** (ignored): `bench/reports/drumeval/evidence/` for all corpora including
+  `enst23`, `mdbsolo`, `enstsolo`, `mdbpp`, `gmd`, a STAR subset and the library; candidate set
+  `v12e`; fusion
+  models and night logs under `bench/reports/drumeval/{fusion,night}/`; the research notes
+  (`adt-sota.md`, `adt-datasets.md`) were session scratch files and are summarized in
+  DRUM_RELIABILITY.md and the drumeval README.
+- **Before the party:** install `drumsep-mdx23c.onnx`, ADTOF and `drum-fusion.json` on every
+  machine before preparing songs there. A song prepared at analysis 37 without them keeps the
+  rule-based drums until it is refreshed; so does a song whose per-source ADTOF passes fail
+  during preparation, for example under memory pressure.
+- **Not done:** the library was not re-prepared (it re-prepares on demand at analysis 37,
+  about a fifth of the song's length on DirectML, minutes on CPU); nothing ran on the Mac.
 
 ## Current production state
 
-- Analysis **36**, show **34**, context **3**. No changes to lighting composition this round.
-- `packages/analysis/src/separation.ts`: CPU default, four threads per session; HTDemucs CPU
-  arena off, DrumSep arena on. Fixed 7.8/8 second chunks, 25% overlap, centered tail context.
-  Two CPU lanes with at least eight logical CPUs and 12 GiB (`MV_DRUM_CPU_LANES`).
+- Analysis **37**, show **34**, context **3**. No changes to lighting composition.
+- `separation.ts`: HTDemucs, then MDX23C (`drumsep-mdx23c.onnx`) returning kick, snare, hi-hat
+  and cymbal (ride/crash); the tom stem is dropped. CPU default, four threads per session, both
+  CPU arenas off. Chunks: 343,980 samples for HTDemucs, 1,024 STFT frames (11.9 s) for MDX23C,
+  25% overlap, centered tail context. `dsp/mdxFft.ts` mirrors the model's torch STFT; the kit
+  input is not normalized. `runKit` runs the kit stage alone. Two CPU lanes with at least eight
+  logical CPUs and 12 GiB (`MV_DRUM_CPU_LANES`).
+- `ingest.ts`: resamples four sources, runs ADTOF on the drum stem and each source
+  (`transcribeKit`), computes four source onset curves in workers, and passes everything to
+  `analyzeTrack` with the installed fusion model.
+- `drumFusion.ts`: candidates from the transcriptions and source attacks (snare proposals reach
+  fainter peaks, for ghost notes), 85 features, flattened LightGBM trees evaluated exactly as
+  trained; hats merge with cymbal hits; kick and snare levels floor at their source loudness
+  relative to the track's loud hits. Toms are classified only for benchmark probes.
+  `analysis.drumFusion` records the model version.
+- `drumEvidenceCache.ts` format 3: four sources plus five activation sets, keyed by audio,
+  separator and ADTOF model; 2 GiB LRU; sources alone only when no ADTOF is installed.
+- `separatedDrums.ts` / `kickEvidence.ts`: the rule-based fallback, reading hats and cymbals
+  summed as its cymbal source.
 - `onnxSession.ts` / `onnxWorker.ts`: every ONNX session runs in a worker thread.
   `prelude.ts` / `dsp.ts` / `dspWorker.ts`: audio-only analysis steps run in workers, and
   analysis computes them itself if a worker fails. The desktop bundle ships
@@ -34,37 +94,36 @@ not tiny isolated clips. Rim/side-stick hits are allowed as quieter snare accent
   packed inverse FFT and bounded denominator cache. Learned weights are unchanged.
 - `cpuGraphCache.ts`: checksummed immutable CPU graphs keyed by model, runtime and hardware;
   original-model fallback. Never copy Windows optimized graphs as Mac executable graphs.
-- `drumEvidenceCache.ts`: lossless separated evidence, checksums, 2 GiB LRU budget, safe
-  interrupted-writer cleanup. Detector updates can reuse separation.
-- `separatedDrums.ts`: guarded quiet-snare recovery and cymbal veto after acoustic snapping.
-- `kickEvidence.ts`: independent model + full-mix attack + rising separated low-frequency
-  evidence; conservative vocal-residue rejection. Kicks retain measured attack timing.
-- `drums.ts` / `analyze.ts`: source-frame ownership prevents one model peak making two kicks.
 
 DirectML is explicit on Windows: `MV_DRUM_PROVIDER=dml`. Both stages report their actual
 provider and restart the affected stage on CPU on native errors/non-finite outputs.
 **Do not remove HTDemucs `extra.ep.dml.disable_graph_fusion='1'`: without it, ORT 1.27
-produced severely wrong but finite audio.** Node 1.27 ignores `freeDimensionOverrides`;
-the no-op setting was removed in pre-commit cleanup. Actual kit inputs remain fixed-size.
+produced severely wrong but finite audio.** MDX23C runs correctly with DirectML fusion; CPU and
+DirectML kit outputs agree at 74-120 dB and a CPU preparation produced the same hits as the
+DirectML-evidence replay.
 
-Model revision: `htdemucs-a6eabce3-drumsep-e35619ce-v4`.
+Model revision: `htdemucs-a6eabce3-mdx23c-e2ec140f-v1`.
 
 | File | SHA-256 |
 |---|---|
 | `htdemucs.onnx` (168,524,330 bytes) | `a6eabce31c0866a7ad7ac545dc7b12fbe4ccd0c86731e94e99fd5b583da504df` |
-| `drumsep.onnx` | `e35619cef17d1aeaf410dae9d9895f3814cccc51b7a0deecbf543fe0131d7002` |
+| `drumsep-mdx23c.onnx` (437,697,734 bytes, non-commercial weights) | `e2ec140f5487c79b0be512d705746e2ac017bf3ab06d899d561ca963d91755c2` |
 
 See [model setup and correctness constraints](../bench/lab/SEPARATION.md). Models and
 large reports are ignored by git. A fresh clone needs the updated `models/` directory
-or the pinned setup script; old HTDemucs exports do not pass the new checksum.
+(copy it; the setup script re-exports MDX23C only with torch 2.11 and onnx 1.22). Desktop builds
+bundle all of `models/`, so never distribute one. The unused `drumsep.onnx` was retired.
 
 ## Preparation performance
 
-First-time preparation now overlaps independent work: ONNX sessions run in worker threads,
+First-time preparation overlaps independent work: ONNX sessions run in worker threads,
 CPU separation uses two lanes, DirectML compiles both separation models ahead of their
-stages, and audio-only analysis steps run in workers. Every analysis stays byte-identical.
-Design, measurements, rejected experiments and commands are in
-[SEPARATION-PERFORMANCE.md](../bench/lab/SEPARATION-PERFORMANCE.md).
+stages, and audio-only analysis steps run in workers. Design, measurements, rejected
+experiments and commands are in [SEPARATION-PERFORMANCE.md](../bench/lab/SEPARATION-PERFORMANCE.md).
+**The figures below were measured with the earlier DrumSep kit model.** With MDX23C and five
+more ADTOF passes, a CPU preparation of Habibi took 202 s with a 6.3 GB peak (its kit stage
+130 s, 0.9x real time; 1.2-1.4x on a loaded machine); DirectML runs the kit stage at about 0.1x.
+Re-measure both before the party.
 
 Habibi (146.946 s) on this PC (Ryzen 5 3600, 16 GB, RTX 3060) from saved audio, warm CPU graph
 cache, separation evidence deleted before every run; final A/B against the previous commit:
@@ -112,8 +171,8 @@ queue. Finder-launched apps ignore shell exports, so set a lane override with
 `launchctl setenv MV_DRUM_CPU_LANES 1` before opening the app. Watch the LEDs while a
 track prepares during playback; one lane is the fallback if frames hitch. CoreML
 is a future experiment, not a shipping speed claim: the harness supports legacy flags 24
-(MLProgram/static) and 56 (plus CPU/GPU), and requires the separately exported static kit
-model. Verify actual provider placement and cold compilation, then PCM and onset parity.
+(MLProgram/static) and 56 (plus CPU/GPU); the MDX23C export already has fixed shapes. Verify
+actual provider placement and cold compilation, then PCM and onset parity.
 Stock Node binding does not expose modern CoreML model-cache options. The Windows GPU
 timing must never be presented as a Mac estimate.
 
@@ -151,9 +210,11 @@ Do not restore notes deliberately removed by later user revisions. Historical
 
 Current sources and original reviewed analyses: `judgement-correction/{sources,cache}`.
 Each source folder has audio/model/PCM provenance, ADTOF activations, separated 22.05 kHz
-PCM and `candidate.analysis.json`. `collect-review-evidence.ts` replays current detectors
-against the original reviewed grid. `prepare-drum-evidence.ts` currently prepares sources
-with explicit Windows DML; it is not the Mac preparation entry point.
+PCM and `candidate.analysis.json`; those sources came from DrumSep and have no hi-hat file.
+`collect-review-evidence.ts` replays the rule-based detectors against the original reviewed
+grid; `bench/drumeval/reviews.ts` scores a drumeval library run, including the fusion, against
+the saved reviews. `prepare-drum-evidence.ts` prepares sources with explicit Windows DML; it is
+not the Mac preparation entry point.
 
 Use `publish-drum-reviews.ts` dry-run before publication, a new backup directory and minimum
 analysis version. It archives old marker snapshots without replacing saved reviews. The
@@ -173,25 +234,36 @@ strict validation of manually imported scorer JSON; verify current behavior befo
 
 ## Delivery, checks and cleanup
 
-On 2026-09-13 the owner had the Windows app rebuilt from the uncommitted preparation
-performance work and installed over v36 in `%LOCALAPPDATA%/Programs/LightningStrike`;
-user `MV_DRUM_PROVIDER=dml` stays configured and the app library was untouched. Installers
-are under `apps/desktop/src-tauri/target/release/bundle/`. The local receipt
-`bench/reports/audio-reliability/ingest-performance/perf-0913/installation-receipt.json`
-records installer and file hashes, the byte-for-byte comparison of the installed server,
-runtime and models with the build, and prepared-track checks with the installed runtime
-whose analyses equal the references. The NSIS upgrade leaves files from earlier builds in
-`server/`; 387 such unreferenced files were moved to the Recycle Bin. The v36 release
+On 2026-09-14 the owner had the Windows app rebuilt from the uncommitted drum accuracy work
+and installed over the previous build in `%LOCALAPPDATA%/Programs/LightningStrike`; user
+`MV_DRUM_PROVIDER=dml` stays configured and the app library was untouched. Installers are
+under `apps/desktop/src-tauri/target/release/bundle/`. The local receipt
+`bench/reports/drumeval/night/installation-receipt.json` records installer and file hashes,
+the byte-for-byte comparison of the installed server, runtime and models with the build, and
+Habibi prepared with the installed runtime: on CPU its analysis equals the verified workspace
+preparation, on DirectML it finds the same kick, snare and hat hits. NSIS upgrades leave files
+from earlier builds; 133 such unreferenced files, including the retired `drumsep.onnx`, were
+moved out. The 2026-09-13 receipt is in `ingest-performance/perf-0913/` and the v36 release
 records remain in `judgement-correction/`.
 
-After the preparation performance work, 1,402 tests passed (two optional skips) with clean
+After the drum accuracy work, 1,425 tests passed (two optional skips) with clean
 TypeScript/Svelte checks and `git diff --check`. Release validation also includes full
 CPU/DML event comparison and pinned Node runtime replay. Run `npm test`, `npm run check`, and
 `git diff --check` before future commits. No cached models, datasets,
 audio, optimized graphs, built runtime or installers belong in git.
 
 Obsolete audit/triage/safeguard documents and one-off experiment scripts were moved out of
-the maintained tree to local `bench/reports/audio-reliability/cleanup-2026-09-13/`; its
-manifest lists them. This is historical source, not directly executable tooling after
-relocation. Saved result evidence remains in place. Wiring docs and earlier non-drum
-benchmarks were left intact. This file is the single current session handover.
+the maintained tree to local `bench/reports/audio-reliability/cleanup-2026-09-13/` and, for the
+DrumSep-only tools, `cleanup-2026-09-14/`; their manifests list them. This is historical
+source, not directly executable tooling after relocation. Saved result evidence remains in
+place. Wiring docs and earlier non-drum benchmarks were left intact. This file is the single
+current session handover.
+
+The 2026-09-14 drum cleanup moved superseded drum runs, candidate sets and fusion models, the
+unread `kick44`, `snare44`, `cymbal44` and `mdx-*44` evidence files, DrumSep exports,
+unreferenced separation experiments, derived caches of performance reports and the download
+archives whose extracted copies the corpora use into `bench/reports/drum-cleanup-2026-09-14/`
+for deletion; `bench/reports/drumeval/night/cleanup-2026-09-14-removed.txt` lists every path.
+It kept candidate set `v12e`, both v19 fusion models, the ADTOF baseline runs (`base-*`),
+`export-v12e` and the runs the listening session and v19 results use. Re-running the LOCO and
+Groove MIDI evaluations on the remaining evidence reproduced all 507 track results.

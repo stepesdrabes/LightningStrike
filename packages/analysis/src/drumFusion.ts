@@ -1,0 +1,562 @@
+import { STRONG_ONSET_EXCESS, activationStream } from './adtof.ts';
+import type { DrumStream } from './drums.ts';
+import { RealFft, hannWindow } from './dsp/fft.ts';
+import { quantile } from './dsp/stats.ts';
+import { pickPeaks, refinePeakTime } from './onsets.ts';
+import type { SeparatedDrumAudio, SourceOnsets } from './separatedDrums.ts';
+
+/**
+ * Transcription and separated-source onset candidates, classified by gradient-boosted trees that
+ * bench/drumeval trains. Cymbals join the hat stream afterwards; toms serve benchmarks only.
+ */
+export const FUSION_KINDS = ['kick', 'snare', 'hat', 'cymbal'] as const;
+export const BENCHMARK_KINDS = [...FUSION_KINDS, 'tom'] as const;
+export type FusionKind = typeof BENCHMARK_KINDS[number];
+type AnalysisKind = typeof FUSION_KINDS[number];
+
+/** ADTOF activation layout: frames x 5 at 100 fps, classes kick, snare, tom, hat, cymbal. */
+const ACT_FPS = 100;
+const ACT_CLASSES = 5;
+const CHANNEL: Record<FusionKind, number> = { kick: 0, snare: 1, tom: 2, hat: 3, cymbal: 4 };
+const CANDIDATE_THRESHOLD = 0.05;
+/** Ghost notes leave only faint snare activation and attacks, so snare proposals reach lower. */
+const SNARE_CANDIDATE_THRESHOLD = 0.02;
+const MERGE_S = 0.03;
+/** Selected hits closer than this collapse to the more probable one. */
+const SELECT_GAP_S = 0.05;
+const SOURCES = ['kick', 'snare', 'hat', 'cymbal'] as const;
+type Source = typeof SOURCES[number];
+const FFT_SIZE = 2048;
+/** Log-spaced bands, Hz, describing a source's spectral shape just after an attack. */
+const SHAPE_LOW_HZ = 40;
+const SHAPE_BANDS = 24;
+/** A source's strongest attacks, as a share of its peaks, form the track's template of that sound. */
+const TEMPLATE_SHARE = 0.3;
+const TEMPLATE_MIN = 4;
+/** Reach for a source's bleed floor: its median level at another source's attacks. */
+const BLEED_REACH_S = 4;
+/** dB below the track reference assumed as the floor when no such attacks are near. */
+const BLEED_FLOOR_DB = -60;
+
+/** Bump whenever candidate proposals or features change: models trained on other candidates are refused. */
+export const CANDIDATE_REVISION = 3;
+
+export const FUSION_FEATURES = [
+	'mix0', 'mix1', 'mix2', 'mix3', 'mix4', 'stem0', 'stem1', 'stem2', 'stem3', 'stem4', 'mixMean', 'stemMean',
+	'mixBarPrev', 'stemBarPrev', 'mixBarNext', 'stemBarNext',
+	'mixBar2Prev', 'stemBar2Prev', 'mixBar2Next', 'stemBar2Next',
+	'mixBeatPrev', 'stemBeatPrev', 'mixBeatNext', 'stemBeatNext', 'mixDb',
+	'kickRatio', 'kickDb', 'kickRise', 'kickOnset', 'kickMatch', 'kickDensity',
+	'snareRatio', 'snareDb', 'snareRise', 'snareOnset', 'snareMatch', 'snareDensity',
+	'hatRatio', 'hatDb', 'hatRise', 'hatOnset', 'hatMatch', 'hatDensity',
+	'cymbalRatio', 'cymbalDb', 'cymbalRise', 'cymbalOnset', 'cymbalMatch', 'cymbalDensity',
+	'snareOverKick', 'hatOverKick', 'cymbalOverKick', 'kickOverSnare',
+	'snareMid', 'kickSub', 'hatHigh', 'cymbalHigh', 'mixOdf', 'dspKick', 'dspSnare', 'dspHat',
+	'fromMix', 'fromStem', 'fromSource', 'fromSourceModel',
+	'kickModel0', 'kickModel1', 'kickModel2', 'kickModel3', 'kickModel4',
+	'snareModel0', 'snareModel1', 'snareModel2', 'snareModel3', 'snareModel4',
+	'hatModel0', 'hatModel1', 'hatModel2', 'hatModel3', 'hatModel4',
+	'cymbalModel0', 'cymbalModel1', 'cymbalModel2', 'cymbalModel3', 'cymbalModel4'
+] as const;
+
+/** Share of each source's power in the band its instrument owns, Hz. */
+const OWN_BAND: Record<Source, [number, number]> = {
+	kick: [20, 90], snare: [1000, 3000], hat: [7000, 11025], cymbal: [3000, 11025]
+};
+
+/** ADTOF activations (mix, drum stem, each source) come in the layout activationStream reads. */
+export interface FusionInputs {
+	mix: Float32Array;
+	stem: Float32Array;
+	sourceActivations: Record<Source, Float32Array>;
+	sources: SeparatedDrumAudio & { hat: Float32Array; cymbal: Float32Array };
+	sourceOnsets: Record<Source, SourceOnsets>;
+	/** The mix the sources were separated from, at the sources' rate. */
+	audio: Float32Array;
+	odf: Float32Array;
+	odfFps: number;
+	dsp: Record<'kick' | 'snare' | 'hat', DrumStream>;
+	beats: Float64Array;
+	/** Bar starts followed by the end of the last bar. */
+	barTimes: Float64Array;
+}
+
+export interface Candidates {
+	times: number[];
+	/** Row-major, FUSION_FEATURES.length values per candidate, float32 as the model was trained. */
+	features: Float32Array;
+	/** Largest rise of the class activation above its trailing average on either pass. */
+	strength: number[];
+}
+
+function channel(act: Float32Array, c: number): Float32Array {
+	const out = new Float32Array(Math.floor(act.length / ACT_CLASSES));
+	for (let t = 0; t < out.length; t++) out[t] = act[t * ACT_CLASSES + c];
+	return out;
+}
+
+function maxAround(curve: ArrayLike<number>, frame: number, radius: number): number {
+	let m = 0;
+	const to = Math.min(curve.length - 1, frame + radius);
+	for (let i = Math.max(0, frame - radius); i <= to; i++) if (curve[i] > m) m = curve[i];
+	return m;
+}
+
+function meanAround(curve: ArrayLike<number>, frame: number, radius: number): number {
+	let sum = 0;
+	let n = 0;
+	const to = Math.min(curve.length - 1, frame + radius);
+	for (let i = Math.max(0, frame - radius); i <= to; i++, n++) sum += curve[i];
+	return n ? sum / n : 0;
+}
+
+function rms(audio: Float32Array, rate: number, time: number, from: number, to: number): number {
+	const start = Math.max(0, Math.floor((time + from) * rate));
+	const end = Math.min(audio.length, Math.ceil((time + to) * rate));
+	let sum = 0;
+	for (let i = start; i < end; i++) sum += audio[i] * audio[i];
+	return Math.sqrt(sum / Math.max(1, end - start));
+}
+
+const db = (v: number) => 20 * Math.log10(Math.max(1e-6, v));
+
+function lowerBound(sorted: ArrayLike<number>, t: number): number {
+	let lo = 0;
+	let hi = sorted.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >> 1;
+		if (sorted[mid] < t) lo = mid + 1;
+		else hi = mid;
+	}
+	return lo;
+}
+
+/** A loud passage's frame RMS: the level that dB features are measured against. */
+function referenceLevel(audio: Float32Array, rate: number): number {
+	const hop = Math.round(rate / 10);
+	const levels: number[] = [];
+	for (let at = 0; at + hop <= audio.length; at += hop) {
+		let sum = 0;
+		for (let i = at; i < at + hop; i++) sum += audio[i] * audio[i];
+		levels.push(Math.sqrt(sum / hop));
+	}
+	return Math.max(1e-6, levels.length ? quantile(levels, 0.95) : 0);
+}
+
+/** Power spectra 40 ms after an attack, and what they say about one source there. */
+class Spectra {
+	private readonly fft = new RealFft(FFT_SIZE);
+	private readonly window = hannWindow(FFT_SIZE);
+	private readonly magnitude: Float32Array;
+	private readonly bandStart: Int32Array;
+	private readonly rate: number;
+
+	constructor(rate: number) {
+		this.rate = rate;
+		this.magnitude = new Float32Array(this.fft.bins);
+		const top = rate / 2;
+		this.bandStart = Int32Array.from({ length: SHAPE_BANDS + 1 }, (_, b) => {
+			const hz = SHAPE_LOW_HZ * Math.pow(top / SHAPE_LOW_HZ, b / SHAPE_BANDS);
+			return Math.min(this.fft.bins, Math.round((hz * FFT_SIZE) / rate));
+		});
+	}
+
+	/** Reads `source` around `time`; the queries below describe that read until the next one. */
+	read(source: Float32Array, time: number): void {
+		const start = Math.round((time + 0.04) * this.rate) - FFT_SIZE / 2;
+		this.fft.magnitudes(source, start, this.window, this.magnitude, 1);
+	}
+
+	share(loHz: number, hiHz: number): number {
+		let total = 0;
+		let band = 0;
+		for (let b = 0; b < this.magnitude.length; b++) {
+			const power = this.magnitude[b] * this.magnitude[b];
+			const hz = (b * this.rate) / FFT_SIZE;
+			total += power;
+			if (hz >= loHz && hz < hiHz) band += power;
+		}
+		return band / Math.max(1e-20, total);
+	}
+
+	/** Mean-free, unit-length log band energies: the sound's shape regardless of its level. */
+	shape(out: Float64Array): Float64Array {
+		let mean = 0;
+		for (let b = 0; b < SHAPE_BANDS; b++) {
+			let energy = 0;
+			const from = this.bandStart[b];
+			const to = Math.max(from + 1, this.bandStart[b + 1]);
+			for (let k = from; k < to; k++) energy += this.magnitude[k] * this.magnitude[k];
+			out[b] = Math.log(1e-12 + energy / (to - from));
+			mean += out[b];
+		}
+		mean /= SHAPE_BANDS;
+		let norm = 0;
+		for (let b = 0; b < SHAPE_BANDS; b++) {
+			out[b] -= mean;
+			norm += out[b] * out[b];
+		}
+		norm = Math.sqrt(norm);
+		for (let b = 0; b < SHAPE_BANDS; b++) out[b] = norm > 1e-9 ? out[b] / norm : 0;
+		return out;
+	}
+}
+
+interface SourceContext {
+	/** Refined attack times of the source's own onset peaks. */
+	peaks: Float64Array;
+	/** Unit-length mean shape of its strongest attacks; zero when there are too few. */
+	template: Float64Array;
+}
+
+interface Context {
+	mixCurves: Float32Array[];
+	stemCurves: Float32Array[];
+	sourceCurves: Record<Source, Float32Array[]>;
+	reference: number;
+	spectra: Spectra;
+	sources: Record<Source, SourceContext>;
+	/** Level of the first source, dB against the reference, at each attack of the second. */
+	bleed: {
+		snareAtKick: Float64Array; hatAtKick: Float64Array; cymbalAtKick: Float64Array; kickAtSnare: Float64Array;
+	};
+}
+
+/** Median bleed level among `at`'s attacks within the reach of `time`. */
+function bleedFloor(levels: Float64Array, at: Float64Array, time: number, scratch: number[]): number {
+	scratch.length = 0;
+	const end = time + BLEED_REACH_S;
+	for (let i = lowerBound(at, time - BLEED_REACH_S); i < at.length && at[i] <= end; i++) scratch.push(levels[i]);
+	if (!scratch.length) return BLEED_FLOOR_DB;
+	scratch.sort((a, b) => a - b);
+	const mid = scratch.length >> 1;
+	return scratch.length % 2 ? scratch[mid] : (scratch[mid - 1] + scratch[mid]) / 2;
+}
+
+function sourcePeaks(onsets: SourceOnsets) {
+	return pickPeaks(onsets.odf, onsets.fps, {
+		localMaxSec: 0.025, movingMeanSec: 0.15, refractorySec: 0.06, delta: 0.1
+	});
+}
+
+function context(inputs: FusionInputs): Context {
+	const spectra = new Spectra(inputs.sources.sampleRate);
+	const sources = {} as Record<Source, SourceContext>;
+	const shape = new Float64Array(SHAPE_BANDS);
+	for (const name of SOURCES) {
+		const onsets = inputs.sourceOnsets[name];
+		const peaks = sourcePeaks(onsets);
+		const times = Float64Array.from(peaks, (peak) => refinePeakTime(onsets.odf, peak.frame, onsets.fps));
+		const strongest = peaks.map((peak, i) => ({ i, strength: peak.strength }))
+			.sort((a, b) => b.strength - a.strength || a.i - b.i)
+			.slice(0, Math.max(TEMPLATE_MIN, Math.ceil(peaks.length * TEMPLATE_SHARE)));
+		const template = new Float64Array(SHAPE_BANDS);
+		if (peaks.length >= TEMPLATE_MIN) {
+			for (const { i } of strongest) {
+				spectra.read(inputs.sources[name], times[i]);
+				spectra.shape(shape);
+				for (let b = 0; b < SHAPE_BANDS; b++) template[b] += shape[b];
+			}
+			const norm = Math.sqrt(template.reduce((sum, v) => sum + v * v, 0));
+			for (let b = 0; b < SHAPE_BANDS; b++) template[b] = norm > 1e-9 ? template[b] / norm : 0;
+		}
+		sources[name] = { peaks: times, template };
+	}
+	const rate = inputs.sources.sampleRate;
+	const reference = referenceLevel(inputs.audio, rate);
+	const levelsAt = (source: Float32Array, times: Float64Array) =>
+		Float64Array.from(times, (time) => db(rms(source, rate, time, -0.02, 0.06) / reference));
+	return {
+		mixCurves: Array.from({ length: ACT_CLASSES }, (_, c) => channel(inputs.mix, c)),
+		stemCurves: Array.from({ length: ACT_CLASSES }, (_, c) => channel(inputs.stem, c)),
+		sourceCurves: Object.fromEntries(SOURCES.map((name) => [
+			name, Array.from({ length: ACT_CLASSES }, (_, c) => channel(inputs.sourceActivations[name], c))
+		])) as Record<Source, Float32Array[]>,
+		reference,
+		spectra,
+		sources,
+		bleed: {
+			snareAtKick: levelsAt(inputs.sources.snare, sources.kick.peaks),
+			hatAtKick: levelsAt(inputs.sources.hat, sources.kick.peaks),
+			cymbalAtKick: levelsAt(inputs.sources.cymbal, sources.kick.peaks),
+			kickAtSnare: levelsAt(inputs.sources.kick, sources.snare.peaks)
+		}
+	};
+}
+
+export function drumCandidates(inputs: FusionInputs, kind: FusionKind, shared = context(inputs)): Candidates {
+	const { sources, audio } = inputs;
+	const rate = sources.sampleRate;
+	const { mixCurves, stemCurves, reference, spectra } = shared;
+	const mixCurve = mixCurves[CHANNEL[kind]];
+	const stemCurve = stemCurves[CHANNEL[kind]];
+	const frames = Math.min(mixCurve.length, stemCurve.length);
+	// The kit separator's tom stem is not kept, so tom candidates come from the transcriptions only.
+	const sourceOnset = kind === 'tom' ? null : inputs.sourceOnsets[kind];
+
+	const proposalThreshold = kind === 'snare' ? SNARE_CANDIDATE_THRESHOLD : CANDIDATE_THRESHOLD;
+	const mixPeaks = activationStream(mixCurve, proposalThreshold);
+	const stemPeaks = activationStream(stemCurve, proposalThreshold);
+	const proposals: { time: number; from: number }[] = [];
+	for (const time of mixPeaks.times) proposals.push({ time, from: 0 });
+	for (const time of stemPeaks.times) proposals.push({ time, from: 1 });
+	if (sourceOnset && kind !== 'tom') {
+		const peaks = pickPeaks(sourceOnset.odf, sourceOnset.fps, {
+			localMaxSec: 0.025, movingMeanSec: 0.15, refractorySec: kind === 'snare' ? 0.04 : 0.06,
+			delta: kind === 'kick' ? 0.3 : kind === 'snare' ? 0.03 : 0.1
+		});
+		for (const peak of peaks) {
+			proposals.push({ time: refinePeakTime(sourceOnset.odf, peak.frame, sourceOnset.fps), from: 2 });
+		}
+		for (const time of activationStream(shared.sourceCurves[kind][CHANNEL[kind]], proposalThreshold).times) {
+			proposals.push({ time, from: 3 });
+		}
+	}
+	proposals.sort((a, b) => a.time - b.time || a.from - b.from);
+
+	const strengthAt = (time: number) => {
+		const frame = Math.round(time * ACT_FPS);
+		return Math.max(maxAround(mixCurve, frame, 1), maxAround(stemCurve, frame, 1));
+	};
+	const merged: { time: number; flags: number[] }[] = [];
+	for (const proposal of proposals) {
+		const last = merged[merged.length - 1];
+		if (last && proposal.time - last.time < MERGE_S) {
+			last.flags[proposal.from] = 1;
+			if (strengthAt(proposal.time) > strengthAt(last.time)) last.time = proposal.time;
+			continue;
+		}
+		const flags = [0, 0, 0, 0];
+		flags[proposal.from] = 1;
+		merged.push({ time: proposal.time, flags });
+	}
+
+	const { beats, barTimes } = inputs;
+	const meanPeriod = beats.length > 1 ? (beats[beats.length - 1] - beats[0]) / (beats.length - 1) : 0.5;
+	const width = FUSION_FEATURES.length;
+	const features = new Float32Array(merged.length * width);
+	const strength: number[] = [];
+	const shape = new Float64Array(SHAPE_BANDS);
+	const shares = { kick: 0, snare: 0, hat: 0, cymbal: 0 };
+	const levels = { kick: 0, snare: 0, hat: 0, cymbal: 0 };
+	const scratch: number[] = [];
+
+	merged.forEach((candidate, row) => {
+		const t = candidate.time;
+		const frame = Math.round(t * ACT_FPS);
+		let column = row * width;
+		const put = (value: number) => {
+			features[column++] = Number.isFinite(value) ? value : 0;
+		};
+		for (let c = 0; c < ACT_CLASSES; c++) put(maxAround(mixCurves[c], frame, 2));
+		for (let c = 0; c < ACT_CLASSES; c++) put(maxAround(stemCurves[c], frame, 2));
+		put(meanAround(mixCurve, frame, 10));
+		put(meanAround(stemCurve, frame, 10));
+
+		const bar = Math.max(0, Math.min(barTimes.length - 2, lowerBound(barTimes, t + 1e-9) - 1));
+		const barSpan = barTimes.length > 1 && barTimes[bar + 1] > barTimes[bar]
+			? barTimes[bar + 1] - barTimes[bar]
+			: meanPeriod * 4;
+		for (const shift of [-1, 1, -2, 2]) {
+			const g = Math.round((t + shift * barSpan) * ACT_FPS);
+			put(g >= 0 && g < frames ? maxAround(mixCurve, g, 3) : 0);
+			put(g >= 0 && g < frames ? maxAround(stemCurve, g, 3) : 0);
+		}
+		for (const shift of [-1, 1]) {
+			const g = Math.round((t + shift * meanPeriod) * ACT_FPS);
+			put(g >= 0 && g < frames ? maxAround(mixCurve, g, 2) : 0);
+			put(g >= 0 && g < frames ? maxAround(stemCurve, g, 2) : 0);
+		}
+
+		const mixRms = rms(audio, rate, t, -0.02, 0.06);
+		put(db(mixRms / reference));
+		for (const name of SOURCES) {
+			const source = sources[name];
+			const level = rms(source, rate, t, -0.02, 0.06);
+			levels[name] = db(level / reference);
+			put(level / Math.max(1e-6, mixRms));
+			put(levels[name]);
+			put(db(rms(source, rate, t, 0, 0.08)) - db(rms(source, rate, t, -0.06, -0.01)));
+			const onsets = inputs.sourceOnsets[name];
+			put(maxAround(onsets.odf, Math.round(t * onsets.fps), 3));
+			spectra.read(source, t);
+			spectra.shape(shape);
+			const { template, peaks: sourceTimes } = shared.sources[name];
+			let match = 0;
+			for (let b = 0; b < SHAPE_BANDS; b++) match += shape[b] * template[b];
+			put(match);
+			put((lowerBound(sourceTimes, t + 1) - lowerBound(sourceTimes, t - 1)) / 2);
+			shares[name] = spectra.share(OWN_BAND[name][0], Math.min(rate / 2, OWN_BAND[name][1]));
+		}
+		const { bleed, sources: attacks } = shared;
+		put(levels.snare - bleedFloor(bleed.snareAtKick, attacks.kick.peaks, t, scratch));
+		put(levels.hat - bleedFloor(bleed.hatAtKick, attacks.kick.peaks, t, scratch));
+		put(levels.cymbal - bleedFloor(bleed.cymbalAtKick, attacks.kick.peaks, t, scratch));
+		put(levels.kick - bleedFloor(bleed.kickAtSnare, attacks.snare.peaks, t, scratch));
+		put(shares.snare);
+		put(shares.kick);
+		put(shares.hat);
+		put(shares.cymbal);
+		put(maxAround(inputs.odf, Math.round(t * inputs.odfFps), 3));
+		for (const dsp of [inputs.dsp.kick, inputs.dsp.snare, inputs.dsp.hat]) {
+			put(maxAround(dsp.curve, Math.round(t * dsp.fps), 3));
+		}
+		for (const flag of candidate.flags) put(flag);
+		for (const name of SOURCES) {
+			for (let c = 0; c < ACT_CLASSES; c++) put(maxAround(shared.sourceCurves[name][c], frame, 2));
+		}
+		if (column !== (row + 1) * width) throw new Error('Drum fusion features are out of step with FUSION_FEATURES.');
+		strength.push(Math.max(maxAround(mixPeaks.curve, frame, 1), maxAround(stemPeaks.curve, frame, 1)));
+	});
+	return { times: merged.map((candidate) => candidate.time), features, strength };
+}
+
+export function fusionCandidates(
+	inputs: FusionInputs, kinds: readonly FusionKind[] = FUSION_KINDS
+): Partial<Record<FusionKind, Candidates>> {
+	const shared = context(inputs);
+	return Object.fromEntries(kinds.map((kind) => [kind, drumCandidates(inputs, kind, shared)]));
+}
+
+/** LightGBM trees flattened: negative child indices address leaves as ~index. */
+interface Tree {
+	feature: number[];
+	threshold: number[];
+	left: number[];
+	right: number[];
+	leaf: number[];
+}
+
+interface FusionClass {
+	threshold: number;
+	trees: Tree[];
+}
+
+export interface FusionModel {
+	version: string;
+	/** The CANDIDATE_REVISION the trees were trained on. */
+	candidates: number;
+	features: string[];
+	classes: Record<AnalysisKind, FusionClass> & { tom?: FusionClass };
+}
+
+/** Every split must lead forward to a split or to a leaf, so evaluation always terminates. */
+function validTree(tree: Tree): boolean {
+	const splits = tree.feature?.length ?? -1;
+	if (splits < 0 || !tree.leaf?.length) return false;
+	if ([tree.threshold, tree.left, tree.right].some((list) => list?.length !== splits)) return false;
+	const child = (node: number, next: number) =>
+		Number.isInteger(next) && (next >= 0 ? next > node && next < splits : ~next < tree.leaf.length);
+	for (let node = 0; node < splits; node++) {
+		const feature = tree.feature[node];
+		const known = Number.isInteger(feature) && feature >= 0 && feature < FUSION_FEATURES.length;
+		if (!known || !Number.isFinite(tree.threshold[node])) return false;
+		if (!child(node, tree.left[node]) || !child(node, tree.right[node])) return false;
+	}
+	return tree.leaf.every(Number.isFinite);
+}
+
+export function validateFusionModel(model: FusionModel): FusionModel {
+	if (typeof model.version !== 'string' || !model.version) throw new Error('Drum fusion model has no version.');
+	if (model.candidates !== CANDIDATE_REVISION) throw new Error('Drum fusion model was trained on other candidates.');
+	if (model.features?.length !== FUSION_FEATURES.length
+		|| model.features.some((name, i) => name !== FUSION_FEATURES[i])) {
+		throw new Error('Drum fusion model features do not match this analyser.');
+	}
+	for (const kind of BENCHMARK_KINDS) {
+		const entry = model.classes[kind];
+		if (!entry && kind === 'tom') continue;
+		const inRange = entry && entry.threshold > 0 && entry.threshold < 1;
+		if (!inRange || !entry.trees?.length || !entry.trees.every(validTree)) {
+			throw new Error(`Drum fusion model has no usable ${kind} classifier.`);
+		}
+	}
+	return model;
+}
+
+/**
+ * A kick or snare's own source level, dB below the class's loud hits in the track, that maps to
+ * level 0. A clap under a loud kick barely moves the transcription but is as loud as its peers.
+ * Hat and cymbal levels keep the activation rise, which separates pedal hats better.
+ */
+const LOUDNESS_RANGE_DB = 18;
+const LOUDNESS: Partial<Record<FusionKind, number>> = {
+	kick: FUSION_FEATURES.indexOf('kickDb'), snare: FUSION_FEATURES.indexOf('snareDb')
+};
+
+export function fusionProbabilities(model: FusionModel, kind: FusionKind, candidates: Candidates): Float64Array {
+	const width = FUSION_FEATURES.length;
+	const count = candidates.times.length;
+	const out = new Float64Array(count);
+	const trees = model.classes[kind]?.trees ?? [];
+	for (let row = 0; row < count; row++) {
+		const base = row * width;
+		let score = 0;
+		for (const tree of trees) {
+			let node = tree.feature.length ? 0 : -1;
+			while (node >= 0) {
+				const left = candidates.features[base + tree.feature[node]] <= tree.threshold[node];
+				node = left ? tree.left[node] : tree.right[node];
+			}
+			score += tree.leaf[~node];
+		}
+		out[row] = 1 / (1 + Math.exp(-score));
+	}
+	return out;
+}
+
+/**
+ * Hits above the class threshold, most probable first within SELECT_GAP_S, for every proposed kind
+ * the model classifies. Levels map the activation rise as activationStream does.
+ */
+export function fuseDrums(
+	model: FusionModel, inputs: FusionInputs, proposed = fusionCandidates(inputs)
+): Record<AnalysisKind, DrumStream> & { tom?: DrumStream } {
+	const out: Partial<Record<FusionKind, DrumStream>> = {};
+	for (const kind of BENCHMARK_KINDS) {
+		const candidates = proposed[kind];
+		const entry = model.classes[kind];
+		if (!candidates || !entry) continue;
+		const probabilities = fusionProbabilities(model, kind, candidates);
+		const threshold = entry.threshold;
+		const order = Array.from(probabilities.keys())
+			.filter((i) => probabilities[i] >= threshold)
+			.sort((a, b) => probabilities[b] - probabilities[a] || candidates.times[a] - candidates.times[b]);
+		const chosen: number[] = [];
+		// Accepted hits by SELECT_GAP_S bucket; two buckets each side cover every conflict, rounding included.
+		const accepted = new Map<number, number[]>();
+		for (const i of order) {
+			const time = candidates.times[i];
+			const bucket = Math.floor(time / SELECT_GAP_S);
+			let taken = false;
+			for (let b = bucket - 2; b <= bucket + 2 && !taken; b++) {
+				taken = accepted.get(b)?.some((j) => Math.abs(candidates.times[j] - time) < SELECT_GAP_S) ?? false;
+			}
+			if (taken) continue;
+			chosen.push(i);
+			const neighbours = accepted.get(bucket);
+			if (neighbours) neighbours.push(i);
+			else accepted.set(bucket, [i]);
+		}
+		chosen.sort((a, b) => candidates.times[a] - candidates.times[b]);
+		const frames = Math.floor(Math.min(inputs.mix.length, inputs.stem.length) / ACT_CLASSES);
+		const curve = new Float32Array(frames);
+		for (let i = 0; i < candidates.times.length; i++) {
+			const frame = Math.round(candidates.times[i] * ACT_FPS);
+			if (frame >= 0 && frame < frames && probabilities[i] > curve[frame]) curve[frame] = probabilities[i];
+		}
+		const strengths = chosen.map((i) => candidates.strength[i]).sort((a, b) => a - b);
+		const top = Math.max(STRONG_ONSET_EXCESS, strengths[Math.floor(strengths.length * 0.9)] ?? 0);
+		const column = LOUDNESS[kind];
+		const loudness = column === undefined ? null
+			: chosen.map((i) => candidates.features[i * FUSION_FEATURES.length + column]);
+		const loud = loudness ? quantile(loudness, 0.9) : 0;
+		const levels = chosen.map((i, k) => {
+			const s = candidates.strength[i];
+			const heard = loudness ? Math.min(1, Math.max(0, 1 + (loudness[k] - loud) / LOUDNESS_RANGE_DB)) : 0;
+			return Math.max(Math.min(1, s / top) * Math.min(1, s / STRONG_ONSET_EXCESS), heard);
+		});
+		out[kind] = { times: chosen.map((i) => candidates.times[i]), levels, curve, fps: ACT_FPS };
+	}
+	return out as Record<AnalysisKind, DrumStream> & { tom?: DrumStream };
+}
