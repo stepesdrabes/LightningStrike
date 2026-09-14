@@ -4,7 +4,8 @@ import { isTransientFetchError, showPath, type IngestStage } from '@mv/analysis'
 import { refreshShow, lintShow } from '@mv/author-engine';
 import { currentItem, nextItem, type ItemStatus, type QueueItem } from '$lib/queueModel.ts';
 import { autopilot } from './autopilot.ts';
-import { ingestDetached } from './ingestDetached.ts';
+import { eveningGate } from './evening/gate.ts';
+import { ingestDetached, narrationDetached } from './ingestDetached.ts';
 import { queue } from './queueStore.ts';
 
 /** Map known ingest stages to queue states; unknown messages leave status unchanged. */
@@ -34,8 +35,11 @@ const LABELS: Record<IngestStage | 'composing', string> = {
 	composing: 'Composing the show'
 };
 
+/** What preparing a track needs to know about where it comes from. */
+type Preparable = Pick<QueueItem, 'source' | 'trackId' | 'thumbnail'>;
+
 /** Prepare audio and analysis, preserving an existing authored show on the same grid. */
-async function prepare(item: QueueItem, onStage: (stage: string) => void) {
+export async function prepareTrack(item: Preparable, onStage: (stage: string) => void) {
 	// Prefer the catalogue sleeve already on the row to yt-dlp's video still.
 	const result = await ingestDetached(item.source, {
 		cachedTrackId: item.trackId ?? undefined,
@@ -104,13 +108,16 @@ class IngestRunner {
 		let more = false;
 		try {
 			const state = await queue.ready();
-			const target = [currentItem(state), nextItem(state)].find(
+			const ahead = eveningGate.active
+				? eveningGate.ahead.map((key) => state.items.find((i) => i.key === key) ?? null)
+				: [];
+			const target = [currentItem(state), nextItem(state), ...ahead].find(
 				(i): i is QueueItem => i !== null && i.status === 'pending'
 			);
 			if (target) {
 				await this.run(target);
 				more = true;
-			} else {
+			} else if (!eveningGate.active) {
 				// Ask radio when preparation empties, following requests rather than an unattended timer.
 				more = await autopilot.topUp(Date.now());
 			}
@@ -122,9 +129,19 @@ class IngestRunner {
 	}
 
 	private async run(item: QueueItem): Promise<void> {
+		if (item.kind === 'narration') {
+			queue.patch(item.key, { status: 'analysing', message: 'Reading the narration' });
+			try {
+				const measured = await narrationDetached(item.source);
+				queue.patch(item.key, { status: 'ready', message: '', duration: measured.duration });
+			} catch (e) {
+				queue.patch(item.key, { status: 'error', message: (e as Error).message.split('\n')[0].slice(0, 200) });
+			}
+			return;
+		}
 		queue.patch(item.key, { status: 'resolving', message: 'Resolving' });
 		try {
-			const { result, authored, loungeOnly, trustNote } = await prepare(item, (stage) => {
+			const { result, authored, loungeOnly, trustNote } = await prepareTrack(item, (stage) => {
 				// Only recognised stages change status; free-text notes update the message.
 				const status = STAGES[stage as IngestStage];
 				const message = LABELS[stage as IngestStage] ?? stage;

@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { RoomRenderer, type CameraView } from '@mv/preview3d';
 	import type { Readout, Viz } from '$lib/viz.svelte.ts';
-	import type { LoadState, Step } from '$lib/types.ts';
-	import Activity from './Activity.svelte';
+	import type { LoadState } from '$lib/types.ts';
 	import Icon from '$lib/ui/Icon.svelte';
 	import Segmented from '$lib/ui/Segmented.svelte';
 	import Spinner from '$lib/ui/Spinner.svelte';
@@ -11,7 +10,6 @@
 		viz,
 		readout,
 		load,
-		steps,
 		hasShow,
 		queued = 0,
 		lounge = false,
@@ -20,7 +18,6 @@
 		viz: Viz | null;
 		readout: Readout;
 		load: LoadState;
-		steps: Step[];
 		hasShow: boolean;
 		queued?: number;
 		lounge?: boolean;
@@ -131,13 +128,6 @@
 			{#if busy}
 				<Spinner size={26} accent />
 				<h1>{load.message}</h1>
-				{#if load.phase === 'authoring'}
-					{#if steps.length > 0}
-						<div class="live"><Activity {steps} compact /></div>
-					{:else}
-						<p>Claude is researching the track.</p>
-					{/if}
-				{/if}
 			{:else if readout.duration > 0}
 				<h1>Track ready</h1>
 			{:else if queued > 0}
@@ -252,10 +242,5 @@
 		max-width: 360px;
 		font-size: 13.5px;
 		color: var(--muted-foreground);
-	}
-	.live {
-		width: min(560px, 90%);
-		margin-top: 2px;
-		text-align: left;
 	}
 </style>

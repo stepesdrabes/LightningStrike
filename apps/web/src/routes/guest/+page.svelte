@@ -16,10 +16,21 @@
 	let adding = $state<string | null>(null);
 	let added = $state<string | null>(null);
 
-	const now = $derived(currentItem(queue.state));
-	const upNext = $derived(
-		queue.state.items.slice(queue.state.items.findIndex((i) => i.key === now?.key) + 1)
-	);
+	const current = $derived(currentItem(queue.state));
+	// Guests see songs; an evening's pauses, holds and light moments stay a surprise.
+	const now = $derived(current && (current.kind ?? 'song') === 'song' ? current : null);
+	const ahead = $derived(queue.state.items.slice(queue.state.items.findIndex((i) => i.key === current?.key) + 1));
+	const upNext = $derived(ahead.filter((i) => (i.kind ?? 'song') === 'song'));
+
+	/** Roughly when a row plays: everything ahead of it, and half of what plays now. */
+	function minutesUntil(key: string): number {
+		let seconds = (current?.duration ?? 0) / 2;
+		for (const item of ahead) {
+			if (item.key === key) break;
+			seconds += item.duration;
+		}
+		return Math.max(1, Math.round(seconds / 60));
+	}
 	const mine = $derived(guest?.name ?? '');
 
 	$effect(() => {
@@ -146,7 +157,9 @@
 						<span class="title truncate">{item.title}</span>
 						<span class="sub truncate">
 							{item.addedBy ? item.addedBy : item.uploader}
-							{#if item.duration > 0}
+							{#if item.addedBy === mine && mine}
+								<span class="sep">·</span>in about {minutesUntil(item.key)} min
+							{:else if item.duration > 0}
 								<span class="sep">·</span>{clock(item.duration)}
 							{/if}
 						</span>

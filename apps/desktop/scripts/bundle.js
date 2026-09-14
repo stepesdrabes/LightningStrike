@@ -87,14 +87,16 @@ const build = join(root, 'apps/web/build');
 if (!existsSync(build)) throw new Error('the web build produced no apps/web/build');
 
 // Bundle the ingest worker beside the server so native addons resolve from its node_modules.
-// Analysis looks for its ONNX and DSP workers next to the ingest bundle.
-console.log('building the ingest workers');
+// Analysis looks for its ONNX and DSP workers next to the ingest bundle, and the evening
+// loader for its own.
+console.log('building the workers');
 {
 	const { rolldown } = await import('rolldown');
 	for (const [input, file] of [
 		['packages/analysis/src/ingestWorker.ts', 'ingest-worker.mjs'],
 		['packages/analysis/src/onnxWorker.ts', 'onnx-worker.mjs'],
-		['packages/analysis/src/dspWorker.ts', 'dsp-worker.mjs']
+		['packages/analysis/src/dspWorker.ts', 'dsp-worker.mjs'],
+		['apps/web/src/lib/server/evening/eveningWorker.ts', 'evening-worker.mjs']
 	]) {
 		const worker = await rolldown({
 			input: join(root, input),

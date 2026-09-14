@@ -5,12 +5,14 @@ import { CACHE_DIR, readLibrary } from '@mv/analysis';
 import {
 	EMPTY_QUEUE,
 	addItems,
+	advanceFrom,
 	clearQueue,
 	jumpTo,
 	moveItem,
 	patchItem,
 	playNext,
 	removeItem,
+	replaceItems,
 	step,
 	type NewItem,
 	type QueueItem,
@@ -129,6 +131,23 @@ class QueueStore {
 	async step(dir: -1 | 1): Promise<QueueState> {
 		await this.ready();
 		return this.commit(step(this.state, dir));
+	}
+
+	/** Advance past a row only if it is still the current one. */
+	async advanceFrom(key: string): Promise<QueueState> {
+		await this.ready();
+		return this.commit(advanceFrom(this.state, key));
+	}
+
+	async replace(items: QueueItem[], currentKey: string | null): Promise<QueueState> {
+		await this.ready();
+		return this.commit(replaceItems(this.state, items, currentKey));
+	}
+
+	/** Apply a whole-queue change computed from the latest state; an identical result commits nothing. */
+	async transform(change: (state: QueueState) => QueueState): Promise<QueueState> {
+		await this.ready();
+		return this.commit(change(this.state));
 	}
 
 	async clear(keepCurrent: boolean): Promise<QueueState> {

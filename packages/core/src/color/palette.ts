@@ -12,6 +12,9 @@ interface Key {
 
 const RGB_SCRATCH: [number, number, number] = [0, 0, 0];
 
+/** The glow slot is the base hue at this share of the palette's saturation. */
+export const GLOW_SATURATION = 0.72;
+
 /** Refilled per call, ascending. Same reason as `RGB_SCRATCH`, one level up. */
 const KEYS: Key[] = [
 	SLOT.deep,
@@ -46,7 +49,7 @@ export function writePalette(out: Palette, p: ShowPalette): Palette {
 	const keys = KEYS;
 	set(keys[0], base, sat, shade);
 	set(keys[1], base, sat, 1);
-	set(keys[2], base, sat * 0.72, 1);
+	set(keys[2], base, sat * GLOW_SATURATION, 1);
 	set(keys[3], base, whiteS, 1);
 	set(keys[4], third, sat, 0.95);
 	set(keys[5], accent, sat, 1);

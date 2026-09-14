@@ -127,26 +127,6 @@ export interface SettingsPatch {
 	ambientDwell?: number;
 }
 
-/** One line in the authoring activity feed. */
-export interface Step {
-	id: string;
-	kind: 'phase' | 'tool' | 'think' | 'note';
-	label: string;
-	detail?: string;
-	result?: string;
-	state: 'pending' | 'done' | 'failed';
-}
-
-/** Mirrors @mv/author AuthorEvent. Duplicated so the client does not import the server. */
-export type AuthorEvent =
-	| { type: 'phase'; phase: string; label: string }
-	| { type: 'thinking'; text: string }
-	| { type: 'tool'; id: string; name: string; detail: string }
-	| { type: 'result'; id: string; name: string; summary: string; ok: boolean }
-	| { type: 'brief'; brief: string }
-	| { type: 'analysis'; analysis: unknown; reason: string }
-	| { type: 'note'; text: string };
-
 /** Mirrors $lib/server/judge MomentNote. Duplicated so the client does not import the server. */
 export interface MomentNote {
 	t: number;

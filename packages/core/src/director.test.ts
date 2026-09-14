@@ -183,6 +183,39 @@ describe('RoomDirector', () => {
 		expect(lit / (d.bytes.length / 3)).toBeGreaterThan(0.5);
 	});
 
+	it('plays an authored show at its written levels, whatever exposure the room built up', () => {
+		const dim = { ...show, cues: show.cues.map((c) => ({ ...c, intensity: 0.15 })) };
+		const authored = { ...dim, exposure: 'fixed' as const };
+		const lifted = new RoomDirector(g, new EffectRegistry());
+		lifted.load(analysis, dim);
+		for (let i = 0; i < 60 * 60; i++) lifted.update(i / 60, 1 / 60, PLAYING);
+		const fresh = new RoomDirector(g, new EffectRegistry());
+		fresh.load(analysis, authored);
+		lifted.load(analysis, authored, 0);
+		for (let i = 0; i < 60 * 3; i++) {
+			lifted.update(60 + i / 60, 1 / 60, PLAYING);
+			fresh.update(60 + i / 60, 1 / 60, PLAYING);
+		}
+		let worst = 0;
+		for (let i = 0; i < fresh.bytes.length; i++) worst = Math.max(worst, Math.abs(fresh.bytes[i] - lifted.bytes[i]));
+		expect(worst).toBeLessThanOrEqual(1);
+	});
+
+	it('keeps the exposure songs built up through an authored row between them', () => {
+		const dim = { ...show, cues: show.cues.map((c) => ({ ...c, intensity: 0.15 })) };
+		const d = new RoomDirector(g, new EffectRegistry());
+		d.load(analysis, dim);
+		for (let i = 0; i < 60 * 60; i++) d.update(i / 60, 1 / 60, PLAYING);
+		const built = d.sync().exposure!;
+		expect(built).toBeGreaterThan(1.3);
+		d.load(analysis, { ...dim, exposure: 'fixed' }, 0);
+		for (let i = 0; i < 60 * 3; i++) d.update(60 + i / 60, 1 / 60, PLAYING);
+		expect(d.sync().exposure).toBeCloseTo(built, 5);
+		d.load(analysis, dim, 0);
+		d.update(63, 1 / 60, PLAYING);
+		expect(d.sync().exposure!).toBeGreaterThan(built - 0.01);
+	});
+
 	it('keeps the frame it hands back about the track, not about the room', () => {
 		const d = loaded();
 		let f = d.update(0, 1 / 60, PLAYING);
@@ -294,6 +327,25 @@ describe('RoomDirector transitions', () => {
 		const fresh = loaded();
 		for (let i = 0; i < 60 * 2; i++) fresh.update(17 + i * DT, DT, PLAYING);
 		expect(Array.from(d.showMix.frame)).toEqual(Array.from(fresh.showMix.frame));
+	});
+
+	it('cuts or dissolves into a row loaded onto a live room over the time its loader asked for', () => {
+		const second = fixtureAnalysis(100);
+		const next = { ...fixtureShow(second), palette: { base: 20, accent: 200 } };
+		const cut = loaded();
+		const faded = loaded();
+		for (const d of [cut, faded]) for (let i = 0; i < 60 * 5; i++) d.update(i * DT, DT, PLAYING);
+		cut.load(second, next, 0);
+		faded.load(second, next, 4);
+		const fresh = new RoomDirector(g, new EffectRegistry());
+		fresh.load(second, next, 0);
+		for (let i = 0; i < 60; i++) {
+			for (const d of [cut, faded, fresh]) d.update(i * DT, DT, PLAYING);
+		}
+		// A second in, the cut shows only the new row; the four-second dissolve is still under way.
+		expect(Array.from(cut.showMix.frame)).toEqual(Array.from(fresh.showMix.frame));
+		expect(delta(cut.bytes, fresh.bytes)).toBeLessThan(0.5);
+		expect(delta(faded.bytes, fresh.bytes)).toBeGreaterThan(2);
 	});
 
 	it('restarts on a seek, forward and back, and dissolves into the new position', () => {

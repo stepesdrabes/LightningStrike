@@ -2,6 +2,7 @@
 	import type { QueueItem } from '$lib/queueModel.ts';
 	import type { SearchResult } from '$lib/types.ts';
 	import { clock } from '$lib/format.ts';
+	import { ROW_ICON, ROW_LABEL, clockTime, lengthLabel } from '$lib/evening/format.ts';
 	import Icon from '$lib/ui/Icon.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Badge from '$lib/ui/Badge.svelte';
@@ -14,6 +15,8 @@
 		playing = false,
 		autopilot = false,
 		suggestions = [],
+		segmentStarts = {},
+		eveningLive = false,
 		onjump,
 		onremove,
 		onplayNext,
@@ -32,6 +35,10 @@
 		playing?: boolean;
 		autopilot?: boolean;
 		suggestions?: SearchResult[];
+		/** Projected start of each evening segment, by id. */
+		segmentStarts?: Record<string, number>;
+		/** While an evening runs, the queue is its script and cannot be cleared wholesale. */
+		eveningLive?: boolean;
 		onjump: (key: string) => void;
 		onremove: (key: string) => void;
 		onplayNext: (key: string) => void;
@@ -76,7 +83,7 @@
 			onclick={() => onautopilot(!autopilot)}>
 			<Icon name="radio" size={14} />
 		</button>
-		{#if items.length > 0}
+		{#if items.length > 0 && !eveningLive}
 			<Button variant="ghost" size="icon-sm" title="Clear everything but the current track" onclick={onclear}>
 				<Icon name="trash" size={14} />
 			</Button>
@@ -86,8 +93,18 @@
 	<div class="list">
 		{#each items as item, i (item.key)}
 			{@const isCurrent = item.key === currentKey}
+			{@const kind = item.kind ?? 'song'}
+			{#if item.evening && item.evening.segment !== items[i - 1]?.evening?.segment && !(kind !== 'song' && kind !== 'sting' && item.evening.segment !== items[i + 1]?.evening?.segment)}
+				<p class="segment-head">
+					<span class="truncate">{item.evening.name}</span>
+					{#if segmentStarts[item.evening.segment] !== undefined && i > items.findIndex((row) => row.key === currentKey)}
+						<span class="mono">{clockTime(segmentStarts[item.evening.segment])}</span>
+					{/if}
+				</p>
+			{/if}
 			<div
 				class="row"
+				class:slim={kind === 'sting'}
 				class:current={isCurrent}
 				class:over={dragOver === i}
 				class:failed={item.status === 'error'}
@@ -108,10 +125,10 @@
 				}}>
 				<button class="hit" onclick={() => onjump(item.key)} aria-label={`Play ${item.title}`}>
 					<span class="art">
-						{#if item.thumbnail}
+						{#if item.thumbnail && kind === 'song'}
 							<img src={item.thumbnail} alt="" loading="lazy" />
 						{:else}
-							<Icon name="music" size={15} />
+							<Icon name={ROW_ICON[kind]} size={kind === 'sting' ? 12 : 15} />
 						{/if}
 						{#if isCurrent}
 							<span class="overlay">
@@ -129,6 +146,10 @@
 						<span class="sub truncate">
 							{#if item.status === 'error'}
 								<span class="bad">{statusLabel(item)}</span>
+							{:else if kind !== 'song' && item.status === 'ready'}
+								<span class="muted truncate">
+									{ROW_LABEL[kind]}{kind !== 'hold' && item.duration > 0 ? ` · ${lengthLabel(item.duration)}` : ''}
+								</span>
 							{:else if item.status !== 'ready' && item.status !== 'pending'}
 								<Spinner size={10} />
 								<span class="muted">{statusLabel(item)}</span>
@@ -166,7 +187,7 @@
 							<Icon name="sparkles" size={11} />
 						</Badge>
 					{/if}
-					{#if item.duration > 0}
+					{#if item.duration > 0 && kind === 'song'}
 						<span class="mono subtle time">{clock(item.duration)}</span>
 					{/if}
 					<div class="tools">
@@ -183,7 +204,7 @@
 							<Button variant="ghost" size="icon-sm" title="Try again" onclick={() => onretry(item.key)}>
 								<Icon name="retry" size={13} />
 							</Button>
-						{:else if !isCurrent}
+						{:else if !isCurrent && kind === 'song'}
 							<Button
 								variant="ghost"
 								size="icon-sm"
@@ -192,7 +213,7 @@
 								<Icon name="playNext" size={13} />
 							</Button>
 						{/if}
-						{#if item.trackId}
+						{#if item.trackId && kind === 'song'}
 							<Button
 								variant="ghost"
 								size="icon-sm"
@@ -328,6 +349,38 @@
 	}
 	.row.failed .title {
 		color: var(--muted-foreground);
+	}
+	.row.slim .hit {
+		padding-top: 2px;
+		padding-bottom: 2px;
+	}
+	.row.slim .art {
+		width: 40px;
+		height: 20px;
+		background: none;
+	}
+	.row.slim .title {
+		font-size: 12px;
+		font-weight: 400;
+		color: var(--subtle-foreground);
+	}
+	.row.slim .sub {
+		display: none;
+	}
+	.segment-head {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		padding: 12px 10px 4px;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--muted-foreground);
+	}
+	.segment-head .mono {
+		margin-left: auto;
+		font-size: 11px;
+		font-weight: 400;
+		color: var(--subtle-foreground);
 	}
 
 	.hit {

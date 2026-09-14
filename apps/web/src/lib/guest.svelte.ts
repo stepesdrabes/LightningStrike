@@ -56,7 +56,12 @@ export class GuestQueue {
 				body: JSON.stringify({ ...guest, ...body })
 			});
 			if (res.ok) return true;
-			this.failure = (await res.text()).slice(0, 200);
+			const text = await res.text();
+			try {
+				this.failure = (JSON.parse(text) as { message?: string }).message ?? text.slice(0, 200);
+			} catch {
+				this.failure = text.slice(0, 200);
+			}
 			return false;
 		} catch (e) {
 			this.failure = (e as Error).message;

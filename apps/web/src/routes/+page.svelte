@@ -1,20 +1,22 @@
 <script lang="ts">
 	import type { RoomSync, Show, TrackAnalysis, TrackContext } from '@mv/core';
-	import { tempoSegments } from '@mv/core';
+	import { OPEN_LENGTH, tempoSegments } from '@mv/core';
 	import { Viz, type Readout } from '$lib/viz.svelte.ts';
 	import { every } from '$lib/ticker.ts';
 	import { createArrangementEditor } from '$lib/arrangement.svelte.ts';
 	import { QueueClient } from '$lib/queue.svelte.ts';
+	import { EveningClient } from '$lib/evening.svelte.ts';
+	import { rowBundle } from '$lib/evening/bundle.ts';
+	import { ROW_LABEL } from '$lib/evening/format.ts';
 	import { HardwareClient } from '$lib/hardware.svelte.ts';
 	import { installHint, readShell } from '$lib/shell.svelte.ts';
 	import { DEFAULT_AMBIENT, GAMMA, MASTER, type AmbientSettings } from '@mv/core';
-	import { indexOfKey } from '$lib/queueModel.ts';
+	import { indexOfKey, nextItem, type QueueItem, type RowKind } from '$lib/queueModel.ts';
+	import type { RowLightingView } from '$lib/evening/view.ts';
 	import { DEFAULT_OUTPUT_FPS, type WireProtocol } from '$lib/hardware.ts';
 	import { FULL_WINDOW, type TimeWindow } from '$lib/timeline.ts';
 	import { libraryToCandidate, type Candidate } from '$lib/search.svelte.ts';
 	import type {
-		AuthorEffort,
-		AuthorEvent,
 		Judgement,
 		JudgementPatch,
 		LibraryEntry,
@@ -22,12 +24,11 @@
 		SearchResult,
 		Settings,
 		SettingsPatch,
-		Step,
 		TrackMeta
 	} from '$lib/types.ts';
 	import Backdrop from '$components/Backdrop.svelte';
 	import HardwareModal from '$components/HardwareModal.svelte';
-	import Inspector from '$components/Inspector.svelte';
+	import EveningRail from '$components/EveningRail.svelte';
 	import JudgePanel from '$components/JudgePanel.svelte';
 	import LibraryModal from '$components/LibraryModal.svelte';
 	import LoungeModal from '$components/LoungeModal.svelte';
@@ -42,6 +43,7 @@
 
 	let viz: Viz | null = $state(null);
 	const queue = new QueueClient();
+	const evening = new EveningClient();
 	const hardware = new HardwareClient();
 
 	let readout = $state<Readout>({
@@ -62,10 +64,11 @@
 	let show = $state<Show | null>(null);
 	let meta = $state<TrackMeta | null>(null);
 	let trackId = $state<string | null>(null);
+	/** The queue row the player has loaded, which is the one whose end it reports. */
+	let loadedKey = $state<string | null>(null);
+	let rowKind = $state<RowKind>('song');
+	let rowCalm = $state(false);
 	let load = $state<LoadState>({ phase: 'idle', message: '' });
-	let log = $state<string[]>([]);
-	let steps = $state<Step[]>([]);
-	let warnings = $state<string[]>([]);
 	let library = $state<LibraryEntry[]>([]);
 	let settings = $state<Settings>({
 		hasDeepseekKey: false,
@@ -161,13 +164,8 @@
 	const hasPrev = $derived(currentIndex > 0);
 	const hasNext = $derived(currentIndex >= 0 && currentIndex < queue.items.length - 1);
 
-	const busy = $derived(
-		load.phase === 'authoring' ||
-			(current !== null && current.status !== 'ready' && current.status !== 'error')
-	);
-	const busyLabel = $derived(
-		load.phase === 'authoring' ? load.message : (current?.message ?? 'Working')
-	);
+	const busy = $derived(current !== null && current.status !== 'ready' && current.status !== 'error');
+	const busyLabel = $derived(current?.message ?? 'Working');
 	const failure = $derived(
 		shell.missingTools.length > 0
 			? `${shell.missingTools.join(', ')} not found. ${installHint(shell.platform, shell.missingTools)}`
@@ -185,7 +183,7 @@
 	}
 
 	function note(line: string) {
-		log = [...log.slice(-400), line];
+		console.info(line);
 	}
 
 	function setPhase(phase: LoadState['phase'], message: string) {
@@ -230,22 +228,6 @@
 		});
 		if (res.ok) settings = (await res.json()) as Settings;
 		else note(`settings: ${await res.text()}`);
-	}
-
-	function chooseModel(authorModel: string) {
-		const backend =
-			settings.authorModels.find((m) => m.id === authorModel)?.backend ?? settings.authorBackend;
-		settings = { ...settings, authorModel, authorBackend: backend };
-		void patchSettings({ authorModel });
-	}
-
-	function chooseEffort(authorEffort: AuthorEffort) {
-		settings = { ...settings, authorEffort };
-		void patchSettings({ authorEffort });
-	}
-
-	function saveDeepseekKey(key: string) {
-		void patchSettings({ deepseekApiKey: key });
 	}
 
 	/** Refresh blended radio suggestions when the set list changes. */
@@ -469,16 +451,19 @@
 		const v = new Viz();
 		v.onReadout = (r) => (readout = r);
 		// The queue decides what comes next, not this tab: a skip from anywhere lands the same way.
-		v.onEnded = () => void queue.next();
+		v.onEnded = advance;
+		v.onHandover = handover;
 		v.start();
 		viz = v;
 		queue.connect();
+		evening.connect();
 		hardware.connect();
 		void refreshLibrary();
 		void refreshSettings();
 		return () => {
 			v.dispose();
 			queue.dispose();
+			evening.dispose();
 			hardware.dispose();
 		};
 	});
@@ -500,7 +485,7 @@
 	$effect(() => {
 		const v = viz;
 		if (!v) return;
-		v.lounge = settings.lounge || (current?.loungeOnly ?? false);
+		v.lounge = settings.lounge || (current?.loungeOnly ?? false) || rowCalm;
 		v.rest = settings.rest;
 		v.ambient = settings.ambient;
 	});
@@ -526,6 +511,9 @@
 		}
 	}
 
+	/** Tell the hardware where playback is now, rather than at the next tick. */
+	let syncOutput: (() => void) | null = null;
+
 	// Sync heard audio every 500 ms; the server extrapolates. Read plain Viz fields so 20 Hz readout
 	// updates cannot restart the interval. The timer lives in a worker so a hidden tab keeps the
 	// hardware informed; its decisions carry their age, so a tab that has stopped rendering
@@ -539,11 +527,13 @@
 				action: 'sync',
 				position: v.heardPosition,
 				playing: v.isPlaying,
+				...(loadedKey ? { key: loadedKey } : {}),
 				offsetMs: wireOffsetMs,
 				room: v.roomSync(),
 				roomAge: v.roomAge
 			}).catch(() => {});
 		void send();
+		syncOutput = send;
 		const stop = every(500, send);
 		const onVisible = () => {
 			if (document.visibilityState === 'visible') void adoptRoom(v);
@@ -551,13 +541,14 @@
 		document.addEventListener('visibilitychange', onVisible);
 		return () => {
 			stop();
+			syncOutput = null;
 			document.removeEventListener('visibilitychange', onVisible);
 		};
 	});
 
 	/**
-	 * Follow the server's ready current track. Key by track ID so metadata updates do not reload
-	 * audio.
+	 * Follow the server's ready current row. Key plain rows by track ID so metadata updates do not
+	 * reload audio; an evening row is its own identity, since its lighting belongs to the row.
 	 */
 	let loadedTrackId = $state<string | null>(null);
 	/** The row a skip has already been spent on, so a dead track is stepped over once. */
@@ -570,22 +561,232 @@
 		// load so the host can retry them.
 		if (loadedTrackId !== null && item && item.status === 'error' && item.key !== skippedKey) {
 			skippedKey = item.key;
-			void queue.next();
+			void queue.next(item.key);
 			return;
 		}
 
-		// Clearing the queue leaves loaded audio playing and available for authoring.
-		if (!item || item.status !== 'ready' || !item.trackId) return;
-		if (item.trackId === loadedTrackId) return;
+		// The row this tab has already moved on from stays behind until the queue catches up.
+		if (leaving !== null) {
+			if (item?.key === leaving) return;
+			leaving = null;
+		}
 
-		loadedTrackId = item.trackId;
-		void openTrack(item.trackId);
+		// Clearing the queue leaves loaded audio playing and available for authoring.
+		if (!item || item.status !== 'ready') return;
+		const identity = item.evening ? `row:${item.key}` : item.trackId;
+		if (!identity) return;
+		// The song already playing under another row, or its evening row untagged by a bail, carries on.
+		if (identity === loadedTrackId || (!item.evening && item.key === loadedKey && item.trackId === trackId)) {
+			loadedTrackId = identity;
+			loadedKey = item.key;
+			return;
+		}
+
+		loadedTrackId = identity;
+		if (item.evening) void openRow(item);
+		else void openTrack(item.trackId!, item.key);
 	});
 
-	async function openTrack(id: string) {
+	/** A cue from the evening waiting for this row: resume after a restart, a seek, an ended rehearsal. */
+	let handledCue = 0;
+	function cueFor(key: string) {
+		const cue = evening.view.cue;
+		if (!cue || cue.key !== key || cue.token === handledCue) return null;
+		handledCue = cue.token;
+		return cue;
+	}
+
+	async function start(v: Viz, key: string) {
+		const cue = cueFor(key);
+		if (cue && cue.position > 0) v.seek(cue.position);
+		if (!cue?.paused) await v.play();
+	}
+
+	// A cue for the row that is already loaded applies at once.
+	$effect(() => {
+		const cue = evening.view.cue;
+		const v = viz;
+		if (!cue || !v || cue.key !== loadedKey || cue.token === handledCue) return;
+		handledCue = cue.token;
+		v.seek(cue.position);
+		if (cue.paused) v.pause();
+		else void v.play();
+	});
+
+	// The evening remembers where each row got to, so a restart can come back to it. A start or
+	// stop is reported at once: a paused timed row must not run out on the server meanwhile.
+	const playingNow = $derived(readout.playing);
+	const eveningLive = $derived(evening.live);
+	$effect(() => {
+		const v = viz;
+		const key = loadedKey;
+		if (!v || !eveningLive || !key) return;
+		void playingNow;
+		evening.progress(key, v.position, v.isPlaying);
+		return every(5000, () => evening.progress(key, v.position, v.isPlaying));
+	});
+
+	type TrackBundle = { analysis: TrackAnalysis; show: Show | null; meta: TrackMeta | null; context: TrackContext | null };
+
+	/** Everything one evening row needs before it can play, fetched and decoded. */
+	interface RowLoad {
+		key: string;
+		lighting: RowLightingView;
+		data: TrackBundle | null;
+		buffer: AudioBuffer | null;
+	}
+
+	async function fetchRow(v: Viz, key: string): Promise<RowLoad> {
+		const lighting = await evening.lighting(key);
+		const plan = lighting.plan;
+		let bytes: ArrayBuffer | null = null;
+		let data: TrackBundle | null = null;
+		if (plan.kind === 'song') {
+			const [bundleRes, audioRes] = await Promise.all([
+				fetch(`/api/track/${plan.trackId}/bundle`),
+				fetch(`/api/track/${plan.trackId}/audio`)
+			]);
+			if (!bundleRes.ok) throw new Error((await bundleRes.text()).slice(0, 300));
+			if (!audioRes.ok) throw new Error('audio not cached');
+			data = (await bundleRes.json()) as TrackBundle;
+			bytes = await audioRes.arrayBuffer();
+		} else if (plan.kind === 'narration') {
+			const audioRes = await fetch(`/api/evening/row/${encodeURIComponent(key)}/audio`);
+			if (!audioRes.ok) throw new Error((await audioRes.text()).slice(0, 300));
+			bytes = await audioRes.arrayBuffer();
+		}
+		return { key, lighting, data, buffer: bytes ? await v.decode(bytes) : null };
+	}
+
+	/** The next evening row, fetched and decoded while this one plays, so a cut into it lands on time. */
+	let ahead: { key: string; load: Promise<RowLoad | null> } | null = null;
+	const upcoming = $derived(queue.state.currentKey ? nextItem(queue.state) : null);
+	$effect(() => {
+		const v = viz;
+		const next = upcoming;
+		if (!v) return;
+		// The row after this one changed, or left the evening: whatever was loaded or planned for it goes.
+		if (ahead && (ahead.key !== next?.key || !next?.evening)) {
+			ahead = null;
+			v.clearCrossfade();
+		}
+		if (!next?.evening || next.status !== 'ready' || ahead) return;
+		ahead = { key: next.key, load: fetchRow(v, next.key).catch(() => null) };
+		void planCrossfade(v);
+	});
+
+	/** When the next row crossfades in, hand its audio to the player once both rows are loaded. */
+	async function planCrossfade(v: Viz) {
+		const pending = ahead;
+		const current = loadedKey;
+		if (!pending || !current) return;
+		const row = await pending.load;
+		const plan = row?.lighting.plan;
+		if (!row?.buffer || plan?.kind !== 'song' || !plan.crossfade || plan.fade) return;
+		// Both rows must still be what they were: this one an evening song playing, that one next.
+		const playing = queue.state.items.find((i) => i.key === current);
+		if (ahead !== pending || loadedKey !== current || queue.state.currentKey !== current || !playing?.evening || rowKind !== 'song') return;
+		v.planCrossfade(row.buffer, plan.crossfade);
+	}
+
+	/** The next row's audio took over in a crossfade: the queue and the lights follow it. */
+	function handover() {
+		const from = loadedKey;
+		const next = upcoming;
+		if (!from) return;
+		if (!next?.evening) {
+			void queue.next(from);
+			return;
+		}
+		void queue.next(from);
+		leaving = from;
+		loadedTrackId = `row:${next.key}`;
+		// The audio already belongs to the next row, and so does every position reported from now.
+		loadedKey = next.key;
+		void openRow(next, true);
+	}
+
+	/** The preloaded row, if what the evening now plans for it still matches. */
+	async function takeAhead(key: string): Promise<RowLoad | null> {
+		if (ahead?.key !== key) return null;
+		const loaded = await ahead.load;
+		if (!loaded) return null;
+		const lighting = await evening.lighting(key);
+		if (JSON.stringify(lighting) === JSON.stringify(loaded.lighting)) return loaded;
+		const was = loaded.lighting.plan;
+		const now = lighting.plan;
+		const sameAudio = now.kind === 'silent' ? was.kind === 'silent' : now.kind === 'song' && was.kind === 'song' && now.trackId === was.trackId;
+		return sameAudio ? { ...loaded, lighting } : null;
+	}
+
+	/**
+	 * A row ended: tell the queue, and when the next evening row is already loaded, start it now
+	 * rather than after the queue's answer comes back.
+	 */
+	function advance() {
+		const from = loadedKey;
+		const next = upcoming;
+		void queue.next(from ?? undefined);
+		if (!from || queue.state.currentKey !== from || !next?.evening || next.status !== 'ready' || ahead?.key !== next.key) return;
+		leaving = from;
+		loadedTrackId = `row:${next.key}`;
+		void openRow(next);
+	}
+
+	/** Bumped by every open, so a slow load never lands after a newer one. */
+	let opening = 0;
+	/** The row this tab ended and moved past before the queue said so. */
+	let leaving: string | null = null;
+
+	/** `adopted`: the row's audio already plays, handed over by a crossfade. */
+	async function openRow(item: QueueItem, adopted = false) {
 		if (!viz) return;
-		warnings = [];
-		steps = [];
+		const v = viz;
+		const token = ++opening;
+		setPhase('analysing', 'Loading');
+		try {
+			const row = (await takeAhead(item.key)) ?? (await fetchRow(v, item.key));
+			const plan = row.lighting.plan;
+			const bundle = rowBundle(item.key, plan, row.data, row.lighting.measured ?? null);
+			if (!bundle) throw new Error('this row has nothing to play');
+			if (token !== opening) return;
+
+			if (!adopted) {
+				v.clearShow();
+				if (row.buffer) v.useBuffer(row.buffer, plan.kind === 'song' ? plan.fade : undefined, plan.kind === 'narration' ? plan.volume : 1);
+				else v.loadSilence(plan.kind === 'silent' ? (plan.length ?? OPEN_LENGTH) : 0);
+			}
+			loadedKey = item.key;
+			rowKind = item.kind ?? 'song';
+			rowCalm = bundle.lounge;
+			trackId = plan.kind === 'song' ? plan.trackId : null;
+			analysis = bundle.analysis;
+			context = row.data?.context ?? null;
+			meta = row.data?.meta ?? {
+				id: item.key,
+				title: row.lighting.title,
+				uploader: ROW_LABEL[rowKind],
+				thumbnail: '',
+				webpageUrl: '',
+				source: ''
+			};
+			show = bundle.show;
+			if (bundle.show) v.loadShow(bundle.analysis, bundle.show, row.lighting.light);
+			setPhase('ready', '');
+			if (!adopted) await start(v, item.key);
+			// The output renderer follows the queue to evening rows itself; it only needs the position.
+			syncOutput?.();
+			void planCrossfade(v);
+		} catch (e) {
+			if (token !== opening) return;
+			setPhase('error', (e as Error).message);
+			note(`ERROR ${(e as Error).message}`);
+		}
+	}
+
+	async function openTrack(id: string, key: string) {
+		if (!viz) return;
+		const token = ++opening;
 		show = null;
 		analysis = null;
 		context = null;
@@ -606,12 +807,19 @@
 				context: TrackContext | null;
 			};
 			const audio = await audioRes.arrayBuffer();
+			if (token !== opening) return;
 
 			// The outgoing show runs until its replacement is in hand; the room then holds its
 			// last look through the decode and dissolves into the new opening.
 			viz.clearShow();
-			await viz.loadAudio(audio);
+			viz.pause();
+			const buffer = await viz.decode(audio);
+			if (token !== opening) return;
+			viz.useBuffer(buffer);
 			trackId = id;
+			loadedKey = key;
+			rowKind = 'song';
+			rowCalm = false;
 			analysis = bundle.analysis;
 			meta = bundle.meta;
 			context = bundle.context;
@@ -626,7 +834,7 @@
 
 			setPhase('ready', '');
 			// Wait for decoding before starting playback.
-			await viz.play();
+			await start(viz, key);
 			if (ddpRunning) void startOutput(id);
 		} catch (e) {
 			setPhase('error', (e as Error).message);
@@ -736,7 +944,6 @@
 			const data = (await res.json()) as { show: Show };
 			show = data.show;
 			viz.loadShow(analysis!, data.show);
-			warnings = [];
 			note(`rerolled: ${data.show.cues.length} cues, seed ${data.show.seed}`);
 			if (ddpRunning) void startOutput(trackId);
 			void refreshLibrary();
@@ -745,129 +952,6 @@
 		} finally {
 			rerolling = false;
 		}
-	}
-
-	function author() {
-		if (!trackId || !analysis || !viz) return;
-		warnings = [];
-		steps = [];
-		setPhase('authoring', 'Starting');
-		note('authoring started');
-
-		let seq = 0;
-		const nextId = () => `s${seq++}`;
-
-		function push(step: Omit<Step, 'id'>) {
-			steps = [...steps, { ...step, id: nextId() }];
-		}
-
-		function settle(state: Step['state'], result?: string) {
-			// Tool results close the newest pending step.
-			for (let i = steps.length - 1; i >= 0; i--) {
-				if (steps[i].state !== 'pending') continue;
-				steps[i] = { ...steps[i], state, result };
-				steps = [...steps];
-				return;
-			}
-		}
-
-		function handle(e: AuthorEvent) {
-			switch (e.type) {
-				case 'phase':
-					settle('done');
-					push({ kind: 'phase', label: e.label, state: 'done' });
-					setPhase('authoring', e.label);
-					note(`== ${e.label}`);
-					break;
-
-				case 'tool':
-					push({ kind: 'tool', label: e.name, detail: e.detail, state: 'pending' });
-					setPhase('authoring', `${e.name}${e.detail ? ` ${e.detail}` : ''}`);
-					note(`-> ${e.name} ${e.detail}`);
-					break;
-
-				case 'result':
-					settle(e.ok ? 'done' : 'failed', e.summary);
-					note(`   ${e.ok ? '' : 'FAILED '}${e.summary}`);
-					break;
-
-				case 'thinking': {
-					const text = e.text.replace(/\s+/g, ' ').trim();
-					if (text.length < 12) break;
-					settle('done');
-					push({ kind: 'think', label: text.slice(0, 200), state: 'done' });
-					note(text.slice(0, 400));
-					break;
-				}
-
-				case 'analysis':
-					push({ kind: 'note', label: `Tempo corrected: ${e.reason}`, state: 'done' });
-					analysis = e.analysis as TrackAnalysis;
-					note(`** grid corrected: ${e.reason}`);
-					break;
-
-				case 'brief':
-					push({ kind: 'note', label: 'Design brief written', state: 'done' });
-					break;
-
-				case 'note':
-					note(e.text);
-					break;
-			}
-		}
-
-		// Send the optimistic model selection directly so a pending settings PUT cannot select the
-		// previous model.
-		const es = new EventSource(
-			`/api/author?id=${encodeURIComponent(trackId)}` +
-				`&model=${encodeURIComponent(settings.authorModel)}` +
-				`&effort=${encodeURIComponent(settings.authorEffort)}`
-		);
-
-		es.addEventListener('event', (ev) => handle(JSON.parse((ev as MessageEvent).data) as AuthorEvent));
-
-		es.addEventListener('failed', (ev) => {
-			const message = String(JSON.parse((ev as MessageEvent).data));
-			settle('failed');
-			setPhase('error', message.slice(0, 300));
-			note(`ERROR ${message}`);
-			es.close();
-		});
-
-		// EventSource fires a bare `error` with no data when the stream simply closes.
-		es.addEventListener('error', (ev) => {
-			if ((ev as MessageEvent).data) return;
-			if (load.phase === 'authoring') {
-				setPhase('error', 'the authoring stream closed unexpectedly');
-				settle('failed');
-			}
-			es.close();
-		});
-
-		es.addEventListener('done', (ev) => {
-			const data = JSON.parse((ev as MessageEvent).data) as {
-				show: Show;
-				analysis: TrackAnalysis;
-				brief: string;
-				warnings: string[];
-			};
-			settle('done');
-			analysis = data.analysis;
-			show = data.show;
-			warnings = data.warnings;
-			viz!.loadShow(data.analysis, data.show);
-			push({
-				kind: 'phase',
-				label: `Show ready: ${data.show.cues.length} cues, ${data.show.hits.length} hits`,
-				state: 'done'
-			});
-			note(`show ready: ${data.show.cues.length} cues, ${data.show.generatedEffects.length} generated`);
-			setPhase('ready', '');
-
-			if (ddpRunning && trackId) void startOutput(trackId);
-			void refreshLibrary();
-			es.close();
-		});
 	}
 
 	/** Previous seeks to the prior section, then the prior track near the beginning. */
@@ -954,7 +1038,9 @@
 				onclear={() => void queue.clear(true)}
 				onsearch={() => openSearch('')}
 				autopilot={settings.autopilot}
-				suggestions={suggestionWindow}
+				suggestions={evening.live ? [] : suggestionWindow}
+				segmentStarts={Object.fromEntries(evening.view.segments.map((s) => [s.id, s.startAt]))}
+				eveningLive={evening.live}
 				onshuffle={shuffleSuggestions}
 				onautopilot={toggleAutopilot}
 				onradio={(item) => void startRadio(item.trackId ?? '', item.title)}
@@ -966,7 +1052,6 @@
 			{viz}
 			{readout}
 			{load}
-			{steps}
 			hasShow={!!show}
 			queued={queue.items.length}
 			lounge={settings.lounge}
@@ -1001,22 +1086,14 @@
 				onpreviewarrangement={(on) => void togglePreview(on)}
 				onclose={() => (judgeOpen = false)} />
 		{:else if rightOpen}
-			<Inspector
+			<EveningRail
+				{evening}
+				{current}
+				{readout}
 				{analysis}
 				{context}
 				{show}
-				{readout}
-				{log}
-				{steps}
-				{warnings}
 				trustNote={current?.loungeOnly ? (current.trustNote ?? 'no reason recorded') : null}
-				{settings}
-				canAuthor={!!analysis}
-				authoring={load.phase === 'authoring'}
-				onauthor={author}
-				onmodel={chooseModel}
-				oneffort={chooseEffort}
-				onkey={saveDeepseekKey}
 				onrelevel={relevel}
 				onreroll={reroll}
 				{relevelling}
@@ -1035,6 +1112,8 @@
 		queued={queue.items.length}
 		{hasPrev}
 		{hasNext}
+		kind={rowKind}
+		ongo={() => void evening.go()}
 		ontoggle={() => void viz?.toggle()}
 		onseek={(t) => viz?.seek(t)}
 		onprev={prev}
@@ -1067,6 +1146,7 @@
 	bind:query={searchSeed}
 	{library}
 	{suggestions}
+	evening={evening.live}
 	onpick={pick} />
 
 <RoomModal />

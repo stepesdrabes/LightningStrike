@@ -14,6 +14,8 @@ export interface RoomSync {
 	sceneHeld: number;
 	/** The idle grid clock, so resting scenes breathe in step. */
 	idleT: number;
+	/** Auto-exposure gain. It integrates the whole history the room rendered, which differs between rooms. */
+	exposure?: number;
 }
 
 /** Position steps beyond this are seeks; anything smaller is transport jitter to absorb. */
@@ -115,5 +117,55 @@ export class RemoteClock {
 		const seek = this.stepped;
 		this.stepped = false;
 		return { t: this.t + this.offset, playing, seek };
+	}
+}
+
+/** How long a position for the row still being loaded waits for it before it applies anyway. */
+const ARRIVAL_WAIT_MS = 2000;
+
+/**
+ * Positions name the queue row they belong to. While the renderer is still loading the row the
+ * queue has moved to, its positions wait for it, so the outgoing show never runs on the new
+ * row's clock and the new one starts where the browser already has it.
+ */
+export class RowClock {
+	readonly clock: RemoteClock;
+	private rowKey: string | null = null;
+	private pending: { key: string; position: number; playing: boolean; at: number; since: number } | null = null;
+
+	constructor(clock: RemoteClock) {
+		this.clock = clock;
+	}
+
+	/** `key` is the row the position belongs to; `currentKey` the row the queue says is current. */
+	sync(position: number, playing: boolean, nowMs: number, key?: string, currentKey?: string): void {
+		// A position for a row that is neither rendered nor current is from a row already left.
+		if (key !== undefined && this.rowKey !== null && key !== this.rowKey && key !== currentKey) return;
+		if (key !== undefined && key === currentKey && key !== this.rowKey) {
+			const since = this.pending?.key === key ? this.pending.since : nowMs;
+			if (nowMs - since < ARRIVAL_WAIT_MS) {
+				this.pending = { key, position, playing, at: nowMs, since };
+				return;
+			}
+		}
+		this.pending = null;
+		this.clock.sync(position, playing, nowMs);
+	}
+
+	/** A row has loaded: it starts where the browser already has it, or at its own beginning. */
+	arrive(key: string | null, nowMs: number): void {
+		this.rowKey = key;
+		const pending = this.pending;
+		this.pending = null;
+		if (pending && pending.key === key) {
+			this.clock.sync(pending.position + (pending.playing ? (nowMs - pending.at) / 1000 : 0), pending.playing, nowMs);
+		} else {
+			this.clock.sync(0, false, nowMs);
+		}
+	}
+
+	/** The same show under another queue row: nothing reloads, positions just carry its key. */
+	rename(key: string | null): void {
+		this.rowKey = key;
 	}
 }

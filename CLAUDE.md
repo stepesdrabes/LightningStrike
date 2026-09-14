@@ -107,6 +107,12 @@ For intentional semantic changes, bump `ANALYSIS_VERSION` when analysis shape or
 changes, `SHOW_VERSION` when composed output changes, and `CONTEXT_VERSION` when enrichment
 needs invalidation. Pure cleanup must leave these versions unchanged.
 
+An evening compiles from `evenings/*.ts` into `contracts/evening.ts` data through
+`packages/core/src/evening/`. Its `lightningstrike` module (`evening/index.ts`) exposes the same
+names as the effect sandbox; keep the two identical. Evening rows synthesize their analysis and
+show when they play and are never cached; those shows use `exposure: 'fixed'`, so authored
+levels stay as written. The evening loader gates custom effects and marks them `admitted`.
+
 Client mirrors in [types.ts](apps/web/src/lib/types.ts) deliberately avoid server-only
 dependencies. Keep them synchronized instead of importing server code into the browser.
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RemoteClock } from './sync.ts';
+import { RemoteClock, RowClock } from './sync.ts';
 import { RoomDirector, type DirectorState } from './director.ts';
 import { DEFAULT_ROOM, buildGeometry } from './geometry.ts';
 import { EffectRegistry } from './effects/index.ts';
@@ -69,6 +69,51 @@ describe('RemoteClock', () => {
 	});
 });
 
+describe('RowClock', () => {
+	it('holds positions for a row until it has loaded, then starts it where the browser has it', () => {
+		const rows = new RowClock(new RemoteClock());
+		rows.arrive('a', 0);
+		rows.sync(100, true, 0, 'a', 'a');
+		expect(rows.clock.read(500).t).toBeCloseTo(100.5, 2);
+
+		// The queue moved to b and the browser is already playing it; b is still loading here.
+		rows.sync(0.1, true, 600, 'b', 'b');
+		expect(rows.clock.read(700).t).toBeCloseTo(100.7, 1);
+		rows.arrive('b', 900);
+		const r = rows.clock.read(900);
+		expect(r.t).toBeCloseTo(0.4, 2);
+		expect(r.playing).toBe(true);
+	});
+
+	it('starts a row at its beginning when nothing was heard for it, and never waits for ever', () => {
+		const rows = new RowClock(new RemoteClock());
+		rows.arrive('a', 0);
+		rows.sync(30, true, 0, 'a', 'a');
+		rows.arrive('b', 100);
+		expect(rows.clock.read(100)).toMatchObject({ t: 0, playing: false });
+
+		// A row that never loads stops holding the clock after a couple of seconds.
+		rows.sync(5, true, 1000, 'c', 'c');
+		rows.sync(8, true, 4000, 'c', 'c');
+		expect(rows.clock.read(4000).t).toBeCloseTo(8, 2);
+		// A position for the row shown here applies at once, though the queue has moved on.
+		rows.sync(12, true, 5000, 'b', 'd');
+		expect(rows.clock.read(5000).t).toBeCloseTo(12, 2);
+	});
+
+	it('ignores a late position from a row already left', () => {
+		const rows = new RowClock(new RemoteClock());
+		rows.arrive('hold', 0);
+		rows.sync(1800, true, 100, 'hold', 'hold');
+		// Go: the queue moves on and this side loads the next row before the browser has.
+		rows.arrive('next', 200);
+		rows.sync(1800.1, true, 300, 'hold', 'next');
+		expect(rows.clock.read(310)).toMatchObject({ t: 0, playing: false });
+		rows.sync(0.2, true, 400, 'next', 'next');
+		expect(rows.clock.read(400).t).toBeCloseTo(0.2, 2);
+	});
+});
+
 describe('two rooms', () => {
 	const g = buildGeometry(DEFAULT_ROOM);
 	const PLAYING: DirectorState = { playing: true, hasShow: true, lounge: false, rest: true };
@@ -118,6 +163,24 @@ describe('two rooms', () => {
 			expect(Array.from(rooms[1].bytes), `frame ${frame}`).toEqual(Array.from(rooms[0].bytes));
 			expect(Array.from(rooms[1].bounce)).toEqual(Array.from(rooms[0].bounce));
 		}
+	});
+
+	it('brings a hardware room with its own exposure history to the browser picture', () => {
+		const analysis = fixtureAnalysis();
+		const dim = { ...fixtureShow(analysis), cues: fixtureShow(analysis).cues.map((c) => ({ ...c, intensity: 0.15 })) };
+		const browser = new RoomDirector(g, new EffectRegistry());
+		const server = new RoomDirector(g, new EffectRegistry());
+		// The hardware has been lighting a dim room for a minute before this tab opened.
+		server.load(analysis, dim);
+		for (let i = 0; i < 60 * 60; i++) server.update(i * DT, DT, PLAYING);
+		browser.load(analysis, dim);
+		server.load(analysis, dim);
+		for (let i = 0; i < 60 * 12; i++) {
+			if (i % 30 === 0) server.follow(browser.sync());
+			browser.update(80 + i * DT, DT, PLAYING);
+			server.update(80 + i * DT, DT, PLAYING);
+		}
+		expect(maxDiff(server.bytes, browser.bytes)).toBeLessThanOrEqual(2);
 	});
 
 	/**
