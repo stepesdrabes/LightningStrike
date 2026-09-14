@@ -24,7 +24,7 @@ import {
 	smooth,
 	spark
 } from './instruments.mjs';
-import { collisions, crossings, dubDelay, lubTimes, run, twinTime } from './timing.ts';
+import { collisions, crossings, dubDelay, laps, lubTimes, run, twinTime } from './timing.ts';
 
 /** Go: a breaker slams, the light drains into the corner as a motor winds down, the mains hum dies. */
 function powerCut(mix, o) {
@@ -87,9 +87,9 @@ function air(mix, o) {
 	for (let n = at(from); n < at(until); n++) {
 		const t = n / RATE;
 		const level =
-			smooth(from, from + 3, t) *
-			(0.6 + 0.4 * smooth(o.race, o.ignite, t)) *
-			(1 - 0.7 * smooth(o.ignite, o.collide, t)) *
+			smooth(from, o.flash1, t) *
+			(0.65 + 0.35 * smooth(o.race, o.ignite, t)) *
+			(1 - 0.65 * smooth(o.ignite, o.collide, t)) *
 			(1 - smooth(until - 0.01, until, t));
 		const out = [0, 0];
 		for (let c = 0; c < 2; c++) {
@@ -101,7 +101,7 @@ function air(mix, o) {
 			if (n % 64 === 0) band[c].set('bandpass', 180 + 520 * tone[c](t), 0.7);
 			const wind = band[c].run((p[0] + p[1] + p[2] + w * 0.1848) * 0.2) * (0.3 + 0.7 * gust[c](t));
 			const far = low[c].run(rnd() * 2 - 1) * (0.4 + 0.6 * gust[1 - c](t * 0.7));
-			out[c] = level * (0.07 * wind + 0.1 * far);
+			out[c] = level * (0.11 * wind + 0.14 * far);
 		}
 		mix.put(n, out[0], out[1]);
 	}
@@ -200,6 +200,44 @@ function sparkTrails(mix, o) {
 	}
 }
 
+/**
+ * A lap of charge closes at home: noise sweeps up into a low strike and a ringing fifth, each lap
+ * a step higher and louder than the last. `root` is the drone's starting note two octaves up.
+ */
+function chargeLap(mix, time, index, total, root) {
+	const rnd = random(seedOf('lap', index));
+	const u = total > 1 ? index / (total - 1) : 1;
+	// Minor pentatonic on the drone's root, an octave up every five laps: a ladder that stays in key.
+	const steps = [1, 1.2, 1.3348, 1.5, 1.7818];
+	const note = root * steps[index % steps.length] * Math.pow(2, Math.floor(index / steps.length));
+	const lead = 0.24;
+	const sweep = [filter('bandpass', 300, 1.1), filter('bandpass', 300, 1.1)];
+	const tick = [crackler(seedOf('lapL', index), 2400), crackler(seedOf('lapR', index), 2400)];
+	const [gl, gr] = panGains(index % 2 === 0 ? -0.45 : 0.45);
+	let body = 0;
+	let bell = 0;
+	const start = at(time - lead);
+	const length = at(lead + 0.9);
+	for (let n = 0; n < length; n++) {
+		const t = n / RATE - lead;
+		const last = ending(n, length);
+		if (n % 64 === 0) {
+			const f = t < 0 ? 320 * Math.pow(13, 1 + t / lead) : 260 + 3900 * Math.exp(-t / 0.11);
+			for (const b of sweep) b.set('bandpass', f, 1.1);
+		}
+		const air = t < 0 ? db(-27 + 9 * u) * Math.pow(1 + t / lead, 2.2) : db(-17 + 6 * u) * Math.exp(-t / 0.12);
+		body += (note * (1 + 1.4 * Math.exp(-Math.max(0, t) / 0.024))) / RATE;
+		const strike = t < 0 ? 0 : Math.tanh(1.7 * Math.sin(TAU * body)) * (1 - Math.exp(-t / 0.0015)) * Math.exp(-t / 0.2);
+		bell += (note * 3) / RATE;
+		const ringing = t < 0 ? 0 : 0.3 * Math.sin(TAU * bell) * Math.exp(-t / (0.18 + 0.2 * u));
+		const low = last * db(-11 + 5 * u) * strike;
+		const density = t < 0 ? 120 : 2200 * Math.exp(-t / 0.05);
+		const l = low + last * (air * (sweep[0].run(rnd() * 2 - 1) * 2.4 + ringing) + db(-24) * tick[0](density));
+		const r = low + last * (air * (sweep[1].run(rnd() * 2 - 1) * 2.4 + ringing) + db(-24) * tick[1](density));
+		mix.put(start + n, l * gl, r * gr, 0.12, 0.2);
+	}
+}
+
 /** The lone spark crosses a beam end: the beam crackles. */
 function crossingZap(mix, time, gain) {
 	const id = Math.round(time * 1000);
@@ -245,13 +283,12 @@ function collision(mix, o, notes, time, end, index, charge) {
 	}
 }
 
-/** Charge crackling in the filling beam on the eighth notes; in the overload a rolling snare of arcs. */
+/** Charge crackling on the ring and in the beam on the eighth notes; the overload rolls arcs too. */
 function glints(mix, o) {
-	const twin = twinTime(o);
 	const step = o.lap / 4;
-	for (let slot = Math.ceil(twin / step) * step; slot < o.gather - 1e-6; slot += slot >= o.full ? step / 2 : step) {
+	for (let slot = Math.ceil(o.ignite / step) * step; slot < o.gather - 1e-6; slot += slot >= o.full ? step / 2 : step) {
 		const id = Math.round(slot * 1000);
-		const charge = smooth(o.collide, o.gather, slot);
+		const charge = smooth(o.ignite, o.gather, slot);
 		const over = smooth(o.full, o.gather, slot);
 		const rnd = random(seedOf('glint', id));
 		const tick = crackler(seedOf('glintTick', id), 4500);
@@ -260,7 +297,7 @@ function glints(mix, o) {
 		const start = at(slot);
 		for (let n = 0; n < at(0.16); n++) {
 			const t = n / RATE;
-			const crackle = db(-30 + 8 * charge) * tick(3000 * Math.exp(-t / 0.01));
+			const crackle = db(-29 + 11 * charge) * tick(3000 * Math.exp(-t / 0.01));
 			const roll = slot >= o.full ? db(-22 + 9 * over) * snare.run(rnd() * 2 - 1) * Math.exp(-t / 0.035) * 2 : 0;
 			const v = (crackle + roll) * ending(n, at(0.16));
 			mix.put(start + n, v * gl, v * gr, 0.1, 0.06);
@@ -342,6 +379,8 @@ export function scoreStorm(mix, o, style) {
 	ignition(mix, twinTime(o), db(-3), -0.5);
 	drone(mix, o, style.root);
 	sparkTrails(mix, o);
+	const closed = laps(o);
+	closed.forEach((t, index) => chargeLap(mix, t, index, closed.length, style.root * 2));
 	for (const c of crossings(o)) crossingZap(mix, c.t, db(-20 + 6 * smooth(o.ignite, o.collide, c.t)));
 	collisions(o).forEach((c, index) => collision(mix, o, style.notes, c.t, c.end, index, smooth(o.collide, o.gather, c.t)));
 	glints(mix, o);

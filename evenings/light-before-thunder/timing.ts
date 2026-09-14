@@ -8,37 +8,37 @@
 /** First Strike, from Go: the storm's first pass. */
 export const OPENING = {
 	/** The frame's light drains into the south-west corner with this time constant. */
-	drain: 0.55,
+	drain: 0.45,
 	/** First lub at `heartFrom` bpm; from `race` the rate climbs to `heartTo`, reached at `ignite`. */
-	heart: 3,
-	race: 11,
-	ignite: 27,
+	heart: 2.5,
+	race: 8.5,
+	ignite: 21,
 	heartFrom: 60,
-	heartTo: 120,
-	/** A storm approaching from the north-east: each flash, then its thunder. */
-	flash1: 6,
-	thunder1: 9,
-	flash2: 14,
-	thunder2: 16,
-	flash3: 21,
-	thunder3: 22,
-	flash4: 36,
-	thunder4: 36.5,
+	heartTo: 132,
+	/** A storm approaching from the north-east: each flash, then its thunder, sooner every time. */
+	flash1: 4.6,
+	thunder1: 7.6,
+	flash2: 11,
+	thunder2: 12.9,
+	flash3: 16.2,
+	thunder3: 17.2,
+	flash4: 28,
+	thunder4: 28.35,
 	/** Spark lap seconds at ignition, and once the second spark has joined. */
-	lapFrom: 4,
-	lap: 1,
+	lapFrom: 3.2,
+	lap: 0.8,
 	/** The sparks first collide at the south beam end, then every half lap, every quarter from `full`. */
-	collide: 44,
-	full: 60,
+	collide: 35,
+	full: 47,
 	/** The charge drains into the beam, which contracts to its centre and beats three times. */
-	gather: 64,
-	contract: 65,
-	point: 65.5,
-	pulse: 0.5,
+	gather: 50.5,
+	contract: 51.1,
+	point: 51.5,
+	pulse: 0.42,
 	/** Three strokes, then the thunder rolls until Thunder starts. */
-	strike: 68,
-	stroke: 0.25,
-	end: 75
+	strike: 53.4,
+	stroke: 0.22,
+	end: 62
 } as const;
 
 export type Opening = { readonly [K in keyof typeof OPENING]: number };
@@ -73,7 +73,7 @@ export const RETURN_STROKE: Opening = {
 };
 
 /** The narration's grid: the tempo of the drone's throb and the collisions. */
-export const BPM = 120;
+export const BPM = 60 / (OPENING.lap / 2);
 
 const RING = 600;
 const HOME = 480;
@@ -118,6 +118,13 @@ function loader(o: Opening) {
 	return { twin, span, k, scale, joined: scale * end };
 }
 
+/** When the lone spark has run `d` pixels from home. */
+function reach(o: Opening, d: number): number {
+	const { span, k, scale } = loader(o);
+	const lapNow = o.lapFrom * Math.exp(d / scale / k);
+	return o.ignite + ((lapNow - o.lapFrom) * span) / (o.lap - o.lapFrom);
+}
+
 /** The first spark's run from home in pixels; the second spark's is `run - joined` backwards. */
 export function run(o: Opening, t: number): number {
 	const { twin, span, k, scale, joined } = loader(o);
@@ -131,22 +138,30 @@ export type End = 'north' | 'south';
 
 /** The first spark alone reaches the north end 210 px out and a beam end every 300 px after. */
 export function crossings(o: Opening): { t: number; end: End }[] {
-	const { span, k, scale, joined } = loader(o);
+	const { joined } = loader(o);
 	const out: { t: number; end: End }[] = [];
-	for (let n = 0, d = 210; d < joined; n++, d += 300) {
-		const lapNow = o.lapFrom * Math.exp(d / scale / k);
-		const t = o.ignite + ((lapNow - o.lapFrom) * span) / (o.lap - o.lapFrom);
-		out.push({ t, end: n % 2 === 0 ? 'north' : 'south' });
-	}
+	for (let n = 0, d = 210; d < joined; n++, d += 300) out.push({ t: reach(o, d), end: n % 2 === 0 ? 'north' : 'south' });
 	return out;
 }
 
-/** Kicks for the Bounce Lamp: every lub, the fourth flash, each collision, the point's beats, the strokes. */
+/** Every lap the lone spark closes past home: another step of charge lands on the ring. */
+export function laps(o: Opening): number[] {
+	const { joined } = loader(o);
+	const out: number[] = [];
+	for (let d = RING; d < joined; d += RING) out.push(reach(o, d));
+	return out;
+}
+
+/** Kicks for the Bounce Lamp: every lub, each flash, each lap and collision, the beats and strokes. */
 export function stormKicks(o: Opening): { at: number; kick: number }[] {
 	const kicks = lubTimes(o)
 		.slice(0, -1)
 		.map((at) => ({ at, kick: 0.85 }));
-	for (const at of [o.ignite, o.flash4]) kicks.push({ at, kick: 1 });
+	for (const [n, at] of [o.flash1, o.flash2, o.flash3, o.flash4].entries()) {
+		if (at >= 0) kicks.push({ at, kick: 0.7 + 0.1 * n });
+	}
+	kicks.push({ at: o.ignite, kick: 1 });
+	for (const at of laps(o)) kicks.push({ at, kick: 0.8 });
 	for (const c of collisions(o)) kicks.push({ at: c.t, kick: 1 });
 	for (let k = 0; k < 3; k++) kicks.push({ at: o.point + k * o.pulse, kick: 1 }, { at: o.strike + k * o.stroke, kick: 1 });
 	return kicks.sort((a, b) => a.at - b.at);
@@ -161,11 +176,11 @@ export function collisions(o: Opening): { t: number; end: End }[] {
 	return out;
 }
 
-/** Homecoming, before the Goodnight hold: rain easing off, the storm leaving, the heart slowing to rest. */
+/** Homecoming, before the Goodnight hold: the rain easing, the storm leaving, the heart at rest. */
 export const HOMECOMING = {
 	/** The rain eases from `ease` and is over by `dry`. */
-	ease: 16,
-	dry: 30,
+	ease: 14,
+	dry: 28,
 	/** Flashes ever farther away, each thunder later after its flash than the last. */
 	flash1: 2,
 	thunder1: 2.5,
@@ -179,11 +194,13 @@ export const HOMECOMING = {
 	heart: 4,
 	beat: 0.9,
 	slow: 1.035,
-	rest: 38,
+	rest: 40,
 	/** The spark leaves home for a last lap and is back. */
 	leave: 10,
 	home: 33,
-	end: 44
+	/** The cleared sky comes out star by star from here. */
+	stars: 32,
+	end: 50
 } as const;
 
 export type Homecoming = { readonly [K in keyof typeof HOMECOMING]: number };
@@ -204,6 +221,20 @@ export function lastLap(o: Homecoming, t: number): number {
 	return RING * u * u * (3 - 2 * u);
 }
 
+/** When the last lap's spark passes the other three corners, so each one can toll a note. */
+export function lapCorners(o: Homecoming): number[] {
+	return [120, 300, 420].map((d) => {
+		let lo = o.leave;
+		let hi = o.home;
+		for (let k = 0; k < 40; k++) {
+			const mid = (lo + hi) / 2;
+			if (lastLap(o, mid) < d) lo = mid;
+			else hi = mid;
+		}
+		return (lo + hi) / 2;
+	});
+}
+
 /** The DSL's hash01, repeated so the score and the effect place the same drips. */
 function hash01(k: number): number {
 	let h = (k | 0) >>> 0;
@@ -218,10 +249,20 @@ function hash01(k: number): number {
 /** Drips once the rain eases: a slot every 0.45 s, jittered, more likely as the rain stops. */
 export function drips(o: Homecoming): { t: number; pixel: number }[] {
 	const out: { t: number; pixel: number }[] = [];
-	for (let s = Math.floor(o.ease / 0.45); s * 0.45 < o.end - 0.6; s++) {
+	for (let s = Math.floor(o.ease / 0.45); s * 0.45 < o.stars; s++) {
 		const t = s * 0.45 + 0.4 * hash01(s * 13 + 5);
-		const chance = 0.75 * smoothUnit((t - o.ease) / (o.dry - o.ease)) * (1 - 0.7 * smoothUnit((t - o.dry) / (o.end - o.dry)));
+		const chance = 0.75 * smoothUnit((t - o.ease) / (o.dry - o.ease)) * (1 - 0.7 * smoothUnit((t - o.dry) / (o.stars - o.dry)));
 		if (hash01(s * 7 + 11) < chance) out.push({ t, pixel: Math.floor(hash01(s * 19 + 3) * 720) });
+	}
+	return out;
+}
+
+/** Stars coming out of the cleared sky, a slot every 0.55 s, each with its own small chime. */
+export function stars(o: Homecoming): { t: number; pixel: number; note: number }[] {
+	const out: { t: number; pixel: number; note: number }[] = [];
+	for (let s = 0; o.stars + s * 0.7 < o.end - 0.4; s++) {
+		const t = o.stars + s * 0.7 + 0.35 * hash01(s * 23 + 7);
+		out.push({ t, pixel: Math.floor(hash01(s * 37 + 13) * 600), note: Math.floor(hash01(s * 53 + 3) * 5) });
 	}
 	return out;
 }

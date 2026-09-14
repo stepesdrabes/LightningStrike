@@ -3,11 +3,15 @@
  * times its effect reads from the same timing table.
  */
 import {
+	RATE,
 	TAU,
+	at,
 	chime,
 	crack,
 	db,
 	drip,
+	ending,
+	filter,
 	fizz,
 	heartSound,
 	howl,
@@ -21,15 +25,45 @@ import {
 	seedOf,
 	smooth
 } from './instruments.mjs';
-import { cloudTurn, drips, dubDelay, glitter, lastLap, restingLubs } from './timing.ts';
+import { cloudTurn, drips, dubDelay, glitter, lapCorners, lastLap, restingLubs, stars } from './timing.ts';
 
 /** Where a pixel sits left to right in the room, for a sound placed on it. */
 const panOf = (pixel) => (pixel < 600 ? (ringX(pixel) / 1.5) * 0.6 : 0);
 
-/** Homecoming: rain easing off, the storm rolling away, the heart slowing, the spark's last lap, goodnight. */
+/** A sub swelling under the spark's arrival: the ember taking the last of the night's charge. */
+function bloom(mix, time, gain, freq) {
+	const lp = [filter('lowpass', 320, 0.7), filter('lowpass', 320, 0.7)];
+	const rnd = random(seedOf('bloom', Math.round(time * 1000)));
+	let phase = 0;
+	const start = at(time);
+	const length = at(3.5);
+	for (let n = 0; n < length; n++) {
+		const t = n / RATE;
+		phase += (freq * (1 + 0.25 * Math.exp(-t / 0.35))) / RATE;
+		const env = (1 - Math.exp(-t / 0.05)) * Math.exp(-t / 1.1);
+		const air = lp[1].run(lp[0].run(rnd() * 2 - 1)) * Math.exp(-t / 0.45) * 2.5;
+		const v = gain * ending(n, length) * (env * (Math.sin(TAU * phase) + 0.3 * Math.sin(2 * TAU * phase)) + 0.25 * env * air);
+		mix.put(start + n, v, v, 0.15, 0.4);
+	}
+}
+
+/** Homecoming: rain easing off, the storm rolling away, the spark's last lap, stars, goodnight. */
 export function scoreHomecoming(mix, o) {
 	rainfall(mix, 0, o.dry + 1.5, (t) => smooth(0, 3, t) * (1 - smooth(o.ease, o.dry + 1, t)), seedOf('rain'));
 	for (const d of drips(o)) drip(mix, d.t, db(-15), panOf(d.pixel));
+	// The wind leaves with the storm, turning slowly across the room as it goes.
+	howl(
+		mix,
+		0,
+		o.dry + 2,
+		{
+			pan: (t) => 0.7 * Math.sin((TAU * t) / 26),
+			level: (t) => db(-30) * smooth(0, 4, t) * (1 - smooth(o.ease, o.dry + 2, t)),
+			pitch: () => 190,
+			muffle: () => 1400
+		},
+		seedOf('leaving')
+	);
 
 	// The thunder comes later, lower and softer after every flash.
 	rumble(mix, o.thunder1, { duration: 4, rise: 0.05, cutoff: 950, gain: db(-19), pan: 0, spread: 0.4, decay: 1.8, seed: seedOf('away', 1) });
@@ -45,12 +79,22 @@ export function scoreHomecoming(mix, o) {
 		if (k < lubs.length - 1) heartSound(mix, t + dubDelay(lubs[k + 1] - t), gain * 0.62 * (1 - k / (lubs.length - 1)), false, -0.35);
 	});
 
-	const lap = (t) => db(-30) * smooth(o.leave, o.leave + 0.8, t) * (1 - smooth(o.home, o.home + 0.8, t));
+	const lap = (t) => db(-28) * smooth(o.leave, o.leave + 0.8, t) * (1 - smooth(o.home, o.home + 0.8, t));
 	fizz(mix, o.leave, o.home + 0.8, (t) => panOf(480 + lastLap(o, t)), lap, seedOf('last lap'));
-	chime(mix, o.home, db(-20), 659.26, -0.35);
-	chime(mix, o.home + 0.18, db(-24), 987.77, -0.2);
-	// The night opened in E; it closes on E major.
+	// The spark tolls each corner of the frame on its way round, rising toward home.
+	const toll = [329.63, 415.3, 493.88];
+	lapCorners(o).forEach((t, k) => chime(mix, t, db(-26 + 2 * k), toll[k], panOf([120, 300, 420][k])));
+	// Home: an E major triad landing on the ember, over a sub that swells and settles.
+	chime(mix, o.home, db(-17), 659.26, -0.35);
+	chime(mix, o.home + 0.14, db(-21), 830.61, -0.15);
+	chime(mix, o.home + 0.3, db(-24), 987.77, 0.1);
+	bloom(mix, o.home, db(-13), 41.2);
+	// The night opened in E; it closes on E major, with the fifth left ringing on top.
 	pad(mix, o.home - 6, o.end, [164.81, 207.65, 246.94, 329.63], (t) => db(-22) * smooth(o.home - 6, o.home + 4, t));
+	pad(mix, o.stars - 2, o.end, [493.88, 659.26], (t) => db(-33) * smooth(o.stars - 2, o.stars + 6, t));
+	// One small bell for each star that comes out.
+	const sky = [1318.51, 1479.98, 1760, 1975.53, 2349.32];
+	for (const star of stars(o)) chime(mix, star.t, db(-31), sky[star.note], panOf(star.pixel));
 }
 
 /** Wall Cloud: the wind whips round the room with the turning cloud, the pressure drops, the eye, a crack. */

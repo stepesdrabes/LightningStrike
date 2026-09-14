@@ -6,6 +6,13 @@ analyses, shows or user settings. Cache selection defaults to the desktop cache;
 
 - `node bench/compositionprobe.ts --snapshot=bench/reports/before.json` captures composition.
   Use `--compare=FILE --render=8 --ids=ID,ID` to compare rendered shows with that snapshot.
+- `node bench/eveningcheck.ts evenings/FILE.ts` loads an evening exactly as the app does and
+  reports loader findings and gate admission, then plans the night with the cached library so
+  segment and pause lengths can be read off. Without a flag it renders each narration, moment,
+  pause and hold, printing mean and peak delivered bytes, lit pixels, pixels stuck in the dither
+  codes and Bounce Lamp duty. `--events` instead lists every event the moment's timing table
+  scores with the audio's level and the room's largest pixel move in the same window, which finds
+  a gesture that exists on only one side. `--moment NAME --step SECONDS` narrows the output.
 - `node bench/drumprobe.ts ID ID --out bench/reports/drums.json` compares model evidence and
   pattern completion on the same inference. Its counts are predictions, not labelled accuracy.
 - `node bench/effectpolish.ts --save bench/reports/effects-before.json` captures isolated effect

@@ -6,7 +6,8 @@
  * Ring pixels run 0-599 from the north-west corner (north 0-179 west to east, east 180-299,
  * south 300-479 east to west, west 480-599 south to north); the beam runs 600-719 from south to
  * north. Every effect is a function of time and the music, so the preview and the fixture draw
- * the same frames. Output gamma is 2.45: an effect level of 0.3 is a glow, 0.7 is bright.
+ * the same frames. Output gamma is 2.45, so an effect level of 0.3 barely leaves the dither
+ * codes: 0.45 is the dimmest colour that reads cleanly, 0.6 is a lit room and 0.85 is bright.
  */
 import {
 	SLOT,
@@ -61,13 +62,13 @@ const embers: ShowPalette = { name: 'embers', base: 18, accent: 38, third: 44, s
 /**
  * The opening, scored by light-before-thunder/first-strike.m4a: the power drains into the corner,
  * a heartbeat wakes under a storm whose thunder comes sooner after every flash, a spark charges
- * the ring, two sparks fill the beam, and the storm strikes.
+ * the ring lap by lap, two sparks fill the beam, and the storm strikes.
  */
 const thunderhead = effect({
 	id: 'thunderhead',
 	name: 'Thunderhead',
 	role: 'bed',
-	blurb: 'Power cut, heartbeat, a storm counting down, two sparks charging the beam, three strokes.',
+	blurb: 'Power cut, a heart under a nearing storm, sparks charging the beam, three strokes.',
 	// The soundtrack's timing table arrives as parameters; the formulas below mirror timing.ts.
 	params: OPENING,
 	create(g) {
@@ -109,6 +110,19 @@ const thunderhead = effect({
 			const length = 3 + Math.floor(hash01(i * 13 + 5) * 8);
 			for (let q = 0; q < length && i < g.count; q++, i++) grain[i] = lit ? 1 : 0.2;
 		}
+		// The ring laid on a circle and the beam across it, so one noise field is the whole sky.
+		const skyX = new Float32Array(g.count);
+		const skyY = new Float32Array(g.count);
+		for (let i = 0; i < g.count; i++) {
+			if (i < ring) {
+				const a = (i / ring) * Math.PI * 2;
+				skyX[i] = Math.cos(a) * 1.45;
+				skyY[i] = Math.sin(a) * 1.45;
+			} else {
+				skyX[i] = 0;
+				skyY[i] = ((i - beamStart) / beamCount - 0.5) * 2.9;
+			}
+		}
 
 		type Heart = { heart: number; race: number; ignite: number; heartFrom: number; heartTo: number };
 		/** Lub `k`: steady, then a linear climb in rate whose last beat is the ignition. */
@@ -125,36 +139,37 @@ const thunderhead = effect({
 		};
 
 		const spark = (out: Float32Array, palette: Float32Array, at: number, dir: number, level: number, tail: number) => {
-			for (let q = 0; q < tail + 3; q++) {
+			for (let q = 0; q < tail + 4; q++) {
 				const i = wrap(Math.round(at) - dir * q);
-				if (q < 3) addSample(out, i, palette, SLOT.white, level);
+				if (q < 4) addSample(out, i, palette, SLOT.white, level * (q < 2 ? 1.7 : 1.2));
 				else {
-					const k = (q - 3) / tail;
-					addSample(out, i, palette, lerp(SLOT.glow, SLOT.deep, k), level * 0.9 * Math.pow(1 - k, 1.5));
+					const k = (q - 4) / tail;
+					addSample(out, i, palette, lerp(SLOT.white, SLOT.glow, Math.min(1, k * 4)), level * Math.pow(1 - k, 1.4));
+					addSample(out, i, palette, lerp(SLOT.glow, SLOT.deep, k), level * 0.5 * Math.pow(1 - k, 1.4));
 				}
 			}
 		};
 
 		// A spark is born: a white front races out of the corner along both walls.
 		const burst = (out: Float32Array, palette: Float32Array, age: number, size: number) => {
-			if (age < 0 || age > 0.6) return;
-			const level = hit(age, 0.16) * size;
-			const reach = Math.min(170, 20 + 2400 * age);
+			if (age < 0 || age > 0.7) return;
+			const level = hit(age, 0.18) * size;
+			const reach = Math.min(190, 20 + 2600 * age);
 			for (let d = -Math.ceil(reach); d <= reach; d++) {
 				const x = Math.abs(d);
-				const front = reach < 170 && reach - x < 12 ? 1 - (reach - x) / 12 : 0;
-				const white = Math.max(x < 14 ? 1 : 0, front, 0.35 * (1 - x / 171));
+				const front = reach < 190 && reach - x < 14 ? 1 - (reach - x) / 14 : 0;
+				const white = Math.max(x < 16 ? 1 : 0, front, 0.45 * (1 - x / 191));
 				addSample(out, wrap(home + d), palette, SLOT.white, level * white);
-				addSample(out, wrap(home + d), palette, SLOT.glow, 0.7 * level * (1 - x / 171));
+				addSample(out, wrap(home + d), palette, SLOT.glow, level * (1 - x / 191));
 			}
 		};
 
 		const patch = (out: Float32Array, palette: Float32Array, at: number, width: number, level: number, rough: boolean) => {
 			for (let d = -width; d <= width; d++) {
 				const i = wrap(at + d);
-				const shape = Math.pow(1 - Math.abs(d) / (width + 1), 1.4) * (rough ? grain[i] : 1);
+				const shape = Math.pow(1 - Math.abs(d) / (width + 1), 1.3) * (rough ? grain[i] : 1);
 				addSample(out, i, palette, SLOT.white, level * shape);
-				addSample(out, i, palette, SLOT.glow, 0.35 * level * shape);
+				addSample(out, i, palette, SLOT.glow, 0.5 * level * shape);
 			}
 		};
 
@@ -171,21 +186,76 @@ const thunderhead = effect({
 			return env;
 		};
 
+		/**
+		 * The thunder of a flash, arriving seconds later: a low swell that rolls out of the
+		 * flash's bearing and washes over the frame while the rumble sounds.
+		 */
+		const shudder = (
+			out: Float32Array,
+			palette: Float32Array,
+			at: number,
+			age: number,
+			length: number,
+			size: number,
+			beam: number
+		) => {
+			if (age < 0 || age > length) return;
+			// Below a fifth of its peak the roll cannot hold a colour, so it stops there rather than
+			// trailing off through the dither codes.
+			const env = Math.max(0, 1.2 * (1 - Math.exp(-age / 0.22)) * (1 - smoothstep(length * 0.4, length, age)) - 0.2);
+			if (env <= 0) return;
+			// The sound is a front: it leaves the flash's bearing, crosses the frame both ways in
+			// under a second, and the roll follows it in.
+			const front = age * (ring / 1.6);
+			for (let i = 0; i < ring; i++) {
+				const d = apart(i, at);
+				const behind = front - d;
+				if (behind < 0) continue;
+				const roll = 0.35 + 0.85 * Math.exp(-behind / 150);
+				const n = noise3(i * 0.018, age * 0.5, 4.1);
+				addSample(out, i, palette, SLOT.base, size * env * roll * (0.4 + 0.6 * n));
+				if (behind < 30) addSample(out, i, palette, SLOT.glow, size * 1.1 * env * (1 - behind / 30));
+			}
+			if (beam <= 0) return;
+			const reached = front - apart(at, north);
+			if (reached < 0) return;
+			for (let b = 0; b < beamCount; b++) {
+				const n = noise3(b * 0.05, age * 0.4, 8.2);
+				addSample(out, beamStart + b, palette, SLOT.base, 0.8 * beam * size * env * (0.5 + 0.5 * n));
+			}
+		};
+
 		return {
 			render(out, { f, p, palette }) {
 				const t = f.t;
 				out.fill(0);
 
+				// The sky the storm arrives under, spreading from the north-east and then giving way to
+				// the charge. A moving front rather than a fade: no pixel lingers in the dither codes.
+				const sky = (1 - 0.65 * smoothstep(p.ignite, p.collide, t)) * (1 - smoothstep(p.gather - 2, p.gather, t));
+				// The beam empties as the spark is born: from there it is the channel waiting to fill.
+				const beamSky = 1 - smoothstep(p.ignite - 0.35, p.ignite, t);
+				if (sky > 0.004 && t >= p.heart) {
+					const front = smoothstep(p.heart + 0.2, p.race - 1.5, t) * (ring / 2 + 120);
+					for (let i = 0; i < g.count; i++) {
+						const away = i < ring ? apart(i, far) : 90 + (beamCount - 1 - (i - beamStart));
+						const edge = Math.sqrt(clamp((front - away) / 16)) * (i < ring ? 1 : beamSky);
+						if (edge < 0.02) continue;
+						const n = noise3(skyX[i] + t * 0.035, skyY[i], t * 0.06);
+						setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, 0.45 * n), sky * edge * (0.29 + 0.23 * n * n));
+					}
+				}
+
 				// Go: the room's light drains along the frame into the south-west corner and dies there.
 				if (t < p.heart) {
 					const reach = (ring / 2) * Math.exp(-t / p.drain);
-					const dim = 1 - smoothstep(0.8, p.heart - 0.4, t);
-					const surge = t < 0.15 ? 1 - t / 0.15 : 0;
+					const dim = 1 - smoothstep(0.7, p.heart - 0.25, t);
+					const surge = t < 0.18 ? 1 - t / 0.18 : 0;
 					for (let i = 0; i < g.count; i++) {
 						const gap = reach - (i < ring ? apart(i, home) : home - south + (i - beamStart) + 1);
 						if (gap < 0) continue;
-						setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, 0.4), (0.42 + 0.3 * surge) * dim);
-						if (gap < 10) addSample(out, i, palette, SLOT.white, 0.85 * (1 - gap / 10) * dim);
+						setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, 0.45), (0.62 + 0.38 * surge) * dim);
+						if (gap < 12) addSample(out, i, palette, SLOT.white, 1.05 * (1 - gap / 12) * dim);
 					}
 				}
 
@@ -208,24 +278,24 @@ const thunderhead = effect({
 					const rise = clamp((t - p.race) / span);
 					const fadeIn = smoothstep(p.heart - 0.05, p.heart + 0.6, t);
 					const fade = 1 - smoothstep(p.ignite, p.ignite + 0.3, t);
-					const beat = (0.85 + 0.15 * rise) * (hit(since, 0.2) + 0.6 * hit(dub, 0.15));
-					const spread = 2 * Math.pow(12 + 10 * rise, 2);
+					const beat = (0.85 + 0.25 * rise) * (hit(since, 0.2) + 0.6 * hit(dub, 0.15));
+					const spread = 2 * Math.pow(14 + 12 * rise, 2);
 					// The ember keeps a tenth of the frame lit, which the Bounce Lamp needs to take each lub's kick.
-					for (let d = -60; d <= 60; d++) {
+					for (let d = -72; d <= 72; d++) {
 						const i = wrap(home + d);
-						const glow = 0.28 * fadeIn * Math.exp(-(d * d) / 450) + beat * Math.exp(-(d * d) / spread);
-						setSample(out, i, palette, SLOT.accent, glow * fade);
-						if (d > -6 && d < 6 && beat > 0.4) {
-							addSample(out, i, palette, SLOT.white, (beat - 0.4) * (1 - Math.abs(d) / 6) * fade);
+						const glow = (0.46 + 0.14 * rise) * fadeIn * Math.exp(-(d * d) / 620) + beat * Math.exp(-(d * d) / spread);
+						addSample(out, i, palette, SLOT.accent, glow * fade);
+						if (d > -8 && d < 8 && beat > 0.35) {
+							addSample(out, i, palette, SLOT.white, (beat - 0.35) * 1.2 * (1 - Math.abs(d) / 8) * fade);
 						}
 					}
 					if (t >= p.race && t < p.ignite) {
-						const speed = 420 + 300 * rise;
+						const speed = 460 + 340 * rise;
 						const up = since * speed;
-						if (up < 200) spark(out, palette, home + up, 1, (0.55 + 0.45 * rise) * (1 - up / 200), 30);
+						if (up < 220) spark(out, palette, home + up, 1, (0.7 + 0.45 * rise) * (1 - up / 220), 32);
 						const along = dub * speed;
-						if (dub >= 0 && along < 150) {
-							spark(out, palette, home - along, -1, (0.45 + 0.4 * rise) * (1 - along / 150), 24);
+						if (dub >= 0 && along < 170) {
+							spark(out, palette, home - along, -1, (0.6 + 0.4 * rise) * (1 - along / 170), 26);
 						}
 					}
 				}
@@ -244,31 +314,63 @@ const thunderhead = effect({
 							? scale * k * Math.log((p.lapFrom + ((p.lap - p.lapFrom) * (t - p.ignite)) / span) / p.lapFrom)
 							: joined + (ring * (Math.min(t, p.full) - twin)) / p.lap + (2 * ring * Math.max(0, t - p.full)) / p.lap;
 
+					// Every lap the spark closes past home lands another step of charge on the ring.
+					const closed = Math.floor(run / ring);
+					let lapAge = -1;
+					let lapPulse = 0;
+					if (t < twin && closed >= 1) {
+						const lapNow = p.lapFrom * Math.exp((closed * ring) / scale / k);
+						lapAge = t - (p.ignite + ((lapNow - p.lapFrom) * span) / (p.lap - p.lapFrom));
+						if (lapAge >= 0 && lapAge < 0.7) lapPulse = hit(lapAge, 0.17);
+					}
+
 					if (t < p.gather) {
 						if (t < twin) {
+							// The first pass already lays down light; every further lap deepens it toward full.
+							const steps = Math.max(1, joined / ring - 1);
 							for (let i = 0; i < ring; i++) {
 								const from = wrap(i - home);
 								const passes = run >= from ? Math.floor((run - from) / ring) + 1 : 0;
-								if (passes > 0) setSample(out, i, palette, SLOT.base, Math.min(0.27, 0.035 * passes));
+								if (passes === 0) continue;
+								addSample(out, i, palette, SLOT.base, 0.3 + 0.36 * Math.min(1, (passes - 1) / steps) + 0.35 * lapPulse);
 							}
 						} else {
 							const shimmer = clamp((t - p.full) / (p.gather - p.full));
-							const level = lerp(0.27, 0.42, clamp((t - twin) / (p.full - twin))) + 0.12 * shimmer;
+							const level = lerp(0.62, 0.78, clamp((t - twin) / (p.full - twin))) + 0.16 * shimmer;
 							for (let i = 0; i < ring; i++) {
 								const n = shimmer > 0 ? noise3(i * 0.07, t * (3 + 4 * shimmer), 0.5) - 0.5 : 0;
 								const tone = lerp(SLOT.base, SLOT.glow, shimmer * (0.5 + n));
-								setSample(out, i, palette, tone, level * (1 + 1.4 * shimmer * n));
+								addSample(out, i, palette, tone, level * (1 + 1.3 * shimmer * n));
 							}
 						}
-						for (let d = -6; d <= 6; d++) {
-							addSample(out, wrap(home + d), palette, SLOT.accent, 0.3 * (1 - Math.abs(d) / 7));
+						for (let d = -8; d <= 8; d++) {
+							addSample(out, wrap(home + d), palette, SLOT.accent, 0.45 * (1 - Math.abs(d) / 9));
+						}
+						// Each closed lap slams a white front out of the corner both ways round the frame.
+						if (lapPulse > 0.01) {
+							const wave = lapAge * 2400;
+							for (let i = 0; i < ring; i++) {
+								const off = Math.abs(apart(i, home) - wave);
+								if (off < 34) addSample(out, i, palette, SLOT.white, 1.5 * lapPulse * (1 - off / 34));
+							}
+						}
+						// Charge sparkling on the eighth notes, denser as the ring fills: the crackle
+						// in the score is the same grid.
+						const rate = (t < p.full ? 4 : 8) / p.lap;
+						const slot = Math.floor(t * rate);
+						const sparkle = Math.exp(-(t - slot / rate) / 0.055);
+						const charged = clamp((t - p.ignite) / (p.gather - p.ignite));
+						for (let j = 0, n = 3 + Math.floor(charged * 10); j < n; j++) {
+							const i = Math.floor(hash01(slot * 17 + j * 31 + 7) * ring);
+							addSample(out, i, palette, SLOT.white, 1.5 * sparkle * (0.45 + 0.55 * hash01(slot * 5 + j * 13)));
+							addSample(out, wrap(i + 1), palette, SLOT.glow, 0.6 * sparkle);
 						}
 					}
 
 					burst(out, palette, t - p.ignite, 1);
-					burst(out, palette, t - twin, 0.7);
-					const level = (t < p.full ? 1 : 1.1) * (1 - clamp((t - p.gather) / 0.15));
-					const tail = t < p.full ? 40 : 64;
+					burst(out, palette, t - twin, 0.75);
+					const level = (t < p.full ? 1.1 : 1.25) * (1 - clamp((t - p.gather) / 0.15));
+					const tail = t < p.full ? 44 : 70;
 					spark(out, palette, home + run, 1, level, tail);
 					if (t >= twin) spark(out, palette, home - (run - joined), -1, level, tail);
 
@@ -277,9 +379,9 @@ const thunderhead = effect({
 						const n = Math.floor((run - 210) / 300);
 						const lapNow = p.lapFrom * Math.exp((210 + 300 * n) / scale / k);
 						const age = t - (p.ignite + ((lapNow - p.lapFrom) * span) / (p.lap - p.lapFrom));
-						for (let j = 0; n >= 0 && j < 5 && age < 0.1; j++) {
+						for (let j = 0; n >= 0 && j < 9 && age < 0.12; j++) {
 							const b = Math.floor(hash01(n * 7 + j * 13) * beamCount);
-							setSample(out, beamStart + b, palette, SLOT.white, 0.85 * (1 - age / 0.1));
+							setSample(out, beamStart + b, palette, SLOT.white, 1.5 * (1 - age / 0.12));
 						}
 					} else if (t >= p.collide && t < p.gather) {
 						const interval = p.lap / 2;
@@ -289,8 +391,12 @@ const thunderhead = effect({
 						const age = t - (t < p.full ? p.collide + m * interval : p.full + ((m - m0) * interval) / 2);
 						const node = Math.exp(-age / 0.12);
 						const end = m % 2 === 0 ? south : north;
-						for (let d = -20; d <= 20; d++) {
-							addSample(out, wrap(end + d), palette, SLOT.white, node * Math.pow(1 - Math.abs(d) / 21, 2));
+						for (let d = -30; d <= 30; d++) {
+							addSample(out, wrap(end + d), palette, SLOT.white, 1.6 * node * Math.pow(1 - Math.abs(d) / 31, 2));
+						}
+						// In the overload the whole ring takes each collision, not only its end.
+						if (t >= p.full) {
+							for (let i = 0; i < ring; i++) addSample(out, i, palette, SLOT.glow, 0.35 * node);
 						}
 
 						// Each collision pumps a step of charge into the beam from its end.
@@ -300,49 +406,54 @@ const thunderhead = effect({
 						const northSteps = Math.floor((m + 1) / 2) - (m % 2 === 1 ? 1 - grow : 0);
 						const fromSouth = (Math.min(steps, southSteps) / steps) * half;
 						const fromNorth = (Math.min(steps, northSteps) / steps) * half;
-						const burn = t < p.full ? 0 : 0.2 * clamp((t - p.full) / (p.gather - p.full));
+						const burn = t < p.full ? 0 : 0.25 * clamp((t - p.full) / (p.gather - p.full));
 						for (let b = 0; b < beamCount; b++) {
 							const southDepth = fromSouth - b;
 							const northDepth = fromNorth - (beamCount - 1 - b);
 							if (southDepth <= 0 && northDepth <= 0) continue;
 							const southGrowing = southDepth > 0 && southDepth < 1.5 && fromSouth < half;
 							const northGrowing = northDepth > 0 && northDepth < 1.5 && fromNorth < half;
-							setSample(out, beamStart + b, palette, SLOT.glow, southGrowing || northGrowing ? 0.95 : 0.62 + burn);
+							setSample(out, beamStart + b, palette, SLOT.glow, southGrowing || northGrowing ? 1.05 : 0.82 + burn);
 						}
 						const rate = (t < p.full ? 4 : 8) / p.lap;
 						const slot = Math.floor(t * rate);
 						const glint = Math.exp(-(t - slot / rate) / 0.06);
-						const count = 1 + Math.floor(hash01(slot * 3 + 1) * 3) + (t < p.full ? 0 : 1);
+						const count = 2 + Math.floor(hash01(slot * 3 + 1) * 3) + (t < p.full ? 0 : 2);
 						for (let j = 0; j < count; j++) {
 							const b = Math.floor(hash01(slot * 11 + j * 5 + 2) * beamCount);
 							if (b < fromSouth || beamCount - 1 - b < fromNorth) {
-								addSample(out, beamStart + b, palette, SLOT.white, 0.9 * glint);
+								addSample(out, beamStart + b, palette, SLOT.white, 1.6 * glint);
 							}
 						}
 					}
 				}
 
-				// The storm, from the far corner to overhead. Its thunder follows in the soundtrack.
+				// The storm, from the far corner to overhead. Its thunder follows in the soundtrack,
+				// and the room answers each roll seconds after the flash that threw it.
 				const flash1 = flicker(t - p.flash1, 0);
-				if (flash1 > 0) patch(out, palette, far, 45, 0.5 * flash1, false);
+				if (flash1 > 0) patch(out, palette, far, 50, 1.05 * flash1, false);
+				shudder(out, palette, far, t - p.thunder1, 5.5, 0.6, beamSky);
 				const flash2 = flicker(t - p.flash2, 1);
-				if (flash2 > 0) patch(out, palette, Math.round((far + north) / 2), 65, 0.7 * flash2, true);
+				if (flash2 > 0) patch(out, palette, Math.round((far + north) / 2), 70, 1.3 * flash2, true);
+				shudder(out, palette, Math.round((far + north) / 2), t - p.thunder2, 5, 0.78, beamSky);
 				const flash3 = flicker(t - p.flash3, 2);
 				if (flash3 > 0) {
-					patch(out, palette, north, 35, 0.9 * flash3, true);
+					patch(out, palette, north, 40, 1.6 * flash3, true);
 					for (let b = Math.ceil(half); b < beamCount; b++) {
-						const level = 0.9 * flash3 * grain[beamStart + b] * ((b - half) / half);
+						const level = 1.5 * flash3 * grain[beamStart + b] * ((b - half) / half);
 						addSample(out, beamStart + b, palette, SLOT.white, level);
 					}
 				}
+				shudder(out, palette, north, t - p.thunder3, 4.5, 1, beamSky);
 				const flash4 = flicker(t - p.flash4, 3);
 				if (flash4 > 0) {
-					patch(out, palette, north, 45, flash4, true);
-					patch(out, palette, south, 45, flash4, true);
+					patch(out, palette, north, 55, 1.85 * flash4, true);
+					patch(out, palette, south, 55, 1.85 * flash4, true);
 					for (let b = 0; b < beamCount; b++) {
-						addSample(out, beamStart + b, palette, SLOT.white, flash4 * grain[beamStart + b]);
+						addSample(out, beamStart + b, palette, SLOT.white, 1.7 * flash4 * grain[beamStart + b]);
 					}
 				}
+				shudder(out, palette, north, t - p.thunder4, 3.5, 1.25, beamSky);
 
 				// The charge gathers into the beam, the beam into its centre, and the centre beats three times.
 				if (t >= p.gather && t < p.strike) {
@@ -350,21 +461,22 @@ const thunderhead = effect({
 						const u = (t - p.gather) / (p.contract - p.gather);
 						for (let i = 0; i < ring; i++) {
 							const fromEnds = Math.min(apart(i, north), apart(i, south));
-							if (fromEnds < (ring / 4) * (1 - u)) setSample(out, i, palette, SLOT.base, 0.42 + 0.2 * u);
+							if (fromEnds < (ring / 4) * (1 - u)) setSample(out, i, palette, SLOT.base, 0.72 + 0.24 * u);
 						}
 						const tone = lerp(SLOT.glow, SLOT.white, u);
-						for (let b = 0; b < beamCount; b++) setSample(out, beamStart + b, palette, tone, 0.65 + 0.25 * u);
+						for (let b = 0; b < beamCount; b++) setSample(out, beamStart + b, palette, tone, 0.88 + 0.2 * u);
 					} else if (t < p.point) {
 						const reach = lerp(half, 3, smoothstep(p.contract, p.point, t));
 						for (let b = 0; b < beamCount; b++) {
-							if (Math.abs(b - centre) < reach) setSample(out, beamStart + b, palette, SLOT.white, 0.9);
+							if (Math.abs(b - centre) < reach) setSample(out, beamStart + b, palette, SLOT.white, 1.05);
 						}
 					} else if (t < p.point + 2 * p.pulse + 0.1) {
 						const age = (t - p.point) % p.pulse;
-						// A faint halo on the whole beam gives the lamp enough lit pixels to take each beat's kick.
-						const halo = 0.12 * Math.exp(-age / 0.1);
+						// The channel still glows around the point, which also keeps the Bounce Lamp lit
+						// for each beat's kick: a tenth of the frame has to carry light for it to see one.
+						const halo = 0.3 + 0.32 * Math.exp(-age / 0.1);
 						for (let b = 0; b < beamCount; b++) {
-							const level = Math.abs(b - centre) < 3 ? (age < 0.07 ? 1 : 0.25) : halo;
+							const level = Math.abs(b - centre) < 4 ? (age < 0.07 ? 1.2 : 0.45) : halo;
 							setSample(out, beamStart + b, palette, SLOT.white, level);
 						}
 					}
@@ -375,23 +487,29 @@ const thunderhead = effect({
 					const u = t - p.strike;
 					const last = 2 * p.stroke;
 					if (u < 0.09) {
-						for (let b = 0; b < beamCount; b++) setSample(out, beamStart + b, palette, SLOT.white, 1);
-						for (let i = 0; i < ring; i++) if (branch[i] > 0) setSample(out, i, palette, SLOT.white, 1);
+						for (let b = 0; b < beamCount; b++) setSample(out, beamStart + b, palette, SLOT.white, 1.2);
+						for (let i = 0; i < ring; i++) if (branch[i] > 0) setSample(out, i, palette, SLOT.white, 1.2);
 					} else if (u >= p.stroke && u < p.stroke + 0.07) {
-						for (let i = 0; i < ring; i++) setSample(out, i, palette, SLOT.white, branch[i] > 0 ? 0.8 : 0.5);
+						for (let i = 0; i < ring; i++) setSample(out, i, palette, SLOT.white, branch[i] > 0 ? 1 : 0.62);
 					} else if (u >= last && u < last + 0.15) {
-						for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1);
+						for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.25);
 					} else if (u >= last + 0.15) {
 						const after = u - last - 0.15;
-						const roll = smoothstep(0.3, 0.9, f.level) * smoothstep(0, 0.95, after);
+						// The storm cloud Thunder's own overlay carries on from: same shape, same levels.
+						const roll = 0.82 + 0.22 * smoothstep(0.25, 0.85, f.level);
+						const open = smoothstep(0, 0.4, after);
 						for (let i = 0; i < ring; i++) {
-							const cloud = smoothstep(0.35, 0.7, noise3(i * 0.025, t * 0.35, 7.3));
-							if (cloud > 0) setSample(out, i, palette, SLOT.base, 0.5 * roll * cloud);
-							if (branch[i] > 0 && after < 2.15) addSample(out, i, palette, SLOT.accent, Math.exp(-after / 0.45));
+							const cloud = noise3(i * 0.022, t * 0.3, 7.3);
+							setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, 0.4 * cloud), open * roll * (0.5 + 0.45 * cloud * cloud));
+							if (branch[i] > 0 && after < 2.4) addSample(out, i, palette, SLOT.accent, 1.1 * Math.exp(-after / 0.5));
 						}
-						const ember = 0.6 * smoothstep(0.25, 1.55, after) * (0.7 + 0.3 * roll);
-						for (let d = -14; d <= 14; d++) {
-							addSample(out, wrap(home + d), palette, SLOT.accent, ember * (1 - Math.abs(d) / 15));
+						for (let b = 0; b < beamCount; b++) {
+							const cloud = noise3(b * 0.04, t * 0.22, 2.9);
+							setSample(out, beamStart + b, palette, SLOT.base, open * roll * (0.4 + 0.3 * cloud));
+						}
+						const ember = 0.85 * smoothstep(0.25, 1.6, after) * (0.75 + 0.25 * roll);
+						for (let d = -18; d <= 18; d++) {
+							addSample(out, wrap(home + d), palette, SLOT.accent, ember * (1 - Math.abs(d) / 19));
 						}
 					}
 				}
@@ -400,12 +518,15 @@ const thunderhead = effect({
 	}
 });
 
-/** Thunder's intro: rolling lobes on the low end, kicks rolling out of the beam, a fill into the drop. */
+/**
+ * Thunder's intro: the storm cloud First Strike left, turning into rolling lobes on the low end,
+ * kicks rolling out of the beam and a fill into the drop.
+ */
 const thunderRoll = effect({
 	id: 'thunderRoll',
 	name: 'Thunder roll',
 	role: 'bed',
-	blurb: 'Low-end lobes roll around the ring; kicks roll out from the beam; the beam fills into the drop.',
+	blurb: 'The storm cloud becomes low-end lobes round the ring; kicks roll out from the beam into the drop.',
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
@@ -438,7 +559,9 @@ const thunderRoll = effect({
 				const late = Math.max(0, 4 - toDrop);
 				// A lap every two bars, speeding to a lap a bar over the last four.
 				const turn = bars / 2 + (late * late) / 16;
-				const bed = 0.2 + 0.25 * clamp(low.update(f.bands[0], f.dt) * 1.4);
+				// Two bars to take the cloud over from the opening and gather it into the lobes.
+				const gathered = smoothstep(0, 2, bars);
+				const bed = 0.82 + 0.28 * clamp(low.update(f.bands[0], f.dt) * 1.4);
 				for (let i = 0; i < ring; i++) {
 					const u = i / ring;
 					let lobe = 0;
@@ -447,21 +570,28 @@ const thunderRoll = effect({
 						d -= Math.round(d);
 						lobe = Math.max(lobe, Math.exp(-(d * d) / 0.0035));
 					}
-					setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, lobe), bed + 0.45 * lobe);
+					const cloud = noise3(i * 0.022, t * 0.3, 7.3);
+					const body = lerp(0.5 + 0.45 * cloud * cloud, 0.55, gathered);
+					setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, lerp(0.4 * cloud, lobe, gathered)), bed * body + 0.55 * gathered * lobe);
 				}
 				const age = (t - kickAt) / f.beatPeriod;
 				const fill = clamp(late / 4);
 				for (let b = 0; b < beamCount; b++) {
 					const fromCentre = Math.abs(b - (beamCount - 1) / 2) / (beamCount / 2);
-					let level = 0;
-					if (age < 1) level = Math.max(0, 1 - Math.abs(fromCentre - age) * 5) * (1 - age * 0.6);
-					if (1 - fromCentre < fill) level = Math.max(level, 0.8);
-					if (level > 0) setSample(out, beamStart + b, palette, level > 0.5 ? lerp(SLOT.glow, SLOT.white, (level - 0.5) * 2) : SLOT.base, level);
+					const cloud = noise3(b * 0.04, t * 0.22, 2.9);
+					// The beam keeps the opening's cloud under the rolls rather than emptying into the
+					// dither codes; the kick and the fill ride over it.
+					let level = bed * (0.5 + 0.25 * cloud) * (1 - 0.3 * gathered);
+					if (age < 1) level = Math.max(level, Math.max(0, 1.05 - Math.abs(fromCentre - age) * 5) * (1 - age * 0.6));
+					if (1 - fromCentre < fill) level = Math.max(level, 0.95);
+					if (level > 0) {
+						setSample(out, beamStart + b, palette, level > 0.5 ? lerp(SLOT.glow, SLOT.white, (level - 0.5) * 2) : SLOT.base, level);
+					}
 				}
 				if (t - snareAt < 0.15) {
 					const corner = Math.floor(hash01(snares * 7 + 3) * 4) * (ring / 4);
-					const level = 1 - (t - snareAt) / 0.15;
-					for (let d = -10; d < 10; d++) addSample(out, (corner + d + ring) % ring, palette, SLOT.accent, level);
+					const level = 1.15 * (1 - (t - snareAt) / 0.15);
+					for (let d = -14; d < 14; d++) addSample(out, (corner + d + ring) % ring, palette, SLOT.accent, level);
 				}
 			}
 		};
@@ -470,12 +600,12 @@ const thunderRoll = effect({
 
 // ---- The supercell ----------------------------------------------------------------------------
 
-/** Three seconds of dark after "Turn The Lights Off", and two lime glints in the corner. */
+/** After "Turn The Lights Off": dark, then three glints in the corner and a snap of the whole frame. */
 const lightsOff = effect({
 	id: 'lightsOff',
 	name: 'Lights off',
 	role: 'bed',
-	blurb: 'Dark, then the storm’s first glints in the south-west corner.',
+	blurb: 'Dark, then the storm’s first glints in the south-west corner and a snap across the frame.',
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
@@ -484,18 +614,27 @@ const lightsOff = effect({
 			render(out, { f, palette }) {
 				out.fill(0);
 				const t = f.t;
-				let level = 0;
-				let reach = 0;
-				if (t >= 2.45 && t < 2.53) {
-					level = 1;
-					reach = 5;
-				} else if (t >= 2.63 && t < 2.7) {
-					level = 0.7;
-					reach = 3;
+				// Three glints closing up, then the frame catches for a frame and a half.
+				for (const [at, level, reach] of [
+					[2.1, 0.8, 4],
+					[2.42, 1, 7],
+					[2.62, 1.2, 11]
+				] as const) {
+					const age = t - at;
+					if (age < 0 || age > 0.09) continue;
+					const v = level * (1 - age / 0.09);
+					for (let d = -reach; d <= reach; d++) {
+						addSample(out, (home + d + ring) % ring, palette, SLOT.accent, v);
+						addSample(out, (home + d + ring) % ring, palette, SLOT.white, v * 0.5);
+					}
 				}
-				for (let d = -reach; d <= reach && level > 0; d++) {
-					setSample(out, (home + d + ring) % ring, palette, SLOT.accent, level);
-					addSample(out, (home + d + ring) % ring, palette, SLOT.white, level * 0.4);
+				const snap = t - 2.78;
+				if (snap >= 0 && snap < 0.12) {
+					const v = 1.2 * (1 - snap / 0.12);
+					for (let i = 0; i < g.count; i++) {
+						const reach = Math.abs(((i - home + ring * 1.5) % ring) - ring / 2) / (ring / 2);
+						addSample(out, i, palette, SLOT.accent, v * (1 - 0.6 * reach));
+					}
 				}
 			}
 		};
@@ -530,18 +669,18 @@ const wallCloud = effect({
 					const k = span / (p.lapTo - p.lapFrom);
 					const turn = k * Math.log((p.lapFrom + ((t - p.form) * (p.lapTo - p.lapFrom)) / span) / p.lapFrom);
 					const pulse = hit(t - p.pulse1, 0.18) + hit(t - p.pulse2, 0.18) + hit(t - p.pulse3, 0.18);
-					const level = smoothstep(p.form, p.form + 0.6, t) * (1 + 0.45 * pulse);
+					const level = smoothstep(p.form, p.form + 0.25, t) * (1 + 0.5 * pulse);
 					for (let i = 0; i < ring; i++) {
 						const a = (i / ring - turn) * Math.PI * 2;
 						const n = noise3(Math.cos(a) * 1.6, Math.sin(a) * 1.6, t * 0.35);
-						setSample(out, i, palette, SLOT.base, level * (0.2 + 0.8 * n * n));
+						setSample(out, i, palette, SLOT.base, level * (0.36 + 0.68 * n * n));
 						const seam = clamp(1 - Math.abs(n - 0.64) / 0.05);
-						if (seam > 0) addSample(out, i, palette, SLOT.accent, level * 0.9 * seam);
+						if (seam > 0) addSample(out, i, palette, SLOT.accent, level * 1.2 * seam);
 					}
 					if (t >= p.funnel) {
-						const half = Math.round(lerp(2, 30, smoothstep(p.funnel, p.eye, t)));
+						const half = Math.round(lerp(2, 34, smoothstep(p.funnel, p.eye, t)));
 						for (let d = -half; d < half; d++) {
-							setSample(out, beamStart + centre + d, palette, SLOT.accent, (0.55 + 0.35 * pulse) * (1 - Math.abs(d) / (half + 1)));
+							setSample(out, beamStart + centre + d, palette, SLOT.accent, (0.8 + 0.35 * pulse) * (1 - Math.abs(d) / (half + 1)));
 						}
 					}
 					return;
@@ -549,18 +688,18 @@ const wallCloud = effect({
 				const age = t - p.crack;
 				if (age < 0.12) {
 					for (let i = 0; i < g.count; i++) {
-						setSample(out, i, palette, SLOT.accent, 1);
-						addSample(out, i, palette, SLOT.white, 0.6);
+						setSample(out, i, palette, SLOT.accent, 1.2);
+						addSample(out, i, palette, SLOT.white, 0.8);
 					}
 					return;
 				}
 				// The flash's afterimage on the beam, and the cloud lit from inside while the thunder rolls.
 				const flash = Math.exp(-(age - 0.12) / 0.25);
 				const roll = Math.exp(-(age - 0.12) / 1.2);
-				for (let b = 0; b < beamCount; b++) setSample(out, beamStart + b, palette, SLOT.accent, 0.8 * flash + 0.5 * roll);
+				for (let b = 0; b < beamCount; b++) setSample(out, beamStart + b, palette, SLOT.accent, 1.05 * flash + 0.7 * roll);
 				for (let i = 0; i < ring; i++) {
 					const n = noise3(i * 0.04, t * 5, 9.1);
-					setSample(out, i, palette, SLOT.base, roll * (0.3 + 0.6 * n * n));
+					setSample(out, i, palette, SLOT.base, roll * (0.58 + 0.62 * n * n));
 				}
 			}
 		};
@@ -610,6 +749,7 @@ const eyewall = effect({
 				// Laps: half a lap a bar, then one, then one and a half, then two.
 				const spin = bars < 2 ? bars / 2 : bars < 4 ? 1 + (bars - 2) : bars < 6 ? 3 + 1.5 * (bars - 4) : 6 + 2 * (bars - 6);
 				const collapse = lastBar ? clamp(beat / 3) : 0;
+				const wall = 0.38 + 0.22 * clamp(bars / 7);
 				for (let i = 0; i < ring; i++) {
 					const u = i / ring;
 					let arm = 0;
@@ -623,22 +763,24 @@ const eyewall = effect({
 					}
 					const reach = Math.min(Math.abs(((i - north + ring * 1.5) % ring) - ring / 2), Math.abs(((i - south + ring * 1.5) % ring) - ring / 2));
 					if (collapse > 0 && reach > (ring / 4) * (1 - collapse)) continue;
-					if (arm > 0) setSample(out, i, palette, arm > 0.6 ? SLOT.white : SLOT.glow, 0.95 * arm);
-					if (tail > 0) addSample(out, i, palette, SLOT.base, 0.5 * tail * tail);
+					const n = noise3(i * 0.03, t * 0.5, 3.7);
+					setSample(out, i, palette, SLOT.base, wall * (0.72 + 0.28 * n));
+					if (tail > 0) addSample(out, i, palette, SLOT.base, 0.7 * tail * tail);
+					if (arm > 0) addSample(out, i, palette, arm > 0.6 ? SLOT.white : SLOT.glow, 1.1 * arm);
 				}
 				const age = (t - kickAt) / f.beatPeriod;
 				for (let b = 0; b < beamCount; b++) {
 					const fromCentre = Math.abs(b - (beamCount - 1) / 2) / (beamCount / 2);
-					const shot = age < 1 ? Math.max(0, 1 - Math.abs(fromCentre - age) * 6) : 0;
-					if (lastBar) setSample(out, beamStart + b, palette, SLOT.accent, Math.max(collapse, shot));
-					else if (shot > 0) setSample(out, beamStart + b, palette, shot > 0.5 ? SLOT.white : SLOT.accent, shot);
+					const shot = age < 1 ? Math.max(0, 1.1 - Math.abs(fromCentre - age) * 6) : 0;
+					if (lastBar) setSample(out, beamStart + b, palette, SLOT.accent, Math.max(collapse * 1.1, shot));
+					else setSample(out, beamStart + b, palette, shot > 0.5 ? SLOT.white : SLOT.accent, Math.max(0.34, shot));
 				}
 				for (let j = 0; j < 9; j++) {
 					const hailAge = t - hailAt[j];
 					if (hailAge < 0 || hailAge > 0.4) continue;
-					const v = Math.exp(-hailAge / 0.12);
+					const v = 1.15 * Math.exp(-hailAge / 0.12);
 					addSample(out, hailPos[j], palette, SLOT.white, v);
-					addSample(out, (hailPos[j] + 1) % ring, palette, SLOT.white, v);
+					addSample(out, (hailPos[j] + 1) % ring, palette, SLOT.white, v * 0.6);
 				}
 			}
 		};
@@ -662,7 +804,7 @@ const staticAir = effect({
 		const heard = new Follower(0.4, 1.2);
 		const spark = (out: Float32Array, palette: Float32Array, at: number, age: number) => {
 			if (age < 0 || age > 0.6) return;
-			const v = 0.9 * Math.exp(-age / 0.12);
+			const v = 1.1 * Math.exp(-age / 0.12);
 			addSample(out, at % g.count, palette, SLOT.white, v);
 			addSample(out, (at + 1) % g.count, palette, SLOT.white, v * 0.6);
 		};
@@ -673,7 +815,7 @@ const staticAir = effect({
 			render(out, { f, p, palette }) {
 				const t = f.t;
 				const listening = p.listen > 0.5;
-				const gain = listening ? 0.75 + 0.5 * clamp(heard.update(f.level, f.dt) * 1.3) : 1;
+				const gain = listening ? 0.8 + 0.45 * clamp(heard.update(f.level, f.dt) * 1.3) : 1;
 				const light = Math.floor((t / 420) * ring) % ring;
 				for (let i = 0; i < g.count; i++) {
 					// The ring on a circle of noise; the beam across its middle.
@@ -694,8 +836,8 @@ const staticAir = effect({
 						if (d > ring / 2) d = ring - d;
 						pool = d < 90 ? Math.exp(-(d * d) / 1800) : 0;
 					}
-					setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, cloud), (0.28 + 0.4 * cloud) * gain * (1 - 0.8 * pool));
-					if (pool > 0) addSample(out, i, palette, SLOT.accent, 0.55 * gain * pool);
+					setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, cloud), (0.44 + 0.34 * cloud) * gain * (1 - 0.6 * pool));
+					if (pool > 0) addSample(out, i, palette, SLOT.accent, 0.9 * gain * pool);
 				}
 				if (listening) {
 					if (f.beatIndex % 2 === 0 && hash01(f.beatIndex * 7 + 1) < f.energy * 0.6) {
@@ -717,7 +859,7 @@ const staticAir = effect({
 				const age = t - (j * 90 + 20 + hash01(j * 7 + 5) * 50);
 				if (age >= 0 && age < 0.8) {
 					const wall = g.strips[Math.floor(hash01(j * 13 + 2) * 4)];
-					const level = 0.8 * (Math.exp(-age / 0.07) + (age > 0.22 ? 0.7 * Math.exp(-(age - 0.22) / 0.07) : 0));
+					const level = 1.05 * (Math.exp(-age / 0.07) + (age > 0.22 ? 0.7 * Math.exp(-(age - 0.22) / 0.07) : 0));
 					for (let q = 0; q < wall.count; q++) addSample(out, wall.offset + q, palette, SLOT.glow, level);
 				}
 			}
@@ -743,7 +885,7 @@ const heatLightning = effect({
 			},
 			render(out, { f, palette }) {
 				const t = f.t;
-				const gain = 0.85 + 0.3 * clamp(heard.update(f.level, f.dt));
+				const gain = 0.88 + 0.3 * clamp(heard.update(f.level, f.dt));
 				for (let i = 0; i < g.count; i++) {
 					let x: number;
 					let y: number;
@@ -756,7 +898,7 @@ const heatLightning = effect({
 						y = ((i - beamStart) / beamCount - 0.5) * 3;
 					}
 					const cloud = noise3(x + t / 90, y, t * 0.03);
-					setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, cloud), (0.35 + 0.4 * cloud) * gain);
+					setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, cloud), (0.5 + 0.38 * cloud) * gain);
 				}
 				const j = Math.floor(t / 12);
 				const age = t - (j * 12 + hash01(j * 19 + 1) * 6);
@@ -767,20 +909,20 @@ const heatLightning = effect({
 					const a = age - n * 0.19;
 					if (a >= 0) env = Math.max(env, Math.exp(-a / 0.12));
 				}
-				const level = 0.9 * env;
+				const level = 1.15 * env;
 				if (hash01(j * 29 + 4) < 0.3) {
 					for (let b = 0; b < beamCount; b++) {
 						addSample(out, beamStart + b, palette, SLOT.accent, level);
-						addSample(out, beamStart + b, palette, SLOT.white, level * 0.35);
+						addSample(out, beamStart + b, palette, SLOT.white, level * 0.4);
 					}
 				} else {
 					const centre = Math.floor(hash01(j * 31 + 6) * ring);
-					const half = 30 + Math.floor(hash01(j * 37 + 8) * 30);
+					const half = 34 + Math.floor(hash01(j * 37 + 8) * 34);
 					for (let d = -half; d <= half; d++) {
 						const i = (centre + d + ring) % ring;
 						const v = level * (1 - Math.abs(d) / (half + 1));
 						addSample(out, i, palette, SLOT.accent, v);
-						addSample(out, i, palette, SLOT.white, v * 0.35);
+						addSample(out, i, palette, SLOT.white, v * 0.4);
 					}
 				}
 			}
@@ -804,16 +946,16 @@ const eyeOfStorm = effect({
 			},
 			render(out, { f, palette }) {
 				const t = f.t;
-				const gain = 0.85 + 0.3 * clamp(heard.update(f.level, f.dt));
+				const gain = 0.88 + 0.3 * clamp(heard.update(f.level, f.dt));
 				const sun = (Math.round(ring * 0.15) + (t / 240) * ring) % ring;
 				for (let i = 0; i < g.count; i++) {
 					const u = i < ring ? i / ring : 0.15 + ((i - ring) / (g.count - ring)) * 0.5;
 					const net = Math.abs(Math.sin(u * Math.PI * 14 + t * 0.25) * Math.sin(u * Math.PI * 9 - t * 0.18));
-					setSample(out, i, palette, lerp(SLOT.glow, SLOT.base, net), (0.42 + 0.35 * net) * gain);
+					setSample(out, i, palette, lerp(SLOT.glow, SLOT.base, net), (0.52 + 0.38 * net) * gain);
 					if (i < ring) {
 						let d = Math.abs(i - sun);
 						if (d > ring / 2) d = ring - d;
-						if (d < 90) addSample(out, i, palette, SLOT.accent, 0.7 * gain * Math.exp(-(d * d) / 1000));
+						if (d < 90) addSample(out, i, palette, SLOT.accent, 0.95 * gain * Math.exp(-(d * d) / 1000));
 					}
 				}
 			}
@@ -839,20 +981,20 @@ const wetStreet = effect({
 			},
 			render(out, { f, palette }) {
 				const t = f.t;
-				const gain = 0.9 + 0.2 * clamp(heard.update(f.level, f.dt));
+				const gain = 0.92 + 0.2 * clamp(heard.update(f.level, f.dt));
 				for (let i = 0; i < g.count; i++) {
 					const u = i < ring ? i / ring : 0.15 + ((i - ring) / beamCount) * 0.5;
 					const fringe = 0.5 + 0.5 * Math.sin((u - t / 120) * Math.PI * 10 + Math.sin(u * 7 + t * 0.05) * 2);
-					setSample(out, i, palette, SLOT.base, (0.28 + 0.3 * fringe) * gain);
-					addSample(out, i, palette, SLOT.third, 0.25 * fringe * fringe * gain);
+					setSample(out, i, palette, SLOT.base, (0.46 + 0.34 * fringe) * gain);
+					addSample(out, i, palette, SLOT.third, 0.4 * fringe * fringe * gain);
 				}
 				const j = Math.floor(t / 7.5);
 				const age = t - (j * 7.5 + hash01(j * 11 + 3) * 2.5);
 				if (age >= 0 && age < 1.2) {
 					const at = Math.floor(hash01(j * 17 + 5) * (beamCount - 24)) + Math.floor((age / 1.2) * 20);
-					const v = 0.9 * (1 - age / 1.2);
+					const v = 1.1 * (1 - age / 1.2);
 					addSample(out, beamStart + at, palette, SLOT.accent, v);
-					addSample(out, beamStart + at, palette, SLOT.white, v * 0.3);
+					addSample(out, beamStart + at, palette, SLOT.white, v * 0.4);
 				}
 			}
 		};
@@ -889,13 +1031,15 @@ const countIn = effect({
 				const all = bars >= 1.75;
 				for (let n = 0; n < Math.min(count, 10); n++) {
 					const at = 6 + 12 * n;
-					for (let q = -3; q < 3; q++) {
-						if (at + q >= 0 && at + q < beamCount) setSample(out, beamStart + at + q, palette, SLOT.white, all ? 1 : 0.8);
+					for (let q = -4; q < 4; q++) {
+						if (at + q >= 0 && at + q < beamCount) setSample(out, beamStart + at + q, palette, SLOT.white, all ? 1.2 : 0.95);
 					}
 				}
 				const flash = t - hitAt;
 				if (flash >= 0 && flash < 0.25) {
-					for (let d = -24; d <= 24; d++) setSample(out, (home + d + ring) % ring, palette, SLOT.base, (1 - flash / 0.25) * (1 - Math.abs(d) / 25));
+					for (let d = -30; d <= 30; d++) {
+						setSample(out, (home + d + ring) % ring, palette, SLOT.base, 1.15 * (1 - flash / 0.25) * (1 - Math.abs(d) / 31));
+					}
 				}
 			}
 		};
@@ -934,18 +1078,19 @@ const openSky = effect({
 				out.fill(0);
 
 				// Azure mist and the last of the rain, clearing as the gold comes.
-				const mist = 0.32 * smoothstep(0, 0.8, t) * (1 - smoothstep(p.bloom, p.glitter, t));
+				// The mist holds its level until the gold has covered the frame, then goes out under it.
+				const mist = 0.56 * smoothstep(0, 0.35, t) * (1 - smoothstep(p.glitter, p.settle, t));
 				if (mist > 0.002) {
 					for (let i = 0; i < g.count; i++) {
 						const n = noise3(i * 0.02, t * 0.15, 3.3);
-						setSample(out, i, palette, lerp(SLOT.accent, SLOT.white, 0.15 * n), mist * (0.45 + 0.55 * n));
+						setSample(out, i, palette, lerp(SLOT.accent, SLOT.white, 0.15 * n), mist * (0.62 + 0.5 * n));
 					}
 				}
 				const rain = 1 - smoothstep(0.5, p.dry, t);
 				if (rain > 0) {
 					const now = Math.floor(t * 40);
 					for (let s = now - 6; s <= now; s++) {
-						const v = 0.45 * Math.exp(-(t - s / 40) / 0.045);
+						const v = 0.7 * Math.exp(-(t - s / 40) / 0.045);
 						for (let j = 0; j < 2; j++) {
 							if (hash01(s * 29 + j * 11 + 5) > rain * 0.8) continue;
 							addSample(out, Math.floor(hash01(s * 17 + j * 13 + 1) * g.count), palette, SLOT.white, v);
@@ -954,24 +1099,32 @@ const openSky = effect({
 				}
 				const flash = hit(t - p.flash, 0.08) + 0.6 * hit(t - p.flash - 0.2, 0.08);
 				if (flash > 0.003) {
-					for (let d = -40; d <= 40; d++) addSample(out, wrap(far + d), palette, SLOT.white, 0.4 * flash * (1 - Math.abs(d) / 41));
+					for (let d = -50; d <= 50; d++) addSample(out, wrap(far + d), palette, SLOT.white, 0.65 * flash * (1 - Math.abs(d) / 51));
+				}
+				// That flash's thunder, a second and a half behind it: the storm's last word on the room.
+				const away = clamp((t - p.thunder) / 0.25) * (1 - smoothstep(p.thunder + 0.6, p.thunder + 2.6, t));
+				if (away > 0.01) {
+					for (let i = 0; i < ring; i++) {
+						const n = noise3(i * 0.03, t * 0.5, 6.7);
+						addSample(out, i, palette, SLOT.accent, 0.24 * away * (0.4 + 0.6 * n));
+					}
 				}
 
 				// Gold warms the beam's centre as the chord swells in, fills the beam from there, then
 				// spills from the beam ends round the ring.
-				const settle = 1 - 0.25 * smoothstep(p.settle, p.end, t);
+				const settle = 1 - 0.18 * smoothstep(p.settle, p.end, t);
 				const dawn = smoothstep(p.dry - 0.5, p.bloom, t);
 				if (dawn > 0 && t < p.spill) {
 					for (let b = 0; b < beamCount; b++) {
 						const x = Math.abs(b - (beamCount - 1) / 2) / half;
-						addSample(out, beamStart + b, palette, SLOT.base, 0.35 * dawn * Math.exp(-(x * x) / 0.08));
+						addSample(out, beamStart + b, palette, SLOT.base, 0.55 * dawn * Math.exp(-(x * x) / 0.08));
 					}
 				}
 				if (t >= p.bloom) {
 					const reach = 4 + smoothstep(p.bloom, p.spill, t) * (half - 4);
 					for (let b = 0; b < beamCount; b++) {
 						const fromCentre = Math.abs(b - (beamCount - 1) / 2);
-						if (fromCentre <= reach) setSample(out, beamStart + b, palette, SLOT.base, 0.85 * settle);
+						if (fromCentre <= reach) setSample(out, beamStart + b, palette, SLOT.base, 0.95 * settle);
 					}
 				}
 				if (t >= p.spill) {
@@ -980,8 +1133,8 @@ const openSky = effect({
 						const d = Math.min(apart(i, north), apart(i, south));
 						if (d > reach) continue;
 						const front = t < p.glitter ? clamp(1 - (reach - d) / 30) : 0;
-						setSample(out, i, palette, SLOT.base, (0.8 + 0.2 * front) * settle);
-						if (front > 0) addSample(out, i, palette, SLOT.white, 0.6 * front);
+						setSample(out, i, palette, SLOT.base, (0.9 + 0.25 * front) * settle);
+						if (front > 0) addSample(out, i, palette, SLOT.white, 0.8 * front);
 					}
 				}
 
@@ -994,7 +1147,7 @@ const openSky = effect({
 							const age = t - (s / 10 + 0.05 * j);
 							if (age < 0) continue;
 							const i = Math.floor(hash01(s * 31 + j * 17 + 9) * ring);
-							addSample(out, i, palette, SLOT.white, Math.exp(-age / 0.07));
+							addSample(out, i, palette, SLOT.white, 1.2 * Math.exp(-age / 0.07));
 						}
 					}
 				}
@@ -1005,14 +1158,14 @@ const openSky = effect({
 
 /**
  * The end, scored by light-before-thunder/homecoming.m4a: rain on the frame easing off, the storm
- * rolling away, the heart slowing to rest and the spark's last lap home. The Goodnight hold plays
- * it from its end, where the ember rests.
+ * rolling away, the sky clearing star by star, the heart slowing to rest and the spark's last lap
+ * home. The Goodnight hold plays it from its end, where the ember rests under the stars.
  */
 const homecoming = effect({
 	id: 'homecoming',
 	name: 'Homecoming',
 	role: 'bed',
-	blurb: 'Rain easing off, the storm rolling away, the heart slowing, the last spark lapping home to rest.',
+	blurb: 'Rain easing off, the storm rolling away, stars coming out, the last spark lapping home to rest.',
 	// The soundtrack's timing table arrives as parameters; `from` skips ahead into the resting ember.
 	params: { ...HOMECOMING, from: 0 },
 	create(g) {
@@ -1039,9 +1192,9 @@ const homecoming = effect({
 		};
 		const patch = (out: Float32Array, palette: Float32Array, at: number, width: number, level: number) => {
 			for (let d = -width; d <= width; d++) {
-				const shape = level * Math.pow(1 - Math.abs(d) / (width + 1), 1.4);
-				addSample(out, wrap(at + d), palette, SLOT.accent, 0.6 * shape);
-				addSample(out, wrap(at + d), palette, SLOT.white, 0.5 * shape);
+				const shape = level * Math.pow(1 - Math.abs(d) / (width + 1), 1.3);
+				addSample(out, wrap(at + d), palette, SLOT.accent, 0.75 * shape);
+				addSample(out, wrap(at + d), palette, SLOT.white, 0.6 * shape);
 			}
 		};
 
@@ -1055,20 +1208,22 @@ const homecoming = effect({
 				const t = f.t + p.from;
 				out.fill(0);
 
-				// The wet frame glows warm, fading as the rain stops; the spark takes the light round with it.
+				// The wet frame glows warm while it rains. Behind it a clear night comes up, and the
+				// spark's last lap wipes the wet warmth off to reveal the sky it leaves behind.
 				const u = clamp((t - p.leave) / (p.home - p.leave));
 				const run = ring * u * u * (3 - 2 * u);
-				const warm = 0.36 * (1 - smoothstep(p.ease, p.home, t));
-				if (warm > 0.002) {
-					for (let i = 0; i < ring; i++) {
-						if (t >= p.leave && wrap(i - home) < run) continue;
-						const n = noise3(i * 0.03, t * 0.08, 1.7);
-						setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, n), warm * (0.55 + 0.45 * n));
-					}
-					const beam = warm * (1 - smoothstep(p.leave, p.leave + 10, t));
-					for (let b = 0; b < beamCount; b++) {
-						setSample(out, beamStart + b, palette, SLOT.base, beam * (0.55 + 0.45 * noise3(b * 0.05, t * 0.08, 5.3)));
-					}
+				const warm = 0.58 * (1 - smoothstep(p.ease, p.home, t));
+				const sky = smoothstep(p.dry - 8, p.stars - 2, t);
+				for (let i = 0; i < ring; i++) {
+					const n = noise3(i * 0.03, t * 0.08, 1.7);
+					const swept = t >= p.leave && wrap(i - home) < run ? 1 : 0;
+					setSample(out, i, palette, SLOT.base, 0.5 * Math.max(sky, swept) * (0.66 + 0.34 * n));
+					const wet = warm * (1 - swept);
+					if (wet > 0.002) addSample(out, i, palette, lerp(SLOT.base, SLOT.glow, n), wet * (0.6 + 0.4 * n));
+				}
+				for (let b = 0; b < beamCount; b++) {
+					const n = noise3(b * 0.05, t * 0.08, 5.3);
+					setSample(out, beamStart + b, palette, SLOT.base, (0.48 * sky + warm) * (0.62 + 0.38 * n));
 				}
 
 				// Rain landing on the frame: specks that thin out as it eases.
@@ -1076,12 +1231,12 @@ const homecoming = effect({
 				if (rain > 0) {
 					const now = Math.floor(t * 40);
 					for (let s = now - 6; s <= now; s++) {
-						const v = 0.5 * Math.exp(-(t - s / 40) / 0.045);
+						const v = 0.75 * Math.exp(-(t - s / 40) / 0.045);
 						for (let j = 0; j < 2; j++) {
 							if (hash01(s * 29 + j * 11 + 7) > rain * 0.9) continue;
 							const i = Math.floor(hash01(s * 17 + j * 13 + 3) * g.count);
 							addSample(out, i, palette, SLOT.accent, v);
-							addSample(out, i, palette, SLOT.white, 0.4 * v);
+							addSample(out, i, palette, SLOT.white, 0.5 * v);
 						}
 					}
 				}
@@ -1090,35 +1245,60 @@ const homecoming = effect({
 				for (let s = Math.floor((t - 0.9) / 0.45); s <= Math.floor(t / 0.45); s++) {
 					const at = s * 0.45 + 0.4 * hash01(s * 13 + 5);
 					const age = t - at;
-					if (s < Math.floor(p.ease / 0.45) || s * 0.45 >= p.end - 0.6 || age < 0 || age > 0.5) continue;
-					const chance = 0.75 * smoothstep(p.ease, p.dry, at) * (1 - 0.7 * smoothstep(p.dry, p.end, at));
+					if (s < Math.floor(p.ease / 0.45) || s * 0.45 >= p.stars || age < 0 || age > 0.5) continue;
+					const chance = 0.75 * smoothstep(p.ease, p.dry, at) * (1 - 0.7 * smoothstep(p.dry, p.stars, at));
 					if (hash01(s * 7 + 11) >= chance) continue;
 					const i = Math.floor(hash01(s * 19 + 3) * g.count);
-					const v = 0.8 * hit(age, 0.12);
+					const v = 1.1 * hit(age, 0.12);
 					addSample(out, i, palette, SLOT.white, v);
-					if (i + 1 < g.count) addSample(out, i + 1, palette, SLOT.accent, 0.5 * v);
+					if (i + 1 < g.count) addSample(out, i + 1, palette, SLOT.accent, 0.6 * v);
 				}
 
 				// The storm rolling away: overhead first, then ever farther to the north-east.
 				const flash1 = flicker(t - p.flash1, 0);
 				if (flash1 > 0) {
-					patch(out, palette, north, 30, 0.8 * flash1);
-					for (let b = 0; b < beamCount; b++) addSample(out, beamStart + b, palette, SLOT.white, 0.7 * flash1 * (b / beamCount));
+					patch(out, palette, north, 34, 1.15 * flash1);
+					for (let b = 0; b < beamCount; b++) addSample(out, beamStart + b, palette, SLOT.white, 0.9 * flash1 * (b / beamCount));
 				}
 				const flash2 = flicker(t - p.flash2, 1);
-				if (flash2 > 0) patch(out, palette, Math.round((far + north) / 2), 55, 0.6 * flash2);
+				if (flash2 > 0) patch(out, palette, Math.round((far + north) / 2), 60, 0.9 * flash2);
 				const flash3 = flicker(t - p.flash3, 2);
-				if (flash3 > 0) patch(out, palette, far, 45, 0.45 * flash3);
+				if (flash3 > 0) patch(out, palette, far, 50, 0.7 * flash3);
 				const flash4 = flicker(t - p.flash4, 3);
-				if (flash4 > 0) patch(out, palette, far, 30, 0.3 * flash4);
+				if (flash4 > 0) patch(out, palette, far, 34, 0.5 * flash4);
+
+				// The cleared sky: mirrors stars() in timing.ts, each star up for good and slowly alive.
+				if (t >= p.stars) {
+					for (let s = 0; p.stars + s * 0.7 < p.end - 0.4; s++) {
+						const at = p.stars + s * 0.7 + 0.35 * hash01(s * 23 + 7);
+						if (t < at) break;
+						const i = Math.floor(hash01(s * 37 + 13) * ring);
+						const born = smoothstep(at, at + 0.35, t);
+						const alive = 0.7 + 0.3 * noise3(s * 0.7, t * 0.25, 6.1);
+						// Each star strikes with its bell, then settles to the light it keeps.
+						const v = 0.9 * born * alive + 0.55 * hit(t - at, 0.3);
+						addSample(out, i, palette, SLOT.white, v);
+						addSample(out, wrap(i - 1), palette, SLOT.third, 0.35 * v);
+						addSample(out, wrap(i + 1), palette, SLOT.third, 0.35 * v);
+					}
+				}
 
 				// The last lap: a warm spark leaves home, and home is where it goes out.
 				if (t >= p.leave && t < p.home + 0.8) {
-					const level = 0.75 * smoothstep(p.leave, p.leave + 0.8, t) * (1 - smoothstep(p.home, p.home + 0.8, t));
-					for (let q = 0; q < 33; q++) {
+					const level = 1.05 * smoothstep(p.leave, p.leave + 0.8, t) * (1 - smoothstep(p.home, p.home + 0.8, t));
+					for (let q = 0; q < 40; q++) {
 						const i = wrap(Math.round(home + run) - q);
 						if (q < 3) addSample(out, i, palette, SLOT.white, level);
-						else addSample(out, i, palette, lerp(SLOT.glow, SLOT.deep, (q - 3) / 30), level * Math.pow(1 - (q - 3) / 30, 1.5));
+						else addSample(out, i, palette, lerp(SLOT.glow, SLOT.deep, (q - 3) / 37), level * Math.pow(1 - (q - 3) / 37, 1.4));
+					}
+				}
+				// Home: the spark arrives and blooms into the ember that stays.
+				const arrive = t - p.home;
+				if (arrive >= 0 && arrive < 2.2) {
+					const bloom = hit(arrive, 0.5);
+					for (let d = -50; d <= 50; d++) {
+						addSample(out, wrap(home + d), palette, SLOT.accent, 1.2 * bloom * Math.exp(-(d * d) / 420));
+						if (Math.abs(d) < 10) addSample(out, wrap(home + d), palette, SLOT.white, 0.8 * bloom * (1 - Math.abs(d) / 10));
 					}
 				}
 
@@ -1137,8 +1317,8 @@ const homecoming = effect({
 						pulse = strength * (hit(since, 0.3) + 0.5 * (1 - k / last) * hit(dub, 0.22));
 					}
 					const glow = smoothstep(p.heart - 0.5, p.heart + 3, t);
-					for (let d = -64; d <= 64; d++) {
-						const level = glow * (0.45 * Math.exp(-(d * d) / 100) + 0.05 * Math.exp(-(d * d) / 1500)) + 0.35 * pulse * Math.exp(-(d * d) / 200);
+					for (let d = -72; d <= 72; d++) {
+						const level = glow * (0.62 * Math.exp(-(d * d) / 130) + 0.1 * Math.exp(-(d * d) / 1900)) + 0.5 * pulse * Math.exp(-(d * d) / 260);
 						addSample(out, wrap(home + d), palette, SLOT.glow, level);
 					}
 				}
@@ -1152,7 +1332,10 @@ const homecoming = effect({
 const lightsOffSting = sting('Lights off', {
 	length: 3,
 	palette: 'ultraviolet',
-	timeline: [{ at: 0, section: 'void', look: look({ bed: lightsOff }) }]
+	timeline: [
+		{ at: 0, section: 'void', look: look({ bed: lightsOff }) },
+		{ at: 2.78, kick: 1 }
+	]
 });
 
 
@@ -1172,6 +1355,8 @@ export default evening('Light Before Thunder', {
 			palette: firstStrike,
 			bpm: BPM,
 			enter: { light: 'cut' },
+			// The storm cloud after the strike is handed to Thunder's own overlay, not eased out.
+			end: 'hold',
 			timeline: [
 				{ at: 0, section: 'breakdown', look: look({ bed: thunderhead, floor: 0 }) },
 				{ at: OPENING.ignite, section: 'build' },
@@ -1185,7 +1370,8 @@ export default evening('Light Before Thunder', {
 		block('First Strike', {
 			id: 'first-strike-songs',
 			palette: firstStrike,
-			enter: { light: 'cut', hit: 'slam' },
+			// The opening's rolling cloud dissolves into Thunder's, so the room never restates itself.
+			enter: { light: 3 },
 			between: { crossfade: 4 },
 			songs: [
 				song('Thunder', {
@@ -1195,7 +1381,6 @@ export default evening('Light Before Thunder', {
 				}),
 				song('Desire', { by: 'Ian Asher', id: 'UARSiWU8eoo' }),
 				song("I'm Good (Blue)", { by: 'David Guetta', id: 'pIb7QoXdP_k' }),
-				song('Princezna', { by: 'EARTH', id: 'oMjF7HyD_K4' }),
 				song('Animals', { by: 'Martin Garrix', id: 'DYf28lOb8KU' }),
 				song('La La Land', { by: 'Green Velvet', id: 'rjXMBZJo-VA' }),
 				song('Like a Prayer', { by: 'Josh Fawaz', id: 'wy7_PFy-ztQ' }),
@@ -1258,11 +1443,10 @@ export default evening('Light Before Thunder', {
 		pause('Heat Lightning', {
 			look: look({ bed: heatLightning, palette: 'copper', floor: 0.15 }),
 			enter: { light: 4 },
+			length: '3m',
 			music: [
 				song('Intro', { by: 'The xx', id: 'xMV6l2y67rk' }),
-				song('After Dark', { by: 'Mr.Kitty', id: 'Cl5Vkd4N03Q' }),
-				song('Sunset Lover', { by: 'Petit Biscuit', id: 'WrWcOLlmv7k' }),
-				song('Resonance', { by: 'Home', id: 'exvt4dzmuaI' })
+				song('Sunset Lover', { by: 'Petit Biscuit', id: 'WrWcOLlmv7k' })
 			]
 		}),
 
@@ -1304,6 +1488,7 @@ export default evening('Light Before Thunder', {
 				song('Habibi', { by: 'STEIN27', id: 'tWEaUKCQ8Fg' }),
 				song('Cígo a káva', { by: 'Viktor Sheen', id: 'rgN9j5WQVdc' }),
 				song('Hannah Montana', { by: 'Calin', id: 'rtRf-iukdvc' }),
+				song('Princezna', { by: 'EARTH', id: 'oMjF7HyD_K4' }),
 				song('Párno Nýdrle', { by: 'VOJIR', id: 'NDvtXeAVjOM' }),
 				song('ASSETTO CLUB', { by: 'ASSETTO DRIFTER', id: 'DhM_tQAKqB0' }),
 				song('Safír', { by: 'Calin', id: 'nTzU8TjvxyE' }),
@@ -1314,10 +1499,10 @@ export default evening('Light Before Thunder', {
 		pause('Eye of the Storm', {
 			look: look({ bed: eyeOfStorm, palette: 'deep sea', floor: 0.15 }),
 			enter: { sting: blackout('2.5s') },
+			length: '3m',
 			music: [
 				song('Pink + White', { by: 'Frank Ocean', id: '9cHbvRUALrc' }),
-				song('Kerala', { by: 'Bonobo', id: 'sbygyYTKzVE' }),
-				song('Say My Name', { by: 'ODESZA', id: 'JbLYOE5TEyo' })
+				song('Kerala', { by: 'Bonobo', id: 'sbygyYTKzVE' })
 			]
 		}),
 
@@ -1338,8 +1523,9 @@ export default evening('Light Before Thunder', {
 		narration('Return Stroke', {
 			audio: './light-before-thunder/return-stroke.m4a',
 			palette: returnStroke,
-			bpm: 60 / (RETURN_STROKE.lap / 2),
+			bpm: BPM,
 			enter: { light: 'cut' },
+			end: 'hold',
 			timeline: [
 				{ at: 0, section: 'breakdown', look: look({ bed: { effect: thunderhead, params: RETURN_STROKE }, floor: 0 }) },
 				{ at: RETURN_STROKE.ignite, section: 'build' },
@@ -1352,7 +1538,7 @@ export default evening('Light Before Thunder', {
 
 		block('Squall Line', {
 			palette: 'siren',
-			enter: { light: 'cut' },
+			enter: { light: 2 },
 			between: { crossfade: 3 },
 			songs: [
 				song('Back In Black', {
@@ -1374,6 +1560,7 @@ export default evening('Light Before Thunder', {
 		pause('Low Pressure', {
 			look: look({ bed: { effect: staticAir, params: { listen: 1 } }, palette: 'sodium night', floor: 0.12 }),
 			enter: { light: 3 },
+			length: '3m',
 			music: [
 				song('Nightcall', { by: 'Kavinsky', id: 'LfgNorryffc' }),
 				song('Awake', { by: 'Tycho', id: 'dm4tkSNKfFI' })
@@ -1427,12 +1614,10 @@ export default evening('Light Before Thunder', {
 		pause('Petrichor', {
 			look: look({ bed: wetStreet, palette: petrichor, floor: 0.12 }),
 			enter: { light: 5 },
+			length: '3m',
 			music: [
 				song('BIRDS OF A FEATHER', { by: 'Billie Eilish', id: 'WKZO-CWeOVA' }),
-				song('Snooze', { by: 'SZA', id: 'ZqSlV5LmrTg' }),
-				song('Apocalypse', { by: 'Cigarettes After Sex', id: 'DdI598gKkKw' }),
-				song('Space Song', { by: 'Beach House', id: 'uSDWUx7S8dw' }),
-				song('Xtal', { by: 'Aphex Twin', id: 'sWcLccMuCA8' })
+				song('Space Song', { by: 'Beach House', id: 'uSDWUx7S8dw' })
 			]
 		}),
 

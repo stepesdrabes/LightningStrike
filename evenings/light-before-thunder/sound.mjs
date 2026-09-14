@@ -14,7 +14,7 @@ import { HOMECOMING, OPENING, OPEN_SKY, RETURN_STROKE, WALL_CLOUD } from './timi
 const MOMENTS = {
 	'first-strike': {
 		length: OPENING.end,
-		lufs: null,
+		lufs: -14,
 		score: (mix) =>
 			scoreStorm(mix, OPENING, {
 				root: 41.2,
