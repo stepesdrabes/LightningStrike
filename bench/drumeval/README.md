@@ -1,9 +1,9 @@
-# Drum evaluation and fusion training
+# Drum evaluation and Striker training
 
 These tools measure kick, snare and hi-hat detection on labelled corpora with the production
-analysis, score it under the published benchmark protocols, and train the optional drum fusion
-model (`models/drum-fusion.json`). They read corpora from ignored `bench/corpus/` and write to
-ignored `bench/reports/drumeval/`.
+analysis, score it under the published benchmark protocols, and train Striker, the optional drum
+hit classifier (`models/striker.json`). They read corpora from ignored `bench/corpus/` and write
+to ignored `bench/reports/drumeval/`.
 
 ## Corpora
 
@@ -21,20 +21,20 @@ ignored `bench/reports/drumeval/`.
 | `star` | STAR Drums training excerpts over real non-drum stems (`convert-star.ts --every=6`) | drums re-rendered from pseudo-labels | hi-hat and cymbal training |
 | `mdbpp` | MDBDrums++: the 23 MDB drum recordings, re-annotated as MIDI | MIDI with velocities | benchmark only |
 | `gmd` | Groove MIDI Dataset test split: 124 Roland TD-11 performances with audio | performance MIDI | benchmark only |
-| `library` | the desktop app's songs | none | listening sessions |
+| `library` | the desktop app's songs | none | run comparisons and owner reviews |
 
 Convert a downloaded corpus with the matching `convert-*.ts` script; each writes `tracks.json`
 (`convert-enst.ts --solo` writes `enstsolo`, `--two-thirds` writes `enst23`; `convert-mdbpp.ts`
 points MDBDrums++ at the local MDB drum files, whose samples it shares). A variant corpus
 (`variantOf`) holds the same recordings rendered or labelled differently: it trains only the
-classes `fusion.py --train-variants` names, in exactly the folds that train its original, and is
-scored like it.
+classes `train-striker.py --train-variants` names, in exactly the folds that train its original,
+and is scored like it.
 
 RBMA13's public snare labels leave claps and side sticks out, and STAR's non-drum stems carry
 unlabelled clap residue; either one teaches the classifier to reject claps and snaps, so
-`fusion.py` ignores RBMA snare labels by default (`--ignore=rbma:snare`). The shipped recipe also
-ignores STAR's snare, kick and tom labels: STAR raised hi-hat and cymbal F across the benchmarks
-but lowered kick and tom F, as the drums-only variants did for kicks and toms.
+`train-striker.py` ignores RBMA snare labels by default (`--ignore=rbma:snare`). The shipped
+recipe also ignores STAR's snare, kick and tom labels: STAR raised hi-hat and cymbal F across
+the benchmarks but lowered kick and tom F, as the drums-only variants did for kicks and toms.
 
 Two label policies exist. `light`, the product's: ghost notes, brush strokes, side sticks,
 pedal hats and shaker-like percussion are optional references, neither required nor counted as
@@ -48,18 +48,18 @@ export and `benchmark.py` drop tambourine and shakers as in ADTOF's `MIDI_REDUCE
 ```sh
 node bench/drumeval/prepare.ts --corpus=rwc --batch=8  # beats, ADTOF, separation, ADTOF per source
 node bench/drumeval/evaluate.ts --label=base --export-candidates=v12e
-bench/reports/drumeval/py/Scripts/python bench/drumeval/fusion.py --candidates=v12e --train-held-out \
-  --corpora=mdb,enst,rbma,idmt,rwc,a2md,mdbsolo,enstsolo,star --train-variants=snare,hat,cymbal \
+bench/reports/drumeval/py/Scripts/python bench/drumeval/train-striker.py --candidates=v12e --name="Striker 1.0" \
+  --train-held-out --corpora=mdb,enst,rbma,idmt,rwc,a2md,mdbsolo,enstsolo,star --train-variants=snare,hat,cymbal \
   --ignore=rbma:snare,star:snare,star:kick,star:tom --noisy=a2md,rwc --agreement-runs=base \
-  --balance=0.5 --seeds=5 --labels=strict --score=light --out=bench/reports/drumeval/fusion/v19-cv-strict
-node bench/drumeval/evaluate.ts --label=fused --model=bench/reports/drumeval/fusion/v19-cv-strict --compare=base
-node bench/drumeval/judged.ts --label=fused            # listener-confirmed partial labels
-node bench/drumeval/reviews.ts --label=fused           # the owner's saved drum reviews
+  --balance=0.5 --seeds=5 --labels=strict --score=light --out=bench/reports/drumeval/striker/v19-cv-strict
+node bench/drumeval/evaluate.ts --label=striker --model=bench/reports/drumeval/striker/v19-cv-strict --compare=base
+node bench/drumeval/judged.ts --label=striker          # listener-confirmed partial labels
+node bench/drumeval/reviews.ts --label=striker         # the owner's saved drum reviews
 ```
 
-That recipe's `model.json` is the installed `models/drum-fusion.json`. `--noisy` keeps an
-aligned-MIDI class only where ADTOF agrees with it and ignores its pedal hats and soft strokes;
-`--balance` weights corpora by size to that negative power.
+That recipe's `model.json` is Striker 1.0, the installed `models/striker.json`. `--noisy` keeps
+an aligned-MIDI class only where ADTOF agrees with it and ignores its pedal hats and soft
+strokes; `--balance` weights corpora by size to that negative power.
 
 `prepare.ts` separates on DirectML on Windows (`--provider=cpu` elsewhere) and caches every model
 input by the decoded audio's hash: beats, ADTOF on the mix and on the separated drum stem, the
@@ -70,17 +70,19 @@ minutes. With a model directory it applies each track's fold model (`folds.json`
 outside every fold use `model.json`. Runs with a model also record each class's hits,
 the hat without cymbals and the toms, for benchmark scoring.
 
-`fusion.py` needs Python 3.12 with LightGBM, NumPy and SciPy. It trains one classifier per class
-(kick, snare, hat, cymbal, tom) with `--labels=light|strict`, and `--score` scores against the
-other policy. Track folds (default) score every trainable track with a model that never saw it
-and choose one threshold per class on those scores. `--loco` leaves each corpus out: its model
-and threshold (chosen by inner track folds) come from the other corpora only, the cross-dataset
-protocol. `--seeds` averages the log-odds of that many classifiers per class: single classifiers
-move class F by up to 0.016 (toms 0.036) when a few training candidates change. Thresholds sit
-on a 0.05 grid whose neighbours often score alike, so retraining can still step a class's
-threshold. Candidate files and models carry `CANDIDATE_REVISION` from `drumFusion.ts`:
-`fusion.py` refuses candidates of mixed revisions and analysis refuses a model trained on
-another revision, so re-export candidates whenever proposals or features change.
+`train-striker.py` needs Python 3.12 with LightGBM, NumPy and SciPy. It trains one classifier
+per class (kick, snare, hat, cymbal, tom) with `--labels=light|strict`, and `--score` scores
+against the other policy. Track folds (default) score every trainable track with a model that
+never saw it and choose one threshold per class on those scores. `--loco` leaves each corpus
+out: its model and threshold (chosen by inner track folds) come from the other corpora only, the
+cross-dataset protocol. `--seeds` averages the log-odds of that many classifiers per class:
+single classifiers move class F by up to 0.016 (toms 0.036) when a few training candidates
+change. Thresholds sit on a 0.05 grid whose neighbours often score alike, so retraining can
+still step a class's threshold. Candidate files and models carry `CANDIDATE_REVISION` from
+`striker.ts`: `train-striker.py` refuses candidates of mixed revisions and analysis refuses a
+model trained on another revision, so re-export candidates whenever proposals or features
+change. `--name` gives the exported models their release name, such as `Striker 1.0`; analyses
+record it with the model's content hash.
 
 ## Published benchmarks
 
@@ -91,7 +93,7 @@ the mean over Vogl's three folds. `--adtof` scores the released ADTOF weights on
 activations with ADTOF's own peak picking, a local reproduction of the published baseline.
 
 ```sh
-node bench/drumeval/evaluate.ts --label=loco --model=bench/reports/drumeval/fusion/v19-loco-strict \
+node bench/drumeval/evaluate.ts --label=loco --model=bench/reports/drumeval/striker/v19-loco-strict \
   --corpus=mdb,enst,enst23,rbma,idmt,mdbsolo,enstsolo,mdbpp,gmd
 bench/reports/drumeval/py/Scripts/python bench/drumeval/benchmark.py --run=loco \
   --corpora=mdb,enst,enst23,rbma,idmt,mdbsolo,enstsolo,mdbpp,gmd
@@ -107,5 +109,4 @@ the local reproduction scores 0.781 there and 0.700 at equal gain, close to the 
 al. 2026 measured on an unstated ENST mix. Results: [DRUM_RELIABILITY.md](../DRUM_RELIABILITY.md).
 
 `errors.ts` attributes false positives and misses to neighbouring instruments; `diff.ts` lists
-the hits two runs disagree on. `judge/build.ts` turns the passages where two runs disagree
-most into a blind A/B listening session; `judge/server.ts` serves it and records verdicts.
+the hits two runs disagree on.

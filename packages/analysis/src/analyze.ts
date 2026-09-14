@@ -52,14 +52,14 @@ import { barGroups, quantiseOnsets } from './quantise.ts';
 import { mergeKickEvidence } from './kickEvidence.ts';
 import {
 	BENCHMARK_KINDS,
-	FUSION_KINDS,
-	fuseDrums,
-	fusionCandidates,
+	STRIKER_KINDS,
+	runStriker,
+	strikerCandidates,
 	type Candidates,
-	type FusionInputs,
-	type FusionKind,
-	type FusionModel
-} from './drumFusion.ts';
+	type StrikerInputs,
+	type StrikerKind,
+	type StrikerModel
+} from './striker.ts';
 import { analysisPrelude, type AnalysisPrelude } from './prelude.ts';
 import { consolidateSections } from './consolidate.ts';
 import {
@@ -137,8 +137,8 @@ interface AnalyzeInput {
 	sourceActivations?: Record<'kick' | 'snare' | 'hat' | 'cymbal', Float32Array>;
 	/** ADTOF activations of the separated drum stem, in `drums.activations` layout. */
 	stemActivations?: Float32Array;
-	/** Trained candidate fusion; replaces the rule-based drum merges when every input is present. */
-	drumFusion?: FusionModel;
+	/** Striker model; replaces the rule-based drum merges when every input is present. */
+	striker?: StrikerModel;
 	/** `analysisPrelude` of mono, left, right and sampleRate, computed ahead. */
 	prelude?: AnalysisPrelude;
 	/** Optional genre family and synced lyrics for section vocabulary and chorus location. */
@@ -189,12 +189,12 @@ interface AnalyzeInput {
 		/** The downbeat phase walk's runs and the restarts the grid took, as beat indices. */
 		phase?: { runs: PhaseRun[]; cuts: number[]; opening: number };
 		/**
-		 * Set to an empty object to receive fusion candidates even without a model, and with one,
+		 * Set to an empty object to receive Striker candidates even without a model, and with one,
 		 * each class's hits as analysis would emit that class alone.
 		 */
-		fusion?: {
-			candidates?: Partial<Record<FusionKind, Candidates>>;
-			classes?: Partial<Record<FusionKind, ReturnType<typeof attackHits>>>;
+		striker?: {
+			candidates?: Partial<Record<StrikerKind, Candidates>>;
+			classes?: Partial<Record<StrikerKind, ReturnType<typeof attackHits>>>;
 		};
 		drums?: {
 			dsp: { kick: DrumStream; snare: DrumStream; hat: DrumStream };
@@ -369,7 +369,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// Detect drums before refining boundaries; quantisation waits for repeat groups.
 	const dspDrums = detectDrums(features.spec, { beatPeriod: grid.beatPeriod, odf: features.odf });
 	const { separatedDrums: sources, separatedOnsets } = input;
-	const fusionInputs: FusionInputs | null = input.drums?.activations && input.stemActivations
+	const strikerInputs: StrikerInputs | null = input.drums?.activations && input.stemActivations
 		&& input.sourceActivations && sources?.hat && sources.cymbal && sources.sampleRate === sampleRate
 		? {
 				mix: input.drums.activations, stem: input.stemActivations, sourceActivations: input.sourceActivations,
@@ -384,19 +384,19 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 				beats: grid.beats, barTimes: bars.time
 			}
 		: null;
-	const candidates = fusionInputs && (input.drumFusion || input.probe?.fusion)
-		? fusionCandidates(fusionInputs, input.probe?.fusion ? BENCHMARK_KINDS : FUSION_KINDS)
+	const candidates = strikerInputs && (input.striker || input.probe?.striker)
+		? strikerCandidates(strikerInputs, input.probe?.striker ? BENCHMARK_KINDS : STRIKER_KINDS)
 		: null;
-	if (candidates && input.probe?.fusion) input.probe.fusion.candidates = candidates;
-	const fused = fusionInputs && candidates && input.drumFusion
-		? fuseDrums(input.drumFusion, fusionInputs, candidates)
+	if (candidates && input.probe?.striker) input.probe.striker.candidates = candidates;
+	const strikerDrums = strikerInputs && candidates && input.striker
+		? runStriker(input.striker, strikerInputs, candidates)
 		: null;
 	const snap = (stream: DrumStream) => snapStream(stream, features.odf, features.curves.fps, grid.beatPeriod);
-	const primaryDrums = fused
+	const primaryDrums = strikerDrums
 		? {
-				kick: snap(fused.kick),
-				snare: snap(fused.snare),
-				hat: snap(mergeStreams(fused.hat, fused.cymbal, CYMBAL_MERGE_S))
+				kick: snap(strikerDrums.kick),
+				snare: snap(strikerDrums.snare),
+				hat: snap(mergeStreams(strikerDrums.hat, strikerDrums.cymbal, CYMBAL_MERGE_S))
 			}
 		: input.drums
 		? {
@@ -426,7 +426,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	const separatedKit = separatedOnsets?.kick && separatedOnsets.snare
 		? { kick: separatedOnsets.kick, snare: separatedOnsets.snare }
 		: undefined;
-	const separated = sources && !fused
+	const separated = sources && !strikerDrums
 		? detectSeparatedDrums(sources, input.mono, sampleRate, features.odf, features.curves.fps, primaryDrums,
 			input.drums ? dspDrums.snare : undefined, separatedKit)
 		: undefined;
@@ -556,8 +556,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		duration
 	};
 	let drums: Record<'kick' | 'snare' | 'hat', ReturnType<typeof quantiseOnsets>>;
-	if (fused) {
-		// The fusion classifier already weighs bar repetition; completing its hits only adds false ones.
+	if (strikerDrums) {
+		// Striker already weighs bar repetition; completing its hits only adds false ones.
 		drums = {
 			kick: attackHits(detected.kick, duration),
 			snare: attackHits(detected.snare, duration),
@@ -580,11 +580,11 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		};
 	}
 	if (input.probe) input.probe.drums = { dsp: dspDrums, detected, quantiseOptions, final: drums };
-	if (fused && input.probe?.fusion) {
+	if (strikerDrums && input.probe?.striker) {
 		const alone = (stream: DrumStream) => attackHits(snap(stream), duration);
-		input.probe.fusion.classes = {
-			kick: drums.kick, snare: drums.snare, hat: alone(fused.hat), cymbal: alone(fused.cymbal),
-			...(fused.tom ? { tom: alone(fused.tom) } : {})
+		input.probe.striker.classes = {
+			kick: drums.kick, snare: drums.snare, hat: alone(strikerDrums.hat), cymbal: alone(strikerDrums.cymbal),
+			...(strikerDrums.tom ? { tom: alone(strikerDrums.tom) } : {})
 		};
 	}
 	const kicks = countPerBar(drums.kick.times, bars.time, bars.count);
@@ -891,7 +891,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	};
 	return {
 		version: ANALYSIS_VERSION,
-		...(fused ? { drumFusion: input.drumFusion!.version } : {}),
+		...(strikerDrums ? { striker: input.striker!.version } : {}),
 		hash: input.hash,
 		trackId: input.trackId,
 		title: input.title,

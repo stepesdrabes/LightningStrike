@@ -3,14 +3,14 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { GenreFamily } from '@mv/core';
 import { ANALYSIS_VERSION, SHOW_VERSION } from '@mv/core';
-import { fusionCurrent, readInstalledFusion } from './fusionModel.ts';
+import { readInstalledStriker, strikerCurrent } from './strikerModel.ts';
 import { CACHE_DIR } from './paths.ts';
 import type { TrackMeta } from './ingest.ts';
 
-/** Read version, duration and fusion model from the analysis head; parsing every blob would slow the library. */
+/** Read version, duration and Striker model from the analysis head; parsing every blob would slow the library. */
 async function headOfAnalysis(
 	path: string
-): Promise<{ duration: number | null; version: number | null; drumFusion: string | null }> {
+): Promise<{ duration: number | null; version: number | null; striker: string | null }> {
 	let handle;
 	try {
 		handle = await open(path, 'r');
@@ -22,10 +22,10 @@ async function headOfAnalysis(
 			const value = match ? Number(match[1]) : Number.NaN;
 			return Number.isFinite(value) && value > 0 ? value : null;
 		};
-		const drumFusion = /"drumFusion"\s*:\s*"([^"]*)"/.exec(head)?.[1] ?? null;
-		return { duration: num('duration'), version: num('version'), drumFusion };
+		const striker = /"striker"\s*:\s*"([^"]*)"/.exec(head)?.[1] ?? null;
+		return { duration: num('duration'), version: num('version'), striker };
 	} catch {
-		return { duration: null, version: null, drumFusion: null };
+		return { duration: null, version: null, striker: null };
 	} finally {
 		await handle?.close();
 	}
@@ -87,7 +87,7 @@ export async function readLibrary(): Promise<LibraryEntry[]> {
 	if (!existsSync(CACHE_DIR)) return [];
 	const files = await readdir(CACHE_DIR);
 	const ids = files.filter((f) => f.endsWith('.meta.json')).map((f) => f.slice(0, -'.meta.json'.length));
-	const installedFusion = await readInstalledFusion();
+	const installedStriker = await readInstalledStriker();
 
 	const entries = await Promise.all(
 		ids.map(async (id): Promise<LibraryEntry | null> => {
@@ -106,7 +106,7 @@ export async function readLibrary(): Promise<LibraryEntry[]> {
 			const analysed = existsSync(analysisFile);
 			const head = analysed
 				? await headOfAnalysis(analysisFile)
-				: { duration: null, version: null, drumFusion: null };
+				: { duration: null, version: null, striker: null };
 
 			// Persist repaired metadata once rather than recover it on every listing.
 			if (!meta.duration && head.duration !== null) {
@@ -128,7 +128,7 @@ export async function readLibrary(): Promise<LibraryEntry[]> {
 				analysed,
 				current:
 					head.version === ANALYSIS_VERSION &&
-					(head.drumFusion === null || fusionCurrent(head.drumFusion, installedFusion)) &&
+					(head.striker === null || strikerCurrent(head.striker, installedStriker)) &&
 					show !== null &&
 					(show.version === SHOW_VERSION || show.authored !== 'engine'),
 				authored: show?.authored ?? 'none',

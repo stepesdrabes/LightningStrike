@@ -1,6 +1,6 @@
 import type { SectionKind } from './frame.ts';
 
-export const ANALYSIS_VERSION = 37;
+export const ANALYSIS_VERSION = 38;
 
 export interface TempoGrid {
 	/** Median over the track. For display and for a default time constant, never for timing. */
@@ -183,8 +183,8 @@ export interface TrackAnalysis {
 	version: number;
 	/** Separation model revision when individual drum sources supplied kick/snare evidence. */
 	drumSeparation?: string;
-	/** Drum fusion model version when it classified the kick, snare and hat onsets. */
-	drumFusion?: string;
+	/** Striker model version when it classified the kick, snare and hat onsets. */
+	striker?: string;
 	/** Of the decoded audio. A show pinned to a stale hash is rejected. */
 	hash: string;
 	trackId: string;

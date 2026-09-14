@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { ANALYSIS_VERSION, SHOW_VERSION } from '@mv/core';
-import { CANDIDATE_REVISION, FUSION_FEATURES, FUSION_KINDS } from './drumFusion.ts';
+import { CANDIDATE_REVISION, STRIKER_FEATURES, STRIKER_KINDS } from './striker.ts';
 import { readLibrary } from './library.ts';
 
 const dirs = vi.hoisted(() => ({ cache: '', models: '' }));
@@ -19,17 +19,17 @@ afterEach(async () => {
 	await rm(dirs.cache, { recursive: true, force: true });
 });
 
-const modelPath = () => join(dirs.models, 'drum-fusion.json');
+const modelPath = () => join(dirs.models, 'striker.json');
 
 async function installModel(version: string) {
 	const tree = { feature: [], threshold: [], left: [], right: [], leaf: [0] };
-	const classes = Object.fromEntries(FUSION_KINDS.map((kind) => [kind, { threshold: 0.5, trees: [tree] }]));
-	const model = { version, candidates: CANDIDATE_REVISION, features: FUSION_FEATURES, classes };
+	const classes = Object.fromEntries(STRIKER_KINDS.map((kind) => [kind, { threshold: 0.5, trees: [tree] }]));
+	const model = { version, candidates: CANDIDATE_REVISION, features: STRIKER_FEATURES, classes };
 	await writeFile(modelPath(), JSON.stringify(model));
 }
 
-async function saveSong(id: string, drumFusion?: string) {
-	const analysis = { version: ANALYSIS_VERSION, ...(drumFusion ? { drumFusion } : {}), duration: 100 };
+async function saveSong(id: string, striker?: string) {
+	const analysis = { version: ANALYSIS_VERSION, ...(striker ? { striker } : {}), duration: 100 };
 	await Promise.all([
 		writeFile(join(dirs.cache, `${id}.meta.json`), JSON.stringify({ id, source: id, title: id })),
 		writeFile(join(dirs.cache, `${id}.analysis.json`), JSON.stringify(analysis, null, '\t')),
@@ -40,17 +40,17 @@ async function saveSong(id: string, drumFusion?: string) {
 const currentById = async () => Object.fromEntries((await readLibrary()).map((entry) => [entry.id, entry.current]));
 
 describe('library', () => {
-	it('marks songs classified by another drum fusion model as not current', async () => {
-		await installModel('fusion-b');
-		await Promise.all([saveSong('retrained', 'fusion-a'), saveSong('installed', 'fusion-b'), saveSong('rules')]);
+	it('marks songs classified by another Striker model as not current', async () => {
+		await installModel('striker-b');
+		await Promise.all([saveSong('retrained', 'striker-a'), saveSong('installed', 'striker-b'), saveSong('rules')]);
 		expect(await currentById()).toEqual({ retrained: false, installed: true, rules: true });
 		await unlink(modelPath());
 		expect(await currentById()).toEqual({ retrained: false, installed: false, rules: true });
 	});
 
-	it('keeps fused songs current while the installed model file cannot be used', async () => {
-		await writeFile(modelPath(), JSON.stringify({ version: 'fusion-b', candidates: CANDIDATE_REVISION - 1 }));
-		await saveSong('retrained', 'fusion-a');
+	it('keeps Striker songs current while the installed model file cannot be used', async () => {
+		await writeFile(modelPath(), JSON.stringify({ version: 'striker-b', candidates: CANDIDATE_REVISION - 1 }));
+		await saveSong('retrained', 'striker-a');
 		expect(await currentById()).toEqual({ retrained: true });
 	});
 });

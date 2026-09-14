@@ -30,7 +30,7 @@ export interface CorpusTrack {
 	genre?: string;
 	/** False for corpora without drum labels, kept for listening and unlabelled diagnostics. */
 	labeled?: boolean;
-	/** Kept out of fusion training unless fusion.py --train-held-out; cross-dataset runs leave it out anyway. */
+	/** Kept out of Striker training unless train-striker.py --train-held-out; cross-dataset runs leave it out anyway. */
 	heldOut?: boolean;
 	/** Classes the corpus annotates; absent means every class. */
 	classes?: DrumClass[];

@@ -1,26 +1,27 @@
 # Drum reliability study, September 2026
 
-## Learned fusion and published benchmarks (analysis v37, September 14)
+## Striker 1.0 and published benchmarks (analysis v38, September 14)
 
 Analysis now separates the mix with HTDemucs and then jarredou's MDX23C DrumSep into kick,
 snare, hi-hat and cymbal sources. ADTOF transcribes the mix, the drum stem and each 44.1 kHz
 source. Onset candidates from those transcriptions and from the separated sources' attacks are
-classified per class by gradient-boosted trees (`packages/analysis/src/drumFusion.ts`, model
-`models/drum-fusion.json`, trained with [drumeval](drumeval/README.md)). Hats merge with ride
-and crash hits. Kick and snare levels also follow each hit's own separated-source loudness, so
-a clap under a loud kick lights as loudly as its peers. The rules in the sections below remain
-the fallback when the model or an input is missing.
+classified per class by Striker 1.0, LightningStrike's gradient-boosted trees
+(`packages/analysis/src/striker.ts`, model `models/striker.json`, trained with
+[drumeval](drumeval/README.md)). Hats merge with ride and crash hits. Kick and snare levels also
+follow each hit's own separated-source loudness, so a clap under a loud kick lights as loudly as
+its peers. The rules in the sections below remain the fallback when the model or an input is
+missing.
 
-Cross-dataset results: every benchmark is scored by a model that never saw that dataset,
-with thresholds chosen on the other corpora (`fusion.py --loco --labels=strict`). Scoring
-follows ADTOF and Vogl et al.: `MIDI_REDUCED_5` classes, `mir_eval` matching within 50 ms and
-F summed over all onsets of the scored classes (`drumeval/benchmark.py`). Each cell gives that
-F averaged over Vogl's three folds (for ENST its three drummers), as ADTOF reports, and then
+Cross-dataset results: every benchmark is scored by a model that never saw that dataset, with
+thresholds chosen on the other corpora (`train-striker.py --loco --labels=strict`). Scoring
+follows ADTOF and Vogl et al.: `MIDI_REDUCED_5` classes, `mir_eval` matching within 50 ms and F
+summed over all onsets of the scored classes (`drumeval/benchmark.py`). Each cell gives that F
+averaged over Vogl's three folds (for ENST its three drummers), as ADTOF reports, and then
 pooled over the whole dataset, as Weber et al. report; IDMT and Groove MIDI have no folds. The
 ADTOF column runs the released weights through the same scorer with ADTOF's own peak picking;
 its fold means land within 0.012 of ADTOF's published MDB and ENST numbers.
 
-| Benchmark | Classes | Best published cross-dataset | ADTOF, reproduced | LightningStrike |
+| Benchmark | Classes | Best published cross-dataset | ADTOF, reproduced | Striker 1.0 |
 |---|---:|---:|---:|---:|
 | MDB Drums, full mix | 5 | 0.81 (ADTOF, Zehren 2023) | 0.798 / 0.795 | **0.858 / 0.854** |
 | MDB Drums, full mix | 3 | 0.83 (Weber 2025) | 0.801 / 0.800 | **0.865 / 0.860** |
@@ -34,7 +35,7 @@ its fold means land within 0.012 of ADTOF's published MDB and ENST numbers.
 
 ADTOF's published ENST 0.78 matches the 2/3 + 1/3 mix (reproduced 0.781; 0.700 at equal
 gain). Weber et al. do not state their ENST mix, but their ADTOF-trained models land near
-ADTOF's own number there. With drums and accompaniment at equal gain the fusion scores 0.789 /
+ADTOF's own number there. With drums and accompaniment at equal gain Striker scores 0.789 /
 0.794 with five classes and 0.805 / 0.809 with three. Khanal and Lee do not state which Groove
 MIDI sequences they scored; here it is the official test split's 124 performances with audio.
 The best published numbers come from [Zehren et al.
@@ -48,36 +49,36 @@ In-dataset results remain higher on IDMT and on ENST with three classes. Southal
 divided tracks between training and test, so drummers, kits and rooms recur in both, and report
 a mean instrument F of 0.988 on IDMT, 0.929 on ENST drums and 0.927 on the 2/3 mix; Khanal and
 Lee 2026 report 0.900 pooled on accompanied ENST with a session-level split. Five-fold track
-cross-validation of the fusion over all corpora reaches 0.983, 0.906 and 0.869 (pooled 0.874),
-with thresholds chosen on the same cross-validated scores; trained on IDMT alone it reaches
-0.987, and on ENST's three renderings alone 0.924 on the drums and 0.891 on the 2/3 mix (pooled
-0.891). Drummer-disjoint in-dataset results (Wu et al. 2018, Jacques and Roebel 2018) stay below
-the cross-dataset fusion, and so do Wu et al.'s leave-one-subset-out IDMT results on RealDrum
-and WaveDrum (0.928 each, against 0.976 and 0.965). On TechnoDrum the fusion's 0.977 beats their
-0.972 only when mean F skips classes a track does not label: one loop has no hi-hat labels but
-32 detected hats, and scoring it as zero gives 0.948. At Vogl et al. 2017's 20 ms tolerance the
-fusion leads on RBMA13 (0.702 / 0.706 against their in-dataset 0.673) but falls just short on
-the ENST 2/3 mix (0.779 / 0.783 against 0.784) and on IDMT (0.917 against 0.952): hi-hat onsets
-carry the largest timing errors.
+cross-validation of Striker over all corpora reaches 0.983, 0.906 and 0.869 (pooled 0.874), with
+thresholds chosen on the same cross-validated scores; trained on IDMT alone it reaches 0.987,
+and on ENST's three renderings alone 0.924 on the drums and 0.891 on the 2/3 mix (pooled 0.891).
+Drummer-disjoint in-dataset results (Wu et al. 2018, Jacques and Roebel 2018) stay below
+cross-dataset Striker, and so do Wu et al.'s leave-one-subset-out IDMT results on RealDrum and
+WaveDrum (0.928 each, against 0.976 and 0.965). On TechnoDrum Striker's 0.977 beats their 0.972
+only when mean F skips classes a track does not label: one loop has no hi-hat labels but 32
+detected hats, and scoring it as zero gives 0.948. At Vogl et al. 2017's 20 ms tolerance Striker
+leads on RBMA13 (0.702 / 0.706 against their in-dataset 0.673) but falls just short on the ENST
+2/3 mix (0.779 / 0.783 against 0.784) and on IDMT (0.917 against 0.952): hi-hat onsets carry the
+largest timing errors.
 
 On MDBDrums++, which re-annotates the MDB drum recordings as MIDI (`mdbpp`), the released ADTOF
-scores 0.822 / 0.808 with five classes and the fusion 0.880 / 0.867; ADTOF-pytorch's README
-reports 0.887 for ADTOF there without stating its protocol, a number this scorer cannot
-reproduce or compare. Not evaluated: STAR Drums' test split (most of it must be rebuilt from
-MUSDB18, which also trained HTDemucs), Slakh2100 (Khanal and Lee's zero-shot 0.720; a 104 GB
-download), E-GMD and TMIDT (in-dataset results under other class sets), RBMA13 with five classes
-(Vogl's full labels are not public) and the ADTOF-RGW and ADTOF-YT test sets (spectrograms on
-request).
+scores 0.822 / 0.808 with five classes and Striker 0.880 / 0.867; ADTOF-pytorch's README reports
+0.887 for ADTOF there without stating its protocol, a number this scorer cannot reproduce or
+compare. Not evaluated: STAR Drums' test split (most of it must be rebuilt from MUSDB18, which
+also trained HTDemucs), Slakh2100 (Khanal and Lee's zero-shot 0.720; a 104 GB download), E-GMD
+and TMIDT (in-dataset results under other class sets), RBMA13 with five classes (Vogl's full
+labels are not public) and the ADTOF-RGW and ADTOF-YT test sets (spectrograms on request).
 
 Three smaller changes also count. Snare candidates reach fainter transcription peaks and source
-attacks than the other classes' (`drumFusion.ts`), because ghost notes leave little of either:
-on MDB drums the share of snares with a candidate rose from 0.855 to 0.951 and snare F from
-0.864 to 0.905, while the library's snare count stayed within one hit. ADTOF peak picking treats
+attacks than the other classes' (`striker.ts`), because ghost notes leave little of either: on
+MDB drums the share of snares with a candidate rose from 0.855 to 0.951 and snare F from 0.864
+to 0.905, while the library's snare count stayed within one hit. ADTOF peak picking treats
 frames outside the audio as silence, as madmom does, so a hit on the first frame is found:
 IDMT's loops start on one, and with the same models IDMT kick F rose from 0.981 to 0.993. Each
-class averages five classifiers trained with different seeds (`fusion.py --seeds=5`): a single
-classifier moved class F by up to 0.016 (toms 0.036) after changes that touched a handful of
-training candidates. Thresholds on the 0.05 grid still step between neighbours that score alike.
+class averages five classifiers trained with different seeds (`train-striker.py --seeds=5`): a
+single classifier moved class F by up to 0.016 (toms 0.036) after changes that touched a handful
+of training candidates. Thresholds on the 0.05 grid still step between neighbours that score
+alike.
 
 The shipped model trains on MDB, ENST, RBMA13 kicks and hats, IDMT and the automatically
 aligned RWC and A2MD MIDI. Two sources help only some classes, so they train only those
@@ -97,7 +98,7 @@ MIDI, no corpus weighting and an older candidate set scored MDB and ENST 0.02 to
 RBMA13 hats 0.08 below the hand-annotated corpora alone, and MDB drums below the published
 0.89; the hand-annotated corpora alone fell short on IDMT (0.947).
 
-On the owner's partial labels the fusion keeps 18 of 19 confirmed snares (the rule-based v36
+On the owner's partial labels Striker keeps 18 of 19 confirmed snares (the rule-based v36
 analysis 17), emits 1 of 5 confirmed wrong hits (v36 4) and hits 22 of 37 reviewed missed-hit
 clicks (v36 23). Desire's reviewed snares remain missed by every model trained on the full
 corpus set: the separated snare source has attacks there, but ADTOF gives them almost no snare
@@ -297,7 +298,7 @@ times; they refuse to overwrite an existing review. They never replace saved use
 
 Maintained tools:
 
-- [drumeval](drumeval/README.md): corpora, fusion training, benchmark scoring, listening sessions.
+- [drumeval](drumeval/README.md): corpora, Striker training and benchmark scoring.
 - `exp-drum-stem.py`, `mdx23c-reference.py`: PyTorch reference separation (HTDemucs, MDX23C).
 - `exp-native-separation.ts`: the production separation API on planar stereo PCM.
 - `prepare-drum-evidence.ts`, `collect-review-evidence.ts`: full-song source estimates and

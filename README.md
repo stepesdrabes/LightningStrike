@@ -115,15 +115,16 @@ model directory. The optional runtime models are:
 - **ADTOF** for kick/snare/hi-hat transcription, exported locally with
   [bench/export-adtof.py](bench/export-adtof.py).
 - **HTDemucs + MDX23C DrumSep** separate the drums and then kick, snare, hi-hat and cymbal
-  sources; ADTOF also transcribes the drum stem and each source. With `drum-fusion.json`,
-  trained by [bench/drumeval](bench/drumeval/README.md), a learned classifier picks the kick,
-  snare and hi-hat hits from all of that evidence; without it, rule-based source recovery runs.
-  See [setup and model provenance](bench/lab/SEPARATION.md) and
-  [evaluation and known limitations](bench/DRUM_RELIABILITY.md).
-  Preparation can take minutes per song on CPU. Install the models before refreshing
-  tracks; installing them later requires a fresh analysis of previously cached tracks. Songs
-  classified by a different `drum-fusion.json` are re-analysed when next prepared; a model file
-  that fails to load leaves them as they are.
+  sources; ADTOF also transcribes the drum stem and each source. See
+  [setup and model provenance](bench/lab/SEPARATION.md). Preparation can take minutes per song
+  on CPU. Install the models before refreshing tracks; installing them later requires a fresh
+  analysis of previously cached tracks.
+- **Striker 1.0** (`striker.json`), LightningStrike's drum hit classifier trained by
+  [bench/drumeval](bench/drumeval/README.md), picks the kick, snare and hi-hat hits from all of
+  that evidence; without it, rule-based source recovery runs. See
+  [evaluation and known limitations](bench/DRUM_RELIABILITY.md). Songs classified by another
+  Striker model are re-analysed when next prepared; a model file that fails to load leaves them
+  as they are.
 
 Drum listening is available from the Judge panel. It plays the full song with optional kick
 and snare clicks, loops a chosen passage, and keeps missed-hit and timing notes separately
@@ -134,7 +135,7 @@ Successful separation also keeps lossless source evidence and its transcriptions
 `cache/drum-evidence/` (up to 2 GiB, oldest entries evicted). Detector reanalysis can reuse
 it when the audio, separator and ADTOF model match. Hardware-specific optimized CPU graphs
 live in `cache/separator-graphs/`; these are derived files, not portable models. Per-track
-`.preparation.json` records stage timings and the separator and fusion model versions.
+`.preparation.json` records stage timings and the separator and Striker model versions.
 See [performance measurements and M1 Pro profiling](bench/lab/SEPARATION-PERFORMANCE.md).
 
 Analysis retains fallback paths when models are unavailable. Discogs-EffNet and ADTOF

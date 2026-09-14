@@ -1,5 +1,5 @@
-# Drum candidate fusion: cross-validated LightGBM classifiers on bench/drumeval candidate exports.
-#   python bench/drumeval/fusion.py --candidates=NAME [--corpora=mdb,enst,rwc] [--folds=5] [--loco] [--out=DIR]
+# Trains Striker: cross-validated LightGBM classifiers on bench/drumeval candidate exports.
+#   python bench/drumeval/train-striker.py --candidates=NAME [--name=NAME] [--corpora=mdb,enst,rwc] [--folds=5] [--loco] [--out=DIR]
 # Held-out corpora train only with --train-held-out; otherwise the model trained on everything else scores them.
 # Variants of a corpus (the same recordings rendered differently) train only for the classes --train-variants
 # names and are always scored like their corpus.
@@ -18,6 +18,7 @@ from scipy.sparse.csgraph import maximum_bipartite_matching
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--candidates', required=True)
+parser.add_argument('--name', default='Striker dev', help='release name the exported models carry, such as "Striker 1.0"')
 parser.add_argument('--corpora', default='')
 parser.add_argument('--folds', type=int, default=5)
 parser.add_argument('--drop', default='', help='comma-separated feature names to exclude (evaluation only)')
@@ -107,7 +108,7 @@ def matches(ref, est):
 
 
 def select(times, probs, threshold):
-    # Mirrors fuseDrums: most probable first, ties by time, nothing within 50 ms of a chosen hit.
+    # Mirrors runStriker: most probable first, ties by time, nothing within 50 ms of a chosen hit.
     order = sorted(np.nonzero(probs >= threshold)[0], key=lambda i: (-probs[i], times[i]))
     chosen, kept = [], []
     for i in order:
@@ -152,7 +153,7 @@ def flatten(node, tree):
     return index
 
 
-def export(models, thresholds, names, version):
+def export(models, thresholds, names, name, recipe):
     classes = {}
     for kind in KIT:
         trees = []
@@ -165,9 +166,10 @@ def export(models, thresholds, names, version):
                     tree['leaf'] = [value / len(members) for value in tree['leaf']]
                 trees.append(tree)
         classes[kind] = {'threshold': thresholds[kind], 'trees': trees}
-    # The content hash tells analyses made with a different model apart, even under the same options.
+    # The content hash tells analyses made with a different model apart, even under the same name.
     digest = hashlib.sha256(json.dumps(classes, sort_keys=True).encode()).hexdigest()[:8]
-    return {'version': f'{version}-{digest}', 'candidates': candidate_revision, 'features': names, 'classes': classes}
+    return {'version': f'{name} ({digest})', 'recipe': recipe, 'candidates': candidate_revision, 'features': names,
+        'classes': classes}
 
 
 if args.seeds < 1:
@@ -376,13 +378,13 @@ for kind in KIT:
 if args.out:
     os.makedirs(args.out, exist_ok=True)
     protocol = 'loco' if args.loco else 'cv'
-    version = f'{args.candidates}-{"-".join(corpora)}-r{args.rounds}-l{args.leaves}'
+    recipe = f'{args.candidates}-{"-".join(corpora)}-r{args.rounds}-l{args.leaves}'
     for fold in range(folds):
         label = f'without-{left_out[fold]}' if args.loco else f'fold{fold}'
-        json.dump(export(fold_models[fold], fold_thresholds[fold], names, f'{version}-{label}'),
+        json.dump(export(fold_models[fold], fold_thresholds[fold], names, f'{args.name} {label}', f'{recipe}-{label}'),
             open(os.path.join(args.out, f'fold-{fold}.json'), 'w'))
     json.dump({f'{c}/{n}': k for (c, n), k in fold_of.items()}, open(os.path.join(args.out, 'folds.json'), 'w'), indent=1)
-    json.dump(export(final_models, final_thresholds, names, version), open(os.path.join(args.out, 'model.json'), 'w'))
+    json.dump(export(final_models, final_thresholds, names, args.name, recipe), open(os.path.join(args.out, 'model.json'), 'w'))
     json.dump({'protocol': protocol, 'classes': summary}, open(os.path.join(args.out, 'report.json'), 'w'), indent=1)
     for kind in KIT:
         t = train_tracks[0]

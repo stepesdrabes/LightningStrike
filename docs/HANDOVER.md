@@ -7,12 +7,12 @@ Historical arrangement/lighting work remains in git and `bench/judged/`.
 
 1. **Done: preparation performance** (2026-09-13); see
    [Preparation performance](#preparation-performance).
-2. **Done: drum accuracy** (2026-09-13 to 14): learned drum fusion and the MDX23C kit separator
-   beat the best published cross-dataset results on every public benchmark with a comparable
-   published result (MDBDrums++'s only number uses an unstated protocol); see
-   [Drum accuracy session](#drum-accuracy-session).
-3. **Next:** the owner judges the blind A/B listening session; then the library is re-prepared
-   and the Mac tested before the party. The Windows app was rebuilt and reinstalled on 2026-09-14.
+2. **Done: drum accuracy** (2026-09-13 to 14): Striker 1.0, the learned drum hit classifier, and
+   the MDX23C kit separator beat the best published cross-dataset results on every public
+   benchmark with a comparable published result (MDBDrums++'s only number uses an unstated
+   protocol); see [Drum accuracy session](#drum-accuracy-session).
+3. **Next:** the library is re-prepared and the Mac tested before the party. The Windows app
+   was rebuilt and reinstalled on 2026-09-14.
 
 The owner asked for SOTA drum analysis on every existing benchmark; their hand-made reviews are
 useful but need not be 100% correct. Accuracy matters more than preparation speed.
@@ -25,7 +25,7 @@ allowed as quieter snare accents; claps and snaps are snares.
 ## Drum accuracy session
 
 Results, protocol and the training-set findings are in
-[drum reliability](../bench/DRUM_RELIABILITY.md#learned-fusion-and-published-benchmarks-analysis-v37-september-14);
+[drum reliability](../bench/DRUM_RELIABILITY.md#striker-10-and-published-benchmarks-analysis-v38-september-14);
 tooling in [drumeval](../bench/drumeval/README.md). In short, cross-dataset five-class F, fold
 mean and pooled (published best in brackets): MDB 0.858 / 0.854 (0.81), ENST 2/3 mix 0.829 /
 0.832 (0.80), drums-only MDB 0.913 / 0.911 (0.89) and ENST 0.883 / 0.884 (0.85); three-class
@@ -33,40 +33,38 @@ RBMA13 0.747 / 0.753 (0.67), IDMT 0.971 (0.949) and the Groove MIDI test split 0
 Older in-dataset protocols at 20 ms or on track-level splits still report higher IDMT and ENST
 numbers; see that document.
 
-- **Listening session for the owner:** `drum-judge` in `.claude/launch.json` serves
-  `http://127.0.0.1:5199`: 28 blind A/B passages (kick, snare, hat) where the v36 rules
-  (`lib-base`, 39 songs) and the installed fusion (`lib-v19`) disagree most, including four
-  passages of Desire's reviewed snares (61-82 s and 171-202 s). Verdicts append to
-  `bench/reports/drumeval/judge/current/answers.jsonl`; read them before retraining.
+- **Owner's verdict:** listening in the app itself, the owner preferred Striker 1.0 to the v36
+  rules, so the unanswered blind A/B session and its `judge/` tooling were removed on
+  2026-09-14. The `lib-base` (v36 rules) and `lib-v19` (Striker 1.0) runs stay for library
+  diffs with `diff.ts`.
 - **Owner checks:** `judged.ts` 18/19 confirmed snares (v36 17); `reviews.ts` on the saved
   reviews: 1/5 confirmed wrong hits still emitted (v36 4), 22/37 missed-hit clicks hit (v36 23).
   Desire (Gryffin Remix)'s reviewed snares stay missed by every model trained on all corpora.
-- **Installed model:** `models/drum-fusion.json` (version
-  `v12e-a2md-enst-idmt-mdb-rbma-rwc-star-r300-l15-56e52c9c`, SHA-256
-  `5e146d09966c04e695133d7cd61cbdb8074cc274466ab49d8bc39e61055720ad`) is
-  `bench/reports/drumeval/fusion/v19-cv-strict/model.json`, five seeds per class; training is
+- **Installed model:** Striker 1.0, `models/striker.json` (version `Striker 1.0 (56e52c9c)`,
+  recipe `v12e-a2md-enst-idmt-mdb-rbma-rwc-star-r300-l15`, SHA-256
+  `25c0ba3348a3b2045f40d0956a110dea974a3f3026c278bd38fc32ebb9197103`), is
+  `bench/reports/drumeval/striker/v19-cv-strict/model.json`, five seeds per class; training is
   deterministic (a rerun reproduced every classifier bit for bit). Without it the rules run.
-  Songs analysed with another version re-analyse when next prepared (`fusionModel.ts`); a file
-  that fails to load leaves them as they are.
+  Songs analysed with another version re-analyse when next prepared (`strikerModel.ts`); a file
+  that fails to load leaves them as they are. `train-striker.py --name` names each release.
 - **Label traps:** RBMA13 public snare labels omit claps and STAR Drums mixes hide unlabelled
   clap residue; both made the classifier reject bad guy's snaps (0/9), so neither trains snares
   (STAR trains only hats and cymbals). Always rerun `judged.ts` and `reviews.ts` after retraining.
 - **Evidence on disk** (ignored): `bench/reports/drumeval/evidence/` for all corpora including
   `enst23`, `mdbsolo`, `enstsolo`, `mdbpp`, `gmd`, a STAR subset and the library; candidate set
-  `v12e`; fusion
-  models and night logs under `bench/reports/drumeval/{fusion,night}/`; the research notes
-  (`adt-sota.md`, `adt-datasets.md`) were session scratch files and are summarized in
-  DRUM_RELIABILITY.md and the drumeval README.
-- **Before the party:** install `drumsep-mdx23c.onnx`, ADTOF and `drum-fusion.json` on every
-  machine before preparing songs there. A song prepared at analysis 37 without them keeps the
+  `v12e`; Striker models and night logs under `bench/reports/drumeval/{striker,night}/`; the
+  research notes (`adt-sota.md`, `adt-datasets.md`) were session scratch files and are
+  summarized in DRUM_RELIABILITY.md and the drumeval README.
+- **Before the party:** install `drumsep-mdx23c.onnx`, ADTOF and `striker.json` on every
+  machine before preparing songs there. A song prepared at analysis 38 without them keeps the
   rule-based drums until it is refreshed; so does a song whose per-source ADTOF passes fail
   during preparation, for example under memory pressure.
-- **Not done:** the library was not re-prepared (it re-prepares on demand at analysis 37,
+- **Not done:** the library was not re-prepared (it re-prepares on demand at analysis 38,
   about a fifth of the song's length on DirectML, minutes on CPU); nothing ran on the Mac.
 
 ## Current production state
 
-- Analysis **37**, show **34**, context **3**. No changes to lighting composition.
+- Analysis **38**, show **34**, context **3**. No changes to lighting composition.
 - `separation.ts`: HTDemucs, then MDX23C (`drumsep-mdx23c.onnx`) returning kick, snare, hi-hat
   and cymbal (ride/crash); the tom stem is dropped. CPU default, four threads per session, both
   CPU arenas off. Chunks: 343,980 samples for HTDemucs, 1,024 STFT frames (11.9 s) for MDX23C,
@@ -75,12 +73,12 @@ numbers; see that document.
   logical CPUs and 12 GiB (`MV_DRUM_CPU_LANES`).
 - `ingest.ts`: resamples four sources, runs ADTOF on the drum stem and each source
   (`transcribeKit`), computes four source onset curves in workers, and passes everything to
-  `analyzeTrack` with the installed fusion model.
-- `drumFusion.ts`: candidates from the transcriptions and source attacks (snare proposals reach
-  fainter peaks, for ghost notes), 85 features, flattened LightGBM trees evaluated exactly as
-  trained; hats merge with cymbal hits; kick and snare levels floor at their source loudness
+  `analyzeTrack` with the installed Striker model.
+- `striker.ts`: Striker's candidates from the transcriptions and source attacks (snare proposals
+  reach fainter peaks, for ghost notes), 85 features, flattened LightGBM trees evaluated exactly
+  as trained; hats merge with cymbal hits; kick and snare levels floor at their source loudness
   relative to the track's loud hits. Toms are classified only for benchmark probes.
-  `analysis.drumFusion` records the model version.
+  `analysis.striker` records the model version.
 - `drumEvidenceCache.ts` format 3: four sources plus five activation sets, keyed by audio,
   separator and ADTOF model; 2 GiB LRU; sources alone only when no ADTOF is installed.
 - `separatedDrums.ts` / `kickEvidence.ts`: the rule-based fallback, reading hats and cymbals
@@ -212,7 +210,7 @@ Current sources and original reviewed analyses: `judgement-correction/{sources,c
 Each source folder has audio/model/PCM provenance, ADTOF activations, separated 22.05 kHz
 PCM and `candidate.analysis.json`; those sources came from DrumSep and have no hi-hat file.
 `collect-review-evidence.ts` replays the rule-based detectors against the original reviewed
-grid; `bench/drumeval/reviews.ts` scores a drumeval library run, including the fusion, against
+grid; `bench/drumeval/reviews.ts` scores a drumeval library run, including Striker, against
 the saved reviews. `prepare-drum-evidence.ts` prepares sources with explicit Windows DML; it is
 not the Mac preparation entry point.
 
@@ -234,17 +232,18 @@ strict validation of manually imported scorer JSON; verify current behavior befo
 
 ## Delivery, checks and cleanup
 
-On 2026-09-14 the owner had the Windows app rebuilt from the uncommitted drum accuracy work
-and installed over the previous build in `%LOCALAPPDATA%/Programs/LightningStrike`; user
-`MV_DRUM_PROVIDER=dml` stays configured and the app library was untouched. Installers are
+On 2026-09-14 the owner had the Windows app rebuilt twice, the second time after the Striker
+rename, and installed over the previous build in `%LOCALAPPDATA%/Programs/LightningStrike`;
+user `MV_DRUM_PROVIDER=dml` stays configured and the app library was untouched. Installers are
 under `apps/desktop/src-tauri/target/release/bundle/`. The local receipt
 `bench/reports/drumeval/night/installation-receipt.json` records installer and file hashes,
 the byte-for-byte comparison of the installed server, runtime and models with the build, and
-Habibi prepared with the installed runtime: on CPU its analysis equals the verified workspace
-preparation, on DirectML it finds the same kick, snare and hat hits. NSIS upgrades leave files
-from earlier builds; 133 such unreferenced files, including the retired `drumsep.onnx`, were
-moved out. The 2026-09-13 receipt is in `ingest-performance/perf-0913/` and the v36 release
-records remain in `judgement-correction/`.
+Habibi prepared with the installed runtime: its DirectML analysis equals the workspace
+preparation byte for byte, and the first install's CPU analysis equalled the verified
+workspace run. NSIS upgrades leave files from earlier builds; 133 and then 127 such
+unreferenced files, including the retired `drumsep.onnx` and `drum-fusion.json`, were moved
+out. The 2026-09-13 receipt is in `ingest-performance/perf-0913/` and the v36 release records
+remain in `judgement-correction/`.
 
 After the drum accuracy work, 1,425 tests passed (two optional skips) with clean
 TypeScript/Svelte checks and `git diff --check`. Release validation also includes full
@@ -259,11 +258,11 @@ source, not directly executable tooling after relocation. Saved result evidence 
 place. Wiring docs and earlier non-drum benchmarks were left intact. This file is the single
 current session handover.
 
-The 2026-09-14 drum cleanup moved superseded drum runs, candidate sets and fusion models, the
-unread `kick44`, `snare44`, `cymbal44` and `mdx-*44` evidence files, DrumSep exports,
-unreferenced separation experiments, derived caches of performance reports and the download
-archives whose extracted copies the corpora use into `bench/reports/drum-cleanup-2026-09-14/`
-for deletion; `bench/reports/drumeval/night/cleanup-2026-09-14-removed.txt` lists every path.
-It kept candidate set `v12e`, both v19 fusion models, the ADTOF baseline runs (`base-*`),
-`export-v12e` and the runs the listening session and v19 results use. Re-running the LOCO and
+The 2026-09-14 drum cleanup moved superseded drum runs, candidate sets and models, the unread
+`kick44`, `snare44`, `cymbal44` and `mdx-*44` evidence files, DrumSep exports, unreferenced
+separation experiments, derived caches of performance reports and the download archives whose
+extracted copies the corpora use into `bench/reports/drum-cleanup-2026-09-14/` for deletion;
+`bench/reports/drumeval/night/cleanup-2026-09-14-removed.txt` lists every path. It kept
+candidate set `v12e`, both Striker 1.0 training outputs, the ADTOF baseline runs (`base-*`),
+`export-v12e` and the runs the library diffs and v19 results use. Re-running the LOCO and
 Groove MIDI evaluations on the remaining evidence reproduced all 507 track results.

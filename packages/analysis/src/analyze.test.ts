@@ -9,7 +9,7 @@ import { measureLoudness } from './loudness.ts';
 import { analyseStereo } from './stereo.ts';
 import { ARRANGEMENT, fMeasure, synthesise } from './fixture.ts';
 import { onsetsFromActivations } from './adtof.ts';
-import { CANDIDATE_REVISION, FUSION_FEATURES, type FusionModel } from './drumFusion.ts';
+import { CANDIDATE_REVISION, STRIKER_FEATURES, type StrikerModel } from './striker.ts';
 
 const fixture = synthesise();
 const analysis = analyzeTrack({
@@ -811,7 +811,7 @@ describe('pushOntoDeparture', () => {
 	});
 });
 
-describe('drum fusion', () => {
+describe('Striker', () => {
 	const frames = Math.ceil(fixture.duration * 100) + 1;
 	const activations = (times: Record<number, readonly number[]>) => {
 		const act = new Float32Array(frames * 5);
@@ -831,25 +831,25 @@ describe('drum fusion', () => {
 		stemActivations: stem,
 		sourceActivations: { kick: stem, snare: stem, hat: stem, cymbal: stem }
 	};
-	const model: FusionModel = {
-		version: 'test', candidates: CANDIDATE_REVISION, features: [...FUSION_FEATURES],
+	const model: StrikerModel = {
+		version: 'test', candidates: CANDIDATE_REVISION, features: [...STRIKER_FEATURES],
 		classes: {
-			kick: { threshold: 0.5, trees: [stemSplit(FUSION_FEATURES.indexOf('stem0'))] },
-			snare: { threshold: 0.5, trees: [stemSplit(FUSION_FEATURES.indexOf('stem1'))] },
-			hat: { threshold: 0.5, trees: [stemSplit(FUSION_FEATURES.indexOf('stem3'))] },
-			cymbal: { threshold: 0.5, trees: [stemSplit(FUSION_FEATURES.indexOf('stem4'))] },
-			tom: { threshold: 0.5, trees: [stemSplit(FUSION_FEATURES.indexOf('stem2'))] }
+			kick: { threshold: 0.5, trees: [stemSplit(STRIKER_FEATURES.indexOf('stem0'))] },
+			snare: { threshold: 0.5, trees: [stemSplit(STRIKER_FEATURES.indexOf('stem1'))] },
+			hat: { threshold: 0.5, trees: [stemSplit(STRIKER_FEATURES.indexOf('stem3'))] },
+			cymbal: { threshold: 0.5, trees: [stemSplit(STRIKER_FEATURES.indexOf('stem4'))] },
+			tom: { threshold: 0.5, trees: [stemSplit(STRIKER_FEATURES.indexOf('stem2'))] }
 		}
 	};
 
 	it('takes every class from the classifier instead of the rule-based merges', () => {
-		const fused = analyzeTrack({ ...inputs, drumFusion: model });
-		expect(fused.drumFusion).toBe('test');
-		expect(analyzeTrack({ ...inputs, sourceActivations: undefined, drumFusion: model }).drumFusion).toBeUndefined();
-		expect(fMeasure(fixture.kick, fused.onsets.kick.times, 0.05).f).toBeGreaterThan(0.95);
-		expect(fMeasure(fixture.snare, fused.onsets.snare.times, 0.05).f).toBeGreaterThan(0.95);
-		expect(fMeasure(fixture.hat, fused.onsets.hat.times, 0.05).f).toBeGreaterThan(0.95);
-		const unfused = analyzeTrack(inputs);
-		expect(unfused.onsets.kick.times.length).toBeLessThan(fixture.kick.length / 2);
+		const withStriker = analyzeTrack({ ...inputs, striker: model });
+		expect(withStriker.striker).toBe('test');
+		expect(analyzeTrack({ ...inputs, sourceActivations: undefined, striker: model }).striker).toBeUndefined();
+		expect(fMeasure(fixture.kick, withStriker.onsets.kick.times, 0.05).f).toBeGreaterThan(0.95);
+		expect(fMeasure(fixture.snare, withStriker.onsets.snare.times, 0.05).f).toBeGreaterThan(0.95);
+		expect(fMeasure(fixture.hat, withStriker.onsets.hat.times, 0.05).f).toBeGreaterThan(0.95);
+		const withoutStriker = analyzeTrack(inputs);
+		expect(withoutStriker.onsets.kick.times.length).toBeLessThan(fixture.kick.length / 2);
 	});
 });

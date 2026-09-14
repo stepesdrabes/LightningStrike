@@ -6,18 +6,18 @@ import { pickPeaks, refinePeakTime } from './onsets.ts';
 import type { SeparatedDrumAudio, SourceOnsets } from './separatedDrums.ts';
 
 /**
- * Transcription and separated-source onset candidates, classified by gradient-boosted trees that
+ * Striker: transcription and separated-source onset candidates, classified by gradient-boosted trees that
  * bench/drumeval trains. Cymbals join the hat stream afterwards; toms serve benchmarks only.
  */
-export const FUSION_KINDS = ['kick', 'snare', 'hat', 'cymbal'] as const;
-export const BENCHMARK_KINDS = [...FUSION_KINDS, 'tom'] as const;
-export type FusionKind = typeof BENCHMARK_KINDS[number];
-type AnalysisKind = typeof FUSION_KINDS[number];
+export const STRIKER_KINDS = ['kick', 'snare', 'hat', 'cymbal'] as const;
+export const BENCHMARK_KINDS = [...STRIKER_KINDS, 'tom'] as const;
+export type StrikerKind = typeof BENCHMARK_KINDS[number];
+type AnalysisKind = typeof STRIKER_KINDS[number];
 
 /** ADTOF activation layout: frames x 5 at 100 fps, classes kick, snare, tom, hat, cymbal. */
 const ACT_FPS = 100;
 const ACT_CLASSES = 5;
-const CHANNEL: Record<FusionKind, number> = { kick: 0, snare: 1, tom: 2, hat: 3, cymbal: 4 };
+const CHANNEL: Record<StrikerKind, number> = { kick: 0, snare: 1, tom: 2, hat: 3, cymbal: 4 };
 const CANDIDATE_THRESHOLD = 0.05;
 /** Ghost notes leave only faint snare activation and attacks, so snare proposals reach lower. */
 const SNARE_CANDIDATE_THRESHOLD = 0.02;
@@ -41,7 +41,7 @@ const BLEED_FLOOR_DB = -60;
 /** Bump whenever candidate proposals or features change: models trained on other candidates are refused. */
 export const CANDIDATE_REVISION = 3;
 
-export const FUSION_FEATURES = [
+export const STRIKER_FEATURES = [
 	'mix0', 'mix1', 'mix2', 'mix3', 'mix4', 'stem0', 'stem1', 'stem2', 'stem3', 'stem4', 'mixMean', 'stemMean',
 	'mixBarPrev', 'stemBarPrev', 'mixBarNext', 'stemBarNext',
 	'mixBar2Prev', 'stemBar2Prev', 'mixBar2Next', 'stemBar2Next',
@@ -65,7 +65,7 @@ const OWN_BAND: Record<Source, [number, number]> = {
 };
 
 /** ADTOF activations (mix, drum stem, each source) come in the layout activationStream reads. */
-export interface FusionInputs {
+export interface StrikerInputs {
 	mix: Float32Array;
 	stem: Float32Array;
 	sourceActivations: Record<Source, Float32Array>;
@@ -83,7 +83,7 @@ export interface FusionInputs {
 
 export interface Candidates {
 	times: number[];
-	/** Row-major, FUSION_FEATURES.length values per candidate, float32 as the model was trained. */
+	/** Row-major, STRIKER_FEATURES.length values per candidate, float32 as the model was trained. */
 	features: Float32Array;
 	/** Largest rise of the class activation above its trailing average on either pass. */
 	strength: number[];
@@ -239,7 +239,7 @@ function sourcePeaks(onsets: SourceOnsets) {
 	});
 }
 
-function context(inputs: FusionInputs): Context {
+function context(inputs: StrikerInputs): Context {
 	const spectra = new Spectra(inputs.sources.sampleRate);
 	const sources = {} as Record<Source, SourceContext>;
 	const shape = new Float64Array(SHAPE_BANDS);
@@ -284,7 +284,7 @@ function context(inputs: FusionInputs): Context {
 	};
 }
 
-export function drumCandidates(inputs: FusionInputs, kind: FusionKind, shared = context(inputs)): Candidates {
+export function drumCandidates(inputs: StrikerInputs, kind: StrikerKind, shared = context(inputs)): Candidates {
 	const { sources, audio } = inputs;
 	const rate = sources.sampleRate;
 	const { mixCurves, stemCurves, reference, spectra } = shared;
@@ -333,7 +333,7 @@ export function drumCandidates(inputs: FusionInputs, kind: FusionKind, shared = 
 
 	const { beats, barTimes } = inputs;
 	const meanPeriod = beats.length > 1 ? (beats[beats.length - 1] - beats[0]) / (beats.length - 1) : 0.5;
-	const width = FUSION_FEATURES.length;
+	const width = STRIKER_FEATURES.length;
 	const features = new Float32Array(merged.length * width);
 	const strength: number[] = [];
 	const shape = new Float64Array(SHAPE_BANDS);
@@ -405,15 +405,15 @@ export function drumCandidates(inputs: FusionInputs, kind: FusionKind, shared = 
 		for (const name of SOURCES) {
 			for (let c = 0; c < ACT_CLASSES; c++) put(maxAround(shared.sourceCurves[name][c], frame, 2));
 		}
-		if (column !== (row + 1) * width) throw new Error('Drum fusion features are out of step with FUSION_FEATURES.');
+		if (column !== (row + 1) * width) throw new Error('Striker features are out of step with STRIKER_FEATURES.');
 		strength.push(Math.max(maxAround(mixPeaks.curve, frame, 1), maxAround(stemPeaks.curve, frame, 1)));
 	});
 	return { times: merged.map((candidate) => candidate.time), features, strength };
 }
 
-export function fusionCandidates(
-	inputs: FusionInputs, kinds: readonly FusionKind[] = FUSION_KINDS
-): Partial<Record<FusionKind, Candidates>> {
+export function strikerCandidates(
+	inputs: StrikerInputs, kinds: readonly StrikerKind[] = STRIKER_KINDS
+): Partial<Record<StrikerKind, Candidates>> {
 	const shared = context(inputs);
 	return Object.fromEntries(kinds.map((kind) => [kind, drumCandidates(inputs, kind, shared)]));
 }
@@ -427,17 +427,20 @@ interface Tree {
 	leaf: number[];
 }
 
-interface FusionClass {
+interface StrikerClass {
 	threshold: number;
 	trees: Tree[];
 }
 
-export interface FusionModel {
+export interface StrikerModel {
+	/** Release name and content hash, such as `Striker 1.0 (56e52c9c)`; analyses record it. */
 	version: string;
+	/** Training options, for provenance. */
+	recipe?: string;
 	/** The CANDIDATE_REVISION the trees were trained on. */
 	candidates: number;
 	features: string[];
-	classes: Record<AnalysisKind, FusionClass> & { tom?: FusionClass };
+	classes: Record<AnalysisKind, StrikerClass> & { tom?: StrikerClass };
 }
 
 /** Every split must lead forward to a split or to a leaf, so evaluation always terminates. */
@@ -449,26 +452,26 @@ function validTree(tree: Tree): boolean {
 		Number.isInteger(next) && (next >= 0 ? next > node && next < splits : ~next < tree.leaf.length);
 	for (let node = 0; node < splits; node++) {
 		const feature = tree.feature[node];
-		const known = Number.isInteger(feature) && feature >= 0 && feature < FUSION_FEATURES.length;
+		const known = Number.isInteger(feature) && feature >= 0 && feature < STRIKER_FEATURES.length;
 		if (!known || !Number.isFinite(tree.threshold[node])) return false;
 		if (!child(node, tree.left[node]) || !child(node, tree.right[node])) return false;
 	}
 	return tree.leaf.every(Number.isFinite);
 }
 
-export function validateFusionModel(model: FusionModel): FusionModel {
-	if (typeof model.version !== 'string' || !model.version) throw new Error('Drum fusion model has no version.');
-	if (model.candidates !== CANDIDATE_REVISION) throw new Error('Drum fusion model was trained on other candidates.');
-	if (model.features?.length !== FUSION_FEATURES.length
-		|| model.features.some((name, i) => name !== FUSION_FEATURES[i])) {
-		throw new Error('Drum fusion model features do not match this analyser.');
+export function validateStrikerModel(model: StrikerModel): StrikerModel {
+	if (typeof model.version !== 'string' || !model.version) throw new Error('Striker model has no version.');
+	if (model.candidates !== CANDIDATE_REVISION) throw new Error('Striker model was trained on other candidates.');
+	if (model.features?.length !== STRIKER_FEATURES.length
+		|| model.features.some((name, i) => name !== STRIKER_FEATURES[i])) {
+		throw new Error('Striker model features do not match this analyser.');
 	}
 	for (const kind of BENCHMARK_KINDS) {
 		const entry = model.classes[kind];
 		if (!entry && kind === 'tom') continue;
 		const inRange = entry && entry.threshold > 0 && entry.threshold < 1;
 		if (!inRange || !entry.trees?.length || !entry.trees.every(validTree)) {
-			throw new Error(`Drum fusion model has no usable ${kind} classifier.`);
+			throw new Error(`Striker model has no usable ${kind} classifier.`);
 		}
 	}
 	return model;
@@ -480,12 +483,12 @@ export function validateFusionModel(model: FusionModel): FusionModel {
  * Hat and cymbal levels keep the activation rise, which separates pedal hats better.
  */
 const LOUDNESS_RANGE_DB = 18;
-const LOUDNESS: Partial<Record<FusionKind, number>> = {
-	kick: FUSION_FEATURES.indexOf('kickDb'), snare: FUSION_FEATURES.indexOf('snareDb')
+const LOUDNESS: Partial<Record<StrikerKind, number>> = {
+	kick: STRIKER_FEATURES.indexOf('kickDb'), snare: STRIKER_FEATURES.indexOf('snareDb')
 };
 
-export function fusionProbabilities(model: FusionModel, kind: FusionKind, candidates: Candidates): Float64Array {
-	const width = FUSION_FEATURES.length;
+export function strikerProbabilities(model: StrikerModel, kind: StrikerKind, candidates: Candidates): Float64Array {
+	const width = STRIKER_FEATURES.length;
 	const count = candidates.times.length;
 	const out = new Float64Array(count);
 	const trees = model.classes[kind]?.trees ?? [];
@@ -509,15 +512,15 @@ export function fusionProbabilities(model: FusionModel, kind: FusionKind, candid
  * Hits above the class threshold, most probable first within SELECT_GAP_S, for every proposed kind
  * the model classifies. Levels map the activation rise as activationStream does.
  */
-export function fuseDrums(
-	model: FusionModel, inputs: FusionInputs, proposed = fusionCandidates(inputs)
+export function runStriker(
+	model: StrikerModel, inputs: StrikerInputs, proposed = strikerCandidates(inputs)
 ): Record<AnalysisKind, DrumStream> & { tom?: DrumStream } {
-	const out: Partial<Record<FusionKind, DrumStream>> = {};
+	const out: Partial<Record<StrikerKind, DrumStream>> = {};
 	for (const kind of BENCHMARK_KINDS) {
 		const candidates = proposed[kind];
 		const entry = model.classes[kind];
 		if (!candidates || !entry) continue;
-		const probabilities = fusionProbabilities(model, kind, candidates);
+		const probabilities = strikerProbabilities(model, kind, candidates);
 		const threshold = entry.threshold;
 		const order = Array.from(probabilities.keys())
 			.filter((i) => probabilities[i] >= threshold)
@@ -549,7 +552,7 @@ export function fuseDrums(
 		const top = Math.max(STRONG_ONSET_EXCESS, strengths[Math.floor(strengths.length * 0.9)] ?? 0);
 		const column = LOUDNESS[kind];
 		const loudness = column === undefined ? null
-			: chosen.map((i) => candidates.features[i * FUSION_FEATURES.length + column]);
+			: chosen.map((i) => candidates.features[i * STRIKER_FEATURES.length + column]);
 		const loud = loudness ? quantile(loudness, 0.9) : 0;
 		const levels = chosen.map((i, k) => {
 			const s = candidates.strength[i];

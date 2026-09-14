@@ -34,12 +34,12 @@ const youtubeId = 'abcdefghijk';
 const stemTranscriber = () => ({ run: vi.fn(async () => ({ activations: new Float32Array(5) })), close: vi.fn() }) as unknown as Adtof;
 const youtubeSource = `https://www.youtube.com/watch?v=${youtubeId}`;
 
-async function installFusionModel(version: string) {
-	const { CANDIDATE_REVISION, FUSION_FEATURES, FUSION_KINDS } = await import('./drumFusion.ts');
+async function installStrikerModel(version: string) {
+	const { CANDIDATE_REVISION, STRIKER_FEATURES, STRIKER_KINDS } = await import('./striker.ts');
 	const tree = { feature: [], threshold: [], left: [], right: [], leaf: [0] };
-	const classes = Object.fromEntries(FUSION_KINDS.map((kind) => [kind, { threshold: 0.5, trees: [tree] }]));
-	const model = { version, candidates: CANDIDATE_REVISION, features: FUSION_FEATURES, classes };
-	await writeFile(join(cache.dir, 'drum-fusion.json'), JSON.stringify(model));
+	const classes = Object.fromEntries(STRIKER_KINDS.map((kind) => [kind, { threshold: 0.5, trees: [tree] }]));
+	const model = { version, candidates: CANDIDATE_REVISION, features: STRIKER_FEATURES, classes };
+	await writeFile(join(cache.dir, 'striker.json'), JSON.stringify(model));
 }
 
 function fixtureAnalysis(): TrackAnalysis {
@@ -151,7 +151,7 @@ describe('queue cache refresh', () => {
 		expect(run).toHaveBeenCalledTimes(2);
 	});
 
-	it('offers the drum fusion only with an installed model and every kit transcription', async () => {
+	it('offers Striker only with an installed model and every kit transcription', async () => {
 		await saveTrack();
 		const pcm = new Float32Array([0, 1, 0, 0]);
 		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: pcm, kick: pcm, snare: pcm, hat: pcm, cymbal: pcm });
@@ -159,31 +159,31 @@ describe('queue cache refresh', () => {
 		vi.mocked(Adtof.create).mockImplementation(async () => stemTranscriber());
 		vi.mocked(resamplePcm).mockImplementation(async value => value);
 		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({ drumFusion: undefined }));
-		await installFusionModel('fixture-fusion');
+		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({ striker: undefined }));
+		await installStrikerModel('fixture-striker');
 		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
 		const activations = new Float32Array(5);
 		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({
-			drumFusion: expect.objectContaining({ version: 'fixture-fusion' }), stemActivations: activations,
+			striker: expect.objectContaining({ version: 'fixture-striker' }), stemActivations: activations,
 			sourceActivations: { kick: activations, snare: activations, hat: activations, cymbal: activations }
 		}));
 	});
 
-	it('re-analyses cached drums when another or no fusion model is installed, not when its file is unusable', async () => {
+	it('re-analyses cached drums when another or no Striker model is installed, not when its file is unusable', async () => {
 		await saveTrack(youtubeId, youtubeSource, ANALYSIS_VERSION);
-		await installFusionModel('fixture-fusion');
-		const reusedAfter = async (drumFusion?: string) => {
-			const analysis = { ...fixtureAnalysis(), trackId: youtubeId, drumFusion };
+		await installStrikerModel('fixture-striker');
+		const reusedAfter = async (striker?: string) => {
+			const analysis = { ...fixtureAnalysis(), trackId: youtubeId, striker };
 			await writeFile(join(cache.dir, `${youtubeId}.analysis.json`), JSON.stringify(analysis));
 			return (await ingest(youtubeSource, { cachedTrackId: youtubeId })).fromCache;
 		};
-		expect(await reusedAfter('fixture-fusion')).toBe(true);
+		expect(await reusedAfter('fixture-striker')).toBe(true);
 		expect(await reusedAfter(undefined)).toBe(true);
-		expect(await reusedAfter('retired-fusion')).toBe(false);
-		await writeFile(join(cache.dir, 'drum-fusion.json'), '{"version": "fixture-fusion"');
-		expect(await reusedAfter('retired-fusion')).toBe(true);
-		await rm(join(cache.dir, 'drum-fusion.json'));
-		expect(await reusedAfter('fixture-fusion')).toBe(false);
+		expect(await reusedAfter('retired-striker')).toBe(false);
+		await writeFile(join(cache.dir, 'striker.json'), '{"version": "fixture-striker"');
+		expect(await reusedAfter('retired-striker')).toBe(true);
+		await rm(join(cache.dir, 'striker.json'));
+		expect(await reusedAfter('fixture-striker')).toBe(false);
 	});
 
 	it('passes isolated sources into analysis and releases the separator', async () => {

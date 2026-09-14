@@ -16,7 +16,7 @@ import { medianPeriod } from './metricalLevel.ts';
 import { KICK_CLAIMING_FAMILIES, familyCorroborated, loudKickRate } from './vocabulary.ts';
 import { NO_TRANSCRIBER, readDrumEvidence, writeDrumEvidence, type DrumEvidence } from './drumEvidenceCache.ts';
 import { Adtof, adtofIdentity } from './adtof.ts';
-import { fusionCurrent, readInstalledFusion } from './fusionModel.ts';
+import { readInstalledStriker, strikerCurrent } from './strikerModel.ts';
 import { onsetsBeside, preludeBeside } from './dsp.ts';
 import type { SeparatedDrumAudio, SourceOnsets } from './separatedDrums.ts';
 import type { SeparatedDrums } from './separation.ts';
@@ -94,7 +94,7 @@ export async function readMeta(id: string): Promise<TrackMeta | null> {
 	}
 }
 
-/** ADTOF on the separated drum stem and on each 44.1 kHz source, for the drum fusion. */
+/** ADTOF on the separated drum stem and on each 44.1 kHz source, for Striker. */
 async function transcribeKit(isolated: SeparatedDrums): Promise<NonNullable<DrumEvidence['activations']>> {
 	const model = await Adtof.create();
 	if (!model) throw new Error('the transcription model is not installed');
@@ -560,7 +560,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	if (!opts.force && !relevel) {
 		// Invalidate stale versions and changed hand maps even when their JSON shape still looks compatible.
 		if (cached && cached.version === ANALYSIS_VERSION && cached.handMap === (await handMapStamp(id))
-			&& (!cached.drumFusion || fusionCurrent(cached.drumFusion, await readInstalledFusion()))) {
+			&& (!cached.striker || strikerCurrent(cached.striker, await readInstalledStriker()))) {
 			let [, context] = await metadata;
 			log('cached');
 			// Backfill legacy duration/trust metadata to avoid analysis reads for every library row.
@@ -752,11 +752,11 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 
 		log('analysing');
 		const handMap = await handMapInput(id);
-		const installedFusion = drums?.activations && kitActivations ? await readInstalledFusion() : null;
-		if (installedFusion && 'error' in installedFusion) {
-			log(`drum fusion unavailable, falling back: ${installedFusion.error.message}`);
+		const installedStriker = drums?.activations && kitActivations ? await readInstalledStriker() : null;
+		if (installedStriker && 'error' in installedStriker) {
+			log(`Striker unavailable, falling back: ${installedStriker.error.message}`);
 		}
-		const drumFusion = installedFusion && 'model' in installedFusion ? installedFusion.model : null;
+		const striker = installedStriker && 'model' in installedStriker ? installedStriker.model : null;
 		const analysis = await timed('analysis', async () => analyzeTrack({
 			mono: decoded.mono,
 			left: decoded.left,
@@ -776,7 +776,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 				kick: kitActivations.kick, snare: kitActivations.snare,
 				hat: kitActivations.hat, cymbal: kitActivations.cymbal
 			},
-			drumFusion: drumFusion ?? undefined,
+			striker: striker ?? undefined,
 			prelude: await prelude,
 			metricalLevel,
 			context,
@@ -801,7 +801,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			drumProviders: Object.keys(drumProviders).length ? drumProviders : undefined };
 		await writeFile(join(CACHE_DIR, `${id}.preparation.json`), JSON.stringify({
 			trackId: id, audioHash: analysis.hash, analysisVersion: analysis.version,
-			drumSeparation, drumFusion: analysis.drumFusion, preparedAt: new Date().toISOString(), ...timings
+			drumSeparation, striker: analysis.striker, preparedAt: new Date().toISOString(), ...timings
 		}, null, '\t')).catch(() => {});
 		return { id, audioPath, analysis, meta, context, fromCache: false,
 			timings,

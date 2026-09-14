@@ -2,7 +2,7 @@
 //   [--compare=LABEL] [--window=0.05] [--model=FILE|CV_DIR] [--export-candidates=NAME]
 // Replays analyzeTrack on cached evidence (bench/drumeval/prepare.ts) and scores its drum
 // streams against corpus labels. --src imports packages/analysis/src from another checkout;
-// --model enables the drum fusion; --export-candidates writes its training candidates.
+// --model runs Striker with that model; --export-candidates writes its training candidates.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -36,7 +36,7 @@ export interface TrackResult {
 	/** stage -> kind -> metric -> detail; hats also score against hats plus cymbals as `metal`. */
 	scores: Record<string, Record<string, Partial<Record<Metric, ScoreDetail>>>>;
 	final: Record<Kind, { times: number[]; levels: number[] }>;
-	/** Fused hits per class, the hat without cymbals, when a fusion model ran. */
+	/** Striker's hits per class, the hat without cymbals, when it ran. */
 	classes?: Record<Kind | 'cymbal' | 'tom', { times: number[]; levels: number[] }>;
 }
 
@@ -50,7 +50,7 @@ function ready(track: CorpusTrack): boolean {
  * A model file, or a cross-validation directory: folds.json names each training track's fold
  * model, and tracks outside every fold (held-out corpora) use model.json.
  */
-function fusionModels(path: string | undefined, validate: (model: unknown) => unknown) {
+function strikerModels(path: string | undefined, validate: (model: unknown) => unknown) {
 	if (!path) return (_track: CorpusTrack): unknown => undefined;
 	const load = (file: string) => validate(JSON.parse(readFileSync(file, 'utf8')));
 	if (path.endsWith('.json')) {
@@ -74,8 +74,8 @@ async function runShard(list: CorpusTrack[]): Promise<void> {
 	const { onsetsFromActivations } = await import(url('adtof.ts'));
 	const { sourceOnsets } = await import(url('separatedDrums.ts'));
 	const { decodeAudio } = await import(url('decode.ts'));
-	const fusion = existsSync(join(src, 'drumFusion.ts')) ? await import(url('drumFusion.ts')) : null;
-	const modelFor = fusionModels(flag('model'), (model) => fusion!.validateFusionModel(model));
+	const strikerModule = existsSync(join(src, 'striker.ts')) ? await import(url('striker.ts')) : null;
+	const modelFor = strikerModels(flag('model'), (model) => strikerModule!.validateStrikerModel(model));
 	const exportName = flag('export-candidates');
 	for (const track of list) {
 		const at = performance.now();
@@ -90,14 +90,14 @@ async function runShard(list: CorpusTrack[]): Promise<void> {
 		const modelDrums = drumsAct ? onsetsFromActivations(drumsAct) : null;
 		const [kick, snare, hat, cymbal] = [files.kick22, files.snare22, files.hat22, files.cymbal22]
 			.map((file) => readF32(join(dir, file)));
-		const drumFusion = modelFor(track);
+		const striker = modelFor(track);
 		const probe: {
 			drums?: { dsp: Record<Kind, { times: number[] }>; detected: Record<Kind, { times: number[] }> };
-			fusion?: {
+			striker?: {
 				candidates?: Record<string, { times: number[]; features: Float32Array }>;
 				classes?: Record<Kind | 'cymbal' | 'tom', { times: number[]; levels: number[] }>;
 			};
-		} = exportName || drumFusion ? { fusion: {} } : {};
+		} = exportName || striker ? { striker: {} } : {};
 		const input = {
 			mono: decoded.mono, left: decoded.left, right: decoded.right, sampleRate: decoded.sampleRate,
 			duration: decoded.duration, hash: decoded.hash, trackId: track.name, title: track.name,
@@ -112,12 +112,12 @@ async function runShard(list: CorpusTrack[]): Promise<void> {
 				kick: readF32(join(dir, files.adtofKick)), snare: readF32(join(dir, files.adtofSnare)),
 				hat: readF32(join(dir, files.adtofHat)), cymbal: readF32(join(dir, files.adtofCymbal))
 			} : undefined,
-			drumFusion,
+			striker,
 			probe
 		};
 		const analysis = analyzeTrack(input);
-		if (exportName && probe.fusion?.candidates && track.labeled !== false) {
-			exportCandidates(exportName, track, probe.fusion.candidates, fusion!.FUSION_FEATURES, fusion!.CANDIDATE_REVISION);
+		if (exportName && probe.striker?.candidates && track.labeled !== false) {
+			exportCandidates(exportName, track, probe.striker.candidates, strikerModule!.STRIKER_FEATURES, strikerModule!.CANDIDATE_REVISION);
 		}
 		const streams: Record<Stage, Record<Kind, number[]>> = {
 			model: { kick: model.kick.times, snare: model.snare.times, hat: model.hat.times },
@@ -151,8 +151,8 @@ async function runShard(list: CorpusTrack[]): Promise<void> {
 		const result: TrackResult = {
 			corpus: track.corpus, name: track.name, duration: decoded.duration, seconds: (performance.now() - at) / 1000, scores,
 			final: Object.fromEntries(KIT.map((kind) => [kind, analysis.onsets[kind]])) as TrackResult['final'],
-			...(probe.fusion?.classes ? {
-				classes: Object.fromEntries(Object.entries(probe.fusion.classes)
+			...(probe.striker?.classes ? {
+				classes: Object.fromEntries(Object.entries(probe.striker.classes)
 					.map(([kind, { times, levels }]) => [kind, { times, levels }])) as TrackResult['classes']
 			} : {})
 		};
