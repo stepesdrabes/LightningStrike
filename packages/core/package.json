@@ -5,7 +5,8 @@
 	"type": "module",
 	"exports": {
 		".": "./src/index.ts",
-		"./dsl": "./src/dsl/index.ts"
+		"./dsl": "./src/dsl/index.ts",
+		"./evening": "./src/evening/index.ts"
 	},
 	"scripts": {
 		"check": "tsc --build"

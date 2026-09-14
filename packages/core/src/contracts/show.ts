@@ -23,6 +23,8 @@ export interface Cue {
 	motion?: number;
 	/** Fade completes ON this cue's downbeat. 0 snaps, which is what voids and drops want. */
 	fadeBeats?: number;
+	/** House light under the layers, 0..1. Absent follows the section. */
+	floor?: number;
 	note: string;
 }
 
@@ -91,6 +93,8 @@ export interface GeneratedEffect {
 	params: ParamSpec[];
 	/** Plain JavaScript declaring create(g), evaluated with the injected DSL. */
 	source: string;
+	/** Set by the evening loader once this exact effect has passed the gate on the room geometry. */
+	admitted?: boolean;
 }
 
 export interface Show {
@@ -106,6 +110,13 @@ export interface Show {
 	 * effects.
 	 */
 	authoredBy?: 'engine' | 'claude' | 'deepseek';
+	/**
+	 * 'fixed' plays the cues' levels as written, easing the room's auto-exposure back to unity:
+	 * evening looks are authored in absolute levels. Absent is automatic.
+	 */
+	exposure?: 'auto' | 'fixed';
+	/** 'hold' keeps the light as the cues have it where the audio ends. Absent eases out. */
+	ending?: 'ease' | 'hold';
 	/**
 	 * Engine seed, or seed of the draft AI revised, retained for reproducible rerolls.
 	 * Absent on legacy shows; default seed is the analysis hash.
