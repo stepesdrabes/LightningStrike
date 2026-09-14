@@ -23,3 +23,4 @@ export {
 export { enrichTrack } from './enrich.ts';
 export { barStartsAtCuts, deriveGridCuts, handMapGrid, resyncedCuts } from './gridedits.ts';
 export { handSectionBars } from './handSections.ts';
+export { prepareNarration, preparedNarration } from './narration.ts';
