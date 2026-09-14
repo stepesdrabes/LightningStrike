@@ -2,8 +2,8 @@
 
 Music-driven lighting for a room, with a 3D preview and matching output to real fixtures.
 The room has a 720-pixel ceiling frame and a one-pixel Bounce Lamp. Local audio analysis
-finds the musical grid; a deterministic engine composes the show. Optional AI authoring
-can revise its pacing, palette and effects.
+finds the musical grid; a deterministic engine composes the show. An evening file scripts a
+whole night around it: songs, pauses, light moments, transitions and custom effects.
 
 The preview and hardware use the same renderer and encoded pixels. Hardware output runs
 in Node over DDP or sACN; the browser supplies the audio playback position.
@@ -15,13 +15,42 @@ in Node over DDP or sACN; the browser supplies the audio playback position.
 - Watch the room preview, inspect the arrangement, and configure hardware in the app.
 - Use Lounge for ambient lighting over music. When playback stops, the room fades into
   ambient scenes; stale browser sync also lets the hardware return to ambient.
-- Revise a show with an AI author when you want a different interpretation. Engine shows
-  work without an AI account.
+- Open an evening from the right-hand rail, rehearse it, then run the night from there.
 - Share the queue's QR code so guests can add tracks from their phones and withdraw their
   own unplayed additions. Queue management, authoring and hardware controls stay with the host.
 
 Space toggles playback; arrows seek, with Shift for larger jumps. Cmd/Ctrl-K opens search,
 `[` and `]` toggle the side panels, and `L` toggles Lounge.
+
+## Evenings
+
+An evening is a TypeScript file whose default export is `evening(...)` from
+`lightningstrike`; keep them in `evenings/`, where `npm run check` type-checks them.
+[evenings/light-before-thunder.ts](evenings/light-before-thunder.ts) is a full example.
+
+- `block` plays named songs and `fill` slots chosen by genre, heat, tempo and length;
+  `pause` is silence or calm music under a look; `hold` waits for Go; `moment` is a silent
+  light moment on its own clock; `narration` plays your own audio under a timeline. Timeline
+  steps change looks and sections, fire hits, and place kicks off the grid, like a racing heart.
+- A block's `palette` tints its songs toward the chapter's colours without changing the light
+  they deliver, and a look laid over songs still rises and falls with their sections: the
+  evening sets the colour, each song keeps its intensity.
+- `enter` sets how the room hands over: a sting in a gap, a dissolve or a cut, a hit on the
+  first downbeat, or an audio crossfade. `at` and `notBefore` anchor segments to the clock;
+  fills with a target length stretch or shrink to meet them.
+- `effect({ create(g) })` is your own effect, run through the same sandbox and gate as built-in
+  ones. Only the effect vocabulary and its own locals exist inside `create`. `look` stacks
+  effects with a palette, intensity, motion and `floor`, the house light under them.
+
+The loader runs the file in a worker with a time and memory limit; it may import only
+`lightningstrike` and its own relative modules. The worker contains mistakes, not hostile code:
+open only evening files you trust. Findings point at file lines. **Prepare** fetches and
+analyses the songs the evening names, **Rehearse** plays it exactly as the night, hardware
+included, and can be moved to any moment, and **Start** sets the current queue aside until the
+evening ends. While it runs, segments are queue rows: skip a segment either way, hold after
+the current one, or bail out and keep the music. Guests' requests wait for the blocks that take
+them; a song you play now plays straight away and the evening carries on after it. After a
+restart the evening comes back where it was, paused.
 
 ## Run locally
 
@@ -137,9 +166,9 @@ See [performance measurements and M1 Pro profiling](bench/lab/SEPARATION-PERFORM
 Analysis retains fallback paths when models are unavailable. Discogs-EffNet and ADTOF
 weights carry CC BY-NC-SA terms; preserve their upstream licenses and export restrictions.
 
-Optional Claude authoring uses the Claude Agent SDK with local Claude authentication.
-For DeepSeek, enter a key in the app; it is saved in the cache's `settings.json`.
-`DEEPSEEK_API_KEY` takes precedence over the saved key.
+The authoring API (`/api/author`) uses the Claude Agent SDK with local Claude authentication,
+or DeepSeek through `DEEPSEEK_API_KEY` or a key saved in `settings.json`. The app no longer
+opens it; shows it designed earlier keep playing.
 
 ## Hardware
 
