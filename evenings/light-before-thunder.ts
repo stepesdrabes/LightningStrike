@@ -16,7 +16,6 @@ import {
 	block,
 	blackout,
 	clamp,
-	colourSweep,
 	effect,
 	evening,
 	fill,
@@ -495,17 +494,25 @@ const thunderhead = effect({
 						for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.25);
 					} else if (u >= last + 0.15) {
 						const after = u - last - 0.15;
-						// The storm cloud Thunder's own overlay carries on from: same shape, same levels.
+						// The storm cloud the next overlay carries on from: same shape, same levels.
 						const roll = 0.82 + 0.22 * smoothstep(0.25, 0.85, f.level);
-						const open = smoothstep(0, 0.4, after);
+						// The blast the strike throws: a white front leaving both beam ends for the far
+						// walls with the sub the score drops under it, and the cloud lit where it passes.
+						// A front rather than a fade, so no pixel lingers in the dither codes.
+						const front = after * 265;
+						const blast = 1 - smoothstep(0.5, 1, after);
 						for (let i = 0; i < ring; i++) {
+							const behind = front - Math.min(apart(i, north), apart(i, south));
+							if (behind < 0) continue;
 							const cloud = noise3(i * 0.022, t * 0.3, 7.3);
-							setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, 0.4 * cloud), open * roll * (0.5 + 0.45 * cloud * cloud));
+							setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, 0.4 * cloud), roll * (0.5 + 0.45 * cloud * cloud));
+							if (blast > 0 && behind < 28) addSample(out, i, palette, SLOT.white, 1.4 * blast * Math.pow(1 - behind / 28, 1.6));
 							if (branch[i] > 0 && after < 2.4) addSample(out, i, palette, SLOT.accent, 1.1 * Math.exp(-after / 0.5));
 						}
 						for (let b = 0; b < beamCount; b++) {
 							const cloud = noise3(b * 0.04, t * 0.22, 2.9);
-							setSample(out, beamStart + b, palette, SLOT.base, open * roll * (0.4 + 0.3 * cloud));
+							setSample(out, beamStart + b, palette, SLOT.base, roll * (0.4 + 0.3 * cloud));
+							addSample(out, beamStart + b, palette, SLOT.white, 0.9 * (1 - smoothstep(0, 0.35, after)));
 						}
 						const ember = 0.85 * smoothstep(0.25, 1.6, after) * (0.75 + 0.25 * roll);
 						for (let d = -18; d <= 18; d++) {
@@ -519,8 +526,8 @@ const thunderhead = effect({
 });
 
 /**
- * Thunder's intro: the storm cloud First Strike left, turning into rolling lobes on the low end,
- * kicks rolling out of the beam and a fill into the drop.
+ * Over the first song's intro: the storm cloud First Strike left, turning into rolling lobes on
+ * the low end, kicks rolling out of the beam and a fill into the drop.
  */
 const thunderRoll = effect({
 	id: 'thunderRoll',
@@ -658,6 +665,13 @@ const wallCloud = effect({
 		const beamStart = ring;
 		const beamCount = g.count - ring;
 		const centre = Math.floor(beamCount / 2);
+		const north = Math.round(ring * 0.15);
+		const south = Math.round(ring * 0.65);
+		const far = Math.round(ring * 0.3);
+		const apart = (a: number, b: number) => {
+			const d = ((a - b) % ring + ring) % ring;
+			return d > ring / 2 ? ring - d : d;
+		};
 		const hit = (age: number, tau: number) => (age < 0 ? 0 : age < 0.02 ? age / 0.02 : Math.exp(-(age - 0.02) / tau));
 		return {
 			render(out, { f, p, palette }) {
@@ -669,8 +683,12 @@ const wallCloud = effect({
 					const k = span / (p.lapTo - p.lapFrom);
 					const turn = k * Math.log((p.lapFrom + ((t - p.form) * (p.lapTo - p.lapFrom)) / span) / p.lapFrom);
 					const pulse = hit(t - p.pulse1, 0.18) + hit(t - p.pulse2, 0.18) + hit(t - p.pulse3, 0.18);
-					const level = smoothstep(p.form, p.form + 0.25, t) * (1 + 0.5 * pulse);
+					const level = 1 + 0.5 * pulse;
+					// The cloud closes over the room from the storm's bearing. A front rather than a
+					// fade, so no pixel lingers in the dither codes as it arrives.
+					const arrive = ((t - p.form) / 0.45) * (ring / 2 + 30);
 					for (let i = 0; i < ring; i++) {
+						if (apart(i, far) > arrive) continue;
 						const a = (i / ring - turn) * Math.PI * 2;
 						const n = noise3(Math.cos(a) * 1.6, Math.sin(a) * 1.6, t * 0.35);
 						setSample(out, i, palette, SLOT.base, level * (0.36 + 0.68 * n * n));
@@ -700,6 +718,15 @@ const wallCloud = effect({
 				for (let i = 0; i < ring; i++) {
 					const n = noise3(i * 0.04, t * 5, 9.1);
 					setSample(out, i, palette, SLOT.base, roll * (0.58 + 0.62 * n * n));
+				}
+				// The blast leaving both beam ends, with the sub the score drops under the crack.
+				const blast = 1 - smoothstep(0.4, 0.62, age - 0.12);
+				if (blast > 0) {
+					const front = (age - 0.12) * 265;
+					for (let i = 0; i < ring; i++) {
+						const off = Math.abs(Math.min(apart(i, north), apart(i, south)) - front);
+						if (off < 28) addSample(out, i, palette, SLOT.white, 1.35 * blast * Math.pow(1 - off / 28, 1.6));
+					}
 				}
 			}
 		};
@@ -1338,6 +1365,134 @@ const lightsOffSting = sting('Lights off', {
 	]
 });
 
+/** Into Static Charge: the new colour races out of the corner and the air starts to crackle. */
+const chargeSweep = effect({
+	id: 'chargeSweep',
+	name: 'Charge sweep',
+	role: 'bed',
+	blurb: 'A hot front leaves the corner both ways round the frame, and the air crackles behind it.',
+	create(g) {
+		let ring = 0;
+		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
+		const beamStart = ring;
+		const beamCount = g.count - ring;
+		const home = Math.round(ring * 0.8);
+		const apart = (a: number, b: number) => {
+			const d = ((a - b) % ring + ring) % ring;
+			return d > ring / 2 ? ring - d : d;
+		};
+		// How far the front has run when it reaches the south beam end.
+		const toBeam = apart(Math.round(ring * 0.65), home);
+		return {
+			render(out, { f, palette }) {
+				out.fill(0);
+				const t = f.t;
+				const front = t * 620;
+				for (let i = 0; i < ring; i++) {
+					const behind = front - apart(i, home);
+					if (behind < 0) continue;
+					const n = noise3(i * 0.03, t * 0.6, 4.4);
+					setSample(out, i, palette, lerp(SLOT.base, SLOT.glow, 0.35 * n), 0.72 + 0.22 * n);
+					if (behind < 26) addSample(out, i, palette, SLOT.white, 1.3 * Math.pow(1 - behind / 26, 1.6));
+				}
+				// The beam takes the charge from its south end as the front goes past that corner.
+				const reach = ((front - toBeam) / 140) * beamCount;
+				for (let b = 0; b < beamCount && b <= reach; b++) {
+					setSample(out, beamStart + b, palette, SLOT.glow, 0.8);
+					if (reach - b < 5) addSample(out, beamStart + b, palette, SLOT.white, 1.2 * (1 - (reach - b) / 5));
+				}
+				// Static gathering on the lit frame, denser as the block arrives.
+				const slot = Math.floor(t * 12);
+				const age = t - slot / 12;
+				for (let j = 0, n = 2 + Math.floor(clamp(t / 1.6) * 7); j < n; j++) {
+					const i = Math.floor(hash01(slot * 19 + j * 31 + 5) * g.count);
+					addSample(out, i, palette, SLOT.white, 1.4 * Math.exp(-age / 0.05) * (0.5 + 0.5 * hash01(slot * 7 + j * 13)));
+				}
+			}
+		};
+	}
+});
+
+const chargeSting = sting('Static charge', {
+	id: 'charge-sweep',
+	length: 1.8,
+	palette: 'magenta bloom',
+	timeline: [{ at: 0, section: 'build', look: look({ bed: chargeSweep, intensity: 1, floor: 0 }) }]
+});
+
+/** Before Black Ice: frost grows in from the four corners of the frame until the frame cracks. */
+const blackIce = effect({
+	id: 'blackIce',
+	name: 'Black ice',
+	role: 'bed',
+	blurb: 'Frost needles grow in from the four corners of the frame, then a fracture snaps across it.',
+	create(g) {
+		let ring = 0;
+		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
+		const beamStart = ring;
+		const beamCount = g.count - ring;
+		const corners: number[] = [];
+		for (const s of g.strips) if (s.inPerimeter) corners.push(s.offset);
+		// How far each pixel's needle has to reach from the nearest corner, so the frost is ragged.
+		const reach = new Float32Array(ring);
+		let full = 1;
+		for (let i = 0; i < ring; i++) {
+			let near = ring;
+			for (const c of corners) {
+				const ahead = ((i - c) % ring + ring) % ring;
+				near = Math.min(near, ahead, ring - ahead);
+			}
+			reach[i] = near * (0.75 + 0.5 * hash01(i * 7 + 3));
+			if (reach[i] > full) full = reach[i];
+		}
+		// The fracture the crack opens: one broken line right round the frame.
+		const fracture = new Float32Array(ring);
+		for (let k = 0, at = 40; k < 7; k++) {
+			const length = 20 + Math.floor(hash01(k * 13 + 5) * 45);
+			for (let q = 0; q < length; q++) fracture[(at + q) % ring] = 1;
+			at += length + 10 + Math.floor(hash01(k * 17 + 2) * 30);
+		}
+		return {
+			render(out, { f, palette }) {
+				out.fill(0);
+				const age = f.t - 2.5;
+				// The frost shatters: the fracture takes the light, then the whole frame, then nothing.
+				if (age >= 0) {
+					if (age < 0.08) {
+						for (let i = 0; i < ring; i++) if (fracture[i] > 0) setSample(out, i, palette, SLOT.white, 1.25);
+					} else if (age < 0.2) {
+						for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.2 * (1 - (age - 0.08) / 0.12));
+					}
+					return;
+				}
+				// Still arriving when the frame cracks, so the sting never stands still.
+				const grown = full * Math.pow(clamp(f.t / 2.5), 1.35);
+				for (let i = 0; i < ring; i++) {
+					const past = grown - reach[i];
+					if (past <= 0) continue;
+					setSample(out, i, palette, SLOT.base, 0.62 + 0.28 * clamp(past / 10));
+					if (past < 16) addSample(out, i, palette, SLOT.white, 1.15 * (1 - past / 16));
+					else addSample(out, i, palette, SLOT.glow, 0.32 * Math.exp(-(past - 16) / 40));
+				}
+				for (let b = 0; b < beamCount; b++) {
+					const fromCentre = Math.abs(b - (beamCount - 1) / 2) / (beamCount / 2);
+					setSample(out, beamStart + b, palette, SLOT.glow, 0.6 * clamp((grown / full - fromCentre) * 3));
+				}
+			}
+		};
+	}
+});
+
+const frostSting = sting('Black ice', {
+	id: 'black-ice',
+	length: 2.8,
+	palette: 'ice',
+	timeline: [
+		{ at: 0, section: 'build', look: look({ bed: blackIce, intensity: 1, floor: 0 }) },
+		{ at: 2.5, section: 'drop', kick: 1 }
+	]
+});
+
 
 // ---- The night --------------------------------------------------------------------------------
 
@@ -1370,16 +1525,17 @@ export default evening('Light Before Thunder', {
 		block('First Strike', {
 			id: 'first-strike-songs',
 			palette: firstStrike,
-			// The opening's rolling cloud dissolves into Thunder's, so the room never restates itself.
+			// The opening's rolling cloud dissolves into the first song's, so the room never restates itself.
 			enter: { light: 3 },
 			between: { crossfade: 4 },
 			songs: [
-				song('Thunder', {
-					by: 'Gabry Ponte',
-					id: 'b_bEigUA1kk',
+				// The cloud rolls over Desire's groove and breakdown to its drop at 0:40.
+				song('Desire', {
+					by: 'Ian Asher',
+					id: 'UARSiWU8eoo',
 					overlays: [{ from: 'start', to: 'first-drop', look: look({ bed: thunderRoll, intensity: 1, floor: 0 }) }]
 				}),
-				song('Desire', { by: 'Ian Asher', id: 'UARSiWU8eoo' }),
+				song('Thunder', { by: 'Gabry Ponte', id: 'b_bEigUA1kk' }),
 				song("I'm Good (Blue)", { by: 'David Guetta', id: 'pIb7QoXdP_k' }),
 				song('Animals', { by: 'Martin Garrix', id: 'DYf28lOb8KU' }),
 				song('La La Land', { by: 'Green Velvet', id: 'rjXMBZJo-VA' }),
@@ -1452,7 +1608,7 @@ export default evening('Light Before Thunder', {
 
 		block('Neon Rain', {
 			palette: 'magenta bloom',
-			enter: { sting: colourSweep('2s', 'magenta bloom'), hit: 'bump' },
+			enter: { sting: chargeSting, hit: 'bump' },
 			songs: [
 				song('Blinding Lights', { by: 'The Weeknd', id: 'J7p4bzqLvCw' }),
 				song('Physical', { by: 'Dua Lipa', id: 'Yegn0dZ-BfY' }),
@@ -1467,7 +1623,7 @@ export default evening('Light Before Thunder', {
 
 		block('Black Ice', {
 			palette: 'ice',
-			enter: { light: 'cut', hit: 'slam' },
+			enter: { sting: frostSting, hit: 'slam' },
 			songs: [
 				song('HUMBLE.', { by: 'Kendrick Lamar', id: 'H4RELGc9su8' }),
 				song('The Box', { by: 'Roddy Ricch', id: 'IxJjY5T9yag' }),

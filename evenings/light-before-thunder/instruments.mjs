@@ -307,6 +307,60 @@ export function crack(mix, time, size, seed, pan = 0) {
 	}
 }
 
+/**
+ * The weight under a strike: a note falling a fifth into the floor, a punch of low noise and a
+ * wash of air, ringing on into the hall long after the crack that threw it has gone.
+ */
+export function impact(mix, time, size, seed, pan = 0) {
+	const rnd = random(seed);
+	const punchLp = [filter('lowpass', 210, 0.9), filter('lowpass', 210, 0.9)];
+	const air = [filter('bandpass', 700, 0.5), filter('bandpass', 700, 0.5)];
+	const [gl, gr] = panGains(pan);
+	let sub = 0;
+	let fifth = 0;
+	const start = at(time);
+	const length = Math.min(mix.length - start, at(5));
+	for (let n = 0; n < length; n++) {
+		const t = n / RATE;
+		const last = ending(n, length);
+		// 26 Hz is the floor of what the room can move; the note falls to it and stays there.
+		const f = 26 + 54 * Math.exp(-t / 0.5);
+		sub += f / RATE;
+		fifth += (f * 1.5) / RATE;
+		// Two decays: the hit itself, and the room still moving under whatever comes next.
+		const swell = (1 - Math.exp(-t / 0.004)) * (Math.exp(-t / 1.7) + 0.18 * Math.exp(-t / 4.5));
+		const low = Math.sin(TAU * sub) + 0.3 * Math.sin(TAU * fifth) * Math.exp(-t / 0.3);
+		const punch = punchLp[1].run(punchLp[0].run(rnd() * 2 - 1)) * Math.exp(-t / 0.1) * 6;
+		const core = last * size * (0.9 * swell * Math.tanh(1.7 * low) + 0.3 * punch);
+		const wash = last * size * 0.22 * Math.exp(-t / 0.8);
+		mix.put(start + n, core + wash * air[0].run(rnd() * 2 - 1) * 1.6 * gl, core + wash * air[1].run(rnd() * 2 - 1) * 1.6 * gr, 0.1, 0.5);
+	}
+}
+
+/**
+ * The rise into a hit: a noise band and its tone sweeping up while the sound whips across the
+ * room, cut dead at `until` so the hit lands in the hole it leaves.
+ */
+export function approach(mix, from, until, { gain, fromHz = 200, toHz = 5000, pan = 0, spread = 0.8, turns = 1.5, seed }) {
+	const span = until - from;
+	if (span <= 0) return;
+	const rnd = random(seed);
+	const band = [filter('bandpass', fromHz, 1.1), filter('bandpass', fromHz, 1.1)];
+	let phase = 0;
+	for (let n = at(from); n < Math.min(mix.length, at(until)); n++) {
+		const t = n / RATE;
+		// `at` can round the first sample below `from`; a negative u would take pow() to NaN.
+		const u = Math.max(0, Math.min(1, (t - from) / span));
+		const f = fromHz * Math.pow(toHz / fromHz, Math.pow(u, 1.5));
+		if (n % 64 === 0) for (const b of band) b.set('bandpass', f, 1.1);
+		phase += (f * 0.5) / RATE;
+		const env = gain * Math.pow(u, 2.2) * (1 - smooth(until - 0.006, until, t));
+		const tone = 0.22 * u * Math.sin(TAU * phase);
+		const [gl, gr] = panGains(pan + spread * Math.sin(TAU * turns * u));
+		mix.put(n, env * (band[0].run(rnd() * 2 - 1) * 2.6 + tone) * gl, env * (band[1].run(rnd() * 2 - 1) * 2.6 + tone) * gr, 0.1, 0.25);
+	}
+}
+
 /** A spark is born: a falling zap, a buzzing arc, a burst of crackle and a sub boom. */
 export function ignition(mix, time, size, pan) {
 	const id = Math.round(time * 1000);

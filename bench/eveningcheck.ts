@@ -1,9 +1,12 @@
 // Check an evening file the way the app loads it, and render its scored moments.
-//   node bench/eveningcheck.ts [evening.ts] [--moment id] [--step 0.25] [--events]
-// Prints loader findings and gate admission, the night's shape with pause lengths, and for each
-// narration or moment a timeline of delivered room light, lit pixels and Bounce Lamp duty.
+//   node bench/eveningcheck.ts [evening.ts] [--moment id] [--step 0.25] [--events] [--sub]
+// Prints loader findings and gate admission, the night's shape with pause lengths, songs named
+// twice, and for each sting, narration or moment a timeline of delivered room light, lit pixels
+// and Bounce Lamp duty. Rows render standalone, so a look that fades up from black shows dither
+// murk here even where the night dissolves into it from a lit room: read it where `enter` cuts.
 // --events instead lists every event the timing table scores with the sound's onset strength and
 // the light's own move in the same 100 ms window, so a gesture missing on either side shows up.
+// --sub instead plots each narration's 20-60 Hz level per second, where the weight of a hit is.
 import { spawnSync } from 'node:child_process';
 import { readFile, readdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -55,6 +58,7 @@ const file = resolve(positional[0] ?? 'evenings/light-before-thunder.ts');
 const only = flag('moment');
 const step = Number(flag('step') ?? 0.25);
 const events = argv.includes('--events');
+const sub = argv.includes('--sub');
 
 const FPS = 60;
 const DT = 1 / FPS;
@@ -231,6 +235,29 @@ function audioLength(path: string): number {
 
 const ENV_HZ = 200;
 
+/** Per-second RMS of a moment's 20-60 Hz band, in dB: where a hit puts its weight. */
+function lowBand(path: string): number[] {
+	const rate = 8000;
+	const pcm = spawnSync(
+		'ffmpeg',
+		['-v', 'error', '-nostdin', '-i', path, '-af', 'highpass=f=20,lowpass=f=60', '-ac', '1', '-ar', String(rate), '-f', 's16le', '-'],
+		{ encoding: 'buffer', maxBuffer: 256 * 1024 * 1024 }
+	).stdout;
+	const samples = Math.floor(pcm.length / 2);
+	const out: number[] = [];
+	for (let s = 0; s * rate < samples; s++) {
+		let sum = 0;
+		let count = 0;
+		for (let i = s * rate; i < Math.min(samples, (s + 1) * rate); i++) {
+			const v = pcm.readInt16LE(i * 2) / 32768;
+			sum += v * v;
+			count++;
+		}
+		out.push(20 * Math.log10(Math.max(Math.sqrt(sum / Math.max(1, count)), 1e-6)));
+	}
+	return out;
+}
+
 /** Peak amplitude of the moment's audio in 5 ms slots, 0..1. */
 function envelope(path: string): Float32Array {
 	const rate = 16000;
@@ -348,6 +375,26 @@ if (plan.findings.length > 0) {
 	show(plan.findings);
 }
 
+// A song named twice plays twice; nothing else in the app says so.
+const named: { title: string; id: string | undefined; segment: string }[] = [];
+for (const segment of script.segments) {
+	const items = segment.kind === 'block' ? segment.items : segment.kind === 'pause' ? segment.music : [];
+	for (const item of items) {
+		if (item.kind !== 'fill') named.push({ title: item.title, id: item.id, segment: segment.name });
+	}
+}
+console.log(`\n${named.length} songs named across ${script.segments.length} segments`);
+for (const key of ['id', 'title'] as const) {
+	const seen = new Map<string, string>();
+	for (const song of named) {
+		const value = key === 'id' ? song.id : song.title.toLowerCase();
+		if (value === undefined) continue;
+		const first = seen.get(value);
+		if (first) console.log(`  warning: ${key} repeated, "${song.title}" in ${first} and ${song.segment}`);
+		else seen.set(value, song.segment);
+	}
+}
+
 interface Scored {
 	t: number;
 	what: string;
@@ -414,6 +461,25 @@ const EVENTS: Record<string, Scored[]> = {
 	]
 };
 
+for (const spec of script.stings) {
+	if (only && spec.id !== only) continue;
+	if (events || sub) continue;
+	console.log(`\n${spec.name} (sting)  ${spec.length.toFixed(2)} s`);
+	render(
+		{
+			kind: 'silent',
+			title: spec.name,
+			length: spec.length,
+			clock: spec.clock,
+			timeline: spec.timeline,
+			palette: spec.palette ?? script.palette ?? palette,
+			calm: false,
+			effects: script.effects
+		},
+		spec.length
+	);
+}
+
 for (const segment of script.segments) {
 	const built = planOf(script, segment);
 	if (!built) continue;
@@ -425,6 +491,13 @@ for (const segment of script.segments) {
 	const length = segment.kind === 'narration' ? narrations[segment.audio] : built.length;
 	if (built.plan.kind === 'narration') built.plan.length = length;
 	console.log(`\n${segment.name}  ${length.toFixed(2)} s`);
+	if (sub) {
+		if (segment.kind !== 'narration') continue;
+		for (const [second, db] of lowBand(segment.audio).entries()) {
+			console.log(`${String(second).padStart(4)}s ${db.toFixed(1).padStart(7)} dB  ${'#'.repeat(Math.max(0, Math.round((db + 60) / 2)))}`);
+		}
+		continue;
+	}
 	if (!events) {
 		render(built.plan, length);
 		continue;

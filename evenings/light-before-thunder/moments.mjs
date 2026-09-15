@@ -5,6 +5,7 @@
 import {
 	RATE,
 	TAU,
+	approach,
 	at,
 	chime,
 	crack,
@@ -15,6 +16,7 @@ import {
 	fizz,
 	heartSound,
 	howl,
+	impact,
 	pad,
 	ping,
 	pressure,
@@ -68,6 +70,8 @@ export function scoreHomecoming(mix, o) {
 	// The thunder comes later, lower and softer after every flash.
 	rumble(mix, o.thunder1, { duration: 4, rise: 0.05, cutoff: 950, gain: db(-19), pan: 0, spread: 0.4, decay: 1.8, seed: seedOf('away', 1) });
 	crack(mix, o.thunder1, db(-18), seedOf('away crack', 1), 0.1);
+	// The storm is overhead once more before it goes: the last roll the room feels rather than hears.
+	impact(mix, o.thunder1, db(-17), seedOf('away weight'), 0.1);
 	rumble(mix, o.thunder2, { duration: 4.5, rise: 0.15, cutoff: 520, gain: db(-23), pan: 0.2, spread: 0.35, decay: 1.6, seed: seedOf('away', 2) });
 	rumble(mix, o.thunder3, { duration: 5.5, rise: 0.35, cutoff: 300, gain: db(-27), pan: 0.35, spread: 0.3, decay: 1.4, seed: seedOf('away', 3) });
 	rumble(mix, o.thunder4, { duration: 7, rise: 0.6, cutoff: 190, gain: db(-31), pan: 0.45, spread: 0.2, decay: 1.2, seed: seedOf('away', 4) });
@@ -118,7 +122,17 @@ export function scoreWallCloud(mix, o) {
 	rumble(mix, 1.4, { duration: 4, rise: 0.5, cutoff: 260, gain: db(-27), pan: -0.3, spread: 0.3, decay: 1.2, seed: seedOf('wall far', 1) });
 	rumble(mix, 4.2, { duration: 3.5, rise: 0.3, cutoff: 420, gain: db(-25), pan: 0.3, spread: 0.3, decay: 1.4, seed: seedOf('wall far', 2) });
 	for (const t of [o.pulse1, o.pulse2, o.pulse3]) heartSound(mix, t, db(-4), true, 0);
+	// The cloud whips round one last time and is gone; the eye is the hole the crack lands in.
+	approach(mix, o.pulse1, o.eye, {
+		gain: db(-14),
+		fromHz: 300,
+		toHz: 6000,
+		spread: 0.85,
+		turns: 2,
+		seed: seedOf('wall rise')
+	});
 	crack(mix, o.crack, 1, seedOf('wall crack'), 0);
+	impact(mix, o.crack, db(-6), seedOf('wall weight'), 0);
 	rumble(mix, o.crack, { duration: o.end - o.crack - 0.25, rise: 0.02, cutoff: 1200, gain: db(-16), pan: 0, spread: 0.5, decay: 3, seed: seedOf('wall roll') });
 }
 
@@ -128,6 +142,16 @@ export function scoreOpenSky(mix, o) {
 	rumble(mix, o.thunder, { duration: 5, rise: 0.6, cutoff: 200, gain: db(-27), pan: 0.45, spread: 0.2, decay: 1.2, seed: seedOf('gone') });
 	const rnd = random(seedOf('open drips'));
 	for (let t = o.dry - 1.2; t < o.bloom + 0.4; t += 0.35 + 0.5 * rnd()) drip(mix, t, db(-18), (rnd() * 2 - 1) * 0.5);
+
+	// The sky opening is still a weather event: the gold arrives on a rise, not a fade.
+	approach(mix, o.dry - 0.6, o.bloom, {
+		gain: db(-25),
+		fromHz: 180,
+		toHz: 2400,
+		spread: 0.7,
+		turns: 1,
+		seed: seedOf('opening')
+	});
 
 	const fall = (t) => (1 - 0.3 * smooth(o.settle, o.end - 0.6, t)) * (1 - smooth(o.end - 0.6, o.end, t));
 	const swell = (t) => db(-22 + 12 * smooth(o.bloom, o.settle, t)) * smooth(o.dry - 0.5, o.bloom + 0.5, t) * fall(t);

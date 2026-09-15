@@ -6,6 +6,7 @@
 import {
 	RATE,
 	TAU,
+	approach,
 	at,
 	crack,
 	crackler,
@@ -15,6 +16,7 @@ import {
 	filter,
 	heartSound,
 	ignition,
+	impact,
 	panGains,
 	random,
 	ringX,
@@ -375,6 +377,15 @@ export function scoreStorm(mix, o, style) {
 		rumble(mix, times[index], { ...roll, gain: db(roll.gain), seed: seedOf('thunder', index + 1) });
 		if (crackGain !== undefined) crack(mix, times[index], db(crackGain), seedOf('near', index + 1), crackPan);
 	});
+	// The room tightens into the spark's birth; the racing heart is already under it.
+	approach(mix, Math.max(o.heart, o.ignite - 1.6), o.ignite, {
+		gain: db(-17),
+		fromHz: 240,
+		toHz: 4200,
+		pan: -0.3,
+		spread: 0.6,
+		seed: seedOf('charge rise')
+	});
 	ignition(mix, o.ignite, 1, -0.5);
 	ignition(mix, twinTime(o), db(-3), -0.5);
 	drone(mix, o, style.root);
@@ -391,6 +402,7 @@ export function scoreStorm(mix, o, style) {
 	crack(mix, o.strike + o.stroke, db(-1.2), seedOf('crack', 2), 0.1);
 	crack(mix, o.strike + 2 * o.stroke, 1, seedOf('crack', 3), 0);
 	const rolling = o.strike + 2 * o.stroke;
+	impact(mix, rolling, db(-4), seedOf('strike weight'), 0);
 	rumble(mix, rolling, {
 		duration: o.end - rolling,
 		...style.tail,
