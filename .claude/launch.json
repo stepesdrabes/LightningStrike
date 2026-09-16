@@ -20,6 +20,14 @@
 				"@mv/controller"
 			],
 			"port": 5181
+		},
+		{
+			"name": "annotate",
+			"runtimeExecutable": "node",
+			"runtimeArgs": [
+				"bench/annotate/server.ts"
+			],
+			"port": 5190
 		}
 	]
 }

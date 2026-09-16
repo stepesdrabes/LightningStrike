@@ -50,6 +50,17 @@ function ready(track: CorpusTrack): boolean {
  * A model file, or a cross-validation directory: folds.json names each training track's fold
  * model, and tracks outside every fold (held-out corpora) use model.json.
  */
+/** Which model produced a run is not recoverable from its detections, so the run records it. */
+function modelVersionOf(path: string | undefined): string | undefined {
+	if (!path) return undefined;
+	try {
+		const file = path.endsWith('.json') ? path : join(path, 'model.json');
+		return (JSON.parse(readFileSync(file, 'utf8')) as { version?: string }).version;
+	} catch {
+		return undefined;
+	}
+}
+
 function strikerModels(path: string | undefined, validate: (model: unknown) => unknown) {
 	if (!path) return (_track: CorpusTrack): unknown => undefined;
 	const load = (file: string) => validate(JSON.parse(readFileSync(file, 'utf8')));
@@ -162,8 +173,12 @@ async function runShard(list: CorpusTrack[]): Promise<void> {
 	}
 }
 
-/** MIDI_REDUCED_5, as bench/drumeval/benchmark.py scores: tambourine and shakers are no drum class. */
-const BENCHMARK_DROPPED = new Set(['TMB', 'GM54', 'GM69', 'GM70', 'GM82']);
+/**
+ * MIDI_REDUCED_5, as bench/drumeval/benchmark.py scores: tambourine and shakers are no drum class.
+ * `unreviewed` marks the stretches of an owner-annotated clip nobody has confirmed: a detection
+ * there is neither right nor wrong, so it must not count under either label policy.
+ */
+const BENCHMARK_DROPPED = new Set(['TMB', 'GM54', 'GM69', 'GM70', 'GM82', 'unreviewed']);
 
 /**
  * Candidate features with labels: 1 matches a required reference, -1 an optional one, 0 neither.
@@ -334,7 +349,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
 		const compareLabel = flag('compare');
 		const compareRun = compareLabel ? loadRun(compareLabel) : undefined;
 		const compare = compareRun ? summarise(compareRun) : undefined;
-		writeJson(join(runDir, 'summary.json'), { label, src, window, created: new Date().toISOString(), summary });
+		writeJson(join(runDir, 'summary.json'), {
+			label, src, model: flag('model'), modelVersion: modelVersionOf(flag('model')),
+			window, created: new Date().toISOString(), summary
+		});
 		const head = `# ${label}\n\n${results.length} tracks, window ${window * 1000} ms`
 			+ `${compareLabel ? `, deltas against ${compareLabel}` : ''}.\n\n`;
 		writeFileSync(join(runDir, 'summary.md'), head + table(summary, compare) + '\n## Per track\n\n'

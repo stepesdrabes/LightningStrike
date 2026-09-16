@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Drum annotation</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+	<span class="brand">
+		<span class="bolt">
+			<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+		</span>
+		<span class="mark">Drum annotation</span>
+	</span>
+	<span class="spread"></span>
+	<span class="savestate" id="saveState"></span>
+	<span class="setstat" id="setStat"></span>
+	<button class="btn ghost sm" id="keysButton">Keys <kbd>?</kbd></button>
+</header>
+
+<div class="shell">
+	<aside class="rail">
+		<div class="find">
+			<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.34-4.34"/></svg>
+			<input type="text" id="filter" placeholder="Filter clips" spellcheck="false" autocomplete="off">
+		</div>
+		<div class="clips" id="clipList"></div>
+	</aside>
+
+	<main>
+		<div class="head">
+			<span class="who">
+				<span class="title truncate" id="clipTitle">Loading</span>
+				<span class="sub truncate muted" id="clipArtist"></span>
+			</span>
+			<span class="badge" id="clipGenre" hidden></span>
+			<span class="spread"></span>
+			<span class="clipstat" id="clipStat"></span>
+			<button class="btn outline sm" id="confirmAll">Confirm every page</button>
+		</div>
+
+		<div class="strip">
+			<button class="btn ghost icon" id="prev" aria-label="Previous page" title="Previous page">
+				<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+			</button>
+			<div class="cells" id="pageCells"></div>
+			<button class="btn ghost icon" id="next" aria-label="Next page" title="Next page">
+				<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+			</button>
+			<button class="btn ghost sm" id="disputed" title="The unconfirmed page where Striker and the proposals disagree most">
+				Most disputed <kbd>n</kbd>
+			</button>
+		</div>
+
+		<div class="editor">
+			<div class="heads">
+				<div class="headtop">
+					<span class="viewtoggles">
+						<label class="toggle"><input type="checkbox" id="showProposals" checked><span>Proposals</span></label>
+						<label class="toggle"><input type="checkbox" id="showStriker" checked><span>Striker 1.0</span></label>
+					</span>
+					<span class="headline">Marks on this page</span>
+				</div>
+				<div class="chips" id="classChips"></div>
+			</div>
+			<canvas id="view"></canvas>
+		</div>
+
+		<p class="readout" id="readout"></p>
+
+		<div class="tools">
+			<span class="lead" id="toolDot"></span>
+			<div class="seg" id="divisions" role="group" aria-label="Grid"></div>
+			<button class="btn secondary sm" id="fill">Fill the grid <kbd>f</kbd></button>
+			<button class="btn secondary sm" id="backbeat">Backbeat <kbd>b</kbd></button>
+			<button class="btn outline sm" id="copyPage">Copy the page before <kbd>c</kbd></button>
+			<button class="btn outline sm" id="accept">Accept proposals <kbd>a</kbd></button>
+			<button class="btn outline sm" id="clearPage">Clear <kbd>x</kbd></button>
+			<span class="spread"></span>
+			<button class="btn ghost sm" id="undo" disabled>Undo <kbd>z</kbd></button>
+		</div>
+
+		<div class="bar">
+			<span class="page" id="pageLabel"></span>
+			<button class="btn secondary" id="play" title="Loops until you press it again">
+				<svg id="playGlyph" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg>
+				<svg id="stopGlyph" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" hidden><rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/></svg>
+				<span id="playLabel">Play</span>
+				<kbd>space</kbd>
+			</button>
+			<label class="toggle"><input type="checkbox" id="clicks" checked><span>Click on marks</span></label>
+			<div class="seg" id="speeds" role="group" aria-label="Speed"></div>
+			<div class="seg" id="sources" role="group" aria-label="What to hear"></div>
+
+			<span class="spread"></span>
+			<button class="btn ok" id="unconfirm" hidden>
+				<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+				Confirmed
+			</button>
+			<button class="btn primary" id="confirm">
+				<span id="confirmLabel">Confirm page</span>
+				<kbd>enter</kbd>
+			</button>
+		</div>
+	</main>
+</div>
+
+<div class="sheet" id="sheet" hidden>
+	<div class="card">
+		<header>
+			<h2>Keys</h2>
+			<button class="btn ghost icon" id="sheetClose" aria-label="Close">
+				<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+			</button>
+		</header>
+		<div class="grid">
+			<p><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> <span>choose kick, snare, hi-hat or cymbal</span></p>
+			<p><kbd>space</kbd> <span>loop this page with a click on every mark</span></p>
+			<p><kbd>f</kbd> <span>fill the page on the grid</span></p>
+			<p><kbd>q</kbd> <span>change the grid</span></p>
+			<p><kbd>b</kbd> <span>fill the backbeat, for a snare or clap on 2 and 4</span></p>
+			<p><kbd>c</kbd> <span>copy the page before onto this one</span></p>
+			<p><kbd>a</kbd> <span>accept every supported proposal on the page</span></p>
+			<p><kbd>x</kbd> <span>clear this class on the page</span></p>
+			<p><kbd>z</kbd> <span>undo</span></p>
+			<p><kbd>s</kbd> <span>hear this class alone</span></p>
+			<p><kbd>m</kbd> <span>hear the mix</span></p>
+			<p><kbd>n</kbd> <span>jump to the most disputed page</span></p>
+			<p><kbd>enter</kbd> <span>confirm the page and move on</span></p>
+			<p><kbd>←</kbd><kbd>→</kbd> <span>page back and forward</span></p>
+			<p class="wide"><span>Click a lane to add a mark; it lands on the nearest attack in that source.
+				Hold <kbd>shift</kbd> to place it exactly where you click. Drag a mark to move it,
+				<kbd>alt</kbd> click or right click to delete it.</span></p>
+		</div>
+	</div>
+</div>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

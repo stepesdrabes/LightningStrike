@@ -117,6 +117,339 @@ because its labels leave claps out, and quiet ghost notes and dense electronic p
 the main errors; on Groove MIDI most misses are notes played below MIDI velocity 40. Benchmark
 results informed the training-set and per-class choices.
 
+## Why electronic music fails (September 16)
+
+Striker 1.0 leads every published benchmark and still misses most of the kicks in the room's own
+music. On `library/AHaIdOXzzuE`, a hardstyle track, a 24 s window holding 67 beats produced 78
+kick candidates and two accepted hits: the candidates existed, and the classifier rejected them
+with a maximum probability of 0.624 and a median of 0.122. In the same window it accepted 55
+snares at probabilities up to 0.982. Hard techno behaves the same way (`library/j8VRLPa1za4`, 20
+kicks accepted of 78 beats). Across the 34 electronic tracks in the library the kick stream covers
+51% of the beat grid (`fourfloor.ts`), in music where the kick is on every beat.
+
+So it is neither thresholds nor candidate generation. `ceiling.ts` puts candidate recall before
+any filtering at 94.1% for kicks and 93.6% for hats, and `inspect.ts` shows the proposals are
+present on exactly the tracks that fail. The cause is what the candidates are described by.
+
+Measuring where the kit separator sends the energy at a track's kick positions:
+
+| | kick source | snare | hi-hat | cymbal |
+|---|---:|---:|---:|---:|
+| real hardstyle | 43% | 32% | 5% | 20% |
+| real hard techno | 53% | 35% | 5% | 7% |
+| a clean synthesised kick | 99% | 0% | 0% | 0% |
+
+MDX23C was trained on acoustic kits and does not put a driven electronic kick in the kick source;
+a third of it arrives in the snare source instead. Striker's most important kick feature is
+`fromSource` at 0.33 gain, which asks whether the separated kick source had an attack. On these
+tracks it has six of 98. The classifier is not wrong about its evidence; its evidence is wrong.
+
+Weber et al. 2024 measured the same profile from the other side, splitting RBMA13 into acoustic
+and electronic tracks and reporting kick F 0.67 against 0.41 and snare 0.50 against 0.38, with
+hi-hats unchanged. No published work covers 808s, drum machines or electronic percussion directly.
+
+Two hypotheses this ruled out. The ADTOF port's timing is correct: centred frames, a 441 sample
+hop, activation index over 100, 84 logarithmic bands and `log10(mag + 1)`, checked against the
+reference implementation, and the signed matching offsets are a median of 0 ms on ENST and RBMA13
+and -10 ms on MDB, which is MDB's annotation convention rather than a bug. And the hi-hats missing
+from dense material are not a peak-picking parameter: of the trap hats with a neighbour inside
+30 ms, 188 of 403 have no candidate, but loosening the refractory gap and the local-maximum window
+recovered three of them, because the limit is the 93 ms analysis window of the source onset
+detector rather than the picker on top of it.
+
+## What Striker 1.1 changes
+
+**Supervision in the failing domain.** `bench/drumeval/synth/` renders 140 electronic tracks from
+4,159 drum machine one-shots over drum-free backing, which is a library track minus its cached
+HTDemucs drum stem. The tempo and bar phase come from that backing, because drums at one tempo
+over music at another is a mixture no recording contains and no separator, transcriber or beat
+tracker was trained on. Every hit's trigger time is exact, and 96 to 99% of them have an attack in
+the band their class owns (`verify.py`).
+
+The part that matters is the kick. A `severity` drawn per kit sets how much of the 400 Hz to 5 kHz
+distortion band the kick screams with, and that alone decides whether the kit separator keeps it:
+across the corpus the share of energy landing in the kick source at a kick runs from 97% down to
+1%, with several tracks on the 43% of a real hardstyle record. A corpus that spans that range is
+what stops the classifier believing the kick source whenever it happens to be full.
+
+**Evidence that survives a failed separation.** Sixteen features measure the attack on the mixture
+itself rather than on the separated sources: seven band rises, seven band levels, where the attack
+sits between the drum bands, and whether its low end falls into the sub over the first 50 ms, as a
+pitched 808 or hardstyle kick does and a snare never does.
+
+**Duplicate removal separated from evaluation tolerance.** `SELECT_GAP_S` is per class now, 50 ms
+for kicks but 28 for snares and 25 for hi-hats. The old flat 50 ms was the benchmark's matching
+window used as a duplicate radius, and 8.9% of snare reference pairs sit closer than that: flams,
+drags and trap hat rolls could not be emitted at all.
+
+**Two electronic sets nobody here made.** FSL-30 (28 hand-annotated Freesound loops) and 150 loops
+of the 101-200 Drum Loop Dataset, both looped to 24 s. A model trained on our own renderer has to
+be asked whether it generalises to electronic drums or only to our way of making them.
+
+**A measurement that needs no annotation.** `fourfloor.ts` reports how much of the beat grid the
+kick stream covers on the library. In four-on-the-floor music the kick is on every beat, so it is
+close to recall on the product's own songs.
+
+## Where Striker 1.1 still falls short, and why
+
+Two different constraints remain, and neither is the one this started with. Counting kick
+candidates against beats in a 60 second window of the owner's four-on-the-floor tracks:
+
+| track | beats | kick candidates | accepted |
+|---|---:|---:|---:|
+| hardstyle | 168 | 167 | 44 |
+| house, `tN6YYPs3g3c` | 122 | 42 | 27 |
+| house, `SOJpE1KMUbo` | 113 | 73 | 61 |
+| hard techno | 155 | 122 | 88 |
+
+On the hardstyle track every beat has a candidate and the classifier keeps a quarter of them. On
+`tN6YYPs3g3c` only a third of the beats have a candidate at all, so nothing downstream can help:
+ADTOF's kick channel barely fires and the separated kick source is empty, and those are the only
+two places kick proposals come from. Dropping the kick threshold from 0.475 to 0.30 moves the
+library from 56% to 58%, so the misses are not sitting just under the line either.
+
+That prediction was right, and the section below is what came of building it.
+
+## The proposal stage was the binding constraint (September 16)
+
+Fixing what the classifier was told did not finish the job. Candidate recall before any filtering
+was 78.2% for kicks and 77.9% for hi-hats on the synthetic corpus, against a model already scoring
+0.834 there on kicks: the filter was at its own ceiling and the proposals were the limit. Sorted by
+how much evidence reached the classifier, the worst tracks were not close: `047-gabber` reached a
+candidate for 7.7% of its 312 kick references, `013-gabber` 12.2% of 368, `105-hardtechno` 12.6%
+of 191, and `083-hardtechno` 16.4% of its 220 hi-hats.
+
+Two explanations were plausible and both were measured, because the peak picker here is ADTOF's
+verbatim (`pre_avg` 0.1 s, `post_avg` 0.01, `pre_max` 0.02, `post_max` 0.01, combine 0.02) and
+madmom's own documentation says to set `pre_avg = post_avg = 0` for neural activations, which do
+not scale with signal level.
+
+- **A sustained kick defeating the trailing average.** Wrong. The kick activation on `047-gabber`
+  is not a plateau, it is flat zero: median 0.001, p90 0.007, max 0.206 on the mixture pass, and
+  max 0.013 on the separated kick pass. There is nothing to pick. The transcriber does not
+  represent a gabber kick as a drum.
+- **The 120 ms mean window spanning a whole 1/16 hi-hat period.** Also wrong, here. Over twelve
+  synthetic tracks with at least 150 hat references, shortening it to the 30 ms of Vogl et al.
+  moves recall from 81.7% to 81.9%; removing it altogether drops it to 76.6%.
+
+All four proposal streams read either that network or the separator, so on this material they go
+silent together. The fifth stream is the mixture's own onset function, `inputs.odf`, which the beat
+tracker already computes and Striker already carried as a feature. It has no opinion about which
+drum it heard, which is exactly why it survives a transcriber and a separator that both have one.
+On `047-gabber` its peaks cover 92.3% of the kick references where the existing streams cover 7.7%.
+
+It is offered to every class, flagged `fromOdf` so the classifier knows where a candidate came
+from, and it raises candidate recall on every corpus in the harness, not only the electronic ones.
+The largest gains are the classes that had no separated source at all: toms rise 25.5 points on
+A2MD, 13.8 on ENST and 10.6 on RWC, and cymbals 16.2 on A2MD and 8.3 on RWC. IDMT is the control
+and does not move, because at 99.9% it had all of the evidence already. The cost is roughly twice
+as many proposals per reference for the main classes, and much more for the two that had no source
+view.
+
+**What it is worth, measured against the right control.** Retraining on the new proposals moved
+every class threshold down (kick 0.475 to 0.425, snare 0.425 to 0.400, hat 0.475 to 0.425), and a
+lower operating point buys recall on electronic material by itself, so the headline difference
+confounds the two. Scoring the new model at the old thresholds separates them: the stream is worth
+**+0.003 on the kick on both independent electronic sets, +0.005 and +0.007 on the snare, and
+-0.005 to +0.004 on the hi-hat**. On the synthetic corpus, whose gabber and hard techno are far
+past anything in those sets, the kick gains 0.042. It does not transfer to them, or to the owner's
+library, because there the kicks already reached a candidate: a fix aimed at silence pays only
+where there is silence. The most consistent class is the snare, not the kick this was built for.
+For scale, an unrelated recipe change measured the same night, on a model with no mixture stream at
+all, moved FSL-30 by 0.005 on its own.
+
+`CANDIDATE_REVISION` is 5. Models trained on earlier proposals are refused, and the analyser falls
+back to the rule-based path rather than failing, so the repository must never be left with the
+installed model and the analyser out of step. `bench/drumeval/ceiling.ts` measures this stage
+directly and is the tool to re-run before assuming the classifier is the limit.
+
+## What the 1.1 experiments showed
+
+**The first synthetic corpus failed, and the failure was informative.** Built before the separator
+mechanism was understood, it kept 82 to 91% of each kick in the kick source. Trained on it, kick
+acceptance on the owner's hardstyle track went from 2 to 15 of 135 beats, and kick coverage of the
+library's beat grid from 53% to 56%. It had taught the classifier to trust the kick source, which
+is the habit that fails on real records. `kickprobe.py` then rendered eight candidate kick designs,
+separated each and measured where the energy went; the band of distortion products between 400 Hz
+and 5 kHz is what moves a kick out of its own source.
+
+**The mix-band features buy nothing on acoustic corpora.** Same corpora, same three seeds, the only
+difference being whether the sixteen features exist: kick 0.908 against 0.907, snare 0.838 against
+0.838, hat 0.884 against 0.883, cymbal 0.656 against 0.657. That is the expected result. Those
+corpora are acoustic drums, where the kit separator works and the source features already carry the
+answer; the bands can only pay where it fails.
+
+**The hi-hat misses are classification, not missing evidence.** On one hip-hop track the drum-stem
+view proposes no hi-hat candidates at all, which looks like separation destroying them. Scanning
+all 122 library tracks for that pathology finds one track, and not that one. 144 candidates and
+five accepted is the same shape of error as the kick.
+
+**A rule cannot replace the classifier here.** `gridkicks.ts` reads kicks off the beat grid where
+a phrase of beats stands clearly above that track's own off-grid moments. It captures 1,289 kicks
+across eleven house, techno, disco and edm tracks at 94.7% candidate recall, and captures nothing
+at all on hardstyle, where only 16% of beats clear the floor because the kick's sub never falls.
+
+**Candidate recall on the rebuilt corpus is 78% for kicks**, against 94% on the clean one, because
+its severe end is harder than any real record: on one track 102 of 171 kick references have no
+candidate. Those teach nothing. The same tracks are valuable for the snare class, where 360 of 421
+candidates come from attacks in the snare source and every one sits on a kick.
+
+## Comparing cross-dataset runs: a trap worth naming (September 16)
+
+`rbma` is `heldOut: true`, so it joins the training pool only under `--train-held-out`. Striker
+1.0's cross-dataset run used that flag and therefore has folds over **mdb, enst, idmt, rbma**; the
+first 1.1 cross-dataset run did not, and has folds over **mdb, enst, idmt, synth**. Both are honest
+leave-one-corpus-out protocols and every published cell is still scored by a model that never saw
+its corpus. But the two runs train on different pools, so differencing their tables measures the
+model change **and** a recipe change together, and the difference lands hardest on exactly the
+corpus whose status differs.
+
+Read `folds.json` before comparing two cross-dataset runs. If the fold corpora differ, the tables
+are not comparable and one of them has to be re-run.
+
+Two hypotheses about the 1.1 cross-dataset numbers were tested and rejected along the way. The
+per-class selection gap is **not** the cause: scoring the same model with the gap forced back to a
+flat 50 ms moves MDB, ENST and ENST 2/3 by less than 0.001, so the tighter gap that lets flams and
+rolls through costs nothing at a 50 ms metric. And the proposal stream is not the cause either: on
+matched folds it accounts for about a fifth of the difference.
+
+## What Striker 1.1 costs, and the one dial that controls it
+
+On Striker 1.0's own cross-dataset protocol, the shipped model gives up **0.007** of three-class
+sum F, and it is worse on all eight corpora, not only in the mean: MDB 0.860 to 0.855, ENST 0.809 to
+0.798, ENST 2/3 0.841 to 0.832, RBMA13 0.753 to 0.744, IDMT 0.971 to 0.971, MDB drums 0.920 to
+0.914, ENST drums 0.893 to 0.885, MDBDrums++ 0.862 to 0.852. Most of it is acoustic **snare
+recall**. (An earlier draft of this section quoted an intermediate build's numbers, which were
+0.008 and had RBMA13 at 0.750.)
+
+Half of the original 0.010 was a labelling bug rather than a trade. The synthetic corpus recorded
+residue as one set of times for all four classes and marked every class at every one of them, so an
+optional reference covered 63% of a track for each class. Per class it is 13% for kicks and 26% for
+snares, and retraining on the corrected labels moves ENST 0.791 to 0.795, ENST 2/3 0.824 to 0.828,
+RBMA13 0.745 to 0.750, ENST drums 0.879 to 0.882 and MDBDrums++ 0.847 to 0.851, at a cost of 0.006
+on FSL-30's 28 tracks. `synth/residue.ts` rewrites existing backings, `backing.ts` writes
+`residueBy` for new ones, and the renderer is deterministic so only the candidate export is redone.
+
+One change accounts for it. Training the same recipe with `--ignore=...,synth:snare` leaves kick,
+hi-hat, cymbal and tom bit-identical and moves the snare both ways at once:
+
+| snare F | ENST | ENST drums | MDB | FSL-30 | drumloop101 |
+|---|---|---|---|---|---|
+| synthetic snare taught | 0.720 | 0.848 | 0.792 | **0.839** | **0.827** |
+| synthetic snare ignored | **0.731** | **0.868** | **0.805** | 0.816 | 0.809 |
+
+The first three columns are cross-dataset; the last two are the independent electronic sets scored
+with the track-fold model. Do not read a row as one protocol.
+
+A dial, not a bug: that corpus's snare is worth about 0.02 of electronic snare and costs the same
+in acoustic snare. It was built to stop the classifier trusting the kick source on distorted
+electronic music, and it does; it also teaches the snare class to distrust the separated snare
+source, which is wrong on a real kit. Dropping it returns `fromSource` from 0.02 to 0.11 of the
+snare model's gain.
+
+The shipped model keeps the synthetic snare because the room plays electronic music. The other end
+is trained and kept at `bench/reports/drumeval/striker/v24-cv-strict`. Neither end is the answer:
+that corpus marks backing residue optional across 69% of its timeline and labels its claps as
+snares, and both teach the snare class carelessly. Narrowing the residue and deciding deliberately
+what a synthetic clap should teach should give both ends at once, and is a corpus rebuild.
+
+## The snare was never worse, the threshold was (September 16)
+
+Comparing 1.0's and 1.1's detections against ENST's references one by one, 1.1 loses 415 of them
+and gains 33. The 415 are not a kind of drum, they are a region of confidence: median separated
+source -25.7 dB against -12.4 for the ones both models find, transcription activation 0.197 against
+0.681, and 8.7% of the energy in the snare stem against 40.2%. Marginal hits. Scoring the same model
+at lower snare thresholds recovers them exactly: at 0.25 the cross-dataset ENST snare reads 0.756
+against Striker 1.0's 0.757, and MDB 0.824 against 0.825.
+
+The cause is in how the operating point is chosen. `best_threshold` averages F over every corpus in
+the fold, and three of them do not have complete annotations: `a2md` and `rwc` are aligned MIDI,
+`star` is re-rendered from pseudo-labels. A real hit their labels miss reads as a false positive
+when it is detected, so the objective pushes the threshold up to hide those, and the corpora that
+are annotated properly pay for it in recall. `--noisy` stops a bad label teaching; it cannot stop a
+missing one counting.
+
+`--threshold-corpora=mdb,mdbsolo,enst,enstsolo,idmt,synth` restricts the vote to complete
+annotations. It remains a leave-one-corpus-out threshold, because the fold has already removed the
+scored corpus and its variants. Snare thresholds fall from 0.375 to 0.325, and ENST reads 0.735,
+ENST drums 0.864, MDB 0.813, held-out 0.874, with a2md, rwc and synth unmoved.
+
+Three other explanations were tested and rejected first, and the first is worth remembering.
+Per-track context columns (`viewAlive`, `sourceAlive`) improve every training corpus and **damage**
+every cross-dataset one, because a value constant within a track is a handle on track identity that
+the trees use to separate domains. The same information per candidate and track-relative is a wash.
+And the synthetic snare is mis-centred by 7 to 9 dB but spans properly and has more quiet hits than
+MDB, RWC or A2MD, so it is not short of ghost notes; weighting it down buys nothing.
+
+## The next thing to build, already measured
+
+The classifier sees only the candidate. Nothing in its 102 features says whether the transcription
+view it is reading is alive on this track, which is what decides whether a mixture-only proposal is
+worth anything: where the class activation is flat the fifth stream recovers 60% of the kick
+references at six false candidates each, and where it is healthy it recovers 3% at thirty-five.
+1,079 of 1,350 kick tracks sit in the healthy bucket and contribute 83% of the new negatives.
+
+Three per-track columns fix that, tested by deriving them inside `train-striker.py` with no
+re-export: `viewAlive` (the 99th percentile of `max(mix[channel], stem[channel])` over the track's
+candidates), `viewMean`, and `odfOnlyShare`. They are used, `viewAlive` being the fifth most
+important kick feature, and the hi-hat recovers 0.005 held-out and 0.006 on the synthetic corpus.
+Porting them into `drumCandidates` needs `CANDIDATE_REVISION` 6 and a re-export; the curves are
+already in scope there, so the computation is the same three lines.
+
+## What the harness does not prove (audited September 16)
+
+Two independent reviews of the measurement code. What they found that stands:
+
+**The published cross-dataset table is sound.** `--loco` genuinely excludes the held-out corpus
+and every variant of it, for every class and every seed, because folds resolve a variant through
+`variantOf` before excluding. Thresholds come from inner folds of the remaining corpora only.
+Tolerance is 50 ms on both sides, matching is optimal one-to-one for both systems, the class
+mapping is `MIDI_REDUCED_5` verbatim and identical for baseline and model, and the track lists are
+the same set with no corpus where one system could score and the other be skipped. Every number in
+the table reproduces from the stored artifacts.
+
+**Striker's operating point is tuned and ADTOF's is not.** ADTOF keeps its shipped per-class
+thresholds on every dataset; Striker's are chosen by maximising a macro mean over the corpora it
+was allowed to see. There is no leakage into the scored corpus, but it is a tuned system measured
+against an untuned one, and the harness offers ADTOF no equivalent. The check that keeps this
+honest is reproducing ADTOF's own published MDB and ENST figures to within 0.012.
+
+**Optional references absorb most false positives on the two unpublished corpora.** The synthetic
+corpus marks backing residue `unreviewed`, and casts that net far too wide: across 40 tracks the
+share of the timeline within 50 ms of an optional marker is a median of 69% for kicks, 68% for
+snares and 69% for hi-hats, from about 1,020 optional markers per track against 56 to 326 required
+ones. Two thirds of a false positive there goes uncounted. No published cell is affected, because
+`benchmark.py` cannot score `synth`, `grid` or `owner` at all, but the shipped thresholds are, since
+they maximise a macro mean in which synth votes with its precision penalty muted. Narrowing that
+label is the first thing to fix in the next corpus build.
+
+**The owner's clips are not strictly held out.** The synthetic backing is a library track minus its
+cached drum stem, and 16 of the 36 annotation clips are recordings used that way. Their real drums
+and labels were never seen, but the recording was. `clips/index.json` marks `heldOut` and orders
+the 20 clean clips first; keep `render.py` off any recording that becomes a clip.
+
+**`fourfloor.ts` cannot tell the classifier from the fallback.** Kick coverage of the beat grid over
+the 38 four-on-the-floor tracks reads 53% for Striker 1.0, 56% for Striker 1.1 and **56% for a run
+with no model at all** on the 1.1 analyser. The three points belong to the fifth proposal stream
+feeding the rule-based path, not to the classifier, so the metric measures the analyser and must not
+be quoted as evidence for a model. What the classifier does on the library is filter: same analyser,
+model against none, kick 30,009 to 29,304, snare 24,236 to 21,087, hat 69,296 to 60,311.
+
+**`evaluate.ts` without `--model` silently scores the rule-based fallback.** This was not caught by
+reading the numbers, which looked plausible and slightly better. The tells are a missing `classes`
+key in every track record and, now, a `model` and `modelVersion` in `summary.json`. It cost a round
+of published room figures: 19 of 19 confirmed hits and 26 of 37 missed-hit clicks belong to the
+fallback, and the shipped model reads 18 of 19 and 24 of 37 against 1.0's 18 of 19 and 22 of 37.
+
+**Smaller things to know before quoting a number.** `synth` and `grid` share library audio without
+declaring `variantOf`, so a fold over that pair would leak. `fourfloor.ts` takes the best of three
+metrical readings per track, which is an oracle choice, and half its library is synth backing.
+RBMA's published snare figure includes a class `--ignore=rbma:snare` deliberately never teaches,
+which understates rather than flatters. STAR's stems come from MUSDB18, which also trained
+HTDemucs, so separation there is optimistic. `evaluate.ts` does not record the `--model` path, so a
+run's provenance rests on its label. The `all` row of `summary.md` pools variants and counts MDB
+and ENST three times over; it is not a result.
+
 ## Rule-based fallback (analysis v35-v36)
 
 These rules were developed and measured with the inagoy DrumSep kit model, whose cymbal stem

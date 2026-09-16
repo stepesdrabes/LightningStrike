@@ -10,6 +10,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 
 import lightgbm as lgb
 import numpy as np
@@ -21,9 +22,12 @@ parser.add_argument('--candidates', required=True)
 parser.add_argument('--name', default='Striker dev', help='release name the exported models carry, such as "Striker 1.0"')
 parser.add_argument('--corpora', default='')
 parser.add_argument('--folds', type=int, default=5)
-parser.add_argument('--drop', default='', help='comma-separated feature names to exclude (evaluation only)')
+parser.add_argument('--drop', default='', help='comma-separated feature names to exclude; the export still names the full list')
 parser.add_argument('--rounds', type=int, default=300)
 parser.add_argument('--leaves', type=int, default=15)
+parser.add_argument('--learning-rate', type=float, default=0.05)
+parser.add_argument('--min-leaf', type=int, default=40)
+parser.add_argument('--classes', default='', help='classes to train, for sweeping one at a time; default all')
 parser.add_argument('--out', default='')
 parser.add_argument('--seed', type=int, default=7)
 parser.add_argument('--seeds', type=int, default=1, help='models per class, seeded from --seed on; their log-odds are averaged')
@@ -32,6 +36,7 @@ parser.add_argument('--noisy', default='a2md', help='corpora with automatically 
 parser.add_argument('--agreement-runs', default='', help='evaluate.ts runs whose model-stage scores vet noisy labels')
 parser.add_argument('--min-agreement', type=float, default=0.5)
 parser.add_argument('--balance', type=float, default=0.0, help='weight rows by corpus size ** -balance')
+parser.add_argument('--weight', default='', help='corpus:factor,... applied on top of --balance')
 parser.add_argument('--loco', action='store_true', help='leave one corpus out: cross-dataset models and scores')
 parser.add_argument('--loco-corpora', default='', help='corpora to leave out in turn; the rest always train (default all)')
 parser.add_argument('--train-variants', nargs='?', const='all', default='',
@@ -42,16 +47,36 @@ parser.add_argument('--ignore', default='rbma:snare',
 parser.add_argument('--labels', default='light', choices=['light', 'strict'],
     help='light: optional references neither teach nor count; strict: every benchmark reference is required')
 parser.add_argument('--score', default='', choices=['', 'light', 'strict'], help='references to score against; default --labels')
+parser.add_argument('--threshold-corpora', default='',
+    help='choose the operating point on these corpora only; default every corpus in the fold')
+parser.add_argument('--threshold-classes', default='',
+    help='apply --threshold-corpora to these classes only; default every class')
 parser.add_argument('--threshold-by', default='macro', choices=['macro', 'pooled'],
     help='choose class thresholds by the mean of per-corpus F or by F pooled over every hit')
 args = parser.parse_args()
 
 root = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'reports', 'drumeval', 'candidates', args.candidates)
-KIT = ['kick', 'snare', 'hat', 'cymbal', 'tom']
+ALL_KIT = ['kick', 'snare', 'hat', 'cymbal', 'tom']
+KIT = [k for k in ALL_KIT if k in args.classes.split(',')] if args.classes else list(ALL_KIT)
+if not KIT:
+    raise SystemExit(f'--classes: none of {args.classes} is a drum class')
+if args.classes and args.out:
+    raise SystemExit('--classes is a sweep aid; an exported model needs every class')
+unknown = set(filter(None, args.threshold_corpora.split(','))) - set(args.corpora.split(',')) if args.corpora else set()
+if unknown:
+    raise SystemExit(f'--threshold-corpora: {sorted(unknown)} are not in --corpora')
+unknown = set(filter(None, args.threshold_classes.split(','))) - set(ALL_KIT)
+if unknown:
+    raise SystemExit(f'--threshold-classes: {sorted(unknown)} are not drum classes')
+unknown = {p.split(':')[0] for p in filter(None, args.weight.split(','))} - set(args.corpora.split(',')) if args.corpora else set()
+if unknown:
+    raise SystemExit(f'--weight: {sorted(unknown)} are not in --corpora')
 WINDOW = 0.05
-variant_kinds = set(KIT) if args.train_variants == 'all' else set(filter(None, args.train_variants.split(',')))
-if variant_kinds - set(KIT):
-    raise SystemExit(f'--train-variants: unknown classes {sorted(variant_kinds - set(KIT))}')
+
+
+variant_kinds = set(ALL_KIT) if args.train_variants == 'all' else set(filter(None, args.train_variants.split(',')))
+if variant_kinds - set(ALL_KIT):
+    raise SystemExit(f'--train-variants: unknown classes {sorted(variant_kinds - set(ALL_KIT))}')
 
 
 def load():
@@ -63,11 +88,16 @@ def load():
         data = np.fromfile(path[:-5] + '.f32', dtype=np.float32)
         at = 0
         classes = {}
-        for kind in KIT:
+        # Walk every class to keep the file offsets right, even when --classes trains a subset.
+        for kind in ALL_KIT:
             c = meta['classes'][kind]
             width = len(c['features'])
             n = c['count']
-            classes[kind] = {**c, 'X': data[at:at + n * width].reshape(n, width)}
+            block = data[at:at + n * width].reshape(n, width)
+            at += n * width
+            if kind not in KIT:
+                continue
+            classes[kind] = {**c, 'X': block}
             if args.labels == 'strict':
                 # Aligned MIDI marks pedal hats and soft strokes that are often inaudible: those still neither teach nor count.
                 noisy_corpus = meta['corpus'] in args.noisy.split(',')
@@ -76,7 +106,6 @@ def load():
                 classes[kind].update(references=c['strictReferences'], optional=[])
             if f"{meta['corpus']}:{kind}" in args.ignore.split(','):
                 classes[kind].update(labels=[-1] * len(c['labels']), excluded=True)
-            at += n * width
         if at != data.size:
             raise SystemExit(f'{path}: feature block size mismatch')
         held = meta.get('heldOut', False) and not args.train_held_out
@@ -107,22 +136,37 @@ def matches(ref, est):
     return int((pairs >= 0).sum()), used
 
 
-def select(times, probs, threshold):
-    # Mirrors runStriker: most probable first, ties by time, nothing within 50 ms of a chosen hit.
+def read_select_gap():
+    """The analyser owns this: a copy that drifted would choose an operating point it cannot honour."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    source = open(os.path.join(here, '..', '..', 'packages', 'analysis', 'src', 'striker.ts'), encoding='utf-8').read()
+    body = re.search(r'const SELECT_GAP_S: Record<StrikerKind, number> = \{(.*?)\};', source, re.S)
+    gaps = {k: float(v) for k, v in re.findall(r'(\w+):\s*([\d.]+)', body.group(1))}
+    if set(gaps) != set(ALL_KIT):
+        raise SystemExit(f'SELECT_GAP_S in striker.ts names {sorted(gaps)}, not the drum classes')
+    return gaps
+
+
+SELECT_GAP = read_select_gap()
+
+
+def select(times, probs, threshold, kind):
+    # Mirrors runStriker: most probable first, ties by time, nothing within the class gap of a chosen hit.
+    gap = SELECT_GAP[kind]
     order = sorted(np.nonzero(probs >= threshold)[0], key=lambda i: (-probs[i], times[i]))
     chosen, kept = [], []
     for i in order:
         at = bisect.bisect_left(kept, times[i])
-        if (at < len(kept) and kept[at] - times[i] < 0.05) or (at and times[i] - kept[at - 1] < 0.05):
+        if (at < len(kept) and kept[at] - times[i] < gap) or (at and times[i] - kept[at - 1] < gap):
             continue
         kept.insert(at, times[i])
         chosen.append(i)
     return np.sort(np.array(chosen, dtype=int))
 
 
-def score(entry, probs, threshold):
+def score(entry, probs, threshold, kind):
     times = np.asarray(entry['times'])
-    chosen = select(times, probs, threshold) if len(times) else np.array([], dtype=int)
+    chosen = select(times, probs, threshold, kind) if len(times) else np.array([], dtype=int)
     est = times[chosen] if len(chosen) else np.array([])
     ref = np.asarray(entry['references'])
     tp, used = matches(ref, est)
@@ -137,19 +181,21 @@ def prf(tp, fp, fn):
     return p, r, (2 * p * r / (p + r) if p + r else 0.0)
 
 
-def flatten(node, tree):
+def flatten(node, tree, columns):
+    # LightGBM numbers splits over the columns it was given, which are `keep`; the analyser indexes
+    # the full feature list, so a model trained without some features still has to name the rest.
     if 'leaf_value' in node:
         tree['leaf'].append(node['leaf_value'])
         return ~(len(tree['leaf']) - 1)
     if node['decision_type'] != '<=':
         raise SystemExit('unsupported split')
     index = len(tree['feature'])
-    tree['feature'].append(node['split_feature'])
+    tree['feature'].append(columns[node['split_feature']])
     tree['threshold'].append(node['threshold'])
     tree['left'].append(0)
     tree['right'].append(0)
-    tree['left'][index] = flatten(node['left_child'], tree)
-    tree['right'][index] = flatten(node['right_child'], tree)
+    tree['left'][index] = flatten(node['left_child'], tree, columns)
+    tree['right'][index] = flatten(node['right_child'], tree, columns)
     return index
 
 
@@ -161,7 +207,7 @@ def export(models, thresholds, names, name, recipe):
         for member in members:
             for info in member.dump_model()['tree_info']:
                 tree = {'feature': [], 'threshold': [], 'left': [], 'right': [], 'leaf': []}
-                flatten(info['tree_structure'], tree)
+                flatten(info['tree_structure'], tree, keep)
                 if len(members) > 1:
                     tree['leaf'] = [value / len(members) for value in tree['leaf']]
                 trees.append(tree)
@@ -190,7 +236,7 @@ if noisy & {t['corpus'] for t in tracks}:
     for run in filter(None, args.agreement_runs.split(',')):
         for path in glob.glob(os.path.join(runs_root, run, 'tracks', '*.json')):
             result = json.load(open(path))
-            for kind in KIT[:3]:
+            for kind in ALL_KIT[:3]:
                 d = result['scores']['model'][kind]['light']
                 agreement[(result['corpus'], result['name'], kind)] = 2 * d['tp'] / max(1, 2 * d['tp'] + d['fp'] + d['fn'])
     kept = 0
@@ -209,17 +255,18 @@ if noisy & {t['corpus'] for t in tracks}:
             entry['labels'] = [-1] * len(entry['labels'])
             entry['excluded'] = True
     print(f'noisy corpora {sorted(noisy)}: kept {kept} class labels of {sum(len(KIT) for t in tracks if t["corpus"] in noisy)}')
-names = tracks[0]['classes']['kick']['features']
+names = list(tracks[0]['classes'][KIT[0]]['features'])
 drop = set(filter(None, args.drop.split(',')))
-if drop and args.out:
-    raise SystemExit('--drop is an evaluation aid; exported models must use every feature')
 keep = [i for i, n in enumerate(names) if n not in drop]
 train_tracks = [t for t in tracks if not t['heldOut'] and not t['variantOf']]
 print(f'{len(tracks)} tracks ({len(train_tracks)} trainable) from {sorted(set(t["corpus"] for t in train_tracks))}')
 corpora = sorted(set(t['corpus'] for t in train_tracks))
-params = dict(objective='binary', learning_rate=0.05, num_leaves=args.leaves, min_data_in_leaf=40, feature_fraction=0.8,
+params = dict(objective='binary', learning_rate=args.learning_rate, num_leaves=args.leaves,
+    min_data_in_leaf=args.min_leaf, feature_fraction=0.8,
     bagging_fraction=0.8, bagging_freq=1, lambda_l2=1.0, verbose=-1, seed=args.seed, num_threads=args.threads, deterministic=True)
-thresholds_grid = np.round(np.arange(0.2, 0.81, 0.05), 2)
+# Finer than the old 0.05 grid, and reaching lower: electronic material wants a lower threshold
+# than acoustic, and neighbouring steps on the coarse grid often scored alike anyway.
+thresholds_grid = np.round(np.arange(0.15, 0.851, 0.025), 3)
 
 
 def key(t):
@@ -247,7 +294,9 @@ def train(members, kind):
     sizes = {}
     for t in members:
         sizes[t['corpus']] = sizes.get(t['corpus'], 0) + len(t['classes'][kind]['labels'])
-    w = np.concatenate([np.full(len(t['classes'][kind]['labels']), sizes[t['corpus']] ** -args.balance) for t in members])
+    extra = dict(pair.split(':') for pair in filter(None, args.weight.split(',')))
+    w = np.concatenate([np.full(len(t['classes'][kind]['labels']),
+        sizes[t['corpus']] ** -args.balance * float(extra.get(t['corpus'], 1.0))) for t in members])
     mask = y >= 0
     return Ensemble([lgb.train({**params, 'seed': args.seed + k}, lgb.Dataset(X[mask], y[mask], weight=w[mask] / w[mask].mean()),
         num_boost_round=args.rounds) for k in range(args.seeds)])
@@ -287,7 +336,7 @@ def tally(members, kind, probs, threshold):
         entry = t['classes'][kind]
         if entry.get('excluded') or (all(label < 0 for label in entry['labels']) and not entry['references']):
             continue
-        tp, fp, fn = score(entry, probs[key(t)], threshold if np.isscalar(threshold) else threshold[t['corpus']])
+        tp, fp, fn = score(entry, probs[key(t)], threshold if np.isscalar(threshold) else threshold[t['corpus']], kind)
         for group in (t['corpus'], 'held-out' if t['heldOut'] or t['variantOf'] else 'trainable'):
             a = acc.setdefault(group, [0, 0, 0, 0.0, 0])
             a[0] += tp
@@ -301,11 +350,22 @@ def tally(members, kind, probs, threshold):
 
 def best_threshold(members, kind, probs):
     # By default each corpus counts equally, so the largest corpus does not set the operating point for every style.
+    # --threshold-corpora narrows that vote to corpora whose annotations are complete: where a corpus's labels
+    # miss real hits, every one of them scores as a false positive and the operating point is pushed up to hide
+    # them, which then costs recall on the corpora that are annotated properly. --threshold-classes limits the
+    # narrowing to the classes it is true of; aligned MIDI misses soft strokes, which are snares, not kicks.
+    classes = set(filter(None, args.threshold_classes.split(',')))
+    wanted = set(filter(None, args.threshold_corpora.split(','))) if not classes or kind in classes else set()
+
     def objective(th):
         rows = tally(members, kind, probs, th)
         if args.threshold_by == 'pooled':
             return prf(*rows['trainable'][:3])[2]
-        return np.mean([prf(*a[:3])[2] for group, a in rows.items() if group not in ('trainable', 'held-out')])
+        scored = [prf(*a[:3])[2] for group, a in rows.items()
+                  if group not in ('trainable', 'held-out') and (not wanted or group in wanted)]
+        if not scored:
+            raise SystemExit(f'--threshold-corpora matches no corpus scoring {kind} in this fold')
+        return np.mean(scored)
     return float(max(thresholds_grid, key=objective))
 
 
@@ -378,14 +438,20 @@ for kind in KIT:
 if args.out:
     os.makedirs(args.out, exist_ok=True)
     protocol = 'loco' if args.loco else 'cv'
-    recipe = f'{args.candidates}-{"-".join(corpora)}-r{args.rounds}-l{args.leaves}'
+    recipe = f'{args.candidates}-{"-".join(corpora)}-r{args.rounds}-l{args.leaves}-s{args.seeds}'
+if args.drop:
+    recipe += f'-drop{len(names) - len(keep)}'
+if args.threshold_corpora:
+    recipe += '-thr' + (args.threshold_classes or 'all')
     for fold in range(folds):
         label = f'without-{left_out[fold]}' if args.loco else f'fold{fold}'
         json.dump(export(fold_models[fold], fold_thresholds[fold], names, f'{args.name} {label}', f'{recipe}-{label}'),
             open(os.path.join(args.out, f'fold-{fold}.json'), 'w'))
     json.dump({f'{c}/{n}': k for (c, n), k in fold_of.items()}, open(os.path.join(args.out, 'folds.json'), 'w'), indent=1)
     json.dump(export(final_models, final_thresholds, names, args.name, recipe), open(os.path.join(args.out, 'model.json'), 'w'))
-    json.dump({'protocol': protocol, 'classes': summary}, open(os.path.join(args.out, 'report.json'), 'w'), indent=1)
+    # Record the whole recipe: a comparison between two runs is only readable if each says what it was.
+    json.dump({'protocol': protocol, 'args': vars(args), 'classes': summary},
+        open(os.path.join(args.out, 'report.json'), 'w'), indent=1)
     for kind in KIT:
         t = train_tracks[0]
         X = t['classes'][kind]['X'][:, keep][:5]

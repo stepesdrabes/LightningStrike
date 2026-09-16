@@ -120,6 +120,16 @@ describe('Striker', () => {
 		expect(at('kickRise')).toBeGreaterThan(10);
 		expect(at('fromMix') + at('fromStem')).toBe(2);
 		expect(at('kickSub')).toBeGreaterThan(at('snareMid'));
+		// The guard in drumCandidates only counts the columns, so a swap inside the sixteen band
+		// values would pass it, pass the model's feature-list check and corrupt every prediction.
+		// Rises are non-negative ratios and levels are dB against the band's own loud level.
+		// The guard in drumCandidates only counts columns, so a transposition inside the sixteen band
+		// values would pass it, pass the model's feature-list check, and corrupt every prediction.
+		// bandTilt is built from four of the rises, which makes it an exact check on where they sit.
+		expect(at('bandTilt')).toBeCloseTo(
+			at('bandRise0') + at('bandRise1') - at('bandRise4') - at('bandRise5'), 4);
+		expect(new Set([...Array(7)].map((_, b) =>
+			at(`bandLevel${b}` as typeof STRIKER_FEATURES[number]))).size).toBeGreaterThan(1);
 	});
 
 	it('proposes model and source candidates once each and describes both passes', () => {
@@ -201,5 +211,42 @@ describe('Striker', () => {
 		});
 		expect(hits.snare.times.map((t) => Math.round(t * 10) / 10)).toEqual([1.5, 2.5, 3.5, 4.5]);
 		expect(Math.min(...hits.snare.levels)).toBeGreaterThan(0.9);
+	});
+
+	it('proposes from the mixture where no activation rises, and lights those hits', () => {
+		// Hardcore and hard techno leave the transcriber and the separator silent together, so the
+		// only evidence is the mixture: candidates must still appear, and must not arrive at level 0.
+		const base = inputs();
+		const silent = new Float32Array(base.mix.length);
+		const kick = new Float32Array(base.sources.kick.length);
+		const odf = new Float32Array(base.odf.length);
+		for (const time of [1, 2, 3, 4, 5]) {
+			burst(kick, time, time === 3 ? 0.15 : 0.5);
+			odf[Math.round(time * base.odfFps)] = 1;
+		}
+		const audio = Float32Array.from(kick);
+		const deaf = {
+			...base, mix: silent, stem: silent, audio, odf,
+			sources: { ...base.sources, kick },
+			sourceActivations: { kick: silent, snare: silent, hat: silent, cymbal: silent },
+			sourceOnsets: { ...base.sourceOnsets, kick: sourceOnsets(new Float32Array(kick.length), rate) }
+		};
+		const candidates = drumCandidates(deaf, 'kick');
+		const near = (t: number) => candidates.times.some((time) => Math.abs(time - t) < 0.05);
+		for (const time of [1, 2, 3, 4, 5]) expect(near(time)).toBe(true);
+		const row = candidates.times.findIndex((t) => Math.abs(t - 1) < 0.05);
+		expect(candidates.features[row * STRIKER_FEATURES.length + feature('fromOdf')]).toBe(1);
+		expect(candidates.strength[row]).toBe(0);
+
+		const classifier = model();
+		classifier.classes.kick = { threshold: 0.5, trees: [stemSplit('fromOdf')] };
+		const hits = runStriker(classifier, deaf);
+		expect(hits.kick.times.map((t) => Math.round(t * 10) / 10)).toEqual([1, 2, 3, 4, 5]);
+		expect(hits.kick.levels.every((level) => level > 0)).toBe(true);
+		// The quiet one reads quieter: a rescued hit keeps its dynamics rather than the fixed
+		// amplitude the player substitutes for a level of 0.
+		const quiet = hits.kick.times.findIndex((t) => Math.abs(t - 3) < 0.05);
+		expect(hits.kick.levels[quiet]).toBeLessThan(0.7);
+		expect(Math.max(...hits.kick.levels)).toBeGreaterThan(0.9);
 	});
 });

@@ -11,8 +11,10 @@ Historical arrangement/lighting work remains in git and `bench/judged/`.
    the MDX23C kit separator beat the best published cross-dataset results on every public
    benchmark with a comparable published result (MDBDrums++'s only number uses an unstated
    protocol); see [Drum accuracy session](#drum-accuracy-session).
-3. **Next:** the library is re-prepared and the Mac tested before the party. The Windows app
-   was rebuilt and reinstalled on 2026-09-14.
+3. **Done: Striker 1.1** (2026-09-15 to 16): the electronic music misses, diagnosed and
+   addressed; see [Striker 1.1](#striker-11).
+4. **Next:** the library is re-prepared and the Mac tested before the party. The Windows app
+   was rebuilt and reinstalled on 2026-09-14; 1.1 has not been installed on it.
 
 The owner asked for SOTA drum analysis on every existing benchmark; their hand-made reviews are
 useful but need not be 100% correct. Accuracy matters more than preparation speed.
@@ -21,6 +23,122 @@ in service. The owner will test the Mac after it returns. Significant progress i
 perfection is not a release requirement. Ask for judgements when sound classification is
 ambiguous. Use useful 8–20 second context, not tiny isolated clips. Rim/side-stick hits are
 allowed as quieter snare accents; claps and snaps are snares.
+
+## Striker 1.1
+
+Everything measured is in [drum reliability](../bench/DRUM_RELIABILITY.md#why-electronic-music-fails-september-16);
+the tooling is in [drumeval](../bench/drumeval/README.md) and [annotate](../bench/annotate/README.md).
+
+**The problem.** Striker 1.0 leads every published benchmark and finds about half the kicks in the
+room's own music. The cause is not thresholds and not candidate generation: the kit separator was
+trained on acoustic kits and does not put a driven electronic kick in the kick source, which is
+what Striker's most important kick feature asks about. On a real hardstyle record 43% of the energy
+at a kick lands in the kick source and 32% lands in the snare source, so the classifier calls it a
+snare, confidently.
+
+**The fix, in two parts.** First, what the classifier is told: a synthetic corpus whose kicks span
+that whole range, so it cannot rely on the kick source; sixteen features measuring the attack on
+the mixture instead of the sources; and a per-class duplicate gap, because the benchmark's 50 ms
+matching window was being used as a duplicate radius and 8.9% of snare reference pairs sit closer
+than that.
+
+Second, whether it is told anything at all. On hardcore and hard techno the transcriber's kick
+activation is flat zero, not merely weak, and every proposal stream read either it or the
+separator, so no candidate reached the classifier for 92% of the kicks on the worst track. The
+mixture's own onset function, which the beat tracker already computes, now proposes for every class
+as a fifth stream (`fromOdf`). It raises candidate recall on every corpus in the harness, most of
+all for toms and cymbals, which have no separated source at all. A hit rescued that way also needs
+a level the lights can use: the loudness fallback read the separated source, which is silent
+exactly there, so a class whose every measure reads zero now falls back to the mixture bands, and
+no accepted hit reaches the player at level 0, which the player treats as "no level recorded" and
+replaces with a fixed amplitude. It is a fallback and not a fifth opinion, because a mixture band
+holds whatever else is playing in it: levels that were already non-zero are untouched.
+
+**New corpora and tools.** `synth` (140 rendered electronic tracks, `bench/drumeval/synth/`),
+`fsl30` and `drumloop101` (electronic benchmarks nobody here made), `grid` (kicks read off the beat
+grid of real four-on-the-floor library tracks), `owner` (hand annotations). `ceiling.ts` bounds what
+any selector can reach; `inspect.ts` says whether a miss was never proposed or was rejected;
+`fourfloor.ts` measures the library with no labels at all.
+
+**What is installed, and what it costs.** `models/striker.json` is `Striker 1.1 (bb74c4e6)`,
+candidate revision 5, analysis 39, thresholds kick 0.375 / snare 0.35 / hat 0.45 / cymbal 0.275 /
+tom 0.175, from `bench/reports/drumeval/striker/v29-cv-strict` and reproducible byte for byte from
+the recipe in [drumeval](../bench/drumeval/README.md). On the published cross-dataset benchmarks, measured on Striker 1.0's own protocol, it
+gives up **0.007** of three-class sum F: MDB 0.860 to 0.855, ENST 0.809 to 0.798, ENST 2/3 0.841 to
+0.832, RBMA13 0.753 to 0.744, IDMT unchanged at 0.971, MDB drums 0.920 to 0.914, ENST drums 0.893
+to 0.885, MDBDrums++ 0.862 to 0.852. What it buys: FSL-30 0.798 to 0.806, drumloop101 0.859 to
+0.870, and on the owner's own confirmed labels **24 of 37** reviewed missed-hit clicks answered
+against 22 for 1.0, with 18 of 19 hits kept, no confirmed non-hit emitted and one of five wrong
+markers still emitted, all three unchanged from 1.0.
+
+The library's kick coverage of the beat grid reads 53% for 1.0 and 56% for 1.1, but **a run with no
+model at all on the same analyser also reads 56%**, so those three points belong to the fifth
+proposal stream feeding the rule-based path and not to the classifier. Do not quote that metric as
+evidence for the model. What the classifier does on the library is filter: same analyser, model
+against none, kick 30,009 to 29,304, snare 24,236 to 21,087, hat 69,296 to 60,311, and on the
+owner's labels the fallback finds more (19 of 19, 26 of 37) and is wrong more (3 of 5).
+
+**Always pass `--model` to `evaluate.ts`.** Without it the run silently uses the rule-based
+fallback; the giveaway is a missing `classes` key in each track record, and `summary.json` now
+records the model path and version so this cannot go unnoticed again.
+
+To go back to Striker 1.0, both the model and the analyser have to move together:
+
+```sh
+git checkout packages/analysis/src/striker.ts packages/core/src/contracts/analysis.ts
+cp bench/reports/drumeval/striker/v19-cv-strict/model.json models/striker.json
+```
+
+**The cause of the snare loss was found and half of it fixed.** The synthetic corpus's residue
+marking had two independent four-fold multiplications: `backing.ts` flattened all four classes'
+proposals into one set of times, and `render.py` then marked every class at every one of them. An
+optional reference covered 63% of a synthetic track for every class, so that corpus could not
+penalise a false positive and taught the snare to distrust its own separated source. Residue is now
+recorded per class: coverage falls to 13% for kicks and 26% for snares, and cross-dataset acoustic
+snare recovers (MDB 0.792 to 0.808, ENST drums 0.848 to 0.855, held-out 0.861 to 0.867). The
+renderer is deterministic, so re-rendering gave byte-identical audio and only the candidate export
+had to be redone: `node bench/drumeval/synth/residue.ts` then re-render and re-export `synth`.
+
+**Most of what looked like a trade was the operating point.** Comparing detections against ENST's
+references one by one, 1.1 lost 415 and gained 33, and the 415 are a region of confidence rather
+than a kind of drum: median separated source -25.7 dB against -12.4, activation 0.197 against 0.681.
+Scoring the same model at a lower snare threshold recovers them exactly. The cause is that
+`best_threshold` let corpora with incomplete annotations vote: where `a2md`, `rwc` or `star` miss a
+real hit, detecting it reads as a false positive, so the threshold rises to hide it and the properly
+annotated corpora pay in recall. `--threshold-corpora` restricts the vote, and the shipped model
+applies it to the snare, where aligned MIDI's missing soft strokes actually are (a2md carries 3.4%
+of its snares well below that track's loud ones, rwc 6.4%, against ENST's 31%). Applying it to every
+class helps the snare and costs the kick and hi-hat, so it is applied to one.
+
+The models either side are kept: `v23-cv-strict` (before the label fix), `v24-cv-strict` (synthetic
+snare dropped entirely), `v25-cv-strict` and `v26-cv-strict` (the two threshold objectives).
+
+**What is blocked on the owner.** The annotation tool at `bench/annotate` is rebuilt and the whole
+path from a confirmed page to a scored corpus is proven, but almost nothing is annotated. Every
+benchmark here is acoustic drums or synthetic; the owner's clips are the only measurement that
+speaks for the room.
+
+**Care.** `CANDIDATE_REVISION` is 5, so a 1.0 model is refused by this tree and vice versa; the
+1.0 model is kept byte-identical at `bench/reports/drumeval/striker/v19-cv-strict/model.json`.
+The analyser falls back to the rule-based path rather than failing when the installed model does
+not match, which is quiet, so never leave the tree with the two out of step. Score `synth` and
+`owner` with the `light` metric: under `strict` the `unreviewed` markers that stand for backing
+residue and unconfirmed pages would become hits a detector must find. Those markers are also far
+too numerous, covering about 69% of a synthetic track, so that corpus barely penalises a false
+positive; see the audit section of the reliability document before trusting any number from it.
+
+**Clean `target/release/server` before a desktop build.** Tauri copies the `../../web/build`
+resource into `apps/desktop/src-tauri/target/release/server` without removing what is already
+there, so each build's route chunks are left behind. A build made on 2026-09-16 shipped a September
+14 chunk carrying the **previous `ANALYSIS_VERSION`** beside the current one. Nothing reachable
+referenced it, because SvelteKit addresses chunks by content hash and no manifest named it, but a
+superseded version constant inside a shipped bundle is not something to leave to luck. Rebuilding
+after `rm -rf apps/desktop/src-tauri/target/release/server` removed it and took the NSIS installer
+from 687 MB to **655 MB** and the MSI from 762 MB to **727 MB**.
+
+Judge staleness by content, not by modification time: most of that directory is the 368 MB bundled
+`node_modules`, whose files keep their cache timestamps and look old while being exactly right. The
+sibling `models` resource is the same story.
 
 ## Drum accuracy session
 

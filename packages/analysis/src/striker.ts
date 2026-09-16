@@ -21,9 +21,17 @@ const CHANNEL: Record<StrikerKind, number> = { kick: 0, snare: 1, tom: 2, hat: 3
 const CANDIDATE_THRESHOLD = 0.05;
 /** Ghost notes leave only faint snare activation and attacks, so snare proposals reach lower. */
 const SNARE_CANDIDATE_THRESHOLD = 0.02;
-const MERGE_S = 0.03;
-/** Selected hits closer than this collapse to the more probable one. */
-const SELECT_GAP_S = 0.05;
+const MERGE_S = 0.02;
+/** Where no class activation rises at all, the mixture's own onset function still does: every class
+ * proposes from it and the classifier decides. */
+const ODF_PEAKS = { localMaxSec: 0.02, movingMeanSec: 0.1, refractorySec: 0.03, delta: 0.05 };
+/**
+ * Selected hits closer than this collapse to the more probable one. A benchmark's 50 ms matching
+ * tolerance is not a duplicate radius: flams, drags and rolls put two real hits inside it.
+ */
+const SELECT_GAP_S: Record<StrikerKind, number> = {
+	kick: 0.05, snare: 0.028, hat: 0.025, cymbal: 0.05, tom: 0.04
+};
 const SOURCES = ['kick', 'snare', 'hat', 'cymbal'] as const;
 type Source = typeof SOURCES[number];
 const FFT_SIZE = 2048;
@@ -39,7 +47,12 @@ const BLEED_REACH_S = 4;
 const BLEED_FLOOR_DB = -60;
 
 /** Bump whenever candidate proposals or features change: models trained on other candidates are refused. */
-export const CANDIDATE_REVISION = 3;
+export const CANDIDATE_REVISION = 5;
+
+/** Band edges, Hz, measured on the mixture, so an attack still has evidence when separation fails. */
+const MIX_BANDS = [30, 80, 200, 500, 1500, 4000, 8000, 16000] as const;
+const MIX_FFT = 1024;
+const MIX_HOP = 128;
 
 export const STRIKER_FEATURES = [
 	'mix0', 'mix1', 'mix2', 'mix3', 'mix4', 'stem0', 'stem1', 'stem2', 'stem3', 'stem4', 'mixMean', 'stemMean',
@@ -52,7 +65,10 @@ export const STRIKER_FEATURES = [
 	'cymbalRatio', 'cymbalDb', 'cymbalRise', 'cymbalOnset', 'cymbalMatch', 'cymbalDensity',
 	'snareOverKick', 'hatOverKick', 'cymbalOverKick', 'kickOverSnare',
 	'snareMid', 'kickSub', 'hatHigh', 'cymbalHigh', 'mixOdf', 'dspKick', 'dspSnare', 'dspHat',
-	'fromMix', 'fromStem', 'fromSource', 'fromSourceModel',
+	'fromMix', 'fromStem', 'fromSource', 'fromSourceModel', 'fromOdf',
+	'bandRise0', 'bandRise1', 'bandRise2', 'bandRise3', 'bandRise4', 'bandRise5', 'bandRise6',
+	'bandLevel0', 'bandLevel1', 'bandLevel2', 'bandLevel3', 'bandLevel4', 'bandLevel5', 'bandLevel6',
+	'bandTilt', 'bandDrop',
 	'kickModel0', 'kickModel1', 'kickModel2', 'kickModel3', 'kickModel4',
 	'snareModel0', 'snareModel1', 'snareModel2', 'snareModel3', 'snareModel4',
 	'hatModel0', 'hatModel1', 'hatModel2', 'hatModel3', 'hatModel4',
@@ -202,6 +218,38 @@ class Spectra {
 	}
 }
 
+interface MixBands {
+	/** One RMS curve per band of MIX_BANDS. */
+	energy: Float32Array[];
+	/** Each band's loud level in this track, so a level reads the same across recordings. */
+	reference: number[];
+	fps: number;
+}
+
+/** Band energies of the mixture itself, at a finer clock than the transcription's 100 Hz. */
+function mixBands(audio: Float32Array, rate: number): MixBands {
+	const fft = new RealFft(MIX_FFT);
+	const window = hannWindow(MIX_FFT);
+	const mags = new Float32Array(fft.bins);
+	const frames = Math.max(1, Math.ceil(audio.length / MIX_HOP));
+	const count = MIX_BANDS.length - 1;
+	const edge = MIX_BANDS.map((hz) => Math.min(fft.bins - 1, Math.round((hz * MIX_FFT) / rate)));
+	const energy = Array.from({ length: count }, () => new Float32Array(frames));
+	for (let f = 0; f < frames; f++) {
+		fft.magnitudes(audio, f * MIX_HOP - (MIX_FFT >> 1), window, mags, 2 / MIX_FFT);
+		for (let b = 0; b < count; b++) {
+			let acc = 0;
+			for (let k = edge[b]; k < Math.max(edge[b] + 1, edge[b + 1]); k++) acc += mags[k] * mags[k];
+			energy[b][f] = Math.sqrt(acc);
+		}
+	}
+	return {
+		energy,
+		reference: energy.map((curve) => Math.max(1e-6, quantile(curve, 0.95))),
+		fps: rate / MIX_HOP
+	};
+}
+
 interface SourceContext {
 	/** Refined attack times of the source's own onset peaks. */
 	peaks: Float64Array;
@@ -215,6 +263,8 @@ interface Context {
 	sourceCurves: Record<Source, Float32Array[]>;
 	reference: number;
 	spectra: Spectra;
+	bands: MixBands;
+	odfPeaks: number[];
 	sources: Record<Source, SourceContext>;
 	/** Level of the first source, dB against the reference, at each attack of the second. */
 	bleed: {
@@ -274,6 +324,9 @@ function context(inputs: StrikerInputs): Context {
 		])) as Record<Source, Float32Array[]>,
 		reference,
 		spectra,
+		bands: mixBands(inputs.audio, rate),
+		odfPeaks: pickPeaks(inputs.odf, inputs.odfFps, ODF_PEAKS)
+			.map((peak) => refinePeakTime(inputs.odf, peak.frame, inputs.odfFps)),
 		sources,
 		bleed: {
 			snareAtKick: levelsAt(inputs.sources.snare, sources.kick.peaks),
@@ -312,6 +365,7 @@ export function drumCandidates(inputs: StrikerInputs, kind: StrikerKind, shared 
 			proposals.push({ time, from: 3 });
 		}
 	}
+	for (const time of shared.odfPeaks) proposals.push({ time, from: 4 });
 	proposals.sort((a, b) => a.time - b.time || a.from - b.from);
 
 	const strengthAt = (time: number) => {
@@ -326,7 +380,7 @@ export function drumCandidates(inputs: StrikerInputs, kind: StrikerKind, shared 
 			if (strengthAt(proposal.time) > strengthAt(last.time)) last.time = proposal.time;
 			continue;
 		}
-		const flags = [0, 0, 0, 0];
+		const flags = [0, 0, 0, 0, 0];
 		flags[proposal.from] = 1;
 		merged.push({ time: proposal.time, flags });
 	}
@@ -402,6 +456,36 @@ export function drumCandidates(inputs: StrikerInputs, kind: StrikerKind, shared 
 			put(maxAround(dsp.curve, Math.round(t * dsp.fps), 3));
 		}
 		for (const flag of candidate.flags) put(flag);
+		const { bands } = shared;
+		const frameAt = (offset: number) => Math.round((t + offset) * bands.fps);
+		let lowEarly = 0;
+		let lowLate = 0;
+		let bassEarly = 0;
+		let bassLate = 0;
+		const rises: number[] = [];
+		for (let b = 0; b < bands.energy.length; b++) {
+			const curve = bands.energy[b];
+			const attack = maxAround(curve, frameAt(0.012), Math.round(0.018 * bands.fps));
+			// Clamped, so a candidate in the first frames measures the quiet it has rather than none.
+			const quiet = meanAround(curve, Math.max(0, frameAt(-0.06)), Math.round(0.022 * bands.fps));
+			rises.push(db(attack) - db(quiet));
+			if (b === 0) {
+				lowEarly = maxAround(curve, frameAt(0.008), 2);
+				lowLate = maxAround(curve, frameAt(0.05), 3);
+			}
+			if (b === 1) {
+				bassEarly = maxAround(curve, frameAt(0.008), 2);
+				bassLate = maxAround(curve, frameAt(0.05), 3);
+			}
+		}
+		for (const rise of rises) put(rise);
+		for (let b = 0; b < bands.energy.length; b++) {
+			put(db(maxAround(bands.energy[b], frameAt(0.012), Math.round(0.018 * bands.fps)) / bands.reference[b]));
+		}
+		// Where the attack sits between the drum bands, and whether its low end falls into the sub
+		// over the first 50 ms, as a pitched 808 or hardstyle kick does and a snare never does.
+		put(rises[0] + rises[1] - rises[4] - rises[5]);
+		put((db(lowLate) - db(bassLate)) - (db(lowEarly) - db(bassEarly)));
 		for (const name of SOURCES) {
 			for (let c = 0; c < ACT_CLASSES; c++) put(maxAround(shared.sourceCurves[name][c], frame, 2));
 		}
@@ -483,8 +567,26 @@ export function validateStrikerModel(model: StrikerModel): StrikerModel {
  * Hat and cymbal levels keep the activation rise, which separates pedal hats better.
  */
 const LOUDNESS_RANGE_DB = 18;
+/**
+ * The player reads a level of 0 as "this hit recorded no level" and substitutes a fixed amplitude
+ * for it, which would make a hit far below the track's loud ones brighter than a merely soft one.
+ * A hit the classifier accepted keeps a level under that floor instead, so it stays ordered.
+ */
+const QUIETEST_HIT = 0.02;
+const column = (name: typeof STRIKER_FEATURES[number]) => STRIKER_FEATURES.indexOf(name);
 const LOUDNESS: Partial<Record<StrikerKind, number>> = {
-	kick: STRIKER_FEATURES.indexOf('kickDb'), snare: STRIKER_FEATURES.indexOf('snareDb')
+	kick: column('kickDb'), snare: column('snareDb')
+};
+/**
+ * A fallback, not a fifth opinion: a band holds whatever else plays in it, so a pedal hat under a
+ * loud snare must not inherit the snare's level.
+ */
+const MIX_LOUDNESS: Record<StrikerKind, number[]> = {
+	kick: [column('bandLevel0'), column('bandLevel1')],
+	snare: [column('bandLevel2'), column('bandLevel4')],
+	hat: [column('bandLevel5'), column('bandLevel6')],
+	cymbal: [column('bandLevel5'), column('bandLevel6')],
+	tom: [column('bandLevel1'), column('bandLevel2')]
 };
 
 export function strikerProbabilities(model: StrikerModel, kind: StrikerKind, candidates: Candidates): Float64Array {
@@ -526,14 +628,15 @@ export function runStriker(
 			.filter((i) => probabilities[i] >= threshold)
 			.sort((a, b) => probabilities[b] - probabilities[a] || candidates.times[a] - candidates.times[b]);
 		const chosen: number[] = [];
-		// Accepted hits by SELECT_GAP_S bucket; two buckets each side cover every conflict, rounding included.
+		const gap = SELECT_GAP_S[kind];
+		// Accepted hits by gap bucket; two buckets each side cover every conflict, rounding included.
 		const accepted = new Map<number, number[]>();
 		for (const i of order) {
 			const time = candidates.times[i];
-			const bucket = Math.floor(time / SELECT_GAP_S);
+			const bucket = Math.floor(time / gap);
 			let taken = false;
 			for (let b = bucket - 2; b <= bucket + 2 && !taken; b++) {
-				taken = accepted.get(b)?.some((j) => Math.abs(candidates.times[j] - time) < SELECT_GAP_S) ?? false;
+				taken = accepted.get(b)?.some((j) => Math.abs(candidates.times[j] - time) < gap) ?? false;
 			}
 			if (taken) continue;
 			chosen.push(i);
@@ -550,14 +653,19 @@ export function runStriker(
 		}
 		const strengths = chosen.map((i) => candidates.strength[i]).sort((a, b) => a - b);
 		const top = Math.max(STRONG_ONSET_EXCESS, strengths[Math.floor(strengths.length * 0.9)] ?? 0);
-		const column = LOUDNESS[kind];
-		const loudness = column === undefined ? null
-			: chosen.map((i) => candidates.features[i * STRIKER_FEATURES.length + column]);
-		const loud = loudness ? quantile(loudness, 0.9) : 0;
+		const against = (col: number) => {
+			const read = chosen.map((i) => candidates.features[i * STRIKER_FEATURES.length + col]);
+			const loud = quantile(read, 0.9);
+			return read.map((v) => Math.min(1, Math.max(0, 1 + (v - loud) / LOUDNESS_RANGE_DB)));
+		};
+		const source = LOUDNESS[kind];
+		const heard = source === undefined ? null : against(source);
+		const fallback = MIX_LOUDNESS[kind].map(against);
 		const levels = chosen.map((i, k) => {
 			const s = candidates.strength[i];
-			const heard = loudness ? Math.min(1, Math.max(0, 1 + (loudness[k] - loud) / LOUDNESS_RANGE_DB)) : 0;
-			return Math.max(Math.min(1, s / top) * Math.min(1, s / STRONG_ONSET_EXCESS), heard);
+			let level = Math.max(Math.min(1, s / top) * Math.min(1, s / STRONG_ONSET_EXCESS), heard?.[k] ?? 0);
+			if (level <= 0) for (const read of fallback) if (read[k] > level) level = read[k];
+			return Math.max(QUIETEST_HIT, level);
 		});
 		out[kind] = { times: chosen.map((i) => candidates.times[i]), levels, curve, fps: ACT_FPS };
 	}

@@ -29,14 +29,19 @@ report_root = os.path.join(root, 'bench', 'reports', 'drumeval')
 CLASSES = ['kick', 'snare', 'tom', 'hat', 'cymbal']
 THREE = ['kick', 'snare', 'hat']
 # MIDI_REDUCED_5 drops tambourine and shakers, which drumeval keeps as optional hat references.
-DROPPED_SUBS = {'TMB', 'GM54', 'GM69', 'GM70', 'GM82'}
+# 'unreviewed' marks a stretch nobody has judged: backing residue in the synthetic corpus and the
+# pages of an owner clip that were never confirmed. Dropping the reference here leaves a detection
+# there unmatched, so it counts as a false positive: this file has no optional-reference notion, and
+# that is why the corpora carrying them are absent from CONVERTED and cannot be scored here.
+DROPPED_SUBS = {'TMB', 'GM54', 'GM69', 'GM70', 'GM82', 'unreviewed'}
 MDB_CLASSES = {
     'KD': 'kick', 'SD': 'snare', 'SDB': 'snare', 'SDD': 'snare', 'SDF': 'snare', 'SDG': 'snare', 'SDNS': 'snare',
     'SST': 'snare', 'CHH': 'hat', 'OHH': 'hat', 'PHH': 'hat', 'HIT': 'tom', 'MHT': 'tom', 'HFT': 'tom', 'LFT': 'tom',
     'RDC': 'cymbal', 'RDB': 'cymbal', 'CRC': 'cymbal', 'CHC': 'cymbal', 'SPC': 'cymbal'
 }
 CONVERTED = {'enst': 'enst-drums', 'enstsolo': 'enst-solo', 'enst23': 'enst-23', 'rwc': 'rwc', 'a2md': 'a2md', 'rbma': 'rbma13',
-    'idmt': 'idmt-smt-drums', 'gmd': 'gmd', 'mdbpp': 'mdb-drums-pp'}
+    'idmt': 'idmt-smt-drums', 'gmd': 'gmd', 'mdbpp': 'mdb-drums-pp', 'fsl30': 'fsl30',
+    'drumloop101': 'drumloop101'}
 # ADTOF model/hyperparameters.py thresholds and madmom NotePeakPickingProcessor settings, in class order.
 ADTOF_THRESHOLDS = {'kick': 0.22, 'snare': 0.24, 'tom': 0.32, 'hat': 0.22, 'cymbal': 0.30}
 ADTOF_CHANNEL = {'kick': 0, 'snare': 1, 'tom': 2, 'hat': 3, 'cymbal': 4}

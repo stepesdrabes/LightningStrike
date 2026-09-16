@@ -98,6 +98,11 @@ const ADAPTERS: Record<string, () => CorpusTrack[]> = {
 	rbma: () => converted('rbma13', 'rbma'),
 	idmt: () => converted('idmt-smt-drums', 'idmt'),
 	star: () => converted('star', 'star'),
+	synth: () => converted('synth', 'synth'),
+	owner: () => converted('owner', 'owner'),
+	fsl30: () => converted('fsl30', 'fsl30'),
+	grid: () => converted('grid', 'grid'),
+	drumloop101: () => converted('drumloop101', 'drumloop101'),
 	gmd: () => converted('gmd', 'gmd'),
 	mdbpp: () => converted('mdb-drums-pp', 'mdbpp'),
 	library: () => converted('library', 'library')
