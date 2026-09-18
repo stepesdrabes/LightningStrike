@@ -13,7 +13,9 @@ use sequential_storage::map::{MapConfig, MapStorage};
 /// Custom tables can move settings without code changes.
 const NVS_FALLBACK: core::ops::Range<u32> = 0x9000..0xF000;
 
+/// Light settings and the chosen wifi.toml entry, independent records in one log.
 const KEY: u8 = 0;
+const NETWORK_KEY: u8 = 1;
 
 /// Debounced settings log amortises flash wear over hundreds of records per erase.
 pub struct Persist {
@@ -58,6 +60,21 @@ impl Persist {
 	pub async fn save(&mut self, s: &LightState) {
 		if let Err(e) = self.map.store_item(&mut self.buf, &KEY, &settings::encode(s)).await {
 			log::warn!("settings save failed: {e:?}");
+		}
+	}
+
+	/// An unreadable or out-of-range index reads as the first network, so a shorter wifi.toml
+	/// still boots onto something.
+	pub async fn load_network(&mut self) -> u8 {
+		match self.map.fetch_item::<u8>(&mut self.buf, &NETWORK_KEY).await {
+			Ok(Some(index)) => room_wifi::clamp(index),
+			_ => 0,
+		}
+	}
+
+	pub async fn save_network(&mut self, index: u8) {
+		if let Err(e) = self.map.store_item(&mut self.buf, &NETWORK_KEY, &index).await {
+			log::warn!("network save failed: {e:?}");
 		}
 	}
 }

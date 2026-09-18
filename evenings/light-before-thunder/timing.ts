@@ -181,7 +181,7 @@ export const HOMECOMING = {
 	/** The rain eases from `ease` and is over by `dry`. */
 	ease: 14,
 	dry: 28,
-	/** Flashes ever farther away, each thunder later after its flash than the last. */
+	/** The parting stroke overhead, then flashes ever farther away, each thunder later than the last. */
 	flash1: 2,
 	thunder1: 2.5,
 	flash2: 8.5,
@@ -190,17 +190,28 @@ export const HOMECOMING = {
 	thunder3: 18,
 	flash4: 24,
 	thunder4: 27,
-	/** The first lub, its beat in seconds, each beat `slow` times the one before; none from `rest`. */
+	/** The first lub, its beat in seconds, each beat `slow` times the one before; none from `rest`.
+	 *  The heart is the moment's spine, so it runs to the switch rather than leaving the last ten
+	 *  seconds of the night with nothing in them. */
 	heart: 4,
 	beat: 0.9,
 	slow: 1.035,
-	rest: 40,
+	rest: 49.5,
 	/** The spark leaves home for a last lap and is back. */
 	leave: 10,
 	home: 33,
-	/** The cleared sky comes out star by star from here. */
+	/** The cleared sky comes out star by star from here until the set is switched off. */
 	stars: 32,
-	end: 50
+	/**
+	 * The set goes off the way a tube set does: the picture squashes into the beam by `line`, the
+	 * line pinches to one dot by `dot`, and the dot burns down to the standby ember at `standby`,
+	 * which is the room the Goodnight hold keeps.
+	 */
+	off: 50,
+	line: 50.14,
+	dot: 50.42,
+	standby: 53.4,
+	end: 58
 } as const;
 
 export type Homecoming = { readonly [K in keyof typeof HOMECOMING]: number };
@@ -223,16 +234,24 @@ export function lastLap(o: Homecoming, t: number): number {
 
 /** When the last lap's spark passes the other three corners, so each one can toll a note. */
 export function lapCorners(o: Homecoming): number[] {
-	return [120, 300, 420].map((d) => {
-		let lo = o.leave;
-		let hi = o.home;
-		for (let k = 0; k < 40; k++) {
-			const mid = (lo + hi) / 2;
-			if (lastLap(o, mid) < d) lo = mid;
-			else hi = mid;
-		}
-		return (lo + hi) / 2;
-	});
+	return [120, 300, 420].map((d) => o.leave + (o.home - o.leave) * lapPhase(d / RING));
+}
+
+/** The smoothstep in `lastLap`, inverted: the phase of the lap at which it has run `x` of the ring. */
+function lapPhase(x: number): number {
+	return 0.5 - Math.sin(Math.asin(1 - 2 * Math.max(0, Math.min(1, x))) / 3);
+}
+
+/** How long a falling star takes to cross its span and burn out. */
+export const SHOOT = 0.8;
+
+/** Stars falling across the cleared sky, each `span` pixels round the ring from `from`. */
+export function shootingStars(o: Homecoming): { t: number; from: number; span: number }[] {
+	return [
+		{ t: o.stars + 4.4, from: 96, span: 276 },
+		{ t: o.stars + 9.1, from: 552, span: -318 },
+		{ t: o.stars + 16.5, from: 258, span: 246 }
+	];
 }
 
 /** The DSL's hash01, repeated so the score and the effect place the same drips. */
@@ -260,8 +279,8 @@ export function drips(o: Homecoming): { t: number; pixel: number }[] {
 /** Stars coming out of the cleared sky, a slot every 0.55 s, each with its own small chime. */
 export function stars(o: Homecoming): { t: number; pixel: number; note: number }[] {
 	const out: { t: number; pixel: number; note: number }[] = [];
-	for (let s = 0; o.stars + s * 0.7 < o.end - 0.4; s++) {
-		const t = o.stars + s * 0.7 + 0.35 * hash01(s * 23 + 7);
+	for (let s = 0; o.stars + s * 1.15 < o.off - 0.5; s++) {
+		const t = o.stars + s * 1.15 + 0.35 * hash01(s * 23 + 7);
 		out.push({ t, pixel: Math.floor(hash01(s * 37 + 13) * 600), note: Math.floor(hash01(s * 53 + 3) * 5) });
 	}
 	return out;
@@ -278,18 +297,32 @@ export const WALL_CLOUD = {
 	form: 0.2,
 	lapFrom: 6,
 	lapTo: 0.6,
-	/** Pressure pulses in the funnel as it lights on the beam. */
+	/** The funnel reaches down the beam from `funnel`, touching the floor at `touch`. */
 	funnel: 6.6,
+	touch: 7.85,
+	/** Pressure pulses in the funnel while it comes down. */
 	pulse1: 7,
 	pulse2: 7.6,
 	pulse3: 8.1,
-	/** Everything drops out, then the crack. */
+	/** Everything drops out, then the crack, whose roll takes the rest of the moment. */
 	eye: 8.4,
 	crack: 9,
-	end: 10
+	end: 13
 } as const;
 
 export type WallCloud = { readonly [K in keyof typeof WALL_CLOUD]: number };
+
+/** Debris the cloud tears off as it spins up, each piece whipped round the ring from where it went. */
+export function debris(o: WallCloud): { t: number; pixel: number }[] {
+	const out: { t: number; pixel: number }[] = [];
+	const from = 1.2;
+	for (let s = 0; from + s * 0.14 < o.eye; s++) {
+		const t = from + s * 0.14 + 0.09 * hash01(s * 17 + 5);
+		if (hash01(s * 7 + 3) > 0.08 + 0.72 * ((t - from) / (o.eye - from))) continue;
+		out.push({ t, pixel: Math.floor(hash01(s * 43 + 11) * RING) });
+	}
+	return out;
+}
 
 /** Laps the wall cloud has turned: its lap time eases linearly from `lapFrom` to `lapTo`. */
 export function cloudTurn(o: WallCloud, t: number): number {
@@ -305,22 +338,126 @@ export const OPEN_SKY = {
 	dry: 3.6,
 	flash: 2,
 	thunder: 3.6,
+	/** Sun on the last of the rain: an arc of every colour the room has, across the north wall. */
+	bow: 3.3,
 	/** Gold lights the beam from its centre, spills round the ring from its ends, and glitters. */
 	bloom: 5,
 	spill: 5.5,
 	glitter: 7,
-	settle: 9,
-	end: 10
+	settle: 9.6,
+	end: 11
 } as const;
 
 export type OpenSky = { readonly [K in keyof typeof OPEN_SKY]: number };
+
+/** Sundown, before the night's last set: the day's last light laps the room and lifts it. */
+export const SUNDOWN = {
+	/** The light comes up out of the dark, then runs: a lap every `lapFrom` s easing to `lapTo`. */
+	lift: 0.25,
+	lapFrom: 2.6,
+	lapTo: 0.42,
+	/** The roll under it starts at `rollFrom` hits a second and doubles `doubles` times by the crest. */
+	rollFrom: 2,
+	doubles: 4,
+	/** The light breaks over the room, then drops into the hole the first song lands in. */
+	crest: 5.6,
+	end: 6.2
+} as const;
+
+export type Sundown = { readonly [K in keyof typeof SUNDOWN]: number };
+
+/** Laps the light has run by `t`: its lap time eases linearly from `lapFrom` to `lapTo`. */
+export function sundownTurn(o: Sundown, t: number): number {
+	const span = o.crest - o.lift;
+	const u = Math.max(0, Math.min(t, o.crest) - o.lift);
+	const k = span / (o.lapTo - o.lapFrom);
+	return k * Math.log((o.lapFrom + (u * (o.lapTo - o.lapFrom)) / span) / o.lapFrom);
+}
+
+/** Hits of the roll: the rate doubles `doubles` times between the lift and the crest. */
+export function sundownRoll(o: Sundown): number[] {
+	const out: number[] = [];
+	const span = o.crest - o.lift;
+	for (let t = o.lift; t < o.crest - 1e-6; ) {
+		out.push(t);
+		t += 1 / (o.rollFrom * Math.pow(2, (o.doubles * (t - o.lift)) / span));
+	}
+	return out;
+}
+
+/** Black Ice, before the cold block: frost takes the frame, holds, and the ice lets go. */
+export const BLACK_ICE = {
+	/** Frost grows in from the four corners and has the whole frame by `frozen`. */
+	frozen: 2.6,
+	/** It holds under its own stress, creaking, until it lets go. */
+	crack: 3.1,
+	end: 4.6
+} as const;
+
+export type BlackIce = { readonly [K in keyof typeof BLACK_ICE]: number };
+
+/** Crystals forming as the frost grows, denser the colder it gets: light and sound share the slots. */
+export function crystals(o: BlackIce): { t: number; pixel: number; note: number }[] {
+	const out: { t: number; pixel: number; note: number }[] = [];
+	for (let s = 0; s * 0.08 < o.frozen; s++) {
+		const t = s * 0.08 + 0.05 * hash01(s * 29 + 3);
+		if (hash01(s * 11 + 7) > 0.18 + 0.72 * (t / o.frozen)) continue;
+		out.push({ t, pixel: Math.floor(hash01(s * 37 + 13) * 720), note: Math.floor(hash01(s * 53 + 5) * 6) });
+	}
+	return out;
+}
+
+/** Shards thrown by the crack, each landing somewhere on the frame and ringing out. */
+export function shards(o: BlackIce): { t: number; pixel: number; note: number }[] {
+	const out: { t: number; pixel: number; note: number }[] = [];
+	for (let k = 0; k < 14; k++) {
+		const t = o.crack + 0.06 + 0.9 * Math.pow(hash01(k * 19 + 2), 1.6);
+		out.push({ t, pixel: Math.floor(hash01(k * 31 + 9) * 720), note: Math.floor(hash01(k * 47 + 6) * 6) });
+	}
+	return out.sort((a, b) => a.t - b.t);
+}
+
+/** Lights Out, after Turn The Lights Off: the power goes, then the hail starts. */
+export const LIGHTS_OUT = {
+	/** The breaker throws and the room drains dead. */
+	cut: 0.35,
+	/** Three glints gather in the corner, each closer than the last. */
+	glint1: 2.1,
+	glint2: 2.42,
+	glint3: 2.62,
+	/** The frame catches, and the first hail comes through. */
+	snap: 2.78,
+	end: 3.6
+} as const;
+
+export type LightsOut = { readonly [K in keyof typeof LIGHTS_OUT]: number };
+
+/** The first hail after the snap: stones landing on the frame, thinning as the block takes over. */
+export function hail(o: LightsOut): { t: number; pixel: number }[] {
+	const out: { t: number; pixel: number }[] = [];
+	for (let s = 0; s * 0.035 < o.end - o.snap - 0.04; s++) {
+		const t = o.snap + 0.04 + s * 0.035;
+		if (hash01(s * 23 + 11) > 0.85 * (1 - (t - o.snap) / (o.end - o.snap))) continue;
+		out.push({ t, pixel: Math.floor(hash01(s * 41 + 7) * 720) });
+	}
+	return out;
+}
+
+/** Static Charge, before Neon Rain: the new colour races out of the corner and the air crackles. */
+export const CHARGE = {
+	/** The front leaves home and has the frame by `round`; the beam takes it from the south end. */
+	round: 1.25,
+	end: 1.9
+} as const;
+
+export type Charge = { readonly [K in keyof typeof CHARGE]: number };
 
 /** Glints of the glitter, a slot every 0.1 s: mirrors the Open Sky effect. */
 export function glitter(o: OpenSky): { t: number; pixel: number; note: number }[] {
 	const out: { t: number; pixel: number; note: number }[] = [];
 	for (let s = Math.ceil(o.glitter * 10); s < o.settle * 10; s++) {
 		for (let j = 0; j < 2; j++) {
-			if (hash01(s * 23 + j * 7 + 1) > 0.55) continue;
+			if (hash01(s * 23 + j * 7 + 1) > 0.3) continue;
 			const pixel = Math.floor(hash01(s * 31 + j * 17 + 9) * RING);
 			out.push({ t: s / 10 + 0.05 * j, pixel, note: Math.floor(hash01(s * 41 + j * 3 + 2) * 5) });
 		}

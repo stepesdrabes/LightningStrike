@@ -30,6 +30,7 @@ function modelCorroborates(analysis: TrackAnalysis): boolean {
 	if (last - first < analysis.duration * 0.5) return false;
 
 	const tolerance = Math.min(0.08, tempo.beatPeriod * 0.2);
+	const barPeriod = tempo.beatPeriod * tempo.beatsPerBar;
 	let beat = 0;
 	let bar = 0;
 	let previous = -1;
@@ -40,8 +41,13 @@ function modelCorroborates(analysis: TrackAnalysis): boolean {
 		while (beat + 1 < heard.beats.length &&
 			Math.abs(heard.beats[beat + 1] - t) < Math.abs(heard.beats[beat] - t)) beat++;
 		if (Math.abs(heard.beats[beat] - t) > tolerance) return false;
-		if (previous >= 0 && beat - previous === 4) regular++;
-		previous = beat;
+		// Measure spacing as elapsed bars, not beat indices: the model drops beats on fast
+		// material, so counting its own indices reads consecutive bars as two or three steps.
+		if (previous >= 0) {
+			const bars = Math.round((t - previous) / barPeriod);
+			if (bars >= 1 && Math.abs(t - previous - bars * barPeriod) <= tolerance) regular++;
+		}
+		previous = t;
 		while (bar + 1 < tempo.barTimes.length &&
 			Math.abs(tempo.barTimes[bar + 1] - t) < Math.abs(tempo.barTimes[bar] - t)) bar++;
 		if (Math.abs(tempo.barTimes[bar] - t) <= tolerance) aligned++;

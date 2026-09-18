@@ -14,7 +14,7 @@ const BODY_CAP: usize = 512;
 #[allow(async_fn_in_trait)]
 pub trait Api {
 	fn effects(&self) -> &'static [EffectKind];
-	fn info(&self) -> InfoDto<'static>;
+	fn info(&self) -> InfoDto<'_>;
 	async fn state(&mut self) -> StateDto;
 	/// Applies the patch and answers with the state that resulted.
 	async fn apply(&mut self, patch: Patch) -> StateDto;

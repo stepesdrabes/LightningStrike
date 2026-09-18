@@ -102,6 +102,7 @@ impl Fixture {
 			cs: p.PIN_25,
 			dio: p.PIN_24,
 			clk: p.PIN_29,
+			button: p.PIN_18,
 		};
 		(fixture, board, Store { flash: p.FLASH, dma: p.DMA_CH1 })
 	}

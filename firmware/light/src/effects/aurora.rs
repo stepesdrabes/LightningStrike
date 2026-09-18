@@ -34,11 +34,7 @@ pub fn render(out: &mut [[u16; 4]], t: u32, tint: [u16; 4], env: u32) {
 fn curtain(u: u32, centre: u32) -> u32 {
 	let d = u.abs_diff(centre);
 	let d = d.min(65536 - d);
-	if d >= WIDTH / 2 {
-		0
-	} else {
-		smooth_wave(WIDTH / 2 - d, WIDTH)
-	}
+	if d >= WIDTH / 2 { 0 } else { smooth_wave(WIDTH / 2 - d, WIDTH) }
 }
 
 fn blend(a: [u16; 4], b: [u16; 4], q: u32) -> [u16; 4] {

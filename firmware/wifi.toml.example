@@ -1,0 +1,11 @@
+# Copy to firmware/wifi.toml, which is gitignored, and put your own networks in it.
+# Both boards read this one file. Order is what the button counts: the first entry is one
+# blink, the second is two, and so on, up to nine.
+
+[[network]]
+ssid = "the-network-you-develop-on"
+password = "..."
+
+[[network]]
+ssid = "the-network-at-the-venue"
+password = "..."

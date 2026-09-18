@@ -1,6 +1,3 @@
-pub const WIFI_SSID: &str = env!("WIFI_SSID");
-pub const WIFI_PASSWORD: &str = env!("WIFI_PASSWORD");
-
 /// What WLED listens on, and therefore what the host sends to with no configuration.
 pub const DDP_PORT: u16 = 4048;
 

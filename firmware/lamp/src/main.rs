@@ -7,10 +7,11 @@ mod httpd;
 mod net;
 mod node;
 mod persist;
+mod select;
 mod status;
 
 use embassy_executor::Spawner;
-use embassy_futures::select::{Either, select};
+use embassy_futures::select::{Either3, select3};
 use embassy_time::Instant;
 use esp_backtrace as _;
 use esp_hal::clock::CpuClock;
@@ -46,17 +47,20 @@ async fn main(spawner: Spawner) -> ! {
 
 	let mut persist = Persist::new(p.FLASH);
 	let remembered = persist.load(Fixture::DEFAULTS).await;
+	let network = persist.load_network().await;
 	let mut engine = Engine::<{ Fixture::PIXELS }>::new(Instant::now().as_millis(), remembered);
 
-	// The join takes a second or two and the light should not be dark for it.
-	let stack = match select(
-		net::join(spawner, p.WIFI, Fixture::HOSTNAME, status),
+	// The join takes a second or two and the light should not be dark for it. The button is
+	// watched here too, because a join that never lands is when it is pressed.
+	let stack = match select3(
+		net::join(spawner, p.WIFI, p.GPIO9, Fixture::HOSTNAME, status, network),
 		node::run_engine(&mut fixture, &mut engine),
+		select::commit(&mut persist),
 	)
 	.await
 	{
-		Either::First(stack) => stack,
-		Either::Second(never) => never,
+		Either3::First(stack) => stack,
+		Either3::Second(never) | Either3::Third(never) => never,
 	};
 	httpd::spawn(spawner, stack);
 	node::run(stack, &mut fixture, &mut engine, &mut persist).await

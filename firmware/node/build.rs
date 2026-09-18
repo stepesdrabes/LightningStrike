@@ -13,8 +13,4 @@ fn main() {
 	println!("cargo:rustc-link-arg-bins=--nmagic");
 	println!("cargo:rustc-link-arg-bins=-Tlink.x");
 	println!("cargo:rustc-link-arg-bins=-Tlink-rp.x");
-
-	// Credentials are baked in through env!(), which cargo does not otherwise track.
-	println!("cargo:rerun-if-env-changed=WIFI_SSID");
-	println!("cargo:rerun-if-env-changed=WIFI_PASSWORD");
 }

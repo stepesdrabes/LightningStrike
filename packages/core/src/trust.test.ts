@@ -75,6 +75,12 @@ describe('gridTrust', () => {
 		expect(gridTrust(irregular).trusted).toBe(false);
 	});
 
+	it('corroborates a bar-regular grid whose raw beat track lost beats between downbeats', () => {
+		const lossy = busyTracked();
+		lossy.heard!.beats = lossy.heard!.beats.filter((_, i) => i % 4 === 0 || i % 5 !== 0);
+		expect(gridTrust(lossy).trusted).toBe(true);
+	});
+
 	it('requires confident audio evidence even when model times look regular', () => {
 		const weak = busyTracked();
 		weak.tempo.confidence = 0.35;

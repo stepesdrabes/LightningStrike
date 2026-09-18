@@ -30,20 +30,31 @@ import { planEvening, EMPTY_MEMORY } from '../apps/web/src/lib/evening/plan.ts';
 import type { LibraryTrack } from '../apps/web/src/lib/evening/library.ts';
 import { EMPTY_QUEUE } from '../apps/web/src/lib/queueModel.ts';
 import {
+	BLACK_ICE,
+	CHARGE,
 	HOMECOMING,
+	LIGHTS_OUT,
 	OPENING,
 	OPEN_SKY,
 	RETURN_STROKE,
+	SUNDOWN,
 	WALL_CLOUD,
 	collisions,
 	crossings,
+	crystals,
+	debris,
 	drips,
 	dubDelay,
 	glitter,
+	hail,
+	lapCorners,
 	laps,
 	lubTimes,
 	restingLubs,
+	shards,
+	shootingStars,
 	stars,
+	sundownRoll,
 	type Homecoming,
 	type Opening
 } from '../evenings/light-before-thunder/timing.ts';
@@ -73,7 +84,12 @@ function show(findings: Finding[]): void {
 	}
 }
 
-/** Duration of every cached track, so the plan places rows with the real night's lengths. */
+/**
+ * Duration and genre of every cached track, so the plan places rows with the real night's lengths
+ * and a fill's `where.families` can actually match. The duration is in the meta file and the
+ * family only in the context file beside it, which is why both are read: with `genre` left null a
+ * fill matches nothing and its block silently plans as zero length.
+ */
 async function library(): Promise<LibraryTrack[]> {
 	const dir = join(process.env.LOCALAPPDATA ?? '', 'cz.drabek.lightningstrike', 'cache');
 	let names: string[];
@@ -92,6 +108,15 @@ async function library(): Promise<LibraryTrack[]> {
 				uploader?: string;
 				duration: number;
 			};
+			let genre: string | null = null;
+			try {
+				const context = JSON.parse(await readFile(join(dir, `${meta.id}.context.json`), 'utf8')) as {
+					genreFamily?: string;
+				};
+				genre = context.genreFamily ?? null;
+			} catch {
+				// Downloaded but not enriched yet: the planner treats it as unclassified.
+			}
 			out.push({
 				id: meta.id,
 				title: meta.title,
@@ -100,7 +125,7 @@ async function library(): Promise<LibraryTrack[]> {
 				thumbnail: '',
 				source: '',
 				ready: true,
-				genre: null,
+				genre: genre as LibraryTrack['genre'],
 				bpm: null,
 				heat: 3,
 				loungeOnly: false
@@ -436,7 +461,10 @@ function homeEvents(o: Homecoming): Scored[] {
 	restingLubs(o).forEach((t, k) => out.push({ t, what: `lub ${k}` }));
 	drips(o).forEach((d, k) => out.push({ t: d.t, what: `drip ${k}` }));
 	out.push({ t: o.leave, what: 'the spark leaves' }, { t: o.home, what: 'home' });
+	lapCorners(o).forEach((t, k) => out.push({ t, what: `corner ${k}` }));
 	stars(o).forEach((s, k) => out.push({ t: s.t, what: `star ${k}` }));
+	shootingStars(o).forEach((s, k) => out.push({ t: s.t, what: `falling star ${k}` }));
+	out.push({ t: o.off, what: 'the set switches off' });
 	return out.sort((a, b) => a.t - b.t);
 }
 
@@ -445,11 +473,36 @@ const EVENTS: Record<string, Scored[]> = {
 	'return-stroke': stormEvents(RETURN_STROKE),
 	homecoming: homeEvents(HOMECOMING),
 	'wall-cloud': [
+		...debris(WALL_CLOUD).map((d, k) => ({ t: d.t, what: `debris ${k}` })),
 		{ t: WALL_CLOUD.pulse1, what: 'pressure 1' },
 		{ t: WALL_CLOUD.pulse2, what: 'pressure 2' },
 		{ t: WALL_CLOUD.pulse3, what: 'pressure 3' },
+		{ t: WALL_CLOUD.touch, what: 'touchdown' },
 		{ t: WALL_CLOUD.eye, what: 'the eye' },
 		{ t: WALL_CLOUD.crack, what: 'crack' }
+	].sort((a, b) => a.t - b.t),
+	'lights-out': [
+		{ t: 0, what: 'the breaker' },
+		{ t: LIGHTS_OUT.glint1, what: 'glint 1' },
+		{ t: LIGHTS_OUT.glint2, what: 'glint 2' },
+		{ t: LIGHTS_OUT.glint3, what: 'glint 3' },
+		{ t: LIGHTS_OUT.snap, what: 'the snap' },
+		...hail(LIGHTS_OUT).map((h, k) => ({ t: h.t, what: `stone ${k}` }))
+	],
+	charge: [
+		{ t: 0, what: 'the front leaves' },
+		{ t: CHARGE.round, what: 'the front meets itself' },
+		{ t: CHARGE.end - 0.02, what: 'the block lands' }
+	],
+	'black-ice': [
+		...crystals(BLACK_ICE).map((c, k) => ({ t: c.t, what: `crystal ${k}` })),
+		{ t: BLACK_ICE.frozen, what: 'frozen' },
+		{ t: BLACK_ICE.crack, what: 'the ice lets go' },
+		...shards(BLACK_ICE).map((c, k) => ({ t: c.t, what: `shard ${k}` }))
+	].sort((a, b) => a.t - b.t),
+	sundown: [
+		...sundownRoll(SUNDOWN).map((t, k) => ({ t, what: `roll ${k}` })),
+		{ t: SUNDOWN.crest, what: 'the crest' }
 	],
 	'open-sky': [
 		{ t: OPEN_SKY.flash, what: 'flash (silent by design)' },

@@ -562,6 +562,201 @@ export function pressure(mix, from, until, level, freq, seed) {
 	}
 }
 
+/** A hard mechanical switch: the clack of the contact and the thump of what it is bolted to. */
+export function clack(mix, time, gain, seed, pan = 0) {
+	const rnd = random(seed);
+	const modes = [1150, 1730, 2420, 3310, 4680].map((f, k) => ({ f, decay: 0.09 / (1 + k * 0.45), amp: 0.5 / (1 + k), phase: rnd() }));
+	const edge = filter('bandpass', 2600, 1.4);
+	const body = [filter('lowpass', 200, 0.7), filter('lowpass', 200, 0.7)];
+	const [gl, gr] = panGains(pan);
+	let thump = 0;
+	const start = at(time);
+	const length = at(0.6);
+	for (let n = 0; n < length; n++) {
+		const t = n / RATE;
+		let ring = 0;
+		for (const m of modes) ring += m.amp * Math.sin(TAU * (m.f * t + m.phase)) * Math.exp(-t / m.decay);
+		ring += edge.run(rnd() * 2 - 1) * Math.exp(-t / 0.004) * 3;
+		thump += (34 + 80 * Math.exp(-t / 0.05)) / RATE;
+		const low = Math.sin(TAU * thump) * (1 - Math.exp(-t / 0.002)) * Math.exp(-t / 0.3);
+		const knock = body[1].run(body[0].run(rnd() * 2 - 1)) * Math.exp(-t / 0.07) * 3;
+		const v = gain * ending(n, length) * (0.35 * ring + 0.55 * low + 0.25 * knock);
+		mix.put(start + n, v * gl, v * gr, 0.15, 0.25);
+	}
+}
+
+/**
+ * One hit of a roll under a rise. `u` is how far up the rise it falls: the hits tighten, brighten
+ * and gain a tuned ring as they speed up, so the roll reads as one gesture accelerating.
+ */
+export function rollHit(mix, time, gain, u, pan, seed) {
+	const rnd = random(seed);
+	const band = filter('bandpass', 900 + 2600 * u, 0.8 + 0.7 * u);
+	const [gl, gr] = panGains(pan);
+	const decay = 0.09 - 0.055 * u;
+	let ring = 0;
+	const start = at(time);
+	const length = at(0.3);
+	for (let n = 0; n < length; n++) {
+		const t = n / RATE;
+		ring += (180 + 520 * u) / RATE;
+		const body = band.run(rnd() * 2 - 1) * 2.6 * (1 - Math.exp(-t / 0.0008)) * Math.exp(-t / decay);
+		const tone = 0.35 * u * Math.sin(TAU * ring) * Math.exp(-t / (decay * 1.4));
+		const v = gain * ending(n, length) * (body + tone);
+		mix.put(start + n, v * gl, v * gr, 0.18, 0.12);
+	}
+}
+
+/** Ice forming: a bright inharmonic crystal, gone almost as soon as it is struck. */
+export function crystal(mix, time, gain, freq, pan) {
+	const partials = [[1, 1, 0.5], [2.41, 0.6, 0.25], [4.13, 0.34, 0.12], [6.29, 0.18, 0.06]];
+	const [gl, gr] = panGains(pan);
+	const start = at(time);
+	const length = at(0.9);
+	for (let n = 0; n < length; n++) {
+		const t = n / RATE;
+		let v = 0;
+		for (const [ratio, amp, decay] of partials) v += amp * Math.sin(TAU * freq * ratio * t) * Math.exp(-t / decay);
+		v *= gain * (1 - Math.exp(-t / 0.0006)) * ending(n, length);
+		mix.put(start + n, v * gl, v * gr, 0.25, 0.45);
+	}
+}
+
+/**
+ * Ice under stress and then letting go: a sheet of glass breaking. A shock, a burst of splinters
+ * whose density collapses, a bright scatter that rings on, and the weight of the sheet landing.
+ */
+export function shatter(mix, time, size, seed, pan = 0) {
+	const rnd = random(seed);
+	const splinter = [0, 1].map((c) => ({ tick: crackler(seed * 7 + c, 3000), hp: filter('highpass', 2200, 0.7) }));
+	const sheet = filter('bandpass', 620, 1.1);
+	const bodyLp = [filter('lowpass', 130, 0.7), filter('lowpass', 130, 0.7)];
+	const [gl, gr] = panGains(pan);
+	let low = 0;
+	const start = at(time);
+	const length = Math.min(mix.length - start, at(2.4));
+	for (let n = 0; n < length; n++) {
+		const t = n / RATE;
+		const last = ending(n, length);
+		const shock = t < 0.0012 ? Math.sin((Math.PI * t) / 0.0012) : 0;
+		low += (44 + 70 * Math.exp(-t / 0.06)) / RATE;
+		const weight = Math.sin(TAU * low) * (1 - Math.exp(-t / 0.003)) * Math.exp(-t / 0.35);
+		const boom = bodyLp[1].run(bodyLp[0].run(rnd() * 2 - 1)) * (1 - Math.exp(-t / 0.004)) * Math.exp(-t / 0.3) * 4;
+		const plate = sheet.run(rnd() * 2 - 1) * Math.exp(-t / 0.11) * 2.2;
+		const density = 9000 * Math.exp(-t / 0.045) + 900 * Math.exp(-t / 0.5);
+		const mono = last * size * (1.1 * shock + 0.45 * weight + 0.3 * boom + 0.25 * plate);
+		const out = [0, 0];
+		for (let c = 0; c < 2; c++) {
+			const s = splinter[c];
+			out[c] = last * size * s.hp.run(s.tick(density)) * (Math.exp(-t / 0.2) + 0.25 * Math.exp(-t / 0.9)) * 1.8;
+		}
+		mix.put(start + n, mono + out[0] * gl, mono + out[1] * gr, 0.3, 0.5);
+	}
+}
+
+/** A hailstone landing on the frame: a hard tick with a short wooden knock under it. */
+export function hailstone(mix, time, gain, pan, seed) {
+	const rnd = random(seed);
+	const body = filter('bandpass', 2800 + 2400 * random(seed + 1)(), 2.4);
+	const knock = filter('bandpass', 430, 1.2);
+	const [gl, gr] = panGains(pan);
+	const start = at(time);
+	const length = at(0.12);
+	for (let n = 0; n < length; n++) {
+		const t = n / RATE;
+		const w = rnd() * 2 - 1;
+		const v =
+			gain *
+			ending(n, length) *
+			(body.run(w) * 5 * Math.exp(-t / 0.006) + knock.run(w) * 3 * (1 - Math.exp(-t / 0.0006)) * Math.exp(-t / 0.018));
+		mix.put(start + n, v * gl, v * gr, 0.2, 0.15);
+	}
+}
+
+/** A star falling: a band of air sweeping across the room and thinning out as it burns. */
+export function streak(mix, time, length, gain, panFrom, panTo, seed) {
+	const rnd = random(seed);
+	const band = [filter('bandpass', 4200, 1.2), filter('bandpass', 4200, 1.2)];
+	let shimmer = 0;
+	const start = at(time);
+	const total = at(length * 1.7);
+	for (let n = 0; n < total; n++) {
+		const t = n / RATE;
+		const u = Math.min(1, t / length);
+		const f = 4200 * Math.pow(0.22, u);
+		if (n % 64 === 0) for (const b of band) b.set('bandpass', f, 1.2);
+		shimmer += (f * 1.5) / RATE;
+		const env = gain * (1 - Math.exp(-t / 0.02)) * Math.exp(-t / (length * 0.55)) * ending(n, total);
+		const tone = 0.15 * Math.sin(TAU * shimmer) * Math.exp(-t / (length * 0.3));
+		const [gl, gr] = panGains(panFrom + (panTo - panFrom) * u);
+		mix.put(start + n, env * (band[0].run(rnd() * 2 - 1) * 3 + tone) * gl, env * (band[1].run(rnd() * 2 - 1) * 3 + tone) * gr, 0.2, 0.35);
+	}
+}
+
+/**
+ * A tube set switching off. The line whine that has been under the room since `whineFrom` glides
+ * away, the relay clacks, the picture collapses into the tube behind a band of air falling two and
+ * a half octaves, the screen discharges its static, and the glass ticks as it cools.
+ */
+export function switchOff(mix, time, { whineFrom, gain = 1 }) {
+	const rnd = random(seedOf('set off'));
+	// An octave under a real set's 15.7 kHz line whine, which the master's band limit would cut
+	// and most of the room could not hear go. It comes up slowly enough not to be noticed arriving,
+	// which is what makes its going a moment.
+	const warble = drift(seedOf('line hold'), 0.9, time - whineFrom + 1);
+	let whine = 0;
+	for (let n = at(whineFrom); n < Math.min(mix.length, at(time + 0.3)); n++) {
+		const t = n / RATE;
+		const after = Math.max(0, t - time);
+		whine += (7867 * Math.pow(0.2, after / 0.25)) / RATE;
+		const env =
+			db(-36) * gain * smooth(whineFrom, time - 0.5, t) * (0.85 + 0.15 * warble(t - whineFrom)) * (after > 0 ? Math.exp(-after / 0.07) : 1);
+		const v = env * (Math.sin(TAU * whine) + 0.3 * Math.sin(2 * TAU * whine));
+		mix.put(n, v, v, 0.05, 0.1);
+	}
+
+	const clack = filter('bandpass', 2000, 1.5);
+	const body = [filter('lowpass', 260, 0.9), filter('lowpass', 260, 0.9)];
+	const sweep = [filter('lowpass', 7000, 2.4), filter('lowpass', 7000, 2.4)];
+	const stat = [crackler(seedOf('discharge', 0), 3200), crackler(seedOf('discharge', 1), 3200)];
+	let fall = 0;
+	let sub = 0;
+	const start = at(time);
+	const length = Math.min(mix.length - start, at(1.4));
+	for (let n = 0; n < length; n++) {
+		const t = n / RATE;
+		const last = ending(n, length);
+		const click = clack.run(rnd() * 2 - 1) * Math.exp(-t / 0.006) * 3;
+		const knock = body[1].run(body[0].run(rnd() * 2 - 1)) * (1 - Math.exp(-t / 0.002)) * Math.exp(-t / 0.05) * 5;
+		if (n % 32 === 0) for (const s of sweep) s.set('lowpass', 120 + 6600 * Math.exp(-t / 0.085), 2.4);
+		fall += (58 + 950 * Math.exp(-t / 0.075)) / RATE;
+		const collapse = Math.sin(TAU * fall) * (1 - Math.exp(-t / 0.004)) * Math.exp(-t / 0.14);
+		sub += (40 + 22 * Math.exp(-t / 0.12)) / RATE;
+		const weight = Math.sin(TAU * sub) * (1 - Math.exp(-t / 0.005)) * Math.exp(-t / 0.42);
+		const density = 2600 * Math.exp(-t / 0.05) + 260 * Math.exp(-t / 0.3);
+		const mono = gain * (0.35 * click + 0.5 * collapse + 0.55 * weight + 0.45 * knock);
+		const air = gain * Math.exp(-t / 0.13) * 2.4;
+		const hiss = gain * 0.5 * Math.exp(-t / 0.22);
+		const l = mono + air * sweep[0].run(rnd() * 2 - 1) + hiss * stat[0](density);
+		const r = mono + air * sweep[1].run(rnd() * 2 - 1) + hiss * stat[1](density);
+		mix.put(start + n, last * l, last * r, 0.2, 0.3);
+	}
+
+	// The glass ticking as it cools: the last sound the room makes.
+	const ticks = [1.15, 2.05, 3.4, 4.85];
+	for (let k = 0; k < ticks.length; k++) {
+		const band = filter('bandpass', 2200 + 1800 * random(seedOf('cooling', k))(), 7);
+		const from = at(time + ticks[k]);
+		const span = at(0.09);
+		const [gl, gr] = panGains(k % 2 === 0 ? -0.2 : 0.25);
+		for (let n = 0; n < span; n++) {
+			const t = n / RATE;
+			const v = db(-34) * gain * band.run(rnd() * 2 - 1) * 6 * Math.exp(-t / 0.012) * ending(n, span);
+			mix.put(from + n, v * gl, v * gr, 0.3, 0.2);
+		}
+	}
+}
+
 /** A sparkle: a bright sine and a quieter inharmonic partial, gone in a tenth of a second. */
 export function ping(mix, time, gain, freq, pan) {
 	const [gl, gr] = panGains(pan);

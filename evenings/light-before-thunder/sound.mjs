@@ -7,9 +7,17 @@
  */
 import { join } from 'node:path';
 import { createMix, master } from './instruments.mjs';
-import { scoreHomecoming, scoreOpenSky, scoreWallCloud } from './moments.mjs';
+import {
+	scoreBlackIce,
+	scoreCharge,
+	scoreHomecoming,
+	scoreLightsOut,
+	scoreOpenSky,
+	scoreSundown,
+	scoreWallCloud
+} from './moments.mjs';
 import { scoreStorm } from './storm.mjs';
-import { HOMECOMING, OPENING, OPEN_SKY, RETURN_STROKE, WALL_CLOUD } from './timing.ts';
+import { BLACK_ICE, CHARGE, HOMECOMING, LIGHTS_OUT, OPENING, OPEN_SKY, RETURN_STROKE, SUNDOWN, WALL_CLOUD } from './timing.ts';
 
 const MOMENTS = {
 	'first-strike': {
@@ -63,6 +71,31 @@ const MOMENTS = {
 		length: HOMECOMING.end,
 		lufs: -14,
 		score: (mix) => scoreHomecoming(mix, HOMECOMING)
+	},
+	// The four transitions hand straight to a block, so their sound dies with the room's last breath.
+	'lights-out': {
+		length: LIGHTS_OUT.end,
+		lufs: -14,
+		fade: 0.3,
+		score: (mix) => scoreLightsOut(mix, LIGHTS_OUT)
+	},
+	charge: {
+		length: CHARGE.end,
+		lufs: -14,
+		fade: 0.15,
+		score: (mix) => scoreCharge(mix, CHARGE)
+	},
+	'black-ice': {
+		length: BLACK_ICE.end,
+		lufs: -14,
+		fade: 0.4,
+		score: (mix) => scoreBlackIce(mix, BLACK_ICE)
+	},
+	sundown: {
+		length: SUNDOWN.end,
+		lufs: -14,
+		fade: 0.25,
+		score: (mix) => scoreSundown(mix, SUNDOWN)
 	}
 };
 

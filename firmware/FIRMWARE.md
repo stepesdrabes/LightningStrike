@@ -78,10 +78,11 @@ reply, which is what limited the first controller page to displaying its own gue
 these boards is worth protecting from a device that is already on the WLAN, and the alternative
 is a light that cannot be driven from a phone at all.
 
-`info.ip` is the address DHCP landed on, read once when the HTTP task starts. It is redundant to
-whoever already routed a request there, and it is the one thing a browser cannot work out for
-itself: a page opened at a name has no way to learn its own subnet, and that subnet is what the
-controller sweeps to find the rest of the lights.
+`info.ip` is the address DHCP landed on, read out of the stack per request rather than cached,
+so a board the button has moved to another network reports the subnet it is on now. It is
+redundant to whoever already routed a request there, and it is the one thing a browser cannot
+work out for itself: a page opened at a name has no way to learn its own subnet, and that
+subnet is what the controller sweeps to find the rest of the lights.
 
 Two listeners serve the API rather than one. The controller polls while it sends, and a board
 with a single socket drops the SYN of whichever arrives second.
@@ -134,6 +135,7 @@ The old `firmware/controller/frame-control.html` was a one-way prototype and is 
 wire/   the protocol: DDP parse, framebuffer, hello, stats. No Embassy, tests on the host.
 light/  the light: engine, effects, colour maths, settings codec, API types. Same deal.
 api/    the HTTP face: four routes over embedded-io-async. Same deal.
+wifi/   the network list and the button that picks one. Same deal; wifi.toml feeds its build.
 node/   the Pico W firmware: frame (default) and bench, cfg-selected in fixture/mod.rs.
 lamp/   the C3 firmware. Its OWN cargo workspace: another architecture, another lock.
 ```
@@ -148,7 +150,7 @@ single owner.
 `Fixture::claim` takes the whole `Peripherals` by value, keeps what its build needs and hands
 back the rest, which keeps the pin budget a compile error. On the Pico, cyw43 holds PIO0 SM0,
 DMA_CH0 and GPIO 23/24/25/29; the settings flash takes DMA_CH1; the strips take PIO1 SM0-2 and
-DMA_CH2-4.
+DMA_CH2-4; the network button is GP18.
 
 ## Setup
 
@@ -160,12 +162,26 @@ cargo install espflash --locked # C3: flashes and monitors over USB-C
 ```
 
 `firmware/rust-toolchain.toml` pins the channel and both targets. Credentials are compiled in,
-so export them first:
+from one gitignored file both boards read:
 
 ```sh
-export WIFI_SSID='your-network'
-export WIFI_PASSWORD='your-password'
+cp firmware/wifi.toml.example firmware/wifi.toml   # then put your own networks in it
 ```
+
+```toml
+[[network]]
+ssid = "the-network-you-develop-on"
+password = "..."
+
+[[network]]
+ssid = "the-network-at-the-venue"
+password = "..."
+```
+
+Order is what the button counts, so keep it stable: moving an entry moves what a board already
+saved. The build fails if the file is missing, and `wifi/build.rs` regenerates from it whenever
+it changes, so a new password is a rebuild and nothing else. Nine entries is the ceiling, which
+is as far as anyone wants to count blinks.
 
 ## Build, flash, watch
 
@@ -203,14 +219,15 @@ cargo run --release --features selftest,status-led    # plus the gate check and 
 
 **The C3 has no mass-storage bootloader**, so there is no drag-and-drop image; the board has to be
 attached. After a flash it can come up in `USB_BOOT` ("wait usb download") rather than running,
-which is GPIO9 reading low at reset - `espflash reset` clears it. Verifying an ESP build by
-grepping the binary for the SSID does not work: `Ssid` is `{ ssid: [u8; 32], len: u8 }`, so a
-const-folded SSID is materialised with immediate instructions and never appears as a string.
+which is GPIO9 reading low at reset - `espflash reset` clears it. GPIO9 is also the network
+button, but only ever a strapping pin at reset. Verifying an ESP build by grepping the binary
+for the SSID does not work: `Ssid` is `{ ssid: [u8; 32], len: u8 }`, so a const-folded SSID is
+materialised with immediate instructions and never appears as a string.
 
 The host-side tests, from `firmware/`:
 
 ```sh
-cargo test -p room-wire -p room-light -p room-api --target "$(rustc -vV | sed -n 's/^host: //p')"
+cargo test -p room-wire -p room-light -p room-api -p room-wifi --target "$(rustc -vV | sed -n 's/^host: //p')"
 ```
 
 The target is spelled out because `.cargo/config.toml` points the default at the Pico. Those
@@ -226,6 +243,64 @@ room-frame on 192.168.1.57, DDP :4048, stats -> :4049, http :80
 A DHCP reservation is worth setting up; the hostnames offered are `room-frame`, `room-bench`
 and `room-bounce`. The controller does not need one - it scans - but the board panel in
 `apps/web` is still told an address by hand.
+
+## Choosing a network
+
+A board does not scan and it does not guess: it joins the wifi.toml entry it has saved, retries
+that one forever, and changes only when the button says so. Which is the point - a fixture on a
+wall must come up on the network it came up on yesterday, not on whichever one answers first.
+
+**The button is a momentary switch from GP18 to ground** on the Pico, pulled up on chip so a
+press reads low, and the BOOT button the C3 already has on GPIO9. **One press moves one entry
+along**, wrapping past the last, and the LED blinks where it landed: two networks, one press,
+and the board goes to the other one. Three seconds after the last press the choice is saved and
+the radio moves to it.
+
+Counting presses from one instead was tried and is worse, which is worth recording because it
+looks tidier on paper. A single press then means the first entry, which is usually the entry the
+board is already on, so the most natural thing anyone does with a new button changes nothing and
+the only way to reach the second network is to know you must press twice inside three seconds.
+Moving one along makes every press do something and needs no instructions. Pressing all the way
+round to where the board already is is the one case that does nothing, and it does nothing
+quietly: no save, no reconnect.
+
+**Not BOOTSEL, which is why the Pico needs a wire.** Its own button is the QSPI flash chip
+select, and reading it means floating that line for 30 us while code runs from the same flash.
+Measured 2026-09-17: pressing it resets the board, and because BOOTSEL is also what the boot ROM
+samples at reset, a press still held when the board comes back leaves it in the USB bootloader
+with the room dark. The C3 needs no wire, because GPIO9 is a strapping pin at reset and an
+ordinary input afterwards.
+
+**The onboard LED counts back**, on the Pico through cyw43 and on the C3 on GPIO10, and it owns
+the LED while it does: 200 ms pulses behind 600 ms of dark and ahead of a dark tail as long as
+the commit window. The tail is not decoration. Without it the heartbeat resumed the instant the
+count ended and its 60 ms pulse read as one more, so one network looked like two; being at least
+as long as the window also means the count is always still running when the choice settles,
+whatever the count was. A press during the pulses or the tail restarts the count at the new
+index rather than queueing a second one behind it.
+
+The board blinks its saved index once at power-on too, which answers "which one is this on"
+without touching anything. Those blinks are the reason GPIO10 is claimed on every lamp build;
+`status-led` only adds the joining/online heartbeat on top, and is still off by default.
+
+A press is taken from two agreeing 25 ms samples, and the button is assumed held at boot, so a
+switch already down when power arrives reads as a release. While the radio is still hunting for
+a network that is not there - exactly when the button gets pressed - the blink can lag by one
+join attempt, because a join in flight cannot be cancelled.
+
+**Nothing reboots.** The radio leaves and rejoins in place, on the Pico through `control.leave`
+and on the C3 through `set_config` after a disconnect, so the light stays lit and the count you
+just read is the only one you see. An earlier build saved the index and reset into it; that is
+one code path fewer to reason about, but it shows the count twice with a restart wedged between
+them, and a fixture that reboots when you press a button reads as a fault. The index is a
+one-byte record beside the light settings in the same wear-levelled log, so the light's own
+state is untouched by a network change, and an index that no longer names an entry falls back
+to the first.
+
+**Both boards rejoin by themselves** when a network drops, not only when the button moves them.
+The Pico watches cyw43's link state, sampled by the same task that drives its LED; sixty seconds
+without a DHCP address is the backstop for an access point that vanishes without the chip
+raising anything. The lamp's join has always been a task and still is.
 
 ## What the host sends
 
@@ -451,10 +526,6 @@ pause has to flush.
 **The three-line timing is still arithmetic.** The Frame has run all 720 addresses on three
 strips against real shows since 2026-09-08, but `led` has not been read off the stats line, so
 12.3 ms remains calculated rather than confirmed.
-
-**Reconnect on the Pico.** The lamp reconnects for life (its join is a task); the Pico still
-joins once at boot and that is all. Note `is_link_up()` always returns true after the first
-connect (embassy #4612), so it cannot be the trigger.
 
 **Effects are tuned by eye, not yet judged.** Fire's spark rate and cooling, and the periods
 of the five slow effects beside it, shipped at plausible constants; the room outranks the

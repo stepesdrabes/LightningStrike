@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Striker 1.0 drum benchmarks</title>
+<style>
+	:root {
+		--background: #09090b;
+		--card: #0f0f12;
+		--raised: #16161a;
+		--border: #26262c;
+		--border-soft: #1b1b20;
+		--foreground: #fafafa;
+		--muted-foreground: #a1a1aa;
+		--subtle-foreground: #71717a;
+		--line: #3f3f47;
+		--live: #ff6a1a;
+		--mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+		--sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'Helvetica Neue', sans-serif;
+	}
+	body {
+		margin: 0;
+		padding: 48px 24px 72px;
+		background: var(--background);
+		color: var(--foreground);
+		font-family: var(--sans);
+		font-size: 14px;
+		line-height: 1.55;
+		-webkit-font-smoothing: antialiased;
+	}
+	.page { max-width: 820px; margin: 0 auto; }
+	header { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+	header svg, .legend svg { flex: none; }
+	.wordmark { font-size: 15px; font-weight: 500; }
+	.wordmark span { color: var(--subtle-foreground); font-weight: 400; }
+	h1 { font-size: 24px; font-weight: 500; margin: 0 0 8px; letter-spacing: -0.01em; }
+	h2 { font-size: 16px; font-weight: 500; margin: 0 0 12px; }
+	.lede { color: var(--muted-foreground); margin: 0 0 26px; max-width: 68ch; }
+	.card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 22px 24px; margin-bottom: 16px; }
+	.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+	.stat { background: var(--raised); border-radius: 10px; padding: 14px 16px; }
+	.stat b { display: block; font-family: var(--mono); font-size: 22px; font-weight: 500; letter-spacing: -0.02em; }
+	.stat span { color: var(--subtle-foreground); font-size: 12px; }
+	.legend { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; font-size: 13px; color: var(--muted-foreground); margin-bottom: 10px; }
+	.legend > span { display: inline-flex; align-items: center; gap: 8px; }
+	.chart { display: block; width: 100%; height: auto; }
+	table { width: 100%; border-collapse: collapse; font-size: 13px; }
+	th { text-align: left; font-weight: 400; color: var(--subtle-foreground); font-size: 12px; padding: 0 10px 8px 0; border-bottom: 1px solid var(--border); }
+	td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--border-soft); vertical-align: top; }
+	tr:last-child td { border-bottom: none; }
+	td.num, th.num { text-align: right; font-family: var(--mono); padding-right: 0; white-space: nowrap; }
+	th.num { text-align: right; }
+	td.best { color: var(--foreground); }
+	td.dim { color: var(--subtle-foreground); }
+	td small { display: block; color: var(--subtle-foreground); font-size: 12px; font-family: var(--sans); }
+	ol, ul { margin: 0; padding-left: 20px; color: var(--muted-foreground); }
+	li { margin-bottom: 8px; }
+	li:last-child { margin-bottom: 0; }
+	li b, p b { color: var(--foreground); font-weight: 500; }
+	p { color: var(--muted-foreground); margin: 0 0 12px; }
+	p:last-child { margin-bottom: 0; }
+	code { font-family: var(--mono); font-size: 12px; color: var(--muted-foreground); }
+	footer { margin-top: 22px; color: var(--subtle-foreground); font-size: 12px; font-family: var(--mono); }
+</style>
+</head>
+<body>
+<div class="page">
+	<header>
+		<svg width="32" height="32" viewBox="0 0 32 32" aria-hidden="true">
+			<rect width="32" height="32" rx="7" fill="#16161a" />
+			<path d="M18.5 4 9 18h5.5L13.5 28 23 14h-5.5z" fill="#fafafa" />
+		</svg>
+		<div class="wordmark">LightningStrike <span>/ Striker 1.0</span></div>
+	</header>
+
+	<h1>Striker 1.0: drum detection benchmarks</h1>
+	<p class="lede">Striker is the model that decides which kick, snare and hi-hat hits a song
+		actually contains, so LightningStrike can light a room in time with the drummer. It is
+		measured here against the best published result on every public drum transcription benchmark
+		that has a comparable number. Every score comes from a model that never trained on the
+		dataset it is scored on.</p>
+
+	<div class="stats">
+		<div class="stat"><b>7 / 7</b><span>benchmarks led</span></div>
+		<div class="stat"><b>+0.06</b><span>average lead in F</span></div>
+		<div class="stat"><b>0.86</b><span>F on real mixed songs</span></div>
+		<div class="stat"><b>757</b><span>labelled tracks trained on</span></div>
+	</div>
+
+	<div class="card">
+		<div class="legend">
+			<span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="#71717a" stroke-width="2" /></svg>Best published</span>
+			<span><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="6" fill="#ff6a1a" /></svg>Striker 1.0</span>
+			<span style="color: #71717a;">F-score, 1.0 is perfect</span>
+		</div>
+
+		<svg class="chart" viewBox="0 0 760 384" role="img" aria-label="Dot plot of seven drum benchmarks; Striker 1.0 leads the best published result on every one, by 0.02 to 0.17.">
+			<title>Striker 1.0 against the best published cross-dataset results</title>
+			<g font-size="11" fill="#71717a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+				<text x="314.3" y="22" text-anchor="middle">0.70</text>
+				<text x="422.9" y="22" text-anchor="middle">0.80</text>
+				<text x="531.4" y="22" text-anchor="middle">0.90</text>
+				<text x="640" y="22" text-anchor="middle">1.00</text>
+			</g>
+			<g font-size="11" fill="#71717a" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif">
+				<text x="660" y="22">Striker</text>
+				<text x="722" y="22">Lead</text>
+			</g>
+			<g stroke="#1b1b20" stroke-width="1">
+				<line x1="314.3" y1="32" x2="314.3" y2="368" />
+				<line x1="422.9" y1="32" x2="422.9" y2="368" />
+				<line x1="531.4" y1="32" x2="531.4" y2="368" />
+				<line x1="640" y1="32" x2="640" y2="368" />
+			</g>
+
+			<g>
+				<text x="0" y="66" font-size="14" fill="#fafafa">MDB Drums</text>
+				<text x="0" y="82" font-size="12" fill="#71717a">real mixes, 5 instruments</text>
+				<line x1="441" y1="70" x2="478" y2="70" stroke="#3f3f47" stroke-width="2" />
+				<circle cx="433.7" cy="70" r="5.5" fill="none" stroke="#71717a" stroke-width="2"><title>Best published 0.81, Zehren et al. 2023</title></circle>
+				<circle cx="485.8" cy="70" r="6.5" fill="#ff6a1a"><title>Striker 1.0: 0.858</title></circle>
+				<text x="424" y="74" text-anchor="end" font-size="12" fill="#71717a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.81</text>
+				<text x="660" y="74" font-size="14" fill="#fafafa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.858</text>
+				<text x="722" y="74" font-size="12" fill="#ff6a1a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">+0.05</text>
+			</g>
+			<g>
+				<text x="0" y="112" font-size="14" fill="#fafafa">ENST-Drums</text>
+				<text x="0" y="128" font-size="12" fill="#71717a">with backing music, 5 instruments</text>
+				<line x1="430" y1="116" x2="447" y2="116" stroke="#3f3f47" stroke-width="2" />
+				<circle cx="422.9" cy="116" r="5.5" fill="none" stroke="#71717a" stroke-width="2"><title>Best published 0.80, Weber et al. 2025</title></circle>
+				<circle cx="454.4" cy="116" r="6.5" fill="#ff6a1a"><title>Striker 1.0: 0.829</title></circle>
+				<text x="413" y="120" text-anchor="end" font-size="12" fill="#71717a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.80</text>
+				<text x="660" y="120" font-size="14" fill="#fafafa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.829</text>
+				<text x="722" y="120" font-size="12" fill="#ff6a1a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">+0.03</text>
+			</g>
+			<g>
+				<text x="0" y="158" font-size="14" fill="#fafafa">RBMA13</text>
+				<text x="0" y="174" font-size="12" fill="#71717a">electronic music, kick, snare, hat</text>
+				<line x1="289" y1="162" x2="358" y2="162" stroke="#3f3f47" stroke-width="2" />
+				<circle cx="281.7" cy="162" r="5.5" fill="none" stroke="#71717a" stroke-width="2"><title>Best published 0.67, Weber et al. 2025</title></circle>
+				<circle cx="365.3" cy="162" r="6.5" fill="#ff6a1a"><title>Striker 1.0: 0.747</title></circle>
+				<text x="272" y="166" text-anchor="end" font-size="12" fill="#71717a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.67</text>
+				<text x="660" y="166" font-size="14" fill="#fafafa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.747</text>
+				<text x="722" y="166" font-size="12" fill="#ff6a1a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">+0.08</text>
+			</g>
+			<g>
+				<text x="0" y="204" font-size="14" fill="#fafafa">IDMT-SMT-Drums</text>
+				<text x="0" y="220" font-size="12" fill="#71717a">drum loops, kick, snare, hat</text>
+				<line x1="592" y1="208" x2="601" y2="208" stroke="#3f3f47" stroke-width="2" />
+				<circle cx="584.6" cy="208" r="5.5" fill="none" stroke="#71717a" stroke-width="2"><title>Best published 0.949, Yeung et al. 2026</title></circle>
+				<circle cx="608.5" cy="208" r="6.5" fill="#ff6a1a"><title>Striker 1.0: 0.971</title></circle>
+				<text x="575" y="212" text-anchor="end" font-size="12" fill="#71717a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.949</text>
+				<text x="660" y="212" font-size="14" fill="#fafafa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.971</text>
+				<text x="722" y="212" font-size="12" fill="#ff6a1a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">+0.02</text>
+			</g>
+			<g>
+				<text x="0" y="250" font-size="14" fill="#fafafa">MDB Drums</text>
+				<text x="0" y="266" font-size="12" fill="#71717a">drums only, 5 instruments</text>
+				<line x1="528" y1="254" x2="538" y2="254" stroke="#3f3f47" stroke-width="2" />
+				<circle cx="520.6" cy="254" r="5.5" fill="none" stroke="#71717a" stroke-width="2"><title>Best published 0.89, Riley and Dixon 2024</title></circle>
+				<circle cx="545.6" cy="254" r="6.5" fill="#ff6a1a"><title>Striker 1.0: 0.913</title></circle>
+				<text x="511" y="258" text-anchor="end" font-size="12" fill="#71717a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.89</text>
+				<text x="660" y="258" font-size="14" fill="#fafafa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.913</text>
+				<text x="722" y="258" font-size="12" fill="#ff6a1a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">+0.02</text>
+			</g>
+			<g>
+				<text x="0" y="296" font-size="14" fill="#fafafa">ENST-Drums</text>
+				<text x="0" y="312" font-size="12" fill="#71717a">drums only, 5 instruments</text>
+				<line x1="484" y1="300" x2="505" y2="300" stroke="#3f3f47" stroke-width="2" />
+				<circle cx="477.1" cy="300" r="5.5" fill="none" stroke="#71717a" stroke-width="2"><title>Best published 0.85, Riley and Dixon 2024</title></circle>
+				<circle cx="512.9" cy="300" r="6.5" fill="#ff6a1a"><title>Striker 1.0: 0.883</title></circle>
+				<text x="468" y="304" text-anchor="end" font-size="12" fill="#71717a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.85</text>
+				<text x="660" y="304" font-size="14" fill="#fafafa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.883</text>
+				<text x="722" y="304" font-size="12" fill="#ff6a1a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">+0.03</text>
+			</g>
+			<g>
+				<text x="0" y="342" font-size="14" fill="#fafafa">Groove MIDI</text>
+				<text x="0" y="358" font-size="12" fill="#71717a">test split, kick, snare, hat</text>
+				<line x1="324" y1="346" x2="491" y2="346" stroke="#3f3f47" stroke-width="2" />
+				<circle cx="316.5" cy="346" r="5.5" fill="none" stroke="#71717a" stroke-width="2"><title>Best published 0.702, Khanal and Lee 2026</title></circle>
+				<circle cx="498.9" cy="346" r="6.5" fill="#ff6a1a"><title>Striker 1.0: 0.870</title></circle>
+				<text x="307" y="350" text-anchor="end" font-size="12" fill="#71717a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.702</text>
+				<text x="660" y="350" font-size="14" fill="#fafafa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">0.870</text>
+				<text x="722" y="350" font-size="12" fill="#ff6a1a" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">+0.17</text>
+			</g>
+		</svg>
+	</div>
+
+	<div class="card">
+		<h2>Every measured benchmark</h2>
+		<p>Two figures where a benchmark has folds: the mean over its published folds, as ADTOF
+			reports, and the score pooled over the whole dataset, as Weber et al. report. The ADTOF
+			column is its released model run through this same scorer, which is what makes the
+			comparison trustworthy: it lands within 0.012 of ADTOF's own published MDB and ENST
+			numbers.</p>
+		<table>
+			<thead>
+				<tr>
+					<th>Benchmark</th>
+					<th class="num">Classes</th>
+					<th class="num">Best published</th>
+					<th class="num">ADTOF here</th>
+					<th class="num">Striker 1.0</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr><td>MDB Drums<small>real mixes</small></td><td class="num dim">5</td><td class="num dim">0.81</td><td class="num dim">0.798 / 0.795</td><td class="num best">0.858 / 0.854</td></tr>
+				<tr><td>MDB Drums<small>real mixes</small></td><td class="num dim">3</td><td class="num dim">0.83</td><td class="num dim">0.801 / 0.800</td><td class="num best">0.865 / 0.860</td></tr>
+				<tr><td>ENST-Drums<small>drums 2/3, backing 1/3</small></td><td class="num dim">5</td><td class="num dim">0.80</td><td class="num dim">0.781 / 0.785</td><td class="num best">0.829 / 0.832</td></tr>
+				<tr><td>ENST-Drums<small>drums 2/3, backing 1/3</small></td><td class="num dim">3</td><td class="num dim">0.80</td><td class="num dim">0.794 / 0.798</td><td class="num best">0.837 / 0.841</td></tr>
+				<tr><td>RBMA13<small>electronic, public labels</small></td><td class="num dim">3</td><td class="num dim">0.67</td><td class="num dim">0.709 / 0.713</td><td class="num best">0.747 / 0.753</td></tr>
+				<tr><td>IDMT-SMT-Drums V2<small>drum-only loops</small></td><td class="num dim">3</td><td class="num dim">0.949</td><td class="num dim">0.950</td><td class="num best">0.971</td></tr>
+				<tr><td>MDB Drums<small>drums only</small></td><td class="num dim">5</td><td class="num dim">0.89</td><td class="num dim">0.854 / 0.850</td><td class="num best">0.913 / 0.911</td></tr>
+				<tr><td>ENST-Drums<small>drums only</small></td><td class="num dim">5</td><td class="num dim">0.85</td><td class="num dim">0.831 / 0.834</td><td class="num best">0.883 / 0.884</td></tr>
+				<tr><td>Groove MIDI<small>official test split</small></td><td class="num dim">3</td><td class="num dim">0.702</td><td class="num dim">0.791</td><td class="num best">0.870</td></tr>
+				<tr><td>MDBDrums++<small>MDB recordings, re-annotated</small></td><td class="num dim">5</td><td class="num dim">not stated</td><td class="num dim">0.822 / 0.808</td><td class="num best">0.880 / 0.867</td></tr>
+			</tbody>
+		</table>
+		<p style="margin-top: 14px;">Published results come from Zehren et al. 2023, Weber et al.
+			2025, Yeung et al. 2026, Riley and Dixon 2024 and Khanal and Lee 2026. MDBDrums++ has one
+			published figure for ADTOF, 0.887, with no stated protocol, so it is left out of the chart.
+			With ENST's drums and backing at equal gain instead of 2/3, Striker scores 0.789 with five
+			classes and 0.805 with three.</p>
+	</div>
+
+	<div class="card">
+		<h2>How a song is processed</h2>
+		<ol>
+			<li><b>Separate the drums.</b> HTDemucs (168 MB) pulls a drum stem out of the mix.</li>
+			<li><b>Split the kit.</b> MDX23C DrumSep (438 MB) turns that stem into kick, snare, hi-hat
+				and cymbal tracks.</li>
+			<li><b>Transcribe six views.</b> ADTOF, a recurrent neural net (1.8 MB), transcribes the
+				original mix, the drum stem and each of the four separated tracks.</li>
+			<li><b>Decide.</b> Striker 1.0 (6.5 MB) takes every candidate hit those views propose,
+				plus the attacks in the separated audio, measures 85 things about each one, and keeps
+				the ones it believes. It is a gradient-boosted tree ensemble, five models per instrument
+				averaged, trained with LightGBM.</li>
+			<li><b>Light the room.</b> Kick, snare and hi-hat streams reach the lighting engine; ride
+				and crash hits join the hi-hat stream, and each hit carries a loudness taken from its
+				own separated source.</li>
+		</ol>
+		<p style="margin-top: 12px;">Without the model the app falls back to rule-based detection, so
+			a machine missing the weights still runs.</p>
+	</div>
+
+	<div class="card">
+		<h2>What it learned from</h2>
+		<p>757 labelled tracks, of 844 prepared. Benchmarks are never trained on when they are
+			scored: each result comes from a model trained with that dataset left out entirely.</p>
+		<table>
+			<thead>
+				<tr><th>Dataset</th><th>Labels</th><th>Role</th></tr>
+			</thead>
+			<tbody>
+				<tr><td>MDB Drums<small>23 MedleyDB songs, mixes and drums only</small></td><td class="dim">hand annotations</td><td class="dim">training and benchmark</td></tr>
+				<tr><td>ENST-Drums<small>64 minus-one pieces, three renderings</small></td><td class="dim">hand annotations</td><td class="dim">training and benchmark</td></tr>
+				<tr><td>IDMT-SMT-Drums V2<small>drum-only loops</small></td><td class="dim">hand annotations</td><td class="dim">training and benchmark</td></tr>
+				<tr><td>RBMA13<small>electronic tracks</small></td><td class="dim">hand annotations, three classes</td><td class="dim">kick and hat training, benchmark</td></tr>
+				<tr><td>RWC 2.0<small>pop and genre songs</small></td><td class="dim">aligned MIDI</td><td class="dim">training</td></tr>
+				<tr><td>A2MD<small>popular songs, best alignment tiers</small></td><td class="dim">automatically aligned cover MIDI</td><td class="dim">training where ADTOF agrees</td></tr>
+				<tr><td>STAR Drums<small>re-rendered drums over real stems</small></td><td class="dim">pseudo-labels</td><td class="dim">hi-hat and cymbal training</td></tr>
+				<tr><td>MDBDrums++, Groove MIDI</td><td class="dim">MIDI</td><td class="dim">benchmark only</td></tr>
+			</tbody>
+		</table>
+		<p style="margin-top: 14px;">Two label conventions had to be excluded rather than learned.
+			RBMA13's public snare class leaves claps and side sticks out, and STAR's backing stems hide
+			unlabelled clap residue. Trained on either, the model learned to reject claps and snaps,
+			which a lighting app needs to catch, so neither teaches snares.</p>
+	</div>
+
+	<div class="card">
+		<h2>How it is scored</h2>
+		<p>Five instrument classes where the dataset labels five (kick, snare, hi-hat, cymbal, tom),
+			kick, snare and hi-hat otherwise. A detected hit counts when it falls within 50 ms of a
+			labelled one, F is summed over every onset of the scored classes, and the protocol follows
+			ADTOF and Vogl et al. so the numbers line up with theirs. Thresholds are chosen on the
+			other datasets, never on the one being scored.</p>
+	</div>
+
+	<div class="card">
+		<h2>Where it is not ahead</h2>
+		<ul>
+			<li><b>Same-dataset protocols.</b> Papers that train and test on the same dataset, with the
+				same drummers, kits and rooms in both, still report more: 0.988 on IDMT and 0.929 on
+				ENST drums (Southall et al. 2017), and 0.900 on accompanied ENST (Khanal and Lee 2026).
+				Trained the same way, Striker reaches 0.987 and 0.924.</li>
+			<li><b>Tighter timing.</b> With a 20 ms window instead of 50 ms, IDMT drops to 0.917
+				against Vogl et al.'s 0.952. Hi-hat onsets carry the largest timing error. At that
+				window it still leads on RBMA13, 0.702 against 0.673.</li>
+			<li><b>Not comparable.</b> RBMA13's five-class labels are not public, and MDBDrums++ has no
+				stated protocol behind its one published number.</li>
+		</ul>
+	</div>
+
+	<div class="card">
+		<h2>Known weaknesses</h2>
+		<ul>
+			<li>Toms are weak, 0.45 to 0.72. They are not used for lighting.</li>
+			<li>RBMA13 snares stay near 0.65, partly because its labels leave claps out.</li>
+			<li>Quiet ghost notes and dense electronic percussion remain the main source of error.</li>
+			<li>On Groove MIDI most misses are notes played below MIDI velocity 40.</li>
+		</ul>
+	</div>
+
+	<div class="card">
+		<h2>What it costs</h2>
+		<p>Accuracy here is bought with computation. Two neural separations and six transcription
+			passes run before Striker decides anything. A 2 minute 27 second song takes about 31
+			seconds on a Radeon GPU through DirectML, or 202 seconds on a Ryzen 5 3600 with a 6.3 GB
+			peak. Re-analysing the same song from cached separation takes 11 seconds. This is
+			preparation done once per song, not real-time detection.</p>
+	</div>
+
+	<div class="card">
+		<h2>In the app</h2>
+		<p>Across the 39 songs both versions cover, Striker emits 4% fewer kicks, 24% fewer snares and
+			21% fewer hi-hat and cymbal hits than the rule-based detection it replaced: fewer hits,
+			and more of them real. On hand-marked passages it finds 18 of 19 confirmed snares, and of
+			five hits marked wrong before, it still plays one where the old version played four. Marked
+			missed hits are the part that did not improve: 22 of 37 found, against 23.</p>
+	</div>
+
+	<footer>Striker 1.0 (56e52c9c) &middot; analysis 38 &middot; LightningStrike &middot; 2026-09-14</footer>
+</div>
+</body>
+</html>

@@ -1,0 +1,9 @@
+[package]
+name = "room-wifi"
+version = "0.2.0"
+edition = "2024"
+publish = false
+
+[build-dependencies]
+# Host-only: reads firmware/wifi.toml into the generated NETWORKS array.
+toml = "0.9"

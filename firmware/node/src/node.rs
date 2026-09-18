@@ -1,4 +1,4 @@
-use embassy_futures::select::{Either4, select4};
+use embassy_futures::select::{Either, Either4, select, select4};
 use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_net::{IpEndpoint, Stack};
 use embassy_time::{Duration, Instant, Timer};
@@ -12,6 +12,7 @@ use crate::config::{DDP_PORT, HTTP_PORT, STATS_PORT};
 use crate::fixture::Fixture;
 use crate::httpd::{REQUESTS, Request};
 use crate::persist::Persist;
+use crate::select;
 
 const IDENTITY: Identity<'static> = Identity {
 	hostname: Fixture::HOSTNAME,
@@ -75,14 +76,25 @@ pub async fn run(
 	let mut save_at: Option<Instant> = None;
 
 	loop {
-		match select4(
-			socket.recv_from(&mut pkt),
-			REQUESTS.receive(),
-			Timer::at(report_at),
-			Timer::at(tick_at),
+		// A settled network choice ends the loop by rebooting, so it sits outside the four.
+		let event = match select(
+			select4(
+				socket.recv_from(&mut pkt),
+				REQUESTS.receive(),
+				Timer::at(report_at),
+				Timer::at(tick_at),
+			),
+			select::wait_commit(),
 		)
 		.await
 		{
+			Either::First(event) => event,
+			Either::Second(index) => {
+				select::save(persist, index).await;
+				continue;
+			}
+		};
+		match event {
 			Either4::First(Ok((n, meta))) => {
 				let now = Instant::now();
 

@@ -92,7 +92,7 @@ impl Api for MockApi {
 		&EffectKind::ALL
 	}
 
-	fn info(&self) -> InfoDto<'static> {
+	fn info(&self) -> InfoDto<'_> {
 		InfoDto {
 			name: "room-frame",
 			ip: "192.168.1.57",

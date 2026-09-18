@@ -10,7 +10,6 @@ use embassy_time::{Duration, Instant};
 use heapless::String;
 use room_light::api::{Command, InfoDto, Patch, StateDto};
 use room_light::state::EffectKind;
-use static_cell::StaticCell;
 
 use crate::config::{DDP_PORT, HTTP_PORT, STATS_PORT};
 use crate::fixture::Fixture;
@@ -36,12 +35,12 @@ pub static REQUESTS: Channel<CriticalSectionRawMutex, Envelope, 4> = Channel::ne
 
 static REPLIES: [Reply; LISTENERS] = [const { Signal::new() }; LISTENERS];
 
-struct NodeApi {
-	ip: &'static str,
+struct NodeApi<'a> {
+	ip: &'a str,
 	reply: &'static Reply,
 }
 
-impl NodeApi {
+impl NodeApi<'_> {
 	async fn round_trip(&self, req: Request) -> StateDto {
 		// An answer to a request this connection gave up on would otherwise be read as this one's.
 		self.reply.reset();
@@ -50,12 +49,12 @@ impl NodeApi {
 	}
 }
 
-impl room_api::Api for NodeApi {
+impl room_api::Api for NodeApi<'_> {
 	fn effects(&self) -> &'static [EffectKind] {
 		Fixture::EFFECTS
 	}
 
-	fn info(&self) -> InfoDto<'static> {
+	fn info(&self) -> InfoDto<'_> {
 		InfoDto {
 			name: Fixture::HOSTNAME,
 			ip: self.ip,
@@ -84,7 +83,7 @@ impl room_api::Api for NodeApi {
 
 /// Two listeners allow controller polling and commands concurrently without dropping the second SYN.
 #[embassy_executor::task(pool_size = LISTENERS)]
-pub async fn httpd_task(stack: Stack<'static>, ip: &'static str, reply: &'static Reply) -> ! {
+pub async fn httpd_task(stack: Stack<'static>, reply: &'static Reply) -> ! {
 	let mut rx = [0; 1024];
 	let mut tx = [0; 1024];
 	loop {
@@ -94,23 +93,20 @@ pub async fn httpd_task(stack: Stack<'static>, ip: &'static str, reply: &'static
 		if socket.accept(HTTP_PORT).await.is_err() {
 			continue;
 		}
-		let _ = room_api::serve(&mut socket, &mut NodeApi { ip, reply }).await;
+		// Read per request, not once at startup: the button can move the board to another
+		// network, and the answer has to be the subnet it is on now.
+		let mut ip: String<15> = String::new();
+		if let Some(config) = stack.config_v4() {
+			let _ = core::fmt::write(&mut ip, format_args!("{}", config.address.address()));
+		}
+		let _ = room_api::serve(&mut socket, &mut NodeApi { ip: &ip, reply }).await;
 		socket.close();
 		let _ = socket.flush().await;
 	}
 }
 
-/// Publish the DHCP address for controller subnet discovery; browsers cannot resolve .local to an IP.
 pub fn spawn(spawner: Spawner, stack: Stack<'static>) {
-	static IP: StaticCell<String<15>> = StaticCell::new();
-
-	let mut text = String::new();
-	if let Some(config) = stack.config_v4() {
-		let _ = core::fmt::write(&mut text, format_args!("{}", config.address.address()));
-	}
-	let ip: &'static String<15> = IP.init(text);
-
 	for reply in &REPLIES {
-		spawner.spawn(httpd_task(stack, ip.as_str(), reply).unwrap());
+		spawner.spawn(httpd_task(stack, reply).unwrap());
 	}
 }

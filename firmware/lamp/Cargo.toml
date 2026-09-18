@@ -1,6 +1,6 @@
 [package]
 name = "room-lamp"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2024"
 publish = false
 
@@ -16,6 +16,7 @@ status-led = []
 [dependencies]
 room-api = { path = "../api" }
 room-light = { path = "../light" }
+room-wifi = { path = "../wifi" }
 room-wire = { path = "../wire" }
 
 embassy-executor = "0.10.0"
