@@ -1,6 +1,6 @@
-# The Frame: 12 m of SK6812
+# The Frame: 11.2 m of SK6812
 
-720 addresses, three data lines, one Pico W, one salvaged 400 W PC supply.
+671 addresses, three data lines, one Pico W, one salvaged 400 W PC supply.
 
 **Built and running, 2026-09-08.** Everything electrical is done and has played real shows, laid
 out on the floor at full size. What is left is the physical frame: profile, timber, hanging it, and
@@ -72,12 +72,12 @@ which reads as a starved one.
 
 | Branch | From | Fuse | Feeds | Worst case |
 |---|---|---|---|---|
-| **A** | CPU 4-pin half 1: 2 yellow, 2 black | **10 A** | reel 1, both ends | 6.2 A |
-| **B** | CPU 4-pin half 2: 2 yellow, 2 black | **10 A** | reel 2, both ends | 6.2 A |
-| **C** | Molex: 1 yellow, 1 black | **5 A** | beam, `DI` end | 2.5 A |
+| **A** | CPU 4-pin half 1: 2 yellow, 2 black | **10 A** | reel 1, both ends | 5.8 A |
+| **B** | CPU 4-pin half 2: 2 yellow, 2 black | **10 A** | reel 2, both ends | 5.8 A |
+| **C** | Molex: 1 yellow, 1 black | **5 A** | beam, `DI` end | 2.3 A |
 | **5 V** | Molex red | 5 A | Pico VSYS, chip pin 14 | 0.25 A |
 
-Two yellows per reel is 3.1 A a wire at the very worst. The reels land on the CPU rail and the beam
+Two yellows per reel is 2.9 A a wire at the very worst. The reels land on the CPU rail and the beam
 plus the electronics on the other, which is the rail split for free.
 
 **PS_ON** is the green and one black from the 24-pin, cut close to the housing. The rest of the
@@ -128,9 +128,9 @@ For scale: 10.1 V looked clean on the bench and 8.64 V went cyan.
 
 | Run | Line | Covers | Addresses |
 |---|---|---|---|
-| Reel 1 | **A**, GP2 | Frame N *(3 m)* + Frame E *(2 m)* | 300 |
-| Reel 2 | **B**, GP3 | Frame W *(2 m)* + Frame S *(3 m)* | 300 |
-| Beam | **C**, GP4 | the 2 m across the middle | 120 |
+| Reel 1 | **A**, GP2 | Frame N *(2.83 m)* + Frame E *(1.85 m)* | 281 |
+| Reel 2 | **B**, GP3 | Frame W *(1.85 m)* + Frame S *(2.83 m)* | 281 |
+| Beam | **C**, GP4 | the 1.82 m across the middle | 109 |
 
 **Every `DI` end is at or within 1.5 m of NW.** Reel 1 leaves NW east along N, turns at NE, ends at
 SE. Reel 2 leaves NW south along W, turns at SW, ends at SE. The beam leaves the middle of N and
@@ -141,11 +141,14 @@ two halves start at *opposite* corners. Laying B and the beam the other way brin
 to one place; `fixture/frame.rs` flips those two blocks to match. **Reversed in copper and not in
 firmware, the room shows its own mirror image**, so the two facts move together.
 
-**One cut in the whole build**, the beam's, on a marked line. Both corners are **45 degree folds**:
-crease across the strip's width and fold the far half over, and it comes down at 90 degrees with
-the LEDs still facing the same way. The fold costs no length along the centreline, which matters,
-because a 5 m reel is exactly the 5 m each half needs with nothing spare. **Build the frame to the
-strip.** Crease once and gently, in the gap between two LEDs, never across one.
+**Each corner is cut and rejoined** with a short three-wire jumper carrying 12 V, GND and data.
+Cut on a marked line between two LEDs, never across one. Every corner sits at its reel's
+electrical midpoint, fed from both ends, so its jumper carries the least current on that reel.
+
+The frame was built to the timber at just under 3 x 2 m, so a reel spends 281 of its 300
+addresses and the rest is cut off. The 45 degree fold this was first drawn for needs no joint at
+all and costs no length along the centreline, which is the better corner whenever the frame can
+instead be built to the strip.
 
 ### Feeds
 
@@ -223,13 +226,13 @@ Then, in the board panel:
 
 | Region | Lights |
 |---|---|
-| **Frame S** | exactly the bottom 3 m *(the left 2 m plus 1 m of the bottom means the flip is backwards)* |
-| **Frame W** | exactly the left 2 m |
-| **Whole room** | all 720 |
+| **Frame S** | exactly the bottom run *(the left run plus a metre of the bottom means the flip is backwards)* |
+| **Frame W** | exactly the left run |
+| **Whole room** | all 671 |
 
 Under a white wash, want **11.4 V** at the box, **11.2 V** at every injection point and **10.8 V**
-at the middle of the longest gap between two feeds. On the stats line want `led` around 12300 us,
-`fps` 60.0, and `torn` / `oob` / `bad` at zero. `led` near 29000 means the three lines are running
+at the middle of the longest gap between two feeds. On the stats line want `led` around 11500 us,
+`fps` 60.0, and `torn` / `oob` / `bad` at zero. `led` near 26800 means the three lines are running
 in sequence rather than together.
 
 ---
@@ -269,7 +272,7 @@ in sequence rather than together.
 | Supply shuts down on a white wash | both reel branches ended up on one 17 A rail |
 | 5 V over 5.5 V | group-regulated with no load. Fit a 10 ohm 10 W |
 | Fuse blows on one branch only | short in that run. Do not fit a bigger fuse |
-| `led` ~29000 us | lines running in sequence, not together |
+| `led` ~26800 us | lines running in sequence, not together |
 | Brightness uneven along one reel | that reel is missing a feed |
 | Chip hot | 12 V reached pin 14. It is dead, fit another |
 

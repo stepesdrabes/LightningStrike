@@ -8,7 +8,7 @@ was before the party. Source is in `firmware/`.
 
 | binary | board | fixture | pixels | output |
 |---|---|---|---|---|
-| `room-node` (`frame`, default) | Pico W | **The Frame**, 3 x 2 m of SK6812 RGBWW at 60 LED/m | 720 | three PIO data lines on GP2, GP3 and GP4 |
+| `room-node` (`frame`, default) | Pico W | **The Frame**, just under 3 x 2 m of SK6812 RGBWW at 60 LED/m | 671 | three PIO data lines on GP2, GP3 and GP4 |
 | `room-node` (`bench`) | Pico W | **The bench run**, 5 m of SK6812 RGBWW on a table | 300 | one PIO data line on GP2 |
 | `room-lamp` | ESP32-C3-Zero | **The Bounce Lamp**, a salvaged analog RGBW strip | 1 | four LEDC PWM gates on GPIO3-6 |
 
@@ -319,13 +319,13 @@ the strip and belongs beside the trim.
 
 ## The Frame, on three lines
 
-720 addresses of four bytes on one Pico. The split is the reels: **A is Frame N + E, B is
-S + W, C is the beam**, 300 / 300 / 120, contiguous in the host's buffer so the host sends one
+671 addresses of four bytes on one Pico. The split is the reels: **A is Frame N + E, B is
+S + W, C is the beam**, 281 / 281 / 109, contiguous in the host's buffer so the host sends one
 stream and `present` slices it.
 
-Three lines is what makes 60 fps possible: an address is 40 us, so 720 in a row would be
-28.8 ms and cap the room near 34 fps. Written together with `join3`, three lines cost the
-longest of them, 12.0 ms. cyw43 holds PIO0 SM0 and DMA_CH0, so the lines take PIO1 SM0/SM1/SM2
+Three lines is what makes 60 fps possible: an address is 40 us, so 671 in a row would be
+26.8 ms and cap the room near 37 fps. Written together with `join3`, three lines cost the
+longest of them, 11.2 ms. cyw43 holds PIO0 SM0 and DMA_CH0, so the lines take PIO1 SM0/SM1/SM2
 and DMA_CH2/CH3/CH4 on GP2, GP3 and GP4; the PIO program is loaded once and shared, so a fourth
 line (the frame-brain board has the buffer and terminal for it on GP5) costs a state machine
 and a DMA channel only.
@@ -372,7 +372,7 @@ the room out, because the mixer already leaves most pixels part-desaturated. The
 designed against three dies. Standalone mode is different - the engine derives white on
 purpose there, additively, and the same `TRIM[3]` keeps it honest.
 
-The Bounce Lamp goes the other way, and the two are not in conflict. Washing out 720 emitters
+The Bounce Lamp goes the other way, and the two are not in conflict. Washing out 671 emitters
 loses a picture; there is no picture in one emitter to lose, and the reason that lamp is bright at
 all is the phosphors. Its own section has the rule.
 
@@ -523,9 +523,9 @@ deterministic and the host can render ahead and cancel the lag with `offsetMs`. 
 right: occupancy has to steer the present period slowly (the two clocks drift), and a seek or
 pause has to flush.
 
-**The three-line timing is still arithmetic.** The Frame has run all 720 addresses on three
-strips against real shows since 2026-09-08, but `led` has not been read off the stats line, so
-12.3 ms remains calculated rather than confirmed.
+**The three-line timing is still arithmetic.** The Frame ran 720 addresses on three strips
+against real shows from 2026-09-08; the rebuilt frame is 671. `led` has never been read off
+the stats line, so 11.5 ms remains calculated rather than confirmed.
 
 **Effects are tuned by eye, not yet judged.** Fire's spark rate and cooling, and the periods
 of the five slow effects beside it, shipped at plausible constants; the room outranks the

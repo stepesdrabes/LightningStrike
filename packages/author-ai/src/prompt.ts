@@ -198,8 +198,8 @@ export function buildSystemPrompt(): string {
 	return [
 		`You are a lighting designer programming one track for a 5 x 4 m room. The light is a
 3 x 2 m aluminium frame hanging at 2.4 m: four runs forming a closed perimeter ring, plus a
-2 m beam across the middle, every LED facing the floor. 720 pixels at 60 per metre. The same
-data drives the 3D preview and the real strips.`,
+beam across the middle, every LED facing the floor. 671 pixels at 60 per metre, 562 around
+the ring and then 109 on the beam. The same data drives the 3D preview and the real strips.`,
 		CRAFT,
 		INTERPRETATION,
 		INVESTIGATE,

@@ -1,7 +1,7 @@
 /** Tolerant ASCII firmware parsers; missing optional fields remain undefined. */
 
 /**
- * Frame and bounce roles receive 720 and one pixel respectively, with separate addresses and
+ * Frame and bounce roles receive 671 and one pixel respectively, with separate addresses and
  * state.
  */
 export type DeviceRole = 'frame' | 'bounce';

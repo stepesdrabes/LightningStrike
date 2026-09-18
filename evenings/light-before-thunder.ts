@@ -3,8 +3,8 @@
  * the room. A spark is born in the south-west corner above the Bounce Lamp at Go, returns as a
  * red reprise at eleven, and comes home to the same corner at the end.
  *
- * Ring pixels run 0-599 from the north-west corner (north 0-179 west to east, east 180-299,
- * south 300-479 east to west, west 480-599 south to north); the beam runs 600-719 from south to
+ * Ring pixels run 0-561 from the north-west corner (north 0-169 west to east, east 170-280,
+ * south 281-450 east to west, west 451-561 south to north); the beam runs 562-670 from south to
  * north. Every effect is a function of time and the music, so the preview and the fixture draw
  * the same frames. Output gamma is 2.45, so an effect level of 0.3 barely leaves the dither
  * codes: 0.45 is the dimmest colour that reads cleanly, 0.6 is a lit room and 0.85 is bright.
@@ -111,20 +111,24 @@ const thunderhead = effect({
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
+		const [alongRun, acrossRun] = [g.strips[0].count, g.strips[1].count];
 		const beamStart = ring;
 		const beamCount = g.count - ring;
 		const half = beamCount / 2;
 		const centre = (beamCount - 1) / 2;
-		const home = Math.round(ring * 0.8);
-		const north = Math.round(ring * 0.15);
-		const south = Math.round(ring * 0.65);
-		const far = Math.round(ring * 0.3);
+		const home = 2 * alongRun + acrossRun;
+		const north = Math.round(alongRun / 2);
+		const south = alongRun + acrossRun + Math.round(alongRun / 2);
+		const far = alongRun;
 		const wrap = (i: number) => ((i % ring) + ring) % ring;
 		const apart = (a: number, b: number) => {
 			const d = wrap(a - b);
 			return d > ring / 2 ? ring - d : d;
 		};
 		const hit = (age: number, tau: number) => (age < 0 ? 0 : age < 0.02 ? age / 0.02 : Math.exp(-(age - 0.02) / tau));
+
+		/** From home round to the beam's north end; the ends then alternate every half ring. */
+		const firstEnd = ring - home + north;
 
 		// Lightning branches from both beam ends along the long sides, each broken in three.
 		const branch = new Float32Array(ring);
@@ -422,9 +426,9 @@ const thunderhead = effect({
 					if (t >= twin) spark(out, palette, home - (run - joined), -1, level, tail);
 
 					if (t < twin) {
-						// The beam crackles as the lone spark passes its ends: 210 px out, then every 300.
-						const n = Math.floor((run - 210) / 300);
-						const lapNow = p.lapFrom * Math.exp((210 + 300 * n) / scale / k);
+						// The beam crackles as the lone spark passes its ends, then every half ring.
+						const n = Math.floor((run - firstEnd) / (ring / 2));
+						const lapNow = p.lapFrom * Math.exp((firstEnd + (ring / 2) * n) / scale / k);
 						const age = t - (p.ignite + ((lapNow - p.lapFrom) * span) / (p.lap - p.lapFrom));
 						for (let j = 0; n >= 0 && j < 9 && age < 0.12; j++) {
 							const b = Math.floor(hash01(n * 7 + j * 13) * beamCount);
@@ -711,7 +715,8 @@ const lightsOff = effect({
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
-		const home = Math.round(ring * 0.8);
+		const [alongRun, acrossRun] = [g.strips[0].count, g.strips[1].count];
+		const home = 2 * alongRun + acrossRun;
 		const wrap = (i: number) => ((i % ring) + ring) % ring;
 		const apart = (a: number, b: number) => {
 			const d = wrap(a - b);
@@ -795,12 +800,13 @@ const wallCloud = effect({
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
+		const [alongRun, acrossRun] = [g.strips[0].count, g.strips[1].count];
 		const beamStart = ring;
 		const beamCount = g.count - ring;
 		const centre = Math.floor(beamCount / 2);
-		const north = Math.round(ring * 0.15);
-		const south = Math.round(ring * 0.65);
-		const far = Math.round(ring * 0.3);
+		const north = Math.round(alongRun / 2);
+		const south = alongRun + acrossRun + Math.round(alongRun / 2);
+		const far = alongRun;
 		const apart = (a: number, b: number) => {
 			const d = ((a - b) % ring + ring) % ring;
 			return d > ring / 2 ? ring - d : d;
@@ -929,10 +935,11 @@ const eyewall = effect({
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
+		const [alongRun, acrossRun] = [g.strips[0].count, g.strips[1].count];
 		const beamStart = ring;
 		const beamCount = g.count - ring;
-		const north = Math.round(ring * 0.15);
-		const south = Math.round(ring * 0.65);
+		const north = Math.round(alongRun / 2);
+		const south = alongRun + acrossRun + Math.round(alongRun / 2);
 		const hailAt = new Float32Array(9);
 		const hailPos = new Int32Array(9);
 		let hails = 0;
@@ -1194,6 +1201,9 @@ const eyeOfStorm = effect({
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
+		const [alongRun, acrossRun] = [g.strips[0].count, g.strips[1].count];
+		const north = Math.round(alongRun / 2);
+		const south = alongRun + acrossRun + Math.round(alongRun / 2);
 		const heard = new Follower(0.3, 1.5);
 		const wrap = (i: number) => ((i % ring) + ring) % ring;
 		const apart = (a: number, b: number) => {
@@ -1207,7 +1217,7 @@ const eyeOfStorm = effect({
 			render(out, { f, palette }) {
 				const t = f.t;
 				const gain = 0.88 + 0.3 * clamp(heard.update(f.level, f.dt));
-				const sun = (Math.round(ring * 0.15) + (t / 240) * ring) % ring;
+				const sun = (north + (t / 240) * ring) % ring;
 				for (let i = 0; i < g.count; i++) {
 					const u = i < ring ? i / ring : 0.15 + ((i - ring) / (g.count - ring)) * 0.5;
 					const net = Math.abs(Math.sin(u * Math.PI * 14 + t * 0.25) * Math.sin(u * Math.PI * 9 - t * 0.18));
@@ -1220,7 +1230,7 @@ const eyeOfStorm = effect({
 				}
 				// The wall of the storm is still out there, turning a lap every five minutes. From the
 				// middle it is far enough off that its lightning arrives without any thunder at all.
-				const wallAt = wrap(Math.round(ring * 0.65 - (t / 300) * ring));
+				const wallAt = wrap(Math.round(south - (t / 300) * ring));
 				for (let i = 0; i < ring; i++) {
 					const d = apart(i, wallAt);
 					if (d > 170) continue;
@@ -1253,9 +1263,10 @@ const countIn = effect({
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
+		const [alongRun, acrossRun] = [g.strips[0].count, g.strips[1].count];
 		const beamStart = ring;
 		const beamCount = g.count - ring;
-		const home = Math.round(ring * 0.8);
+		const home = 2 * alongRun + acrossRun;
 		let ticks = 0;
 		let hitAt = -10;
 		return {
@@ -1303,12 +1314,13 @@ const openSky = effect({
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
+		const [alongRun, acrossRun] = [g.strips[0].count, g.strips[1].count];
 		const beamStart = ring;
 		const beamCount = g.count - ring;
 		const half = beamCount / 2;
-		const north = Math.round(ring * 0.15);
-		const south = Math.round(ring * 0.65);
-		const far = Math.round(ring * 0.3);
+		const north = Math.round(alongRun / 2);
+		const south = alongRun + acrossRun + Math.round(alongRun / 2);
+		const far = alongRun;
 		const wrap = (i: number) => ((i % ring) + ring) % ring;
 		const apart = (a: number, b: number) => {
 			const d = wrap(a - b);
@@ -1448,10 +1460,11 @@ const sundown = effect({
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
+		const [alongRun, acrossRun] = [g.strips[0].count, g.strips[1].count];
 		const beamStart = ring;
 		const beamCount = g.count - ring;
 		const half = beamCount / 2;
-		const home = Math.round(ring * 0.8);
+		const home = 2 * alongRun + acrossRun;
 		const wrap = (i: number) => ((i % ring) + ring) % ring;
 		return {
 			render(out, { f, p, palette }) {
@@ -1536,13 +1549,14 @@ const homecoming = effect({
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
+		const [alongRun, acrossRun] = [g.strips[0].count, g.strips[1].count];
 		const beamStart = ring;
 		const beamCount = g.count - ring;
 		const centre = (beamCount - 1) / 2;
-		const home = Math.round(ring * 0.8);
-		const north = Math.round(ring * 0.15);
-		const south = Math.round(ring * 0.65);
-		const far = Math.round(ring * 0.3);
+		const home = 2 * alongRun + acrossRun;
+		const north = Math.round(alongRun / 2);
+		const south = alongRun + acrossRun + Math.round(alongRun / 2);
+		const far = alongRun;
 		const wrap = (i: number) => ((i % ring) + ring) % ring;
 		const apart = (a: number, b: number) => {
 			const d = wrap(a - b);
@@ -1873,15 +1887,17 @@ const chargeSweep = effect({
 	create(g) {
 		let ring = 0;
 		for (const s of g.strips) if (s.inPerimeter) ring += s.count;
+		const [alongRun, acrossRun] = [g.strips[0].count, g.strips[1].count];
+		const south = alongRun + acrossRun + Math.round(alongRun / 2);
 		const beamStart = ring;
 		const beamCount = g.count - ring;
-		const home = Math.round(ring * 0.8);
+		const home = 2 * alongRun + acrossRun;
 		const apart = (a: number, b: number) => {
 			const d = (((a - b) % ring) + ring) % ring;
 			return d > ring / 2 ? ring - d : d;
 		};
 		// How far the front has run when it reaches the south beam end.
-		const toBeam = apart(Math.round(ring * 0.65), home);
+		const toBeam = apart(south, home);
 		return {
 			render(out, { f, p, palette }) {
 				out.fill(0);

@@ -6,9 +6,19 @@ const g = buildGeometry(DEFAULT_ROOM);
 const f = DEFAULT_ROOM.fixture;
 
 describe('the frame', () => {
-	it('is the perimeter plus the crossbar at 60 LED/m', () => {
-		expect(g.count).toBe(720);
-		expect(g.strips.map((s) => s.count)).toEqual([180, 120, 180, 120, 120]);
+	it('is the perimeter plus the crossbar, as built', () => {
+		expect(g.count).toBe(671);
+		expect(g.strips.map((s) => s.count)).toEqual([170, 111, 170, 111, 109]);
+	});
+
+	it('takes its run lengths from counts, not from the drawn frame', () => {
+		const narrow = buildGeometry({
+			...DEFAULT_ROOM,
+			fixture: { ...f, counts: { along: 10, across: 4, beam: 3 } }
+		});
+		expect(narrow.strips.map((s) => s.count)).toEqual([10, 4, 10, 4, 3]);
+		expect(narrow.count).toBe(31);
+		expect(narrow.perimeterLength).toBeCloseTo(2 * (f.width + f.depth));
 	});
 
 	it('walks the ring counter-clockwise with no seam', () => {
@@ -21,9 +31,9 @@ describe('the frame', () => {
 
 	it('keeps everything off the perimeter at the tail of the buffer', () => {
 		const off = [...g.perim].flatMap((p, i) => (p < 0 ? [i] : []));
-		expect(off.length).toBe(120);
-		expect(off[0]).toBe(600);
-		expect(off.at(-1)).toBe(719);
+		expect(off.length).toBe(109);
+		expect(off[0]).toBe(562);
+		expect(off.at(-1)).toBe(670);
 	});
 
 	it('faces every run down', () => {
@@ -74,7 +84,7 @@ describe('regions', () => {
 	it('pairs the perimeter into the reels it is wired from', () => {
 		const lines = roomRegions(g).filter((r) => r.id.startsWith('line-'));
 		expect(lines.map((r) => r.name)).toEqual(['Frame N + E', 'Frame S + W']);
-		for (const line of lines) expect(line.count).toBe(300);
+		for (const line of lines) expect(line.count).toBe(281);
 		expect(lines[0].spans[0].firstLed).toBe(0);
 		expect(lines[1].spans[0].firstLed).toBe(g.strips[2].offset);
 	});

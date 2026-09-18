@@ -8,6 +8,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { LONG, RING, SHORT } from './timing.ts';
+
 export const RATE = 48000;
 export const TAU = Math.PI * 2;
 /** First true-peak ceiling tried for a mix; the AAC encoder overshoots it by up to a dB. */
@@ -115,12 +117,15 @@ export function panGains(pan) {
 	return [Math.cos(a) * Math.SQRT2, Math.sin(a) * Math.SQRT2];
 }
 
-/** Ring pixel 0..599 to metres east of the frame's centre, which places a spark in stereo. */
+/**
+ * Ring pixel to metres east of the frame's centre, which places a spark in stereo. The frame is
+ * drawn 3 m wide whatever it was built to, so the room a sound is placed in does not move.
+ */
 export function ringX(i) {
-	const p = ((Math.round(i) % 600) + 600) % 600;
-	if (p < 180) return -1.5 + (3 * (p + 0.5)) / 180;
-	if (p < 300) return 1.5;
-	if (p < 480) return 1.5 - (3 * (p - 300 + 0.5)) / 180;
+	const p = ((Math.round(i) % RING) + RING) % RING;
+	if (p < LONG) return -1.5 + (3 * (p + 0.5)) / LONG;
+	if (p < LONG + SHORT) return 1.5;
+	if (p < 2 * LONG + SHORT) return 1.5 - (3 * (p - LONG - SHORT + 0.5)) / LONG;
 	return -1.5;
 }
 

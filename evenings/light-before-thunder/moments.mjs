@@ -38,6 +38,9 @@ import {
 	switchOff
 } from './instruments.mjs';
 import {
+	HOME,
+	LAP_CORNERS,
+	RING,
 	SHOOT,
 	cloudTurn,
 	crystals,
@@ -57,7 +60,7 @@ import {
 } from './timing.ts';
 
 /** Where a pixel sits left to right in the room, for a sound placed on it. */
-const panOf = (pixel) => (pixel < 600 ? (ringX(pixel) / 1.5) * 0.6 : 0);
+const panOf = (pixel) => (pixel < RING ? (ringX(pixel) / 1.5) * 0.6 : 0);
 
 /** A sub swelling under the spark's arrival: the ember taking the last of the night's charge. */
 function bloom(mix, time, gain, freq) {
@@ -111,12 +114,12 @@ export function scoreHomecoming(mix, o) {
 	});
 
 	const lap = (t) => db(-28) * smooth(o.leave, o.leave + 0.8, t) * (1 - smooth(o.home, o.home + 0.8, t));
-	fizz(mix, o.leave, o.home + 0.8, (t) => panOf(480 + lastLap(o, t)), lap, seedOf('last lap'));
+	fizz(mix, o.leave, o.home + 0.8, (t) => panOf(HOME + lastLap(o, t)), lap, seedOf('last lap'));
 	// The spark tolls each corner of the frame on its way round, rising toward home.
 	const toll = [329.63, 415.3, 493.88];
 	// Ten dB up on what they were: the corner is the loudest thing since the parting thunder, and
 	// the drips they land among are themselves at -15.
-	lapCorners(o).forEach((t, k) => chime(mix, t, db(-16 + 2 * k), toll[k], panOf([120, 300, 420][k])));
+	lapCorners(o).forEach((t, k) => chime(mix, t, db(-16 + 2 * k), toll[k], panOf(LAP_CORNERS[k])));
 	// Home: an E major triad landing on the ember, over a sub that swells and settles.
 	chime(mix, o.home, db(-17), 659.26, -0.35);
 	chime(mix, o.home + 0.14, db(-21), 830.61, -0.15);

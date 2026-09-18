@@ -48,14 +48,25 @@ interface FrameSpec {
 	depth: number;
 	/** The LED plane, metres above the deck. */
 	height: number;
-	/** LEDs per metre. */
+	/** Strip pitch, LEDs per metre. Sets `Geometry.pitch`; it does not set the run lengths. */
 	density: number;
+	/** Fitted LEDs per run, measured off the built frame rather than derived from its drawing. */
+	counts: FrameCounts;
 	/** 'y' means the crossbar spans `depth`. */
 	crossAxis: 'x' | 'y';
 	/** Metres from the frame's centre, along the axis the crossbar does not span. */
 	crossOffset: number;
 	/** Aluminium section, metres. Drawn, never lit. */
 	section: number;
+}
+
+/** The frame was built a little under its drawn size, so a run is shorter than width x density. */
+interface FrameCounts {
+	/** Frame N and Frame S, the runs along `width`. */
+	along: number;
+	/** Frame E and Frame W, the runs across `depth`. */
+	across: number;
+	beam: number;
 }
 
 /** One diffused fixture reduced from the show, outside the geometry effects paint. */

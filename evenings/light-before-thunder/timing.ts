@@ -75,9 +75,21 @@ export const RETURN_STROKE: Opening = {
 /** The narration's grid: the tempo of the drone's throb and the collisions. */
 export const BPM = 60 / (OPENING.lap / 2);
 
-const RING = 600;
-const HOME = 480;
-const SOUTH = 390;
+/** The built frame's runs: north and south are `LONG`, east and west `SHORT`. */
+export const LONG = 170;
+export const SHORT = 111;
+export const BEAM = 109;
+export const RING = 2 * (LONG + SHORT);
+/** Every pixel in the room, the ring then the beam. */
+export const ROOM = RING + BEAM;
+/** The south-west corner above the Bounce Lamp, where the spark is born and comes home. */
+export const HOME = 2 * LONG + SHORT;
+/** The beam's south end, at the middle of the south run. */
+const SOUTH = LONG + SHORT + LONG / 2;
+/** From home round to the beam's north end; the ends then alternate every half ring. */
+const FIRST_END = RING - HOME + LONG / 2;
+/** The other three corners as distances from home: north-west, north-east, south-east. */
+export const LAP_CORNERS = [SHORT, SHORT + LONG, 2 * SHORT + LONG];
 
 /** Lub times: steady, then a linear climb in rate whose last beat is `ignite`. */
 export function lubTimes(o: Opening): number[] {
@@ -105,7 +117,7 @@ export function twinTime(o: Opening): number {
 
 /**
  * The first spark's lap time eases linearly from `lapFrom` to `lap` between ignition and the twin.
- * Its run is scaled so it is 420 px past home when the twin is born, which puts every collision
+ * Its run is scaled so it is 392 px past home when the twin is born, which puts every collision
  * on a beam end.
  */
 function loader(o: Opening) {
@@ -136,11 +148,11 @@ export function run(o: Opening, t: number): number {
 
 export type End = 'north' | 'south';
 
-/** The first spark alone reaches the north end 210 px out and a beam end every 300 px after. */
+/** The first spark alone reaches the north end `FIRST_END` out, then an end every half ring. */
 export function crossings(o: Opening): { t: number; end: End }[] {
 	const { joined } = loader(o);
 	const out: { t: number; end: End }[] = [];
-	for (let n = 0, d = 210; d < joined; n++, d += 300) out.push({ t: reach(o, d), end: n % 2 === 0 ? 'north' : 'south' });
+	for (let n = 0, d = FIRST_END; d < joined; n++, d += RING / 2) out.push({ t: reach(o, d), end: n % 2 === 0 ? 'north' : 'south' });
 	return out;
 }
 
@@ -226,7 +238,7 @@ export function restingLubs(o: Homecoming): number[] {
 	}
 }
 
-/** The spark's distance round the ring from home, 0..600 px, easing in and out of its last lap. */
+/** The spark's distance round the ring from home, 0..`RING`, easing in and out of its last lap. */
 export function lastLap(o: Homecoming, t: number): number {
 	const u = Math.max(0, Math.min(1, (t - o.leave) / (o.home - o.leave)));
 	return RING * u * u * (3 - 2 * u);
@@ -234,7 +246,7 @@ export function lastLap(o: Homecoming, t: number): number {
 
 /** When the last lap's spark passes the other three corners, so each one can toll a note. */
 export function lapCorners(o: Homecoming): number[] {
-	return [120, 300, 420].map((d) => o.leave + (o.home - o.leave) * lapPhase(d / RING));
+	return LAP_CORNERS.map((d) => o.leave + (o.home - o.leave) * lapPhase(d / RING));
 }
 
 /** The smoothstep in `lastLap`, inverted: the phase of the lap at which it has run `x` of the ring. */
@@ -248,9 +260,9 @@ export const SHOOT = 0.8;
 /** Stars falling across the cleared sky, each `span` pixels round the ring from `from`. */
 export function shootingStars(o: Homecoming): { t: number; from: number; span: number }[] {
 	return [
-		{ t: o.stars + 4.4, from: 96, span: 276 },
-		{ t: o.stars + 9.1, from: 552, span: -318 },
-		{ t: o.stars + 16.5, from: 258, span: 246 }
+		{ t: o.stars + 4.4, from: 90, span: 259 },
+		{ t: o.stars + 9.1, from: 517, span: -298 },
+		{ t: o.stars + 16.5, from: 242, span: 230 }
 	];
 }
 
@@ -271,7 +283,7 @@ export function drips(o: Homecoming): { t: number; pixel: number }[] {
 	for (let s = Math.floor(o.ease / 0.45); s * 0.45 < o.stars; s++) {
 		const t = s * 0.45 + 0.4 * hash01(s * 13 + 5);
 		const chance = 0.75 * smoothUnit((t - o.ease) / (o.dry - o.ease)) * (1 - 0.7 * smoothUnit((t - o.dry) / (o.stars - o.dry)));
-		if (hash01(s * 7 + 11) < chance) out.push({ t, pixel: Math.floor(hash01(s * 19 + 3) * 720) });
+		if (hash01(s * 7 + 11) < chance) out.push({ t, pixel: Math.floor(hash01(s * 19 + 3) * ROOM) });
 	}
 	return out;
 }
@@ -281,7 +293,7 @@ export function stars(o: Homecoming): { t: number; pixel: number; note: number }
 	const out: { t: number; pixel: number; note: number }[] = [];
 	for (let s = 0; o.stars + s * 1.15 < o.off - 0.5; s++) {
 		const t = o.stars + s * 1.15 + 0.35 * hash01(s * 23 + 7);
-		out.push({ t, pixel: Math.floor(hash01(s * 37 + 13) * 600), note: Math.floor(hash01(s * 53 + 3) * 5) });
+		out.push({ t, pixel: Math.floor(hash01(s * 37 + 13) * RING), note: Math.floor(hash01(s * 53 + 3) * 5) });
 	}
 	return out;
 }
@@ -402,7 +414,7 @@ export function crystals(o: BlackIce): { t: number; pixel: number; note: number 
 	for (let s = 0; s * 0.08 < o.frozen; s++) {
 		const t = s * 0.08 + 0.05 * hash01(s * 29 + 3);
 		if (hash01(s * 11 + 7) > 0.18 + 0.72 * (t / o.frozen)) continue;
-		out.push({ t, pixel: Math.floor(hash01(s * 37 + 13) * 720), note: Math.floor(hash01(s * 53 + 5) * 6) });
+		out.push({ t, pixel: Math.floor(hash01(s * 37 + 13) * ROOM), note: Math.floor(hash01(s * 53 + 5) * 6) });
 	}
 	return out;
 }
@@ -412,7 +424,7 @@ export function shards(o: BlackIce): { t: number; pixel: number; note: number }[
 	const out: { t: number; pixel: number; note: number }[] = [];
 	for (let k = 0; k < 14; k++) {
 		const t = o.crack + 0.06 + 0.9 * Math.pow(hash01(k * 19 + 2), 1.6);
-		out.push({ t, pixel: Math.floor(hash01(k * 31 + 9) * 720), note: Math.floor(hash01(k * 47 + 6) * 6) });
+		out.push({ t, pixel: Math.floor(hash01(k * 31 + 9) * ROOM), note: Math.floor(hash01(k * 47 + 6) * 6) });
 	}
 	return out.sort((a, b) => a.t - b.t);
 }
@@ -438,7 +450,7 @@ export function hail(o: LightsOut): { t: number; pixel: number }[] {
 	for (let s = 0; s * 0.035 < o.end - o.snap - 0.04; s++) {
 		const t = o.snap + 0.04 + s * 0.035;
 		if (hash01(s * 23 + 11) > 0.85 * (1 - (t - o.snap) / (o.end - o.snap))) continue;
-		out.push({ t, pixel: Math.floor(hash01(s * 41 + 7) * 720) });
+		out.push({ t, pixel: Math.floor(hash01(s * 41 + 7) * ROOM) });
 	}
 	return out;
 }

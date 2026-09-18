@@ -14,24 +14,25 @@ use crate::irq::Irqs;
 pub const KIND: &str = "sk6812";
 
 /// A: north/east; B: south/west; C: beam. At 40 us/address, parallel lines take the longest
-/// line's 12 ms instead of 28.8 ms for all 720 addresses in series.
-const LINE_A: usize = 300;
-const LINE_B: usize = 300;
-const LINE_C: usize = 120;
+/// line's 11.2 ms instead of 26.8 ms for all 671 addresses in series.
+const LINE_A: usize = 281;
+const LINE_B: usize = 281;
+const LINE_C: usize = 109;
 
 /// Runs match core geometry at 60 LED/m. Selftest colours: N red, E green, S blue, W white,
 /// beam magenta; duty 96 keeps draw well below full scale.
 #[cfg(feature = "selftest")]
 const RUNS: [(usize, usize, [u8; 4]); 5] = [
-	(0, 180, [96, 0, 0, 0]),
-	(180, 120, [0, 96, 0, 0]),
-	(300, 180, [0, 0, 96, 0]),
-	(480, 120, [96, 96, 96, 0]),
-	(600, 120, [96, 0, 96, 0]),
+	(0, 170, [96, 0, 0, 0]),
+	(170, 111, [0, 96, 0, 0]),
+	(281, 170, [0, 0, 96, 0]),
+	(451, 111, [96, 96, 96, 0]),
+	(562, 109, [96, 0, 96, 0]),
 ];
 
-/// 3 x 2 m SK6812 RGBWW frame, 60 LED/m, GP2/3/4 through level shifters. B and beam run
-/// opposite the host buffer so each line begins at the board corner; software must reverse them.
+/// Just under 3 x 2 m of SK6812 RGBWW at 60 LED/m, GP2/3/4 through level shifters: long runs
+/// 170, short 111, beam 109. B and beam run opposite the host buffer so each line begins at
+/// the board corner; software must reverse them.
 pub struct Fixture {
 	a: RgbwPioWs2812<'static, PIO1, 0, LINE_A, Rgbw>,
 	b: RgbwPioWs2812<'static, PIO1, 1, LINE_B, Rgbw>,
@@ -47,7 +48,7 @@ impl Fixture {
 	pub const PIXELS: usize = LINE_A + LINE_B + LINE_C;
 	/// RGB24 on the wire; the fourth emitter is the board's business.
 	pub const BYTES: usize = Self::PIXELS * 3;
-	/// One write is 12 ms, so this is about as fast as the engine can run.
+	/// One write is 11.2 ms, so this is about as fast as the engine can run.
 	pub const ENGINE_PERIOD: Duration = Duration::from_millis(25);
 	/// Restore prevents power glitches relighting the room; Twinkle preserves the default boot look.
 	pub const DEFAULTS: LightState = LightState {

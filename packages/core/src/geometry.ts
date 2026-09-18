@@ -1,6 +1,6 @@
 import type { Geometry, LedSpan, RoomRegion, RoomSpec, StripSpec, Vec3 } from './contracts/room.ts';
 
-/** A 5x4 m room with a 3x2 m frame hanging at 2.4 m. 720 px at 60 LED/m. */
+/** A 5x4 m room with a 3x2 m frame hanging at 2.4 m. 671 px at 60 LED/m. */
 export const DEFAULT_ROOM: RoomSpec = {
 	name: 'Room 5x4',
 	width: 5,
@@ -11,6 +11,7 @@ export const DEFAULT_ROOM: RoomSpec = {
 		depth: 2,
 		height: 2.4,
 		density: 60,
+		counts: { along: 170, across: 111, beam: 109 },
 		crossAxis: 'y',
 		crossOffset: 0,
 		section: 0.04
@@ -30,9 +31,7 @@ function stripSpecs(spec: RoomSpec): StripSpec[] {
 	const hw = f.width / 2;
 	const hd = f.depth / 2;
 	const z = f.height;
-	const d = f.density;
-	const along = Math.round(f.width * d);
-	const across = Math.round(f.depth * d);
+	const { along, across, beam } = f.counts;
 
 	// Walked as one counter-clockwise ring so concatenating the sides yields a closed
 	// perimeter with no seam.
@@ -82,7 +81,7 @@ function stripSpecs(spec: RoomSpec): StripSpec[] {
 			? {
 					id: 4,
 					name: 'Beam',
-					count: across,
+					count: beam,
 					start: [o, -hd, z],
 					end: [o, hd, z],
 					normal: DOWN,
@@ -91,7 +90,7 @@ function stripSpecs(spec: RoomSpec): StripSpec[] {
 			: {
 					id: 4,
 					name: 'Beam',
-					count: along,
+					count: beam,
 					start: [-hw, o, z],
 					end: [hw, o, z],
 					normal: DOWN,

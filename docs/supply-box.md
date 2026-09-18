@@ -34,23 +34,23 @@ Every 12 V figure is `frame-wiring.md`'s, scaled by address count.
 
 | Branch | Rail | Feeds | Addr | idle | white 200 | white 255 | Fuse |
 |---|---|---|---|---|---|---|---|
-| **A** | CPU 8-pin, half 1 | reel 1 | 300 | 0.41 A | 3.6 A | **6.2 A** | **10 A** red |
-| **B** | CPU 8-pin, half 2 | reel 2 | 300 | 0.41 A | 3.6 A | **6.2 A** | **10 A** red |
-| **C** | Molex yellow | beam | 120 | 0.16 A | 1.4 A | **2.5 A** | **5 A** tan |
+| **A** | CPU 8-pin, half 1 | reel 1 | 281 | 0.38 A | 3.4 A | **5.8 A** | **10 A** red |
+| **B** | CPU 8-pin, half 2 | reel 2 | 281 | 0.38 A | 3.4 A | **5.8 A** | **10 A** red |
+| **C** | Molex yellow | beam | 109 | 0.15 A | 1.3 A | **2.3 A** | **5 A** tan |
 | **5 V** | Molex red | Pico, chip | - | 0.25 A | 0.25 A | 0.25 A | **3 A** violet |
-| | | | **720** | **1.0 A** | **8.6 A** | **14.9 A** | |
+| | | | **671** | **0.9 A** | **8.1 A** | **13.9 A** | |
 
 **ATO blade fuses, not 5x20 glass.** Blade fuses are rated 32 V DC and their holders take 20 A;
 the KLS5-708B family tops out at 10 A, which puts a 10 A branch fuse exactly at its ceiling.
 
-A 10 A fuse on a 6.2 A branch never nuisance-blows and still clears a short: a dead short on this
+A 10 A fuse on a 5.8 A branch never nuisance-blows and still clears a short: a dead short on this
 supply is limited by its own OCP at 17 A a rail, which is 170 % of the fuse and clears in seconds,
 and in practice the supply's OCP trips first. **A fuse smaller than 10 A is worse, not better**,
 because an ATO fuse run above 80 % of its rating in a hot patio box does nuisance-blow.
 
 **Four separate inline holders, not a bussed fuse block.** A bussed block joins the branch inputs,
-which puts A, B and C on one rail. That is the failure in `frame-wiring.md`'s table: 14.9 A
-against a 17 A rail is 88 % of OCP. Today A and B share the CPU rail at 12.4 A, 73 %, and the beam
+which puts A, B and C on one rail. That is the failure in `frame-wiring.md`'s table: 13.9 A
+against a 17 A rail is 82 % of OCP. Today A and B share the CPU rail at 11.6 A, 68 %, and the beam
 plus the electronics sit on the other. Keep it that way.
 
 ---
@@ -442,7 +442,7 @@ Off, then ground, then +12 V, then data, one run at a time. Then the board panel
 |---|---|
 | **Frame S** | exactly the bottom 3 m |
 | **Frame W** | exactly the left 2 m |
-| **Whole room** | all 720 |
+| **Whole room** | all 671 |
 
 `Frame S` showing the left 2 m plus 1 m of the bottom means the flip is backwards.
 

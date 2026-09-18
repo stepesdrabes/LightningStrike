@@ -57,9 +57,10 @@ export function ringsFor(g: Geometry): Rings {
 
 	const half = perimIdx.slice(0, Math.ceil(perimIdx.length / 2));
 
+	// Ring metres are the lit run, not the drawn frame, which is the longer of the two.
 	const rings: Rings = {
-		perimeter: ringFromIndices('perimeter', perimIdx, g.perimeterLength, true),
-		perimeterHalf: ringFromIndices('perimeterHalf', half, g.perimeterLength / 2, false),
+		perimeter: ringFromIndices('perimeter', perimIdx, perimIdx.length * g.pitch, true),
+		perimeterHalf: ringFromIndices('perimeterHalf', half, half.length * g.pitch, false),
 		beam: ringFromIndices('beam', beamIdx, beamIdx.length * g.pitch, false),
 		all: ringFromIndices('all', allIdx, g.count * g.pitch, false)
 	};

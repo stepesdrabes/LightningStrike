@@ -36,7 +36,7 @@ export const spectrumBed: EffectDef = {
 	},
 	params: [INTENSITY, param('spread', 'Octaves across the room', 0.7), param('depth', 'Colour travel', 0.6)],
 	create(g) {
-		// Interpolate a few taps instead of allocating 720 followers.
+		// Interpolate a few taps instead of allocating a follower per pixel.
 		const TAPS = 12;
 		const taps = Array.from({ length: TAPS }, () => new Follower(0.02, FALL));
 		const held = new Float32Array(TAPS);

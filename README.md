@@ -1,7 +1,7 @@
 # LightningStrike
 
 Music-driven lighting for a room, with a 3D preview and matching output to real fixtures.
-The room has a 720-pixel ceiling frame and a one-pixel Bounce Lamp. Local audio analysis
+The room has a 671-pixel ceiling frame and a one-pixel Bounce Lamp. Local audio analysis
 finds the musical grid; a deterministic engine composes the show. An evening file scripts a
 whole night around it: songs, pauses, light moments, transitions and custom effects.
 
