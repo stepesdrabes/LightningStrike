@@ -173,10 +173,11 @@ numbers; see that document.
   `v12e`; Striker models and night logs under `bench/reports/drumeval/{striker,night}/`; the
   research notes (`adt-sota.md`, `adt-datasets.md`) were session scratch files and are
   summarized in DRUM_RELIABILITY.md and the drumeval README.
-- **Before the party:** install `drumsep-mdx23c.onnx`, ADTOF and `striker.json` on every
-  machine before preparing songs there. A song prepared at analysis 38 without them keeps the
-  rule-based drums until it is refreshed; so does a song whose per-source ADTOF passes fail
-  during preparation, for example under memory pressure.
+- **Before the party:** install `drumsep-mdx23c.onnx` and ADTOF on every machine before
+  preparing songs there. `striker.json` is committed since 2026-09-18, so a checkout carries it.
+  A song prepared at analysis 38 without them keeps the rule-based drums until it is refreshed;
+  so does a song whose per-source ADTOF passes fail during preparation, for example under
+  memory pressure.
 - **Not done:** the library was not re-prepared (it re-prepares on demand at analysis 38,
   about a fifth of the song's length on DirectML, minutes on CPU); nothing ran on the Mac.
 
