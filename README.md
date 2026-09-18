@@ -148,9 +148,10 @@ model directory. The optional runtime models are:
   [setup and model provenance](bench/lab/SEPARATION.md). Preparation can take minutes per song
   on CPU. Install the models before refreshing tracks; installing them later requires a fresh
   analysis of previously cached tracks.
-- **Striker 1.0** (`striker.json`), LightningStrike's drum hit classifier trained by
+- **Striker 1.1** (`striker.json`), LightningStrike's drum hit classifier trained by
   [bench/drumeval](bench/drumeval/README.md), picks the kick, snare and hi-hat hits from all of
-  that evidence; without it, rule-based source recovery runs. See
+  that evidence; without it, rule-based source recovery runs. It is ours rather than fetched, so
+  it is the one model committed here and a checkout already has it. See
   [evaluation and known limitations](bench/DRUM_RELIABILITY.md). Songs classified by another
   Striker model are re-analysed when next prepared; a model file that fails to load leaves them
   as they are.

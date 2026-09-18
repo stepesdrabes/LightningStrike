@@ -10,7 +10,10 @@ shows/
 .DS_Store
 bench/corpus/
 bench/reports/
-models/
+# Striker is ours and ships here. A directory-level ignore cannot re-include a file
+# under it, so the contents are ignored instead of the directory.
+/models/*
+!/models/striker.json
 bench/clicktests/
 bench/renders/
 bench/models/

@@ -1,3 +1,6 @@
 # Committed content is LF. Set here rather than left to each machine, so a checkout on
 # Windows cannot commit a whole file back as CRLF.
 * text=auto eol=lf
+
+# A generated model blob: keep it byte-exact, never line-ending converted or diffed.
+models/striker.json binary
