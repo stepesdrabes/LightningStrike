@@ -49,8 +49,8 @@ fn main() -> ! {
 	// where it stopped, while booting a half-swapped ACTIVE would jump into rubble.
 	let loader: BootLoader = BootLoader::prepare(config);
 
-	// Nothing is armed today, but taking an interrupt between the VTOR write and the
-	// application initialising its own memory would vector through uninitialised RAM.
-	cortex_m::interrupt::disable();
+	// Do not mask interrupts around this. `load` is a jump, not a reset, so PRIMASK would
+	// survive into the application, where nothing clears it: the executor would then never
+	// see a timer or a USB interrupt again. Measured on the board, 2026-09-19.
 	unsafe { loader.load(active) }
 }
