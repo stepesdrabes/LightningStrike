@@ -3,16 +3,24 @@
 use embassy_executor::Spawner;
 use embassy_net::Stack;
 use embassy_net::tcp::TcpSocket;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::channel::Channel;
+use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
-use embassy_time::{Duration, Instant};
+use embassy_time::{Duration, Instant, Timer};
 use heapless::String;
+use room_api::{OtaError, Served};
 use room_light::api::{Command, InfoDto, Patch, StateDto};
 use room_light::state::EffectKind;
 
 use crate::config::{DDP_PORT, HTTP_PORT, STATS_PORT};
 use crate::fixture::Fixture;
+use crate::health;
+use crate::ota::Ota;
+
+/// How long the response is given to reach the client before the board resets into the image
+/// it just staged. A close and a flush are already done by then; this only covers the wire.
+const HANDOVER: Duration = Duration::from_millis(500);
 
 /// Listeners, and therefore the number of requests that can be in the loop's hands at once.
 const LISTENERS: usize = 2;
@@ -38,6 +46,9 @@ static REPLIES: [Reply; LISTENERS] = [const { Signal::new() }; LISTENERS];
 struct NodeApi<'a> {
 	ip: &'a str,
 	reply: &'static Reply,
+	slot: &'static Mutex<NoopRawMutex, Ota>,
+	/// `ota_capacity` takes `&self` and so cannot await the slot lock.
+	capacity: usize,
 }
 
 impl NodeApi<'_> {
@@ -79,11 +90,36 @@ impl room_api::Api for NodeApi<'_> {
 	async fn identify(&mut self) {
 		self.round_trip(Request::Cmd(Command::Identify)).await;
 	}
+
+	fn ota_capacity(&self) -> Option<usize> {
+		Some(self.capacity)
+	}
+
+	async fn ota_begin(&mut self, len: usize) -> Result<(), OtaError> {
+		self.slot.lock().await.begin(len).await
+	}
+
+	async fn ota_write(&mut self, chunk: &[u8]) -> Result<(), OtaError> {
+		self.slot.lock().await.write(chunk).await
+	}
+
+	async fn ota_commit(&mut self) -> Result<(), OtaError> {
+		self.slot.lock().await.commit().await
+	}
+
+	async fn ota_abort(&mut self) {
+		self.slot.lock().await.abort();
+	}
 }
 
 /// Two listeners allow controller polling and commands concurrently without dropping the second SYN.
 #[embassy_executor::task(pool_size = LISTENERS)]
-pub async fn httpd_task(stack: Stack<'static>, reply: &'static Reply) -> ! {
+pub async fn httpd_task(
+	stack: Stack<'static>,
+	reply: &'static Reply,
+	slot: &'static Mutex<NoopRawMutex, Ota>,
+	capacity: usize,
+) -> ! {
 	let mut rx = [0; 1024];
 	let mut tx = [0; 1024];
 	loop {
@@ -99,14 +135,25 @@ pub async fn httpd_task(stack: Stack<'static>, reply: &'static Reply) -> ! {
 		if let Some(config) = stack.config_v4() {
 			let _ = core::fmt::write(&mut ip, format_args!("{}", config.address.address()));
 		}
-		let _ = room_api::serve(&mut socket, &mut NodeApi { ip: &ip, reply }).await;
+		let served =
+			room_api::serve(&mut socket, &mut NodeApi { ip: &ip, reply, slot, capacity }).await;
 		socket.close();
 		let _ = socket.flush().await;
+
+		if let Ok(Served::Reboot) = served {
+			Timer::after(HANDOVER).await;
+			health::reboot();
+		}
 	}
 }
 
-pub fn spawn(spawner: Spawner, stack: Stack<'static>) {
+pub fn spawn(
+	spawner: Spawner,
+	stack: Stack<'static>,
+	slot: &'static Mutex<NoopRawMutex, Ota>,
+	capacity: usize,
+) {
 	for reply in &REPLIES {
-		spawner.spawn(httpd_task(stack, reply).unwrap());
+		spawner.spawn(httpd_task(stack, reply, slot, capacity).unwrap());
 	}
 }

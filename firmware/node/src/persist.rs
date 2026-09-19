@@ -1,19 +1,16 @@
-use core::ops::Range;
-
-use embassy_rp::flash::{Async, Flash};
-use embassy_rp::peripherals::FLASH;
+use embassy_embedded_hal::flash::partition::Partition;
+use embassy_sync::blocking_mutex::raw::NoopRawMutex;
 use room_light::settings::{self, BLOB_LEN};
 use room_light::state::LightState;
 use sequential_storage::cache::{Cache, Uncached};
 use sequential_storage::map::{MapConfig, MapStorage};
 
-use crate::board::Store;
-use crate::irq::Irqs;
+use crate::board::{Nvs, SharedFlash};
 
-const FLASH_SIZE: usize = 2 * 1024 * 1024;
-
-/// Last 16 KB reserved by memory.x: two required 4 KB sectors plus two spare sectors.
-const RANGE: Range<u32> = 0x1FC000..0x20_0000;
+/// Last 16 KB of the chip, past DFU so an update never disturbs it. Two required 4 KB sectors
+/// plus two spare sectors.
+pub const OFFSET: u32 = 0x1FC000;
+const LEN: u32 = 16 * 1024;
 
 /// Light settings and the chosen wifi.toml entry, independent records in one log.
 const KEY: u8 = 0;
@@ -23,17 +20,18 @@ const NETWORK_KEY: u8 = 1;
 pub struct Persist {
 	map: MapStorage<
 		u8,
-		Flash<'static, FLASH, Async, FLASH_SIZE>,
+		Partition<'static, NoopRawMutex, Nvs>,
 		Cache<Uncached, Uncached, Uncached, u8>,
 	>,
 	buf: [u8; 48],
 }
 
 impl Persist {
-	pub fn new(store: Store) -> Self {
-		let flash = Flash::new(store.flash, store.dma, Irqs);
+	/// Addresses inside its own partition, so the range here is relative to `OFFSET`.
+	pub fn new(flash: &'static SharedFlash) -> Self {
+		let settings = Partition::new(flash, OFFSET, LEN);
 		Self {
-			map: MapStorage::new(flash, const { MapConfig::new(RANGE) }, Cache::new_uncached()),
+			map: MapStorage::new(settings, const { MapConfig::new(0..LEN) }, Cache::new_uncached()),
 			buf: [0; 48],
 		}
 	}

@@ -49,7 +49,7 @@ sequential-storage wear-levels, so even pathological use takes years to matter.
 ## The HTTP API
 
 Port 80, JSON, two connections at a time, every response `Connection: close`. The same four
-routes on both boards:
+routes on both boards, plus `/api/ota` on the board that has somewhere to put an update:
 
 ```sh
 curl http://room-frame/api/state
@@ -65,6 +65,10 @@ curl -X POST http://room-frame/api/identify -H 'content-length: 0'
 
 curl http://room-frame/api/info
 # the hello line as JSON, plus the board's own address and the effects this build runs
+
+curl -X POST http://room-frame/api/ota --data-binary @room-node.bin
+# a firmware image for the spare slot; 501 on a board with only one. See "Updates over the air",
+# and prefer tools/ota.ts, which checks the image before it can reach the board
 ```
 
 `mode` reads `smart`, `party` or `party-muted` and is the one read-only field. Unknown JSON
@@ -182,6 +186,73 @@ Order is what the button counts, so keep it stable: moving an entry moves what a
 saved. The build fails if the file is missing, and `wifi/build.rs` regenerates from it whenever
 it changes, so a new password is a rebuild and nothing else. Nine entries is the ceiling, which
 is as far as anyone wants to count blinks.
+
+## Updates over the air
+
+The Frame carries two application slots and a bootloader that chooses between them, so a new
+image can be sent over WiFi and a bad one cannot take the room down for the evening.
+
+| offset | size | what |
+|---|---|---|
+| `0x000000` | 256 B | BOOT2, loaded by the boot ROM |
+| `0x000100` | 23.75 K | `room-boot` |
+| `0x006000` | 4 K | bootloader state: which slot is live, and whether it is confirmed |
+| `0x007000` | 768 K | ACTIVE, the running firmware |
+| `0x0C7000` | 772 K | DFU, where an upload lands before the swap |
+| `0x188000` | 464 K | free |
+| `0x1FC000` | 16 K | settings, never swapped |
+
+DFU is one erase sector larger than ACTIVE because the swap needs somewhere to stage a page.
+The settings store sits past both, so an update never disturbs what the room remembers.
+
+Send an image from `firmware/`:
+
+```sh
+cargo build --release
+node --experimental-strip-types tools/ota.ts room-frame.local
+```
+
+`tools/ota.ts` is where the checks live, because the board cannot tell a wrong image from a
+right one until it has already swapped to it. It flattens the ELF and refuses anything not
+linked at ACTIVE, anything too big for the slot, anything without a plausible vector table,
+anything whose partition symbols disagree with the map above, and the bench build, which links
+identically to The Frame's and would boot into a reset loop.
+
+**The bootloader is installed once, over USB, and after that it is the only thing BOOTSEL
+replaces.** It is a separate binary, it is the one that carries boot2, and its image includes
+the state sector, so flashing it also clears whatever the previous firmware left at `0x6000`:
+
+```sh
+# from firmware/boot, holding BOOTSEL while plugging the board in
+cargo run --release
+```
+
+### What makes a bad image survivable
+
+The upload itself changes nothing. Bytes go to DFU, and only a complete image is marked, so an
+upload that is cut off leaves a slot the bootloader has no reason to read.
+
+The reset after it is the commitment. The bootloader swaps the slots and starts the new image on
+trial, and `health.rs` gives it 90 seconds to reach the network. Reaching the network is the
+right test because it is how the next update arrives: an image that lights the room but cannot be
+talked to is not one to be stuck with. Confirm and the trial ends. Fail, or hang, and the
+watchdog the bootloader started resets the board, the bootloader sees a swap that was never
+confirmed, and the previous image goes back.
+
+An upload is refused while a trial is open, because the slot it would overwrite is the only way
+back.
+
+| response | meaning |
+|---|---|
+| `200` | staged; the board reboots into it |
+| `400` | the upload ended early |
+| `409` | another upload is in flight, or this firmware has not confirmed itself yet |
+| `413` | the image does not fit ACTIVE |
+| `501` | this board has one slot, which is the Bounce Lamp |
+
+**There is no authentication**, here or anywhere else in the API. Anyone on the network can
+change the room's colour today and can replace its firmware now. That is a decision about the
+network the boards sit on, not one this endpoint can make for itself.
 
 ## Build, flash, watch
 
@@ -531,7 +602,7 @@ the stats line, so 11.5 ms remains calculated rather than confirmed.
 of the five slow effects beside it, shipped at plausible constants; the room outranks the
 suite, so expect to touch `light/src/effects/` after an evening with them.
 
-**A watchdog**, so a wedged radio recovers without someone walking to the board. **Static IP**
+**Static IP**
 as an alternative to DHCP reservations. **A page at `/`** - the API was shaped so one can sit
 beside it. **Apple Home / Google Home**, researched and parked: rs-matter-embassy runs working
 Matter lights on both of these exact boards, Apple needs a home hub, Google a free dev-console

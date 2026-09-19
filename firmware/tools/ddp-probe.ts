@@ -9,7 +9,7 @@ const FRAME_MS = 1000 / 60;
 const STATS_PORT = 4049;
 
 const target = process.argv[2] ?? 'loopback';
-const pixels = Number(process.argv[3] ?? 720);
+const pixels = Number(process.argv[3] ?? 671);
 const seconds = Number(process.argv[4] ?? 30);
 const pacer = (process.argv[5] ?? 'paced') as 'paced' | 'interval';
 const loopback = target === 'loopback';

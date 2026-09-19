@@ -1,0 +1,20 @@
+[package]
+name = "room-boot"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+embassy-boot-rp = "0.10.0"
+embassy-rp = { version = "0.10.0", features = ["rp2040", "time-driver", "critical-section-impl"] }
+embassy-sync = "0.8"
+embassy-time = "0.5.1"
+cortex-m = { version = "0.7.6", features = ["inline-asm"] }
+cortex-m-rt = "0.7.0"
+
+# thumbv6m has no CAS instructions; embassy needs the critical-section fallback to link.
+portable-atomic = { version = "1.5", features = ["critical-section"] }
+
+# A bootloader that panics must reset rather than hang: a hung bootloader cannot be recovered
+# over the air, only over USB.
+panic-reset = "0.1.1"

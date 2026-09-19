@@ -1,6 +1,6 @@
 [package]
 name = "room-node"
-version = "0.2.4"
+version = "0.2.5"
 edition = "2024"
 publish = false
 
@@ -20,6 +20,8 @@ room-light = { path = "../light" }
 room-wifi = { path = "../wifi" }
 room-wire = { path = "../wire" }
 
+embassy-boot = "0.7.0"
+embassy-embedded-hal = "0.6.0"
 embassy-executor = { version = "0.10.0", features = ["platform-cortex-m", "executor-thread"] }
 embassy-futures = "0.1.2"
 embassy-net = { version = "0.9.1", features = [
@@ -36,6 +38,7 @@ embassy-net = { version = "0.9.1", features = [
 embassy-rp = { version = "0.10.0", features = ["rp2040", "time-driver", "critical-section-impl"] }
 embassy-sync = "0.8"
 embassy-time = "0.5.1"
+embedded-storage-async = "0.4.1"
 sequential-storage = "8.0.1"
 embassy-usb-logger = "0.6.0"
 cyw43 = { version = "0.7.0", features = ["log"] }

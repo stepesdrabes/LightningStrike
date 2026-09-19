@@ -1,5 +1,5 @@
 [workspace]
-members = ["api", "light", "node", "wifi", "wire"]
+members = ["api", "boot", "light", "node", "wifi", "wire"]
 # Separate lamp workspace prevents feature unification across different chip targets.
 exclude = ["lamp"]
 resolver = "3"

@@ -105,7 +105,7 @@ impl Fixture {
 			clk: p.PIN_29,
 			button: p.PIN_18,
 		};
-		(fixture, board, Store { flash: p.FLASH, dma: p.DMA_CH1 })
+		(fixture, board, Store { flash: p.FLASH, dma: p.DMA_CH1, watchdog: p.WATCHDOG })
 	}
 
 	/// Optional selftest paints five runs for four seconds to reveal swapped wiring. Default boot

@@ -72,7 +72,7 @@ impl Fixture {
 			clk: p.PIN_29,
 			button: p.PIN_18,
 		};
-		(fixture, board, Store { flash: p.FLASH, dma: p.DMA_CH1 })
+		(fixture, board, Store { flash: p.FLASH, dma: p.DMA_CH1, watchdog: p.WATCHDOG })
 	}
 
 	/// Selftest: raw bytes 0/1/2/3 identify SLOTS; metre marks distinguish 100/300 addresses;

@@ -9,10 +9,9 @@ fn main() {
 	println!("cargo:rustc-link-search={}", out.display());
 	println!("cargo:rerun-if-changed=memory.x");
 
-	// No link-rp.x: room-boot carries the stage the boot ROM loads, and this binary runs from
-	// the ACTIVE slot. embassy-rp's BOOT2 static is still emitted into the image, harmless and
-	// never executed; boot2-none would drop it, but feature unification would strip it from
-	// room-boot too, which must keep it.
+	// The bootloader is what the boot ROM lands on, so unlike the application it does link
+	// link-rp.x and carry the boot2 stage.
 	println!("cargo:rustc-link-arg-bins=--nmagic");
 	println!("cargo:rustc-link-arg-bins=-Tlink.x");
+	println!("cargo:rustc-link-arg-bins=-Tlink-rp.x");
 }
