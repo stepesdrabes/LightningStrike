@@ -5,20 +5,32 @@ import { discover, type Found } from './discover.ts';
 import { browserNet, type Net } from './net.ts';
 import { displayName, type DeviceInfo, type LightState, type Patch } from './protocol.ts';
 
-/** Slow enough to stay out of the way of a board serving one connection at a time. */
+/** Slow enough to stay out of the way of a board that answers four connections at a time. */
 const POLL_MS = 4000;
+/**
+ * A sweep is 254 knocks and a phone can suspend in the middle of one. Past this the search is
+ * over whatever its requests are still doing, so the interface always comes back.
+ */
+const SEARCH_MAX_MS = 45000;
 const REMEMBERED_KEY = 'lightningstrike.controller.hosts';
 
 type Phase = 'searching' | 'ready' | 'empty';
+
+/**
+ * Unanswered polls in a row before a light reads as out of reach. One miss is what a board busy
+ * with the last request looks like; two, eight seconds apart, is a board that has gone.
+ */
+const MISSES_BEFORE_OFFLINE = 2;
 
 class Device {
 	info = $state<DeviceInfo | null>(null);
 	state = $state<LightState | null>(null);
 	link = $state<Link>('idle');
-	/** False once a poll has gone unanswered, true again the moment one lands. */
+	/** False once polls have gone unanswered, true again the moment anything lands. */
 	online = $state(true);
 
 	readonly client: DeviceClient;
+	private misses = 0;
 
 	constructor(
 		readonly host: string,
@@ -28,12 +40,17 @@ class Device {
 		this.info = info;
 		this.client = new DeviceClient(host, net, {
 			onState: (s) => {
-				this.state = s;
+				// A reply to an older edit must not undo a newer tap still on its way.
+				this.state = { ...s, ...this.client.pending };
+				this.misses = 0;
 				this.online = true;
 			},
 			onLink: (l) => {
 				this.link = l;
-				if (l === 'ok') this.online = true;
+				if (l === 'ok') {
+					this.misses = 0;
+					this.online = true;
+				}
 				if (l === 'lost') this.online = false;
 			}
 		});
@@ -60,7 +77,7 @@ class Device {
 	async poll(): Promise<void> {
 		if (this.client.busy) return;
 		const state = await this.client.readState();
-		if (!state) this.online = false;
+		if (!state && ++this.misses >= MISSES_BEFORE_OFFLINE) this.online = false;
 	}
 }
 
@@ -105,7 +122,11 @@ export class Room {
 	/** Match firmware names so DHCP changes and name/IP aliases replace the same device. */
 	private absorb(found: Found): Device {
 		const sameHost = this.devices.find((d) => d.host === found.host);
-		if (sameHost) return sameHost;
+		// A board that answered is reachable whatever its last poll said, so ask it again.
+		if (sameHost) {
+			void sameHost.poll();
+			return sameHost;
+		}
 
 		const device = new Device(found.host, found.info, this.net);
 		const stale = this.devices.findIndex((d) => d.info?.name === found.info.name);
@@ -113,7 +134,7 @@ export class Room {
 			this.devices = [...this.devices, device];
 		} else {
 			const previous = this.devices[stale] as Device;
-			this.devices = this.devices.with(stale, device);
+			this.devices = this.devices.map((d, i) => (i === stale ? device : d));
 			if (this.selectedHost === previous.host) this.selectedHost = device.host;
 		}
 
@@ -128,19 +149,28 @@ export class Room {
 		const scan = new AbortController();
 		this.scan = scan;
 		this.phase = 'searching';
+		const cap = setTimeout(() => scan.abort(), SEARCH_MAX_MS);
 
-		await discover({
-			net: this.net,
-			origin: location.hostname,
-			remembered: remembered(),
-			onFound: (found) => void this.absorb(found),
-			onSweeping: (s) => (this.sweeping = s),
-			signal: scan.signal
-		});
-
-		if (scan.signal.aborted) return;
-		this.phase = this.devices.length > 0 ? 'ready' : 'empty';
-		remember(this.devices.map((d) => d.host));
+		try {
+			await discover({
+				net: this.net,
+				origin: location.hostname,
+				remembered: remembered(),
+				onFound: (found) => void this.absorb(found),
+				onSweeping: (s) => (this.sweeping = s),
+				signal: scan.signal
+			});
+		} catch {
+			// A search that failed is a search that is over; the phase below says what was found.
+		} finally {
+			clearTimeout(cap);
+			// A newer search owns the phase from here; this one only reports if it is still current.
+			if (this.scan === scan) {
+				this.sweeping = false;
+				this.phase = this.devices.length > 0 ? 'ready' : 'empty';
+				remember(this.devices.map((d) => d.host));
+			}
+		}
 	}
 
 	/** For a board the scan could not reach - a different subnet, or a guessed name. */
@@ -166,10 +196,12 @@ export class Room {
 		const tick = (): void => {
 			if (document.visibilityState === 'visible') void this.selected?.poll();
 		};
+		if (this.timer !== null) clearInterval(this.timer);
 		this.timer = setInterval(tick, POLL_MS);
 		document.addEventListener('visibilitychange', tick);
 		return () => {
 			if (this.timer !== null) clearInterval(this.timer);
+			this.timer = null;
 			document.removeEventListener('visibilitychange', tick);
 			this.scan?.abort();
 		};

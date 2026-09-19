@@ -88,12 +88,6 @@ impl Stats {
 	}
 }
 
-impl Default for Stats {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 struct Tenths(u32);
 
 impl Display for Tenths {
@@ -123,8 +117,8 @@ mod tests {
 		s.gap_max_us = 17_800;
 
 		assert_eq!(
-			s.drain(42, 1000, 720).as_str(),
-			"up 42s  720 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  late 0/0/0  \
+			s.drain(42, 1000, 673).as_str(),
+			"up 42s  673 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  late 0/0/0  \
 			 asm 2.1 ms  led 210 us  seqgap 0  bad 0  oob 0  torn 0"
 		);
 	}

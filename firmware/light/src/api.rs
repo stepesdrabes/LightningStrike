@@ -41,7 +41,7 @@ impl Serialize for HexColour {
 	}
 }
 
-#[derive(Deserialize, Default, Debug)]
+#[derive(Deserialize)]
 pub struct PatchDto<'a> {
 	#[serde(default)]
 	pub power: Option<&'a str>,

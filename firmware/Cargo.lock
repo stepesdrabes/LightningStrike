@@ -1408,10 +1408,9 @@ dependencies = [
 
 [[package]]
 name = "room-node"
-version = "0.2.5"
+version = "0.3.0"
 dependencies = [
  "cortex-m-rt",
- "critical-section",
  "cyw43",
  "cyw43-pio",
  "embassy-boot",

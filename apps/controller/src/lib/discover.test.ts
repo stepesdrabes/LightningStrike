@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { discover, hostsInSubnet, subnetOf } from './discover.ts';
+import { discover, hostsInSubnet, outwardFrom, subnetOf } from './discover.ts';
 import type { Net } from './net.ts';
 
 function info(name: string, ip: string): unknown {
@@ -52,6 +52,25 @@ describe('hostsInSubnet', () => {
 		expect(hostsInSubnet('192.168.0')[0]).toBe('192.168.0.1');
 		expect(hostsInSubnet('192.168.0').at(-1)).toBe('192.168.0.254');
 		expect(hostsInSubnet('192.168.0', new Set(['192.168.0.5']))).toHaveLength(253);
+	});
+});
+
+describe('outwardFrom', () => {
+	it('starts at the page it was served by and works outward', () => {
+		const order = outwardFrom('192.168.0.106', hostsInSubnet('192.168.0'));
+		expect(order.slice(0, 5)).toEqual([
+			'192.168.0.106',
+			'192.168.0.105',
+			'192.168.0.107',
+			'192.168.0.104',
+			'192.168.0.108'
+		]);
+		expect(order).toHaveLength(254);
+	});
+
+	it('leaves the range alone when the page came from a name', () => {
+		const hosts = hostsInSubnet('192.168.0');
+		expect(outwardFrom('raspberrypi.local', hosts)).toEqual(hosts);
 	});
 });
 
@@ -125,5 +144,68 @@ describe('discover', () => {
 		const net = fakeNet({});
 		const found = await discover({ net, origin: 'localhost', onFound: () => {} });
 		expect(found).toEqual([]);
+	});
+
+	it('keeps the address rather than the name it also answers to', async () => {
+		const net = fakeNet({
+			'room-frame.local': info('room-frame', '192.168.0.57'),
+			'room-frame': info('room-frame', '192.168.0.57'),
+			'192.168.0.57': info('room-frame', '192.168.0.57')
+		});
+
+		const found = await discover({ net, origin: '192.168.0.106', onFound: () => {} });
+
+		expect(found).toHaveLength(1);
+		expect(found[0]?.host).toBe('192.168.0.57');
+	});
+
+	it('does not knock on a board own address after finding it by name', async () => {
+		const net = fakeNet({
+			'room-frame.local': info('room-frame', '192.168.0.57'),
+			'192.168.0.57': info('room-frame', '192.168.0.57')
+		});
+
+		await discover({ net, origin: '192.168.0.106', onFound: () => {} });
+
+		expect(net.asked.filter((h) => h === '192.168.0.57')).toHaveLength(0);
+	});
+
+	it('does not ask the same address twice for being both origin and remembered', async () => {
+		const net = fakeNet({ '192.168.0.106': info('room-bounce', '192.168.0.106') });
+		await discover({
+			net,
+			origin: '192.168.0.106',
+			remembered: ['192.168.0.106'],
+			onFound: () => {}
+		});
+		expect(net.asked.filter((h) => h === '192.168.0.106')).toHaveLength(1);
+	});
+
+	it('asks a board one name at a time, never all of its aliases at once', async () => {
+		let inFlight = 0;
+		let peak = 0;
+		const net: Net & { asked: string[] } = {
+			asked: [],
+			async get(url) {
+				const host = new URL(url).hostname;
+				if (!host.startsWith('room-frame')) return null;
+				net.asked.push(host);
+				inFlight++;
+				peak = Math.max(peak, inFlight);
+				await new Promise((r) => setTimeout(r, 1));
+				inFlight--;
+				return info('room-frame', '192.168.0.57');
+			},
+			async post() {
+				return null;
+			}
+		};
+
+		// A dotted quad, so the sweep runs and the name waves run alongside it, which is the
+		// case that can pile knocks onto one board.
+		await discover({ net, origin: '192.168.0.106', onFound: () => {} });
+
+		// A board answers four connections; its own aliases must not be most of them.
+		expect(peak).toBeLessThanOrEqual(2);
 	});
 });

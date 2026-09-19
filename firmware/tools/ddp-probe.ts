@@ -11,7 +11,7 @@ const STATS_PORT = 4049;
 const target = process.argv[2] ?? 'loopback';
 const pixels = Number(process.argv[3] ?? 671);
 const seconds = Number(process.argv[4] ?? 30);
-const pacer = (process.argv[5] ?? 'paced') as 'paced' | 'interval';
+const pacer = (process.argv[5] ?? 'paced') as 'paced' | 'interval' | 'deadline';
 const loopback = target === 'loopback';
 
 /** Gaps over 20/50/100 ms, exclusive buckets. 16.7 ms is the frame budget they sit around. */
@@ -97,7 +97,16 @@ function emit(now: number): void {
 const t0 = performance.now();
 const until = t0 + seconds * 1000;
 
-if (pacer === 'interval') {
+if (pacer === 'deadline') {
+	// Absolute deadlines without the spin: what a server can afford to run all evening.
+	let next = t0;
+	while (performance.now() < until) {
+		next += FRAME_MS;
+		const delay = next - performance.now();
+		if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+		emit(performance.now());
+	}
+} else if (pacer === 'interval') {
 	// What apps/web does today, kept as the baseline to measure the pacer against.
 	const timer = setInterval(() => emit(performance.now()), FRAME_MS);
 	await new Promise((r) => setTimeout(r, seconds * 1000));

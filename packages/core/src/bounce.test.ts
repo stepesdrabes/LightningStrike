@@ -8,7 +8,7 @@ import { FlashEnvelope } from './dsl/env.ts';
 const PALETTE = makePalette({ base: 320, accent: 185 });
 const DT = 1 / 60;
 
-function room(level: number, pixels = 671): Float32Array {
+function room(level: number, pixels = 673): Float32Array {
 	return new Float32Array(pixels * 3).fill(level);
 }
 

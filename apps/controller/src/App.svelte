@@ -55,12 +55,8 @@
 			<Icon name="zap" size={17} />
 			{device?.title ?? 'Lights'}
 		</h1>
-		<button
-			class="ghost"
-			onclick={() => room.search()}
-			disabled={room.phase === 'searching'}
-			aria-label="search again"
-		>
+		<!-- Always live: a search that is going nowhere is exactly when this gets pressed. -->
+		<button class="ghost" onclick={() => room.search()} aria-label="search again">
 			<Icon name="refresh" size={16} spin={room.phase === 'searching'} />
 		</button>
 	</header>
@@ -152,6 +148,16 @@
 			</button>
 			<span class="meta">{device.info?.name} · {device.host} · {device.info?.firmware}</span>
 		</footer>
+	{:else if device && device.online}
+		<p class="notice">
+			<Icon name="spinner" size={15} spin />
+			Reading {device.title}.
+		</p>
+	{:else if device}
+		<p class="notice bad">
+			<Icon name="offline" size={15} />
+			{device.title} answered, then stopped. Still trying.
+		</p>
 	{:else if room.phase === 'searching'}
 		<p class="notice">
 			<Icon name="spinner" size={15} spin />

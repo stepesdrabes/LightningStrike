@@ -8,7 +8,7 @@ was before the party. Source is in `firmware/`.
 
 | binary | board | fixture | pixels | output |
 |---|---|---|---|---|
-| `room-node` (`frame`, default) | Pico W | **The Frame**, just under 3 x 2 m of SK6812 RGBWW at 60 LED/m | 671 | three PIO data lines on GP2, GP3 and GP4 |
+| `room-node` (`frame`, default) | Pico W | **The Frame**, just under 3 x 2 m of SK6812 RGBWW at 60 LED/m | 673 | three PIO data lines on GP2, GP3 and GP4 |
 | `room-node` (`bench`) | Pico W | **The bench run**, 5 m of SK6812 RGBWW on a table | 300 | one PIO data line on GP2 |
 | `room-lamp` | ESP32-C3-Zero | **The Bounce Lamp**, a salvaged analog RGBW strip | 1 | four LEDC PWM gates on GPIO3-6 |
 
@@ -48,8 +48,9 @@ sequential-storage wear-levels, so even pathological use takes years to matter.
 
 ## The HTTP API
 
-Port 80, JSON, two connections at a time, every response `Connection: close`. The same four
-routes on both boards, plus `/api/ota` on the board that has somewhere to put an update:
+Port 80, JSON, four connections at a time on either board, every response `Connection: close`.
+The same four routes on both boards, plus `/api/ota` on the board that has somewhere to put an
+update:
 
 ```sh
 curl http://room-frame/api/state
@@ -88,8 +89,29 @@ redundant to whoever already routed a request there, and it is the one thing a b
 work out for itself: a page opened at a name has no way to learn its own subnet, and that
 subnet is what the controller sweeps to find the rest of the lights.
 
-Two listeners serve the API rather than one. The controller polls while it sends, and a board
-with a single socket drops the SYN of whichever arrives second.
+Four listeners serve the API rather than one, because **there is no accept backlog**. smoltcp
+hands an incoming SYN to the first socket that will take it and answers with a reset if none
+will, so a knock that arrives while every listener is busy is refused outright rather than
+retried. A refused knock is indistinguishable from a board that is not there, which is what
+made a perfectly healthy board read as offline: the controller polls while it sends, and its
+scan can reach one board by its address and both of its names at once. Measured 2026-09-19:
+six simultaneous requests are all answered, where eight has half of them refused.
+
+A listener is also out of service after each request while the close is acknowledged, and
+that wait turned out to be the whole problem. Measured 2026-09-19 against The Frame on the
+wall: a client that reads the response and then waits for the board's FIN before closing, as
+curl does, never had a request refused, however fast it went. A client that closes the moment
+it has the body, as every browser and Node's HTTP client do, had one request in three refused
+once it went faster than four a second, in streaks of three or four. After such a close the
+listener stays busy for most of a second: spacing requests 100 ms apart still refused, 250 ms
+never did, and a second is smoltcp's minimum retransmit timeout for a FIN whose acknowledgement
+did not land. One listener gone per request against four listeners, so a few taps on the
+effect picker were enough to spend them all. `firmware/tools/http-probe.ts` is that
+measurement. The close is now given `CLOSE_GRACE`, 150 ms, and past that the connection is
+reset instead. The response was acknowledged before the close began, so the reset costs the
+client nothing it still needs. A client that vanishes mid-request gets the same reset, which
+returns its listener immediately; smoltcp's own five second socket timeout covers a client that
+opens a connection and then says nothing.
 
 Each listener carries its own reply slot, and the fixture loop answers into the slot that came
 with the request. A shared mailbox pairs answers to requests only while there is one of each:
@@ -131,12 +153,41 @@ fixture actually runs, so the lamp offers only `wash` and does not ask for effec
 reject; and `mode` is surfaced, so a light being driven by a show says so instead of appearing to
 ignore you.
 
+**It asks one board one name at a time.** The direct attempts go out in waves - addresses,
+then `.local` names, then bare hostnames - because a board answers to all three and every
+listener it spends on an alias is one it cannot answer the real question with. Where a board
+reports an address on the subnet the page came from, that address becomes the one it is
+addressed by from then on: polling a name waits on mDNS every time, and a name is not something
+a later scan can read a subnet from. The sweep then skips the address a board already gave.
+
+A board found but not yet answering now says so, rather than falling through to the empty state
+that told you nothing was found while the app was holding a light it had just discovered.
+
+Three things used to make it look frozen and are pinned now. A scan that failed left the phase
+at "searching" with the refresh button disabled by it, so the one control that recovers was
+disabled by the fault; the phase now settles in a `finally` and refresh is always live. A board
+re-found at an address it already had was returned without a poll, so "Out of reach" survived
+proof that it was in reach. And the link state was set outside the try that clears the in-flight
+flag, so one throw there stopped every later poll and every later edit.
+
+**A refused connection is a busy board, never an absent one**, and the app treats it that way.
+An edit is coalesced with whatever is tapped after it and retried at 300, 600, 1200 and then
+every 2000 ms until it lands, so the newest tap is what the board ends up showing; it reports
+the link lost after six seconds of that and gives the edit up after thirty, long enough for a
+board to reboot and rejoin. The phone's own stack takes 200 ms to a second to report a refusal,
+which is why the first retry waits rather than knocking again at once. A reply to an older edit
+cannot flip the picker back while a newer one is on its way, because what the board has not
+confirmed yet is laid over every reply. And a light reads as out of reach only after two polls
+in a row go unanswered, eight seconds, not after the one that a board busy closing its last
+connection looks like.
+
 The old `firmware/controller/frame-control.html` was a one-way prototype and is gone.
 
 ## Layout
 
 ```
-wire/   the protocol: DDP parse, framebuffer, hello, stats. No Embassy, tests on the host.
+wire/   the protocol: DDP parse, packed payload, framebuffer, hello, stats. No Embassy, tests
+        on the host.
 light/  the light: engine, effects, colour maths, settings codec, API types. Same deal.
 api/    the HTTP face: four routes over embedded-io-async. Same deal.
 wifi/   the network list and the button that picks one. Same deal; wifi.toml feeds its build.
@@ -260,7 +311,7 @@ The Pico, from `firmware/node`:
 
 ```sh
 cargo build --release                                         # The Frame
-cargo build --release --features selftest                     # The Frame, five-run colour pass
+cargo build --release --features selftest                     # The Frame, colour and corner pass
 cargo build --release --no-default-features --features bench  # the bench run
 
 # hold BOOTSEL while plugging the board in, then
@@ -382,6 +433,25 @@ meant to sit at. How bright the room is lives in three constants in
 `packages/core/src/output.ts` (`MASTER`, `GAMMA` at 2.45, the `knee`), and the standalone
 engine decodes through the same 2.45 so a wash and a show agree about what a colour means.
 
+**The Frame's frames arrive packed.** 673 pixels of RGB24 are 2019 bytes, so a plain frame is
+two datagrams and the room only moves when both land; the second one's wait is pure latency and
+on a weak link it was measured at 117 ms. `packages/transport/src/pack.ts` splits the buffer
+into colour planes, differences each plane along the strip and codes the result in nibbles,
+which is lossless: the room shows the same bytes it always did. The board decodes it straight
+into its framebuffer in `wire/src/pack.rs`, and the two sides are pinned to the same vector.
+
+The DDP data type is `0x8b`, plain RGB24's `0x0b` with DDP's customer-defined bit set, so no
+standard receiver can mistake it for something it knows. A board that decodes it says `pack 1`
+in its hello line and the host asks before every start; anything that does not say so keeps
+being sent plain RGB24, and a frame that would not fit one datagram falls back to it too. The
+lamp's single pixel never needs it.
+
+The one case a start cannot ask about is a board that reverts to older firmware mid-show, which
+is exactly what the A/B slots exist to let happen. The board counts what it cannot parse as
+`bad`, that reaches the host on the stats line, and the host goes back to plain pixels for the
+rest of the stream. A wider stream is a worse answer than a packed one; a dark room is worse
+than both.
+
 The lamp's one party pixel is derived host-side in `packages/core/src/bounce.ts`, where the
 show's own `kickEnv` is visible. The reduction used to run on the board and moved out for good
 reason: a percentile over the room barely moves per beat, and the host knows the beat exactly.
@@ -390,12 +460,14 @@ the strip and belongs beside the trim.
 
 ## The Frame, on three lines
 
-671 addresses of four bytes on one Pico. The split is the reels: **A is Frame N + E, B is
-S + W, C is the beam**, 281 / 281 / 109, contiguous in the host's buffer so the host sends one
-stream and `present` slices it.
+673 addresses of four bytes on one Pico. The split is the reels: **A is Frame N + E, B is
+S + W, C is the beam**, 282 / 282 / 109, contiguous in the host's buffer so the host sends one
+stream and `present` slices it. The runs are 170 / 112 / 170 / 112 / 109, counted off the built
+frame on 2026-09-19 rather than derived from its drawing: the short runs each carry one more LED
+than the arithmetic predicted, and the last of them is the far end of its reel.
 
-Three lines is what makes 60 fps possible: an address is 40 us, so 671 in a row would be
-26.8 ms and cap the room near 37 fps. Written together with `join3`, three lines cost the
+Three lines is what makes 60 fps possible: an address is 40 us, so 673 in a row would be
+26.9 ms and cap the room near 37 fps. Written together with `join3`, three lines cost the
 longest of them, 11.2 ms. cyw43 holds PIO0 SM0 and DMA_CH0, so the lines take PIO1 SM0/SM1/SM2
 and DMA_CH2/CH3/CH4 on GP2, GP3 and GP4; the PIO program is loaded once and shared, so a fourth
 line (the frame-brain board has the buffer and terminal for it on GP5) costs a state machine
@@ -409,9 +481,14 @@ image, so the two facts have to move together.
 
 The boot look is the engine's fade into the remembered state, which shows a line that is not
 connected but not a run that is in the wrong place. `--features selftest` paints each of the five
-runs its own colour for four seconds instead - N red, E green, S blue, W white, beam magenta -
+runs its own colour for ten seconds instead - N red, E green, S blue, W yellow, beam magenta -
 through that same flip, so it tests the mapping and the copper together. Off by default, because
 `restore` exists precisely so that a midnight power blip does not relight the room.
+
+The last ten LEDs at each end of every run carry **five white dots, one in two, counted inward
+from the end**. A corner therefore shows two marks that mirror each other across the fold, and one
+that does not mirror is a run whose count does not match the timber. This is the check for the
+built frame being shorter than the strip, and it is why no run is painted white.
 
 The strip's measured facts - byte order `SLOTS`, white trim, latch time - live in
 `fixture/rgbww.rs`; `bench` measures them and `frame` inherits them. What the fixture draws, how it
@@ -443,7 +520,7 @@ the room out, because the mixer already leaves most pixels part-desaturated. The
 designed against three dies. Standalone mode is different - the engine derives white on
 purpose there, additively, and the same `TRIM[3]` keeps it honest.
 
-The Bounce Lamp goes the other way, and the two are not in conflict. Washing out 671 emitters
+The Bounce Lamp goes the other way, and the two are not in conflict. Washing out 673 emitters
 loses a picture; there is no picture in one emitter to lose, and the reason that lamp is bright at
 all is the phosphors. Its own section has the rule.
 
@@ -546,13 +623,15 @@ query, on the DDP port, at any time:
 
 ```
 -> ?room-node
-<- room-node host room-frame fw 0.2.0 up 42s px 720 ddp 4048 stats 4049 leds sk6812 http 80
+<- room-node host room-frame fw 0.3.0 up 42s px 673 ddp 4048 stats 4049 leds sk6812 http 80 pack 1
 ```
 
 The reply goes to the asker's own source port. A leading `?` is `0x3f` and DDP v1 puts `0b01`
 in its first byte's top bits, so the two parsers can never both claim a datagram. `leds` lists
-one kind per output; `parseIdentity` reads tokens independently and ignores what it does not
-know, which is how `http` joined the line without breaking anything.
+one kind per output; `pack` is the packed-payload format this build decodes, and the host will
+not send one to a board that does not name it. `parseIdentity` reads tokens independently and
+ignores what it does not know, which is how `http` and then `pack` joined the line without
+breaking anything.
 
 ## Reading the stats line
 
@@ -560,7 +639,7 @@ One line a second on the console, and the same line as a UDP datagram to port 40
 host last sent DDP (`nc -lu 4049` for a board already on a wall):
 
 ```
-up 42s  720 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  late 0/0/0  asm 2.1 ms  led 210 us  seqgap 0  bad 0  oob 0  torn 0
+up 42s  673 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  late 0/0/0  asm 2.1 ms  led 210 us  seqgap 0  bad 0  oob 0  torn 0
 ```
 
 `fps` is the headline number and 60.0 is the target. `late` buckets frames arriving more than
@@ -585,6 +664,32 @@ with cyw43 0.7.0. And pace the sender: a deadline pacer delivers 60.0 fps where
 this against the real `createDdpSink`; interleave variants rather than batching them, because
 2.4 GHz drifts enough over minutes to invent differences.
 
+Measured again 2026-09-19, on the wall, against an access point far enough away that the
+sending Mac itself sat at -78 dBm with 6 dB of headroom. That is the link the room actually
+has, and it is where packing earns its keep. 90 seconds of real mixer frames, swapping format
+every 10 s, `node bench/wireprobe.ts --to <board>`:
+
+| | plain RGB24 | packed |
+|---|---|---|
+| frames the board showed | 57.5 fps | **60.0 fps** |
+| datagrams | 111 /s | **62 /s** |
+| bytes | 110.1 KB/s | **41.7 KB/s** |
+| worst frame assembly | 117.1 ms | **3.5 ms** |
+| rejected, out of range | 0, 0 | 0, 0 |
+
+Assembly is the number to read: it is how long the board held half a frame waiting for the
+rest, and it is latency the room can see. Torn frames - the ones the room showed with a hole in
+them - depend on the minute too much to belong in that table, but they move the same way: a
+60 s run on a worse minute counted **29 torn against 4**, and the fps gap closes on a good one
+while the assembly and torn gaps do not. `bench/wireprobe.ts` with no `--to` scores the
+candidate encodings offline against real layer stacks, which is how this one was chosen; plain
+run-length coding left 1164 bytes a frame and deflate would have reached 554, but a Cortex-M0+
+with 4 ms of slack against a 12.3 ms strip write cannot afford to inflate. The nibble codec
+means 784 bytes and 92% of frames in one datagram for a decoder that is a table lookup a byte.
+
+`led` has now been read off the stats line rather than calculated: **12.3 ms** for 673
+addresses across the three lines, against the 11.4 ms the arithmetic predicted.
+
 ## What is left
 
 **A jitter buffer, if the room is to stay on WiFi.** Present frames on the board's own 60 Hz
@@ -593,10 +698,6 @@ stall, 10 leaves headroom; the rare 316 ms outlier still glitches through. The s
 deterministic and the host can render ahead and cancel the lag with `offsetMs`. Get two things
 right: occupancy has to steer the present period slowly (the two clocks drift), and a seek or
 pause has to flush.
-
-**The three-line timing is still arithmetic.** The Frame ran 720 addresses on three strips
-against real shows from 2026-09-08; the rebuilt frame is 671. `led` has never been read off
-the stats line, so 11.5 ms remains calculated rather than confirmed.
 
 **Effects are tuned by eye, not yet judged.** Fire's spark rate and cooling, and the periods
 of the five slow effects beside it, shipped at plausible constants; the room outranks the

@@ -1,6 +1,6 @@
 import type { Geometry, LedSpan, RoomRegion, RoomSpec, StripSpec, Vec3 } from './contracts/room.ts';
 
-/** A 5x4 m room with a 3x2 m frame hanging at 2.4 m. 671 px at 60 LED/m. */
+/** A 5x4 m room with a 3x2 m frame hanging at 2.4 m. 673 px at 60 LED/m. */
 export const DEFAULT_ROOM: RoomSpec = {
 	name: 'Room 5x4',
 	width: 5,
@@ -11,7 +11,7 @@ export const DEFAULT_ROOM: RoomSpec = {
 		depth: 2,
 		height: 2.4,
 		density: 60,
-		counts: { along: 170, across: 111, beam: 109 },
+		counts: { along: 170, across: 112, beam: 109 },
 		crossAxis: 'y',
 		crossOffset: 0,
 		section: 0.04

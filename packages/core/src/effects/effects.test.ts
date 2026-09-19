@@ -159,6 +159,36 @@ it('blackout reads as darkness next to the wash it replaces', () => {
 	expect(mean('blackout')).toBeLessThan(mean('wash') * 0.05);
 });
 
+/**
+ * The frame is drawn larger than it was built, so metres off the drawing and metres from the
+ * pitch disagree. An effect that sizes a span in pixels must take it from the run it paints,
+ * never by dividing a drawn length by the pitch.
+ */
+it('no effect measures a pixel span off the drawn frame', () => {
+	// Same runs and same drawing; only the declared LED/m differs, which moves pitch alone.
+	const loose = buildGeometry({
+		...DEFAULT_ROOM,
+		fixture: { ...DEFAULT_ROOM.fixture, density: 47 }
+	});
+	const frames = scriptFrames().filter((_, i) => i % 11 === 0);
+
+	const bytes = (def: (typeof BUILT_IN_EFFECTS)[number], geometry: typeof g) => {
+		const mixer = new Mixer(geometry);
+		mixer.palette = makePalette({ base: 0, accent: 180, third: 60 });
+		mixer.intensity = 1;
+		mixer.floor = 0;
+		mixer.layers[def.role].setEffect(def, geometry);
+		return frames.map((f) => (mixer.render(f), Uint8Array.from(mixer.bytes)));
+	};
+
+	const moved = BUILT_IN_EFFECTS.filter((def) => {
+		const [a, b] = [bytes(def, g), bytes(def, loose)];
+		return a.some((frame, k) => frame.some((v, i) => v !== b[k][i]));
+	}).map((def) => def.id);
+
+	expect(moved).toEqual([]);
+});
+
 it('ids are unique', () => {
 	const ids = BUILT_IN_EFFECTS.map((d) => d.id);
 	expect(new Set(ids).size).toBe(ids.length);

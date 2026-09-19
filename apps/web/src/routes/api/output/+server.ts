@@ -29,7 +29,7 @@ import { rowBundle } from '$lib/evening/bundle.ts';
 import { currentItem, type QueueItem } from '$lib/queueModel.ts';
 import { evening } from '$lib/server/evening/store.ts';
 import { queue } from '$lib/server/queueStore.ts';
-import { hardware } from '$lib/server/hardware.ts';
+import { hardware, packedHosts } from '$lib/server/hardware.ts';
 import { settings, type PublicSettings } from '$lib/server/settings.ts';
 import { isLocal } from '$lib/server/access.ts';
 import type { RequestHandler } from './$types';
@@ -60,6 +60,8 @@ class Output {
 	/** The Bounce Lamp's own stream, one pixel wide. */
 	private bounce: LedSink | null = null;
 	private timer: NodeJS.Timeout | null = null;
+	/** Bumped by every arm so a frame left over from the last one stops rather than doubling up. */
+	private generation = 0;
 
 	private frames = 0;
 	private failed = false;
@@ -163,12 +165,18 @@ class Output {
 
 	/**
 	 * Send directly from the render clock; a second sender duplicates work and its keepalive is
-	 * unnecessary.
+	 * unnecessary. Each frame is scheduled against an absolute deadline rather than on a fixed
+	 * interval: setInterval accumulates its own rounding and delivers 58.7 fps where the same
+	 * loop against deadlines delivers 60.0, measured on loopback with `tools/ddp-probe.ts`.
 	 */
 	private arm(): void {
-		if (this.timer) clearInterval(this.timer);
+		if (this.timer) clearTimeout(this.timer);
+		const period = 1000 / this.fps;
+		const mine = ++this.generation;
 		let last = performance.now();
-		this.timer = setInterval(() => {
+		let deadline = last + period;
+		const tick = (): void => {
+			if (mine !== this.generation) return;
 			const now = performance.now();
 			const dt = Math.min((now - last) / 1000, 0.05);
 			last = now;
@@ -199,7 +207,15 @@ class Output {
 				presentAtMs: now
 			});
 			this.frames++;
-		}, 1000 / this.fps);
+			deadline += period;
+			// Measured against when the frame finished, not when it started: a frame that
+			// overran leaves its successor already due, and the loop would send the missed
+			// ones back to back rather than resuming from here.
+			const done = performance.now();
+			if (deadline <= done) deadline = done + period;
+			this.timer = setTimeout(tick, deadline - done);
+		};
+		this.timer = setTimeout(tick, period);
 	}
 
 	/**
@@ -222,8 +238,18 @@ class Output {
 		this.rows.arrive(key, performance.now());
 	}
 
+	/**
+	 * Back to plain pixels, for the one case a start cannot ask about: a board that reverted to
+	 * firmware older than the packed payload while the show was running. That board rejects the
+	 * whole datagram, which is what `bad` counts. The next start asks it again.
+	 */
+	unpack(): void {
+		for (const target of this.targets) target.packed = false;
+	}
+
 	async stop(): Promise<void> {
-		if (this.timer) clearInterval(this.timer);
+		this.generation++;
+		if (this.timer) clearTimeout(this.timer);
 		this.timer = null;
 		await this.sink?.close();
 		this.sink = null;
@@ -242,11 +268,17 @@ class Output {
 
 const output = new Output();
 
+// Telemetry is the only place a board can say it did not understand the datagram at all.
+hardware.subscribe((statuses) => {
+	const frame = statuses.find((s) => s.role === 'frame');
+	if ((frame?.telemetry?.bad ?? 0) > 0) output.unpack();
+});
+
 /**
  * Split all region spans across board shares, tracking contiguous device offsets even when a
  * ring region crosses its seam.
  */
-function targetsFor(region: RoomRegion, hosts: string[]): DdpTarget[] {
+function targetsFor(region: RoomRegion, hosts: string[], packed: ReadonlySet<string>): DdpTarget[] {
 	const per = Math.ceil(region.count / hosts.length);
 	const targets: DdpTarget[] = [];
 	let taken = 0;
@@ -261,7 +293,8 @@ function targetsFor(region: RoomRegion, hosts: string[]): DdpTarget[] {
 				host: hosts[host],
 				firstLed: span.firstLed + offset,
 				ledCount: room,
-				deviceFirstLed: taken - host * per
+				deviceFirstLed: taken - host * per,
+				packed: packed.has(hosts[host])
 			});
 			offset += room;
 			taken += room;
@@ -456,7 +489,12 @@ export const POST: RequestHandler = async (event) => {
 		? body.protocol
 		: (await settings.read()).outputProtocol;
 	const bounceHost = hardware.link('bounce').status.host;
-	await output.start(targetsFor(region, body.hosts), body.offsetMs ?? 0, protocol, bounceHost);
+	// Ask after the last stream has stopped: a probe competing with 60 fps of its own output can
+	// lose, and a lost probe drops the board to plain pixels for the whole of the next show.
+	await output.stop();
+	// sACN has no packed type; only the boards this firmware speaks to over DDP get it.
+	const packed = protocol === 'ddp' ? await packedHosts(body.hosts) : new Set<string>();
+	await output.start(targetsFor(region, body.hosts, packed), body.offsetMs ?? 0, protocol, bounceHost);
 	// The Frame readout follows the first host in a split fixture.
 	hardware.link('frame').setHost(body.hosts[0]);
 	hardware.setStreaming(true);

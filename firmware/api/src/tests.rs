@@ -106,7 +106,7 @@ impl Api for MockApi {
 			ip: "192.168.1.57",
 			firmware: "0.2.0",
 			uptime_s: 42,
-			pixels: 720,
+			pixels: 673,
 			ddp_port: 4048,
 			stats_port: 4049,
 			leds: "sk6812",

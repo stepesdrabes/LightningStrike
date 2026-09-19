@@ -78,7 +78,9 @@ interface BounceSpec {
 }
 
 /**
- * Precomputed LED attributes. Normalize nx/ny/nz by the fixture's single largest extent.
+ * Precomputed LED attributes. Positions describe the frame as drawn, `pitch` the strip as
+ * built and a little shorter; the two are different scales, so never divide one into the other.
+ * Normalize nx/ny/nz by the fixture's single largest extent.
  * Per-axis scaling distorts circles; room scaling wastes a sweep's range outside the fixture.
  */
 export interface Geometry {
@@ -109,8 +111,10 @@ export interface Geometry {
 	/** 3 floats per LED. */
 	normal: Float32Array;
 
-	/** Metres between adjacent LEDs. Converts m/s into pixels/frame. */
+	/** Metres between adjacent LEDs, from `density`. Converts m/s into pixels/frame. */
 	pitch: number;
+	/** The drawn fixture's largest side, metres: the one divisor behind nx/ny/nz. */
 	extent: number;
+	/** Drawn arc length of the ring, metres, which `perim` normalizes. `ringsFor` measures the lit run. */
 	perimeterLength: number;
 }

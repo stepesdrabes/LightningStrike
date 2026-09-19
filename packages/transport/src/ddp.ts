@@ -1,5 +1,6 @@
 import { createSocket, type Socket } from 'node:dgram';
 import type { LedFrame, LedSink, LedSinkStats } from '@mv/core';
+import { Packer } from './pack.ts';
 
 export const DDP_PORT = 4048;
 
@@ -10,6 +11,9 @@ const MAX_DATA = 1440;
 const FLAG_VER1 = 0x40;
 const FLAG_PUSH = 0x01;
 const TYPE_RGB24 = 0x0b;
+// The same pixels packed. The top bit is DDP's customer-defined flag, so a receiver that does
+// not know this format cannot mistake it for one it does.
+const TYPE_RGB24_PACKED = 0x8b;
 const ID_DISPLAY = 1;
 
 export interface DdpTarget {
@@ -20,6 +24,8 @@ export interface DdpTarget {
 	ledCount: number;
 	/** Where that slice lands in the device's own buffer. Normally 0. */
 	deviceFirstLed?: number;
+	/** The board named `pack` in its hello line, so its frames can go out packed. */
+	packed?: boolean;
 }
 
 interface DdpOptions {
@@ -38,6 +44,11 @@ export function createDdpSink(opts: DdpOptions): LedSink {
 	const deviceKey = (t: DdpTarget) => `${t.host}:${t.port ?? DDP_PORT}`;
 	const lastForDevice = new Map<string, number>();
 	opts.targets.forEach((t, i) => lastForDevice.set(deviceKey(t), i));
+
+	const widest = Math.max(0, ...opts.targets.map((t) => t.ledCount));
+	const packer = opts.targets.some((t) => t.packed) ? new Packer(widest * 3) : null;
+	// One frame at a time, so one buffer serves every packed target.
+	const packBuffer = new Uint8Array(MAX_DATA);
 
 	return {
 		kind: 'ddp',
@@ -66,6 +77,30 @@ export function createDdpSink(opts: DdpOptions): LedSink {
 				const deviceStart = (target.deviceFirstLed ?? 0) * 3;
 				const port = target.port ?? DDP_PORT;
 				const closesDevice = lastForDevice.get(deviceKey(target)) === index;
+
+				// A packed slice is whole or it is nothing: splitting it would cost the very
+				// property that makes it worth sending, that one datagram decodes on its own.
+				const packed = packer && target.packed
+					? packer.pack(frame.rgb, byteStart, target.ledCount, packBuffer)
+					: 0;
+				if (packed > 0) {
+					const datagram = Buffer.allocUnsafe(10 + packed);
+					datagram[0] = FLAG_VER1 | (closesDevice ? FLAG_PUSH : 0);
+					datagram[1] = seq;
+					datagram[2] = TYPE_RGB24_PACKED;
+					datagram[3] = ID_DISPLAY;
+					datagram.writeUInt32BE(deviceStart, 4);
+					datagram.writeUInt16BE(packed, 8);
+					datagram.set(packBuffer.subarray(0, packed), 10);
+					try {
+						socket.send(datagram, port, target.host);
+						stats.bytesSent += 10 + packed;
+					} catch (err) {
+						stats.lastError = (err as Error).message;
+					}
+					seq = seq === 15 ? 1 : seq + 1;
+					continue;
+				}
 
 				for (let sent = 0; sent < byteLen; sent += MAX_DATA) {
 					const len = Math.min(MAX_DATA, byteLen - sent);

@@ -42,8 +42,13 @@ export function hostsInSubnet(prefix: string, skip: ReadonlySet<string> = new Se
 	return out;
 }
 
-export async function probe(net: Net, host: string, timeoutMs: number): Promise<Found | null> {
-	const info = parseInfo(await net.get(infoUrl(host), timeoutMs));
+export async function probe(
+	net: Net,
+	host: string,
+	timeoutMs: number,
+	signal?: AbortSignal
+): Promise<Found | null> {
+	const info = parseInfo(await net.get(infoUrl(host), timeoutMs, signal));
 	return info ? { host, info } : null;
 }
 
@@ -65,20 +70,60 @@ export async function discover(opts: DiscoverOptions): Promise<Found[]> {
 	const { net, origin, remembered = [], onFound, onSweeping, signal } = opts;
 	const found = new Map<string, Found>();
 	const seenNames = new Set<string>();
+	const here = subnetOf(origin);
 
+	/**
+	 * Address the board by the address it reports, once that address is on the subnet this page
+	 * was served from. Polling a name waits on mDNS every time, and a name is also what a later
+	 * sweep cannot read a subnet from. A board reporting an address somewhere else is reached
+	 * only by the name that already worked.
+	 */
 	const keep = (hit: Found | null): void => {
+		if (!hit || signal?.aborted) return;
+		const host = here !== null && subnetOf(hit.info.ip) === here ? hit.info.ip : hit.host;
 		// Deduplicate boards reachable by both address and name.
-		if (!hit || found.has(hit.host) || seenNames.has(hit.info.name)) return;
-		found.set(hit.host, hit);
+		if (found.has(host) || seenNames.has(hit.info.name)) return;
+		const at: Found = { host, info: hit.info };
+		found.set(host, at);
 		seenNames.add(hit.info.name);
-		onFound(hit);
+		onFound(at);
 	};
 
-	const direct = [origin, ...remembered, ...KNOWN_HOSTS.map((h) => `${h}.local`), ...KNOWN_HOSTS]
-		.map((h) => h.trim())
-		.filter((h, i, all) => h !== '' && all.indexOf(h) === i);
+	// The origin is often a remembered address as well, and asking one board the same question
+	// twice at once is what spends the listeners it has.
+	const tried = new Set<string>();
+	const wave = async (hosts: readonly string[]): Promise<void> => {
+		const fresh: string[] = [];
+		for (const raw of hosts) {
+			const host = raw.trim();
+			if (host === '' || tried.has(host) || seenNames.has(host.replace(/\.local$/, ''))) continue;
+			tried.add(host);
+			fresh.push(host);
+		}
+		await Promise.all(
+			fresh.map(async (h) => {
+				try {
+					keep(await probe(net, h, DIRECT_TIMEOUT_MS, signal));
+				} catch {
+					// One name failing must not abandon the others, nor the sweep running beside them.
+				}
+			})
+		);
+	};
 
-	await Promise.all(direct.map(async (host) => keep(await probe(net, host, DIRECT_TIMEOUT_MS))));
+	/**
+	 * One wave per way of naming a board, never all of them at once: the three names for one
+	 * board would otherwise arrive together and spend every listener it has, and the alias that
+	 * got refused would look like a board that is not there.
+	 */
+	const byName = async (): Promise<void> => {
+		await wave(KNOWN_HOSTS.map((h) => `${h}.local`));
+		if (!signal?.aborted) await wave([...KNOWN_HOSTS]);
+	};
+
+	// Addresses first: they answer at once where a name that resolves to nothing costs the whole
+	// timeout, and one of them is usually all the subnet the sweep needs.
+	await wave([origin, ...remembered]);
 	if (signal?.aborted) return [...found.values()];
 
 	// Prefer the origin IP, then a responding board, then remembered DHCP addresses for the subnet.
@@ -86,17 +131,44 @@ export async function discover(opts: DiscoverOptions): Promise<Found[]> {
 		subnetOf(origin) ??
 		[...found.values()].map((f) => subnetOf(f.info.ip)).find((p) => p != null) ??
 		remembered.map(subnetOf).find((p) => p != null);
-	if (!prefix) return [...found.values()];
+	if (!prefix) {
+		await byName();
+		return [...found.values()];
+	}
 
 	onSweeping?.(true);
 	try {
-		const targets = hostsInSubnet(prefix, new Set(found.keys()));
-		await pooled(targets, SWEEP_CONCURRENCY, async (host) => {
-			if (signal?.aborted) return;
-			keep(await probe(net, host, SWEEP_TIMEOUT_MS));
-		});
+		// The names run alongside the sweep rather than ahead of it: they address different
+		// boards, and waiting out three name lookups first is seconds of spinner for nothing.
+		await Promise.all([
+			byName(),
+			pooled(
+				outwardFrom(origin, hostsInSubnet(prefix, new Set(found.keys()))),
+				SWEEP_CONCURRENCY,
+				async (host) => {
+					// A board already found, by whatever name, is still at its own address.
+					// Checked here rather than up front because a name can answer mid-sweep.
+					const already = [...found.values()].some((f) => f.info.ip === host);
+					if (!already) keep(await probe(net, host, SWEEP_TIMEOUT_MS, signal));
+				},
+				signal
+			)
+		]);
 	} finally {
-		onSweeping?.(false);
+		if (!signal?.aborted) onSweeping?.(false);
 	}
 	return [...found.values()];
+}
+
+/**
+ * Sweep outward from whatever the page was served by. A board and the machine serving this page
+ * come from the same DHCP pool far more often than not, so nearest-first finds it seconds sooner
+ * than counting from .1; where the origin is a name there is no centre and the order is the
+ * range's own.
+ */
+export function outwardFrom(origin: string, hosts: readonly string[]): string[] {
+	const centre = Number(/\.(\d{1,3})$/.exec(origin.trim())?.[1]);
+	if (!Number.isFinite(centre)) return [...hosts];
+	const last = (h: string) => Number(h.slice(h.lastIndexOf('.') + 1));
+	return [...hosts].sort((a, b) => Math.abs(last(a) - centre) - Math.abs(last(b) - centre));
 }

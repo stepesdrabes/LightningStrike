@@ -38,6 +38,7 @@ pub fn unpack(bytes: &[u8], out: &mut [RGBW<u8>]) {
 }
 
 /// The same, for a run laid against the buffer's direction: the host's last pixel is physical 0.
+#[cfg(feature = "frame")]
 pub fn unpack_rev(bytes: &[u8], out: &mut [RGBW<u8>]) {
 	let last = out.len() - 1;
 	for (i, px) in out.iter_mut().enumerate() {

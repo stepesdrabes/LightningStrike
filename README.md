@@ -181,7 +181,8 @@ opens it; shows it designed earlier keep playing.
 
 DDP over UDP port 4048 is the default output; sACN is also available. The Bounce Lamp uses
 its own one-pixel stream. Gamma is applied at the host's byte-encoding boundary, so receivers
-must preserve those values without applying gamma again.
+must preserve those values without applying gamma again. Frames to a board that says it can
+take them go out packed, losslessly, so The Frame arrives in one datagram instead of two.
 
 See [firmware/FIRMWARE.md](firmware/FIRMWARE.md) for boards, wiring, the standalone lighting
 state machine, HTTP controls, calibration and flashing. The frame uses three SK6812 RGBWW

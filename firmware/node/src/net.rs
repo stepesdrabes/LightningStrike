@@ -181,7 +181,7 @@ pub async fn join(
 	let mut dhcp = DhcpConfig::default();
 	dhcp.hostname = Some(String::try_from(hostname).unwrap());
 
-	// One slot each for DHCP, the DDP socket and the two HTTP listeners, plus headroom.
+	// One slot each for DHCP, the DDP socket and the four HTTP listeners, plus headroom.
 	static RESOURCES: StaticCell<StackResources<8>> = StaticCell::new();
 	let mut rng = RoscRng;
 	let (stack, net_runner) = embassy_net::new(

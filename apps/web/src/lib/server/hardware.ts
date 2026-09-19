@@ -10,6 +10,7 @@ import {
 	type HardwareStatus,
 	type LinkState
 } from '$lib/hardware.ts';
+import { PACK_VERSION } from '@mv/transport';
 
 const DDP_PORT = 4048;
 const STATS_PORT = 4049;
@@ -281,3 +282,12 @@ function ask(host: string, timeoutMs: number): Promise<Answer | null> {
 }
 
 export const hardware = new Hardware();
+
+/**
+ * Which of these boards can be sent packed frames, asked now rather than read from the last
+ * probe: a board that reverted to older firmware must not be sent a payload it cannot decode.
+ */
+export async function packedHosts(hosts: readonly string[]): Promise<Set<string>> {
+	const answers = await Promise.all(hosts.map((host) => ask(host, PROBE_TIMEOUT_MS)));
+	return new Set(hosts.filter((_, i) => answers[i]?.identity.packVersion === PACK_VERSION));
+}

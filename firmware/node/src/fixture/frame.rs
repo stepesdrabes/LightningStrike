@@ -14,24 +14,37 @@ use crate::irq::Irqs;
 pub const KIND: &str = "sk6812";
 
 /// A: north/east; B: south/west; C: beam. At 40 us/address, parallel lines take the longest
-/// line's 11.2 ms instead of 26.8 ms for all 671 addresses in series.
-const LINE_A: usize = 281;
-const LINE_B: usize = 281;
+/// line's 11.2 ms instead of 26.9 ms for all 673 addresses in series.
+const LINE_A: usize = 282;
+const LINE_B: usize = 282;
 const LINE_C: usize = 109;
 
-/// Runs match core geometry at 60 LED/m. Selftest colours: N red, E green, S blue, W white,
-/// beam magenta; duty 96 keeps draw well below full scale.
+/// Runs match core geometry at 60 LED/m. Selftest colours: N red, E green, S blue, W yellow,
+/// beam magenta; duty 96 keeps draw well below full scale. White is kept out of the runs so the
+/// corner marks can own it.
 #[cfg(feature = "selftest")]
 const RUNS: [(usize, usize, [u8; 4]); 5] = [
 	(0, 170, [96, 0, 0, 0]),
-	(170, 111, [0, 96, 0, 0]),
-	(281, 170, [0, 0, 96, 0]),
-	(451, 111, [96, 96, 96, 0]),
-	(562, 109, [96, 0, 96, 0]),
+	(170, 112, [0, 96, 0, 0]),
+	(282, 170, [0, 0, 96, 0]),
+	(452, 112, [96, 96, 0, 0]),
+	(564, 109, [96, 0, 96, 0]),
 ];
 
+/// Five white dots on every other LED, counted inward from each run end so both ends start on
+/// white: two runs meeting at a corner then mirror each other, and a fold a few LEDs off shows as
+/// a mark that does not. Brighter than the runs because on Frame W it reads against two dies.
+#[cfg(feature = "selftest")]
+const MARK: [u8; 4] = [160, 160, 160, 0];
+#[cfg(feature = "selftest")]
+const MARK_DOTS: usize = 5;
+
+/// Long enough to walk the frame and count both marks at every corner.
+#[cfg(feature = "selftest")]
+const HOLD_MS: u64 = 10_000;
+
 /// Just under 3 x 2 m of SK6812 RGBWW at 60 LED/m, GP2/3/4 through level shifters: long runs
-/// 170, short 111, beam 109. B and beam run opposite the host buffer so each line begins at
+/// 170, short 112, beam 109. The short runs were counted off the built frame, not derived. B and beam run opposite the host buffer so each line begins at
 /// the board corner; software must reverse them.
 pub struct Fixture {
 	a: RgbwPioWs2812<'static, PIO1, 0, LINE_A, Rgbw>,
@@ -108,16 +121,23 @@ impl Fixture {
 		(fixture, board, Store { flash: p.FLASH, dma: p.DMA_CH1, watchdog: p.WATCHDOG })
 	}
 
-	/// Optional selftest paints five runs for four seconds to reveal swapped wiring. Default boot
-	/// uses the remembered fade; detailed strip measurements belong to the bench build.
+	/// Optional selftest paints five runs in their own colours, each end marked, and holds that
+	/// one frame. Swapped wiring shows in the colours; a run that does not end at its corner
+	/// shows in the marks. Default boot uses the remembered fade; detailed strip measurements
+	/// belong to the bench build.
 	pub async fn selftest(&mut self) {
 		#[cfg(feature = "selftest")]
 		{
+			let mark = rgbww::pack(MARK);
 			for (from, count, emitters) in RUNS {
 				self.paint(from, count, rgbww::pack(emitters));
+				for dot in 0..MARK_DOTS {
+					self.paint(from + dot * 2, 1, mark);
+					self.paint(from + count - 1 - dot * 2, 1, mark);
+				}
 			}
 			self.write().await;
-			Timer::after_millis(4000).await;
+			Timer::after_millis(HOLD_MS).await;
 		}
 	}
 

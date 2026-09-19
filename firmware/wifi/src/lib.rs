@@ -46,12 +46,6 @@ pub struct Button {
 	last: bool,
 }
 
-impl Default for Button {
-	fn default() -> Self {
-		Self::new()
-	}
-}
-
 impl Button {
 	/// Starts held, so a button already down when the board powers up reads as a release.
 	pub const fn new() -> Self {

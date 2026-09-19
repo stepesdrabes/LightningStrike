@@ -1,6 +1,6 @@
 # The Frame: 11.2 m of SK6812
 
-671 addresses, three data lines, one Pico W, one salvaged 400 W PC supply.
+673 addresses, three data lines, one Pico W, one salvaged 400 W PC supply.
 
 **Built and running, 2026-09-08.** Everything electrical is done and has played real shows, laid
 out on the floor at full size. What is left is the physical frame: profile, timber, hanging it, and
@@ -128,8 +128,8 @@ For scale: 10.1 V looked clean on the bench and 8.64 V went cyan.
 
 | Run | Line | Covers | Addresses |
 |---|---|---|---|
-| Reel 1 | **A**, GP2 | Frame N *(2.83 m)* + Frame E *(1.85 m)* | 281 |
-| Reel 2 | **B**, GP3 | Frame W *(1.85 m)* + Frame S *(2.83 m)* | 281 |
+| Reel 1 | **A**, GP2 | Frame N *(170)* + Frame E *(112)* | 282 |
+| Reel 2 | **B**, GP3 | Frame W *(112)* + Frame S *(170)* | 282 |
 | Beam | **C**, GP4 | the 1.82 m across the middle | 109 |
 
 **Every `DI` end is at or within 1.5 m of NW.** Reel 1 leaves NW east along N, turns at NE, ends at
@@ -145,7 +145,7 @@ firmware, the room shows its own mirror image**, so the two facts move together.
 Cut on a marked line between two LEDs, never across one. Every corner sits at its reel's
 electrical midpoint, fed from both ends, so its jumper carries the least current on that reel.
 
-The frame was built to the timber at just under 3 x 2 m, so a reel spends 281 of its 300
+The frame was built to the timber at just under 3 x 2 m, so a reel spends 282 of its 300
 addresses and the rest is cut off. The 45 degree fold this was first drawn for needs no joint at
 all and costs no length along the centreline, which is the better corner whenever the frame can
 instead be built to the strip.
@@ -214,10 +214,23 @@ that measures perfectly and outputs nothing. **12 V on pin 14 kills the chip ins
 ## Bring-up
 
 The frame build is the default: `cargo run --release` from `firmware/node`, no `--features` flag.
-`--features selftest` adds a four second five-run colour pass at boot - **N red, E green, S blue,
-W white, beam magenta** - which is the one look that shows a swapped pair, or a fold landing a few
-LEDs off a corner. It is off by default because `restore` exists so that a midnight power blip does
-not relight the room.
+`--features selftest` adds a ten second five-run colour pass at boot - **N red, E green, S blue,
+W yellow, beam magenta** - which is the one look that shows a swapped pair. It is off by default
+because `restore` exists so that a midnight power blip does not relight the room.
+
+Each run also carries **five white dots, one LED in two, counted inward from each of its two
+ends**. Every corner should show two of those marks mirroring each other across the fold, with
+the two white LEDs meeting in the middle, and both beam ends should start on white:
+
+```
+Frame N                   NE fold                   Frame E
+  ... n n n W n W n W n W n W | W e W e W e W e W e e e ...
+```
+
+A mark that runs off the corner, or a corner where the whites do not meet, is a run whose count
+does not match the timber. The frame is built shorter than a full reel, so `LINE_*` and `RUNS` in
+`fixture/frame.rs` and `counts` in `packages/core/src/geometry.ts` all have to agree with what the
+marks show. No run is painted white, so the marks always read.
 
 The Pico is fed from the supply's 5 V, so it only enters the bootloader if it is genuinely
 unpowered when USB arrives: **USB out, supply off, hold BOOTSEL, plug USB in.**
@@ -228,7 +241,7 @@ Then, in the board panel:
 |---|---|
 | **Frame S** | exactly the bottom run *(the left run plus a metre of the bottom means the flip is backwards)* |
 | **Frame W** | exactly the left run |
-| **Whole room** | all 671 |
+| **Whole room** | all 673 |
 
 Under a white wash, want **11.4 V** at the box, **11.2 V** at every injection point and **10.8 V**
 at the middle of the longest gap between two feeds. On the stats line want `led` around 11500 us,
@@ -265,6 +278,7 @@ in sequence rather than together.
 | A run's far half goes **cyan** | starved. **Not** data. Add a feed |
 | Colours right, wrong run lit | two data pairs swapped at the box |
 | One line mirrored | `unpack_rev` and the copper disagree |
+| Corner marks do not meet, or run past the fold | that run's count is wrong for the timber |
 | Only the first LED of a run lights | data reached the strip but not past it |
 | Nothing, and the strip looks fine | wrong end of the reel; move to `DI` |
 | Random glitches | data pairs sharing a ground, or a breadboard that wants soldering |

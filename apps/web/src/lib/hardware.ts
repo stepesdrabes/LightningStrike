@@ -1,7 +1,7 @@
 /** Tolerant ASCII firmware parsers; missing optional fields remain undefined. */
 
 /**
- * Frame and bounce roles receive 671 and one pixel respectively, with separate addresses and
+ * Frame and bounce roles receive 673 and one pixel respectively, with separate addresses and
  * state.
  */
 export type DeviceRole = 'frame' | 'bounce';
@@ -32,6 +32,11 @@ export interface DeviceIdentity {
 	 * ws2815 drives strips.
 	 */
 	leds: string;
+	/**
+	 * Packed-payload format the board decodes, 0 on firmware older than the field. The sink
+	 * holds the version it writes; this only reports what the board said.
+	 */
+	packVersion: number;
 }
 
 /** Outputs that receive the whole fixture and light none of it. */
@@ -44,6 +49,18 @@ const DARK_OUTPUTS = new Set(['stub', 'monitor']);
 export function lightsRoom(identity: DeviceIdentity | null): boolean {
 	if (identity === null) return false;
 	return identity.leds.split('+').some((kind) => !DARK_OUTPUTS.has(kind));
+}
+
+/**
+ * The board cuts each frame into its runs at the lengths it was built with, so a build made for
+ * a different room does not reject the stream: it lands the far side of the fixture on the wrong
+ * LEDs, and no counter downstream can see that. A region changes what the board is fed, never
+ * what it was built to hold, so compare against the room. Firmware too old to report a capacity
+ * says 0 and is left alone.
+ */
+export function capacityFault(identity: DeviceIdentity | null, room: number): string | null {
+	if (identity === null || identity.pixels === 0 || identity.pixels === room) return null;
+	return `Built for ${identity.pixels} pixels, but the room is ${room}. Reflash it, or the far side of the fixture lights the wrong LEDs.`;
 }
 
 /** One second of what actually arrived, reported by the board itself. */
@@ -96,7 +113,8 @@ export function parseIdentity(line: string, host: string): DeviceIdentity | null
 		pixels: num(text, /\bpx\s+(\d+)/) ?? 0,
 		ddpPort: num(text, /\bddp\s+(\d+)/) ?? 4048,
 		statsPort: num(text, /\bstats\s+(\d+)/) ?? 4049,
-		leds: word(/\bleds\s+(\S+)/) ?? 'unknown'
+		leds: word(/\bleds\s+(\S+)/) ?? 'unknown',
+		packVersion: num(text, /\bpack\s+(\d+)/) ?? 0
 	};
 }
 

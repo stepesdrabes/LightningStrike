@@ -5,6 +5,9 @@ const VERSION_MASK: u8 = 0xc0;
 const VERSION_1: u8 = 0x40;
 const FLAG_PUSH: u8 = 0x01;
 const TYPE_RGB24: u8 = 0x0b;
+/// The same pixels through [`crate::pack`]. The top bit is DDP's customer-defined flag, so no
+/// standard receiver can mistake it for something it knows.
+const TYPE_RGB24_PACKED: u8 = 0x8b;
 
 pub struct Packet<'a> {
 	/// End of a frame. The sequence number never marks one: it counts packets, not frames.
@@ -13,14 +16,21 @@ pub struct Packet<'a> {
 	pub seq: u8,
 	/// Byte offset into this device's own buffer, not into the host's global one.
 	pub offset: usize,
+	/// True when `data` is a packed payload rather than the pixels themselves.
+	pub packed: bool,
 	pub data: &'a [u8],
 }
 
 /// None for anything this firmware does not speak, including a longer TIMECODE header.
 pub fn parse(buf: &[u8]) -> Option<Packet<'_>> {
-	if buf.len() < HEADER || buf[0] & VERSION_MASK != VERSION_1 || buf[2] != TYPE_RGB24 {
+	if buf.len() < HEADER || buf[0] & VERSION_MASK != VERSION_1 {
 		return None;
 	}
+	let packed = match buf[2] {
+		TYPE_RGB24 => false,
+		TYPE_RGB24_PACKED => true,
+		_ => return None,
+	};
 
 	let len = u16::from_be_bytes([buf[8], buf[9]]) as usize;
 	if buf.len() < HEADER + len {
@@ -31,6 +41,7 @@ pub fn parse(buf: &[u8]) -> Option<Packet<'_>> {
 		push: buf[0] & FLAG_PUSH != 0,
 		seq: buf[1] & 0x0f,
 		offset: u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]) as usize,
+		packed,
 		data: &buf[HEADER..HEADER + len],
 	})
 }
@@ -60,7 +71,14 @@ mod tests {
 		assert!(p.push);
 		assert_eq!(p.seq, 1);
 		assert_eq!(p.offset, 900);
+		assert!(!p.packed);
 		assert_eq!(p.data, &[1, 2, 3]);
+	}
+
+	#[test]
+	fn reads_a_packed_frame_as_one() {
+		let buf = packet(VERSION_1 | FLAG_PUSH, TYPE_RGB24_PACKED, 0, &[0, 3, 0]);
+		assert!(parse(&buf).unwrap().packed);
 	}
 
 	#[test]

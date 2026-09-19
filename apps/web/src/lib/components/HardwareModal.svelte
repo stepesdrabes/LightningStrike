@@ -8,6 +8,7 @@
 		OUTPUT_FPS_CHOICES,
 		WIRE_PROTOCOLS,
 		DEVICE_NAMES,
+		capacityFault,
 		faultsIn,
 		lightsRoom,
 		type DeviceRole,
@@ -87,7 +88,8 @@
 	} = $props();
 
 	// The room does not change while the app is running, so the parts of it do not either.
-	const REGIONS = roomRegions(buildGeometry(DEFAULT_ROOM));
+	const ROOM = buildGeometry(DEFAULT_ROOM);
+	const REGIONS = roomRegions(ROOM);
 
 	const blank = (role: DeviceRole): HardwareStatus => ({
 		role,
@@ -127,6 +129,7 @@
 	const faults = $derived(telemetry ? faultsIn(telemetry) : []);
 	const dark = $derived(identity !== null && !lightsRoom(identity));
 	const region = $derived(REGIONS.find((r) => r.id === status.region) ?? REGIONS[0]);
+	const miscut = $derived(capacityFault(identity, ROOM.count));
 
 	const FPS_OPTIONS = OUTPUT_FPS_CHOICES.map((f) => ({ id: String(f), label: `${f}` }));
 	const WIRE_LABEL: Record<WireProtocol, string> = { ddp: 'DDP', sacn: 'sACN' };
@@ -347,6 +350,13 @@
 				</p>
 			{/if}
 		</div>
+
+		{#if miscut}
+			<p class="note">
+				<Icon name="alert" size={14} />
+				{miscut}
+			</p>
+		{/if}
 
 		{#if telemetry}
 			<div class="figures">

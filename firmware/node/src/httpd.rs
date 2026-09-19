@@ -1,4 +1,4 @@
-//! HTTP bridge with two connections, limiting radio receive-slot usage.
+//! HTTP bridge with a few connections, limiting radio receive-slot usage.
 
 use embassy_executor::Spawner;
 use embassy_net::Stack;
@@ -7,7 +7,7 @@ use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex};
 use embassy_sync::channel::Channel;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{Duration, Instant, Timer, with_timeout};
 use heapless::String;
 use room_api::{OtaError, Served};
 use room_light::api::{Command, InfoDto, Patch, StateDto};
@@ -23,7 +23,15 @@ use crate::ota::Ota;
 const HANDOVER: Duration = Duration::from_millis(500);
 
 /// Listeners, and therefore the number of requests that can be in the loop's hands at once.
-const LISTENERS: usize = 2;
+/// There is no accept backlog, so a SYN arriving while every listener is busy is refused rather
+/// than queued. FIRMWARE.md has what that cost and what the count is set against.
+const LISTENERS: usize = 4;
+
+/// How long the close handshake may hold a listener once the response is acknowledged.
+/// A browser closes the moment it has the body, and the listener then stayed busy for most
+/// of a second, a FIN retransmit timeout, often enough that a few taps refused the next knock
+/// (measured 2026-09-19). Past this the connection is reset, which costs the client nothing.
+const CLOSE_GRACE: Duration = Duration::from_millis(150);
 
 pub enum Request {
 	Cmd(Command),
@@ -39,7 +47,8 @@ pub struct Envelope {
 	pub reply: &'static Reply,
 }
 
-pub static REQUESTS: Channel<CriticalSectionRawMutex, Envelope, 4> = Channel::new();
+/// One slot per listener, so no listener can be held waiting for room to ask its question.
+pub static REQUESTS: Channel<CriticalSectionRawMutex, Envelope, LISTENERS> = Channel::new();
 
 static REPLIES: [Reply; LISTENERS] = [const { Signal::new() }; LISTENERS];
 
@@ -112,7 +121,6 @@ impl room_api::Api for NodeApi<'_> {
 	}
 }
 
-/// Two listeners allow controller polling and commands concurrently without dropping the second SYN.
 #[embassy_executor::task(pool_size = LISTENERS)]
 pub async fn httpd_task(
 	stack: Stack<'static>,
@@ -137,8 +145,17 @@ pub async fn httpd_task(
 		}
 		let served =
 			room_api::serve(&mut socket, &mut NodeApi { ip: &ip, reply, slot, capacity }).await;
-		socket.close();
-		let _ = socket.flush().await;
+		// A graceful close, but not at any price: a client that vanished mid-request, or one
+		// whose last acknowledgement never lands, gets a reset instead. On this radio a round
+		// trip is not small, and a listener spent waiting is a knock refused.
+		let closed = served.is_ok() && {
+			socket.close();
+			with_timeout(CLOSE_GRACE, socket.flush()).await.is_ok()
+		};
+		if !closed {
+			socket.abort();
+			let _ = socket.flush().await;
+		}
 
 		if let Ok(Served::Reboot) = served {
 			Timer::after(HANDOVER).await;

@@ -20,6 +20,10 @@ pub struct Identity<'a> {
 	pub http_port: u16,
 }
 
+/// Packed-payload version this firmware decodes. The host sends the packed type only to a
+/// board that names it, so an older board keeps being sent plain RGB24.
+const PACK_VERSION: u8 = 1;
+
 pub fn is_query(buf: &[u8]) -> bool {
 	buf.starts_with(QUERY)
 }
@@ -29,7 +33,7 @@ pub fn line(id: &Identity<'_>, uptime_s: u64) -> String<LINE_CAP> {
 	let mut s = String::new();
 	let _ = write!(
 		s,
-		"room-node host {} fw {} up {}s px {} ddp {} stats {} leds {} http {}",
+		"room-node host {} fw {} up {}s px {} ddp {} stats {} leds {} http {} pack {}",
 		id.hostname,
 		id.firmware,
 		uptime_s,
@@ -37,7 +41,8 @@ pub fn line(id: &Identity<'_>, uptime_s: u64) -> String<LINE_CAP> {
 		id.ddp_port,
 		id.stats_port,
 		id.leds,
-		id.http_port
+		id.http_port,
+		PACK_VERSION
 	);
 	s
 }
@@ -49,7 +54,7 @@ mod tests {
 	const FRAME: Identity<'static> = Identity {
 		hostname: "room-frame",
 		firmware: "0.2.0",
-		pixels: 720,
+		pixels: 673,
 		ddp_port: 4048,
 		stats_port: 4049,
 		leds: "sk6812",
@@ -61,7 +66,7 @@ mod tests {
 	fn formats_the_line_the_app_parses() {
 		assert_eq!(
 			line(&FRAME, 42).as_str(),
-			"room-node host room-frame fw 0.2.0 up 42s px 720 ddp 4048 stats 4049 leds sk6812 http 80"
+			"room-node host room-frame fw 0.2.0 up 42s px 673 ddp 4048 stats 4049 leds sk6812 http 80 pack 1"
 		);
 	}
 

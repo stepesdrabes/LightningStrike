@@ -3,6 +3,7 @@ import {
 	CONTRAST_MAX,
 	CONTRAST_MIN,
 	OUTPUT_BRIGHTNESS_MIN,
+	capacityFault,
 	faultsIn,
 	isContrast,
 	isOutputBrightness,
@@ -14,16 +15,16 @@ import {
 
 // Shared firmware/hello.rs fixture; the HTTP token is optional for 0.1 firmware.
 const HELLO =
-	'room-node host room-frame fw 0.2.0 up 42s px 720 ddp 4048 stats 4049 leds sk6812 http 80';
+	'room-node host room-frame fw 0.2.0 up 42s px 673 ddp 4048 stats 4049 leds sk6812 http 80 pack 1';
 
 const withLeds = (leds: string) => HELLO.replace('leds sk6812', `leds ${leds}`);
 
 // Shared firmware/stats.rs fixture plus the shorter docs/FIRMWARE.md sample.
 const STATS =
-	'up 42s  720 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  late 0/0/0  ' +
+	'up 42s  673 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  late 0/0/0  ' +
 	'asm 2.1 ms  led 210 us  seqgap 0  bad 0  oob 0  torn 0';
 const STATS_NO_LATE =
-	'up 42s  720 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  asm 2.1 ms  ' +
+	'up 42s  673 px  120 pkt/s  127.7 KB/s  60.0 fps  gap 15.9/17.8 ms  asm 2.1 ms  ' +
 	'seqgap 0  bad 0  oob 0  torn 0';
 
 describe('the output stage', () => {
@@ -50,16 +51,23 @@ describe('parseIdentity', () => {
 			name: 'room-frame',
 			firmware: '0.2.0',
 			uptimeS: 42,
-			pixels: 720,
+			pixels: 673,
 			ddpPort: 4048,
 			statsPort: 4049,
-			leds: 'sk6812'
+			leds: 'sk6812',
+			packVersion: 1
 		});
+	});
+
+	it('reads a board that cannot take packed frames as saying nothing about them', () => {
+		const old =
+			'room-node host room-frame fw 0.2.5 up 42s px 673 ddp 4048 stats 4049 leds sk6812 http 80';
+		expect(parseIdentity(old, 'h')?.packVersion).toBe(0);
 	});
 
 	it('reads a 0.1 line without the http token the same way', () => {
 		const old =
-			'room-node host room-frame fw 0.1.0 up 42s px 720 ddp 4048 stats 4049 leds ws2815';
+			'room-node host room-frame fw 0.1.0 up 42s px 673 ddp 4048 stats 4049 leds ws2815';
 		const id = parseIdentity(old, 'h');
 		expect(id?.firmware).toBe('0.1.0');
 		expect(id?.leds).toBe('ws2815');
@@ -82,13 +90,26 @@ describe('parseIdentity', () => {
 		expect(lightsRoom(null)).toBe(false);
 	});
 
+	it('reports a board built for a room of another size', () => {
+		expect(capacityFault(parseIdentity(HELLO, 'h'), 673)).toBeNull();
+
+		const stale = parseIdentity(HELLO.replace('px 673', 'px 720'), 'h');
+		expect(capacityFault(stale, 673)).toContain('720');
+		expect(capacityFault(stale, 673)).toContain('673');
+	});
+
+	it('says nothing about a firmware too old to report a capacity', () => {
+		expect(capacityFault(parseIdentity('room-node up 9s', 'h'), 673)).toBeNull();
+		expect(capacityFault(null, 673)).toBeNull();
+	});
+
 	it('ignores whatever else is on the port', () => {
 		expect(parseIdentity('OK 200 something-else', 'h')).toBeNull();
 		expect(parseIdentity('', 'h')).toBeNull();
 	});
 
 	it('survives a firmware that drops a field rather than throwing', () => {
-		const id = parseIdentity('room-node up 9s px 720', 'h');
+		const id = parseIdentity('room-node up 9s px 673', 'h');
 		expect(id?.uptimeS).toBe(9);
 		expect(id?.firmware).toBe('unknown');
 	});
@@ -98,7 +119,7 @@ describe('parseTelemetry', () => {
 	it('reads the whole stats line', () => {
 		expect(parseTelemetry(STATS, 1000)).toEqual({
 			uptimeS: 42,
-			pixels: 720,
+			pixels: 673,
 			packetsPerSecond: 120,
 			kbPerSecond: 127.7,
 			fps: 60,

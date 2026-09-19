@@ -12,7 +12,6 @@ compile_error!("no fixture selected: build with --features frame or bench");
 mod bench;
 #[cfg(feature = "frame")]
 mod frame;
-#[cfg(feature = "strips")]
 mod rgbww;
 
 #[cfg(feature = "bench")]

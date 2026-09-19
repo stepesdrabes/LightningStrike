@@ -5,7 +5,9 @@
  *
  * Ring pixels run 0-561 from the north-west corner (north 0-169 west to east, east 170-280,
  * south 281-450 east to west, west 451-561 south to north); the beam runs 562-670 from south to
- * north. Every effect is a function of time and the music, so the preview and the fixture draw
+ * north. Landmarks derive from the run lengths, so they hold wherever the frame was cut; a glow
+ * or a travel stays written in pixels, which at 60 LED/m is the same metre of strip either way.
+ * Every effect is a function of time and the music, so the preview and the fixture draw
  * the same frames. Output gamma is 2.45, so an effect level of 0.3 barely leaves the dither
  * codes: 0.45 is the dimmest colour that reads cleanly, 0.6 is a lit room and 0.85 is bright.
  */

@@ -3,6 +3,7 @@ import { SLOT } from '../contracts/palette.ts';
 import { setSample } from '../color/palette.ts';
 import { clamp, lerp } from '../dsl/math.ts';
 import { BeatHold, PulseEnv } from '../dsl/env.ts';
+import { ringsFor } from '../dsl/space.ts';
 import { spectralTilt } from '../dsl/spectrum.ts';
 import { INTENSITY, param } from './helpers.ts';
 
@@ -27,6 +28,7 @@ export const chase: EffectDef = {
 		param('tail', 'Tail', 0.7, 0.1, 1.5)
 	],
 	create(g) {
+		const ringPixels = ringsFor(g).perimeter.length;
 		let lastStep = -1;
 		const level = new Float32Array(32);
 		// Hold the beam's downbeat answer past the eye's integration window.
@@ -72,8 +74,8 @@ export const chase: EffectDef = {
 				const lean = tilt.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
 				const head = lerp(SLOT.glow, SLOT.white, lean);
 				const rest = 0.12 * gain;
-				// Soften spatial seams while keeping timed steps hard.
-				const feather = 4 / (g.perimeterLength / g.pitch / segments);
+				// Soften spatial seams while keeping timed steps hard, over four lit pixels.
+				const feather = (4 * segments) / ringPixels;
 
 				for (let i = 0; i < g.count; i++) {
 					const along = g.perim[i];
