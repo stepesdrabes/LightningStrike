@@ -2,7 +2,7 @@ import { watch, type FSWatcher } from 'node:fs';
 import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
-import { CACHE_DIR, preparedNarration, readLibrary, workspaceRoot } from '@mv/analysis';
+import { CACHE_DIR, EVENING_DIR, preparedNarration, readLibrary } from '@mv/analysis';
 import type { EveningScript, Finding } from '@mv/core';
 import { EMPTY_MEMORY, planEvening, renamedSegments, type Plan, type PlanMemory, type Progress } from '$lib/evening/plan.ts';
 import { bailQueue, reconcileQueue, type TrackFacts } from '$lib/evening/reconcile.ts';
@@ -139,6 +139,9 @@ class EveningStore {
 			eveningGate.active = true;
 			this.startTick();
 		}
+		// Awaited, not merely started: ready() is what the first view waits on, and an idle rail
+		// has to list the folder's evenings so opening one never needs a typed path.
+		await this.scanFolder();
 		this.initial = this.data.file ? this.reload(true) : this.replan();
 	}
 
@@ -226,10 +229,11 @@ class EveningStore {
 	}
 
 	private async scanFolder(): Promise<void> {
-		const folder = join(workspaceRoot(), 'evenings');
 		try {
-			const names = await readdir(folder);
-			this.fileList = names.filter((n) => /\.(m?ts)$/.test(n) && !n.endsWith('.d.ts')).map((n) => join(folder, n));
+			const names = await readdir(EVENING_DIR);
+			this.fileList = names
+				.filter((n) => /\.(m?ts)$/.test(n) && !n.endsWith('.d.ts'))
+				.map((n) => join(EVENING_DIR, n));
 		} catch {
 			this.fileList = [];
 		}
@@ -285,6 +289,7 @@ class EveningStore {
 		this.findings = [];
 		this.preview = null;
 		this.plan = null;
+		await this.scanFolder();
 		this.persist();
 		this.publish();
 	}

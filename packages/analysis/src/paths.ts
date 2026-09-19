@@ -34,3 +34,8 @@ export const CACHE_DIR = process.env.MV_CACHE_DIR
 export const MODEL_DIR = process.env.MV_MODEL_DIR
 	? resolve(process.env.MV_MODEL_DIR)
 	: join(workspaceRoot(), 'models');
+
+/** Evening scripts the rail offers. The desktop app ships them beside its server. */
+export const EVENING_DIR = process.env.MV_EVENING_DIR
+	? resolve(process.env.MV_EVENING_DIR)
+	: join(workspaceRoot(), 'evenings');
