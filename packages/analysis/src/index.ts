@@ -1,6 +1,6 @@
 export { analyzeTrack } from './analyze.ts';
 export { decodeAudio, isTransientFetchError } from './decode.ts';
-export { CACHE_DIR, workspaceRoot } from './paths.ts';
+export { CACHE_DIR, EVENING_DIR, workspaceRoot } from './paths.ts';
 export { readLibrary } from './library.ts';
 export { radioFor, searchSongs, watchUrl, type Song } from './ytmusic.ts';
 export {

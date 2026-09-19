@@ -73,6 +73,11 @@ pub fn spawn(app: &AppHandle, path: &str) -> Result<Server, String> {
 		sidecar = sidecar.env("MV_INGEST_WORKER", worker);
 	}
 
+	// The rail lists these; a build without them falls back to the workspace folder.
+	if let Ok(evenings) = resource(app, "evenings") {
+		sidecar = sidecar.env("MV_EVENING_DIR", evenings);
+	}
+
 	let (mut rx, child) = sidecar.spawn().map_err(|e| format!("cannot start server: {e}"))?;
 	app.manage(Sidecar(Mutex::new(Some(child))));
 
