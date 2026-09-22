@@ -51,6 +51,8 @@ export type { LedFrame, LedSink, LedSinkStats } from './contracts/sink.ts';
 export { DEFAULT_ROOM, buildGeometry, roomModel, roomRegions } from './geometry.ts';
 export { ledCount, matrixOrder, mountNormal, planeOf } from './room/lights.ts';
 export { toShowFrame } from './room/model.ts';
+export { MAX_LEDS, MAX_RUN, readLayout } from './room/validate.ts';
+export { LightTest, type LightTestKind } from './room/test.ts';
 export { hsv2rgb, rampHueFor } from './color/hsv.ts';
 export { lerpHue, makePalette, sample, swapped, wrapHue } from './color/palette.ts';
 export { NAMED_PALETTES, type NamedPalette } from './color/named.ts';
