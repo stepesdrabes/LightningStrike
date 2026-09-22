@@ -1,20 +1,26 @@
 import * as THREE from 'three';
-import type { LampLight, RoomModel } from '@mv/core';
+import {
+	packLines,
+	packPoints,
+	samplesFor,
+	type LineEmitter,
+	type PointEmitter
+} from '../emitters.ts';
 import { LIGHTING } from '../lighting.ts';
-import type { LedTexture } from '../LedTexture.ts';
 import { SURFACE_VERTEX, surfaceFragment } from '../shaders/surface.ts';
 
 interface SurfaceOptions {
 	/** Albedo before any light reaches it. */
 	base: number;
-	/** Share of the Frame's global wash this surface takes, 0..1. */
+	/** Share of the room's global wash this surface takes, 0..1. */
 	ambient: number;
 	/** Scales everything the surface receives. 1 is a dark wall; white plastic returns more. */
 	reflect?: number;
-	/** Emission of its own, on the emitter scale. Only the Bounce Lamp's tube has any. */
+	/** Emission of its own, on the emitter scale, in `glow`. Only lamps have any. */
 	emit?: number;
-	/** False for the lamp itself, because a fixture cannot light itself. */
-	litByLamp?: boolean;
+	glow?: THREE.Color;
+	/** Its own point emitter, because a fixture cannot light itself. */
+	self?: number;
 }
 
 /**
@@ -22,53 +28,47 @@ interface SurfaceOptions {
  * time.
  */
 export class SurfaceFactory {
-	/** The Bounce Lamp's one pixel, 0..1, shared by its tube and by everything it lights. */
-	readonly lampColor = { value: new THREE.Color(0, 0, 0) };
+	/** The room's wash, wired live into every surface: its LEDs' average, or its lamps'. */
+	readonly ambient = { value: new THREE.Color(0, 0, 0) };
+	/** Each point emitter's colour, 0..1, rewritten every frame. */
+	readonly pointColor: Float32Array;
 
-	private readonly led: LedTexture;
-	private readonly lamp: LampLight | undefined;
-	private readonly frameZ: number;
-	/** Each run of the Frame as a line in world space, so the shader walks the fixture it has. */
-	private readonly seg: THREE.Vector4[];
-	private readonly segUv: THREE.Vector3[];
+	private readonly led: THREE.Texture;
+	private readonly lines: Float32Array;
+	private readonly points: Float32Array;
+	private readonly fragment: string;
 
-	constructor(led: LedTexture, model: RoomModel) {
-		const geometry = model.geometry;
+	constructor(
+		led: THREE.Texture,
+		lines: readonly LineEmitter[],
+		points: readonly PointEmitter[]
+	) {
 		this.led = led;
-		this.lamp = model.lamps[0];
-		this.frameZ = Math.max(...geometry.strips.map((s) => s.start[2]));
-		this.seg = geometry.strips.map(
-			(s) => new THREE.Vector4(s.start[0], s.start[1], s.end[0], s.end[1])
-		);
-		this.segUv = geometry.strips.map((s) => led.rowUv(s));
+		this.lines = packLines(lines);
+		this.points = packPoints(points);
+		this.pointColor = new Float32Array(points.length * 3);
+		this.fragment = surfaceFragment(lines.length, samplesFor(lines.length), points.length);
 	}
 
 	create(o: SurfaceOptions): THREE.ShaderMaterial {
-		const b = this.lamp ?? { at: [0, 0, 0], height: 0 };
 		const reflect = o.reflect ?? 1;
 		return new THREE.ShaderMaterial({
 			uniforms: {
-				uLed: { value: this.led.texture },
-				uSeg: { value: this.seg },
-				uSegUv: { value: this.segUv },
-				uFrameZ: { value: this.frameZ },
-				uFrameGain: { value: reflect * LIGHTING.frameSpill },
-				uAmbient: this.led.ambient,
+				uLed: { value: this.led },
+				uLine: { value: this.lines },
+				uPoint: { value: this.points },
+				uPointColor: { value: this.pointColor },
+				uSelf: { value: o.self ?? -1 },
+				uLineGain: { value: reflect * LIGHTING.frameSpill },
+				uReflect: { value: reflect },
+				uAmbient: this.ambient,
 				uAmbientMix: { value: o.ambient },
 				uBase: { value: new THREE.Color(o.base) },
-				uLampAt: { value: new THREE.Vector3(b.at[0], b.at[1], b.at[2] + b.height / 2) },
-				uLampColor: this.lampColor,
-				// The column's own emitting area, as the radius its inverse square softens over.
-				// Without it the two walls it stands against take a hot point rather than the
-				// broad wash a metre of diffuser actually throws.
-				uLampSize: { value: b.height * b.height * 0.25 },
-				uLampGain: {
-					value: o.litByLamp === false ? 0 : reflect * LIGHTING.lampSpill * b.height
-				},
+				uGlow: { value: o.glow ?? new THREE.Color(0, 0, 0) },
 				uEmitGain: { value: o.emit ?? 0 }
 			},
 			vertexShader: SURFACE_VERTEX,
-			fragmentShader: surfaceFragment(this.seg.length)
+			fragmentShader: this.fragment
 		});
 	}
 }

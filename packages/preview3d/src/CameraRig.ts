@@ -23,6 +23,10 @@ const FIT_MARGIN = 1.04;
 /** The vertical field of view the room is framed with, over the viewport rather than the canvas. */
 const VIEW_FOV = 52;
 
+/** The Frame's orbit limit and far plane; a bigger room reaches three and four diagonals out. */
+const MAX_DISTANCE = 22;
+const FAR = 40;
+
 /** Zero first AND second derivative at both ends, so a move has no visible start or stop. */
 function smoother(t: number): number {
 	return t * t * t * (t * (t * 6 - 15) + 10);
@@ -50,7 +54,7 @@ export class CameraRig {
 	readonly camera: THREE.PerspectiveCamera;
 	readonly controls: OrbitControls;
 
-	private readonly spec: RoomLayout;
+	private spec: RoomLayout;
 	private canvas = { width: 1, height: 1 };
 	private viewport: Viewport = { x: 0, y: 0, width: 1, height: 1 };
 
@@ -66,14 +70,14 @@ export class CameraRig {
 		this.spec = spec;
 
 		// Both placeholders: `applyProjection` derives them from the viewport on first resize.
-		this.camera = new THREE.PerspectiveCamera(VIEW_FOV, 1, 0.1, 40);
+		this.camera = new THREE.PerspectiveCamera(VIEW_FOV, 1, 0.1, FAR);
 		this.camera.up.set(0, 0, 1);
 
 		this.controls = new OrbitControls(this.camera, canvas);
 		this.controls.enableDamping = true;
 		this.controls.dampingFactor = 0.08;
 		this.controls.minDistance = 0.8;
-		this.controls.maxDistance = 22;
+		this.applyReach();
 		// Touching the camera hands it over: from here it is the user's until a preset is pressed,
 		// and a move still arriving gives way rather than fighting the drag.
 		this.controls.addEventListener('start', () => {
@@ -129,6 +133,19 @@ export class CameraRig {
 		this.controls.update();
 	}
 
+	/** An orbited camera stays the user's; a preset glides to frame a room box that changed. */
+	setLayout(layout: RoomLayout): void {
+		const was = this.spec;
+		this.spec = layout;
+		if ((['width', 'depth', 'height'] as const).every((k) => was[k] === layout[k])) return;
+		this.applyReach();
+		if (!this.framed) return;
+		this.poseFor(this.framed, POSE_POS, POSE_TARGET);
+		// Edits arriving mid-move re-aim it, so dragging a dimension does not restart the ease.
+		if (this.glide) this.aimGlide(POSE_POS, POSE_TARGET);
+		else this.startGlide(POSE_POS, POSE_TARGET);
+	}
+
 	/** Advance the rig before anything reads the camera, so a frame renders the pose it arrived at. */
 	update(dt: number): void {
 		if (this.glide) this.advanceGlide(dt);
@@ -137,6 +154,14 @@ export class CameraRig {
 
 	dispose(): void {
 		this.controls.dispose();
+	}
+
+	private applyReach(): void {
+		const s = this.spec;
+		const diagonal = Math.hypot(s.width, s.depth, s.height);
+		this.controls.maxDistance = Math.max(MAX_DISTANCE, diagonal * 3);
+		this.camera.far = Math.max(FAR, diagonal * 4);
+		this.camera.updateProjectionMatrix();
 	}
 
 	/** Tilt top view off vertical to avoid OrbitControls' undefined azimuth at polar angle zero. */
