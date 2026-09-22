@@ -1,6 +1,7 @@
 <script lang="ts">
-	import type { HardwareStatus } from '$lib/hardware.ts';
-	import { linkLabel } from '$lib/hardware.svelte.ts';
+	import { roomState, STATE_WORDS } from '$lib/controllers.ts';
+	import { menu } from '$lib/menu.svelte.ts';
+	import type { RoomsClient } from '$lib/rooms.svelte.ts';
 	import Icon from '$lib/ui/Icon.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Spinner from '$lib/ui/Spinner.svelte';
@@ -10,26 +11,76 @@
 		busy = false,
 		busyLabel = '',
 		failure = '',
-		hardware,
+		rooms,
+		setupOpen = false,
 		cached = 0,
 		onsearch,
 		onlibrary,
-		onhardware,
+		onsetup,
 		ontoggleLeft,
 		ontoggleRight
 	}: {
 		busy?: boolean;
 		busyLabel?: string;
 		failure?: string;
-		hardware: HardwareStatus;
+		rooms: RoomsClient;
+		setupOpen?: boolean;
 		/** Tracks already downloaded, which is the only thing the library button has to say. */
 		cached?: number;
 		onsearch: (seed: string) => void;
 		onlibrary: () => void;
-		onhardware: () => void;
+		onsetup: () => void;
 		ontoggleLeft: () => void;
 		ontoggleRight: () => void;
 	} = $props();
+
+	const running = $derived(rooms.output.running);
+	const health = $derived(roomState(rooms.output.controllers, running));
+	const addressed = $derived(rooms.room?.controllers.filter((c) => c.host).length ?? 0);
+
+	/** Whether the room is lit, and how its controllers are, in one short line. */
+	const summary = $derived.by(() => {
+		if (addressed === 0) return 'No controllers with an address yet';
+		const plural = addressed === 1 ? 'controller' : 'controllers';
+		return `${running ? 'Lit' : 'Not lit'}, ${addressed} ${plural}: ${STATE_WORDS[health].toLowerCase()}`;
+	});
+
+	function openRooms(e: MouseEvent) {
+		menu.show(
+			e.currentTarget as HTMLElement,
+			() => [
+				{
+					label: 'Rooms',
+					value: rooms.state?.active,
+					items: rooms.rooms.map((r) => ({
+						id: r.id,
+						label: r.name,
+						note: r.id === rooms.state?.active && running ? 'lit' : undefined
+					}))
+				},
+				{
+					items: [
+						running
+							? { id: 'stop', label: 'Stop the lights' }
+							: {
+									id: 'start',
+									label: 'Light the room',
+									disabled: addressed === 0,
+									note: addressed === 0 ? 'nothing to send to' : undefined
+								},
+						{ id: 'setup', label: setupOpen ? 'Close the setup' : 'Set up rooms and lights' }
+					]
+				}
+			],
+			(group, id) => {
+				menu.close();
+				if (group === 0) void rooms.activate(id);
+				else if (id === 'start') void rooms.start();
+				else if (id === 'stop') void rooms.stop();
+				else onsetup();
+			}
+		);
+	}
 
 	/** Seed the palette from a keypress; a real input would compete with the modal for focus. */
 	function onkeydown(e: KeyboardEvent) {
@@ -81,14 +132,17 @@
 		</button>
 
 		<button
-			class="link"
-			class:live={hardware.state === 'streaming'}
-			class:warn={hardware.state === 'degraded'}
-			class:bad={hardware.state === 'offline'}
-			onclick={onhardware}
-			title={hardware.host ? `${hardware.host} - ${linkLabel(hardware)}` : 'No device configured'}>
-			<StatusDot state={hardware.state} />
-			<span class="label">{linkLabel(hardware)}</span>
+			class="link room"
+			class:live={running && (health === 'streaming' || health === 'sending')}
+			class:warn={health === 'degraded'}
+			class:bad={running && health === 'offline'}
+			class:open={setupOpen}
+			aria-haspopup="menu"
+			onclick={openRooms}
+			title={summary}>
+			<StatusDot state={health} />
+			<span class="label truncate">{rooms.room?.name ?? 'Room'}</span>
+			<Icon name="chevronDown" size={13} />
 		</button>
 
 		<Button
@@ -236,5 +290,17 @@
 	}
 	.link .label {
 		font-variant-numeric: tabular-nums;
+	}
+	.room {
+		max-width: 220px;
+		padding: 0 10px 0 13px;
+	}
+	.room :global(.lucide-icon) {
+		color: var(--subtle-foreground);
+	}
+	.link.open {
+		background: var(--muted);
+		border-color: #33333c;
+		color: var(--foreground);
 	}
 </style>

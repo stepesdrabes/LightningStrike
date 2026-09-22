@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { ledCount, type RoomLayout } from '@mv/core';
 	import { RoomRenderer, type CameraView } from '@mv/preview3d';
 	import type { Readout, Viz } from '$lib/viz.svelte.ts';
 	import type { LoadState } from '$lib/types.ts';
@@ -13,6 +14,9 @@
 		hasShow,
 		queued = 0,
 		lounge = false,
+		layout = null,
+		highlight = null,
+		setup = false,
 		onlounge
 	}: {
 		viz: Viz | null;
@@ -21,6 +25,12 @@
 		hasShow: boolean;
 		queued?: number;
 		lounge?: boolean;
+		/** The room as it is being edited, which the preview follows a moment later. */
+		layout?: RoomLayout | null;
+		/** A light to point out in the preview, by id. */
+		highlight?: string | null;
+		/** Setting up a room: the preview is there to see the lights, not to invite a track. */
+		setup?: boolean;
 		onlounge: () => void;
 	} = $props();
 
@@ -82,6 +92,12 @@
 		if (renderer) renderer.setView(view);
 	});
 
+	$effect(() => {
+		renderer?.highlight(highlight);
+	});
+
+	const leds = $derived(layout ? layout.lights.reduce((n, l) => n + ledCount(l), 0) : 0);
+
 	const busy = $derived(load.phase !== 'idle' && load.phase !== 'ready' && load.phase !== 'error');
 	const VIEWS: { id: CameraView; label: string }[] = [
 		{ id: 'orbit', label: 'Orbit' },
@@ -114,16 +130,17 @@
 	</div>
 
 	<div class="overlay bottom">
-		<span class="mono subtle">
-			{viz
-				? `${viz.geometry.count} px · ${viz.model.layout.width}x${viz.model.layout.depth} m room`
-				: ''}
-		</span>
+		{#if layout}
+			<span class="subtle">
+				{#if leds > 0}<span class="mono">{leds}</span> px ·{:else if layout.lights.length > 0}Lamps only ·{:else}No lights ·{/if}
+				<span class="mono">{layout.width}</span> × <span class="mono">{layout.depth}</span> m
+			</span>
+		{/if}
 		<span class="spacer"></span>
 		<span class="mono subtle">{readout.fps} fps</span>
 	</div>
 
-	{#if !hasShow}
+	{#if !hasShow && !setup}
 		<div class="empty">
 			{#if busy}
 				<Spinner size={26} accent />

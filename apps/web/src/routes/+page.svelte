@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { RoomSync, Show, TrackAnalysis, TrackContext } from '@mv/core';
-	import { OPEN_LENGTH, tempoSegments } from '@mv/core';
+	import type { LightPart, RoomModel, RoomSync, Show, TrackAnalysis, TrackContext } from '@mv/core';
+	import { OPEN_LENGTH, roomModel, tempoSegments } from '@mv/core';
 	import { Viz, type Readout } from '$lib/viz.svelte.ts';
 	import { every } from '$lib/ticker.ts';
 	import { createArrangementEditor } from '$lib/arrangement.svelte.ts';
@@ -8,12 +8,12 @@
 	import { EveningClient } from '$lib/evening.svelte.ts';
 	import { rowBundle } from '$lib/evening/bundle.ts';
 	import { ROW_LABEL } from '$lib/evening/format.ts';
-	import { HardwareClient } from '$lib/hardware.svelte.ts';
+	import { RoomsClient } from '$lib/rooms.svelte.ts';
+	import type { PlanView } from '$lib/plan.ts';
 	import { installHint, readShell } from '$lib/shell.svelte.ts';
-	import { DEFAULT_AMBIENT, GAMMA, MASTER, type AmbientSettings } from '@mv/core';
+	import { DEFAULT_AMBIENT, type AmbientSettings } from '@mv/core';
 	import { indexOfKey, nextItem, type QueueItem, type RowKind } from '$lib/queueModel.ts';
 	import type { RowLightingView } from '$lib/evening/view.ts';
-	import { DEFAULT_OUTPUT_FPS, type WireProtocol } from '$lib/hardware.ts';
 	import { FULL_WINDOW, type TimeWindow } from '$lib/timeline.ts';
 	import { libraryToCandidate, type Candidate } from '$lib/search.svelte.ts';
 	import type {
@@ -27,24 +27,27 @@
 		TrackMeta
 	} from '$lib/types.ts';
 	import Backdrop from '$components/Backdrop.svelte';
-	import HardwareModal from '$components/HardwareModal.svelte';
 	import EveningRail from '$components/EveningRail.svelte';
 	import JudgePanel from '$components/JudgePanel.svelte';
 	import LibraryModal from '$components/LibraryModal.svelte';
 	import LoungeModal from '$components/LoungeModal.svelte';
 	import Menu from '$lib/ui/Menu.svelte';
+	import { menu } from '$lib/menu.svelte.ts';
 	import PlayerBar from '$components/PlayerBar.svelte';
 	import QueuePanel from '$components/QueuePanel.svelte';
-	import RoomModal from '$components/RoomModal.svelte';
+	import InviteModal from '$components/InviteModal.svelte';
 	import SearchModal from '$components/SearchModal.svelte';
 	import Stage from '$components/Stage.svelte';
 	import TimelineDrawer from '$components/TimelineDrawer.svelte';
 	import TopBar from '$components/TopBar.svelte';
+	import FloorPlan from '$components/setup/FloorPlan.svelte';
+	import Inspector from '$components/setup/Inspector.svelte';
+	import RoomRail from '$components/setup/RoomRail.svelte';
 
 	let viz: Viz | null = $state(null);
 	const queue = new QueueClient();
 	const evening = new EveningClient();
-	const hardware = new HardwareClient();
+	const rooms = new RoomsClient();
 
 	let readout = $state<Readout>({
 		fps: 0,
@@ -77,12 +80,6 @@
 		authorEffort: 'high',
 		// Use the server catalogue once settings arrive; do not guess model choices.
 		authorModels: [],
-		outputOffsetMs: 0,
-		outputFps: DEFAULT_OUTPUT_FPS,
-		outputBrightness: MASTER,
-		outputContrast: GAMMA,
-		outputLampBrightness: MASTER,
-		outputProtocol: 'ddp',
 		autopilot: false,
 		lounge: false,
 		rest: true,
@@ -96,7 +93,9 @@
 	let searchSeed = $state('');
 	/** Share the timeline window with the scrubber outside the drawer's mount lifetime. */
 	let laneView = $state<TimeWindow>(FULL_WINDOW);
-	let hardwareOpen = $state(false);
+	let setupOpen = $state(false);
+	let planView = $state<PlanView>('top');
+	let plan: FloorPlan | undefined = $state();
 	let libraryOpen = $state(false);
 	let loungeOpen = $state(false);
 	let judgeOpen = $state(false);
@@ -152,12 +151,8 @@
 	let relevelling = $state(false);
 	let rerolling = $state(false);
 
-	// Keep wireOffset plain so slider updates do not tear down the hardware-sync interval.
-	let wireOffsetMs = 0;
-
-	// The server owns the address and whether it is streaming; this only ever reads them.
-	const ddpHost = $derived(hardware.status.host);
-	const ddpRunning = $derived(hardware.status.streaming);
+	// The server owns the room and whether it is lit; this only ever reads them.
+	const outputRunning = $derived(rooms.output.running);
 
 	const current = $derived(queue.current);
 	const currentIndex = $derived(indexOfKey(queue.state, queue.state.currentKey));
@@ -210,10 +205,7 @@
 	async function refreshSettings() {
 		try {
 			const res = await fetch('/api/settings');
-			if (res.ok) {
-				settings = (await res.json()) as Settings;
-				wireOffsetMs = settings.outputOffsetMs;
-			}
+			if (res.ok) settings = (await res.json()) as Settings;
 		} catch {
 			// Loopback only, so a failure here means a guest page, where authoring is not offered.
 		}
@@ -369,57 +361,6 @@
 		};
 	}
 
-	/** Dragging: the running stream takes it on its next sync, half a second at the worst. */
-	function moveOffset(ms: number) {
-		wireOffsetMs = ms;
-		settings = { ...settings, outputOffsetMs: ms };
-	}
-
-	/** Released. One write, rather than one per step of the drag. */
-	function saveOffset(ms: number) {
-		moveOffset(ms);
-		void patchSettings({ outputOffsetMs: ms });
-	}
-
-	/** The server re-arms its own render clock; a running stream does not need restarting. */
-	function chooseFps(outputFps: number) {
-		settings = { ...settings, outputFps };
-		void patchSettings({ outputFps });
-	}
-
-	/** Hardware-only output controls: update local readouts during drag and persist on release. */
-	function moveBrightness(outputBrightness: number) {
-		settings = { ...settings, outputBrightness };
-	}
-
-	function saveBrightness(outputBrightness: number) {
-		moveBrightness(outputBrightness);
-		void patchSettings({ outputBrightness });
-	}
-
-	function moveContrast(outputContrast: number) {
-		settings = { ...settings, outputContrast };
-	}
-
-	function saveContrast(outputContrast: number) {
-		moveContrast(outputContrast);
-		void patchSettings({ outputContrast });
-	}
-
-	function moveLampBrightness(outputLampBrightness: number) {
-		settings = { ...settings, outputLampBrightness };
-	}
-
-	function saveLampBrightness(outputLampBrightness: number) {
-		moveLampBrightness(outputLampBrightness);
-		void patchSettings({ outputLampBrightness });
-	}
-
-	function chooseProtocol(outputProtocol: WireProtocol) {
-		settings = { ...settings, outputProtocol };
-		void patchSettings({ outputProtocol });
-	}
-
 	function toggleLounge(on: boolean) {
 		settings = { ...settings, lounge: on };
 		void patchSettings({ lounge: on });
@@ -457,14 +398,14 @@
 		viz = v;
 		queue.connect();
 		evening.connect();
-		hardware.connect();
+		rooms.connect();
 		void refreshLibrary();
 		void refreshSettings();
 		return () => {
 			v.dispose();
 			queue.dispose();
 			evening.dispose();
-			hardware.dispose();
+			rooms.dispose();
 		};
 	});
 
@@ -495,6 +436,97 @@
 		if (viz) viz.artHue = meta?.artHue ?? null;
 	});
 
+	/** The preview's own model of the room that plays, for what `auto` came to. */
+	let model = $state.raw<RoomModel | null>(null);
+	const parts = $derived(new Map<string, LightPart>((model?.pixels ?? []).map((p) => [p.light.id, p.part])));
+
+	/** Rebuilt at most this often while a light is dragged, and once more where it lands. */
+	const REBUILD_MS = 80;
+	let shownLayout = '';
+	let rebuiltAt = 0;
+	let rebuild: ReturnType<typeof setTimeout> | null = null;
+
+	// The preview follows the room as it is edited, not only as it is saved.
+	$effect(() => {
+		const v = viz;
+		const layout = rooms.room?.layout;
+		if (!v || !layout) return;
+		const key = JSON.stringify(layout);
+		if (key === shownLayout) return;
+		const apply = () => {
+			rebuild = null;
+			rebuiltAt = performance.now();
+			shownLayout = key;
+			const next = roomModel(layout);
+			v.useRoom(next);
+			model = next;
+		};
+		if (rebuild) clearTimeout(rebuild);
+		const wait = REBUILD_MS - (performance.now() - rebuiltAt);
+		if (wait <= 0) apply();
+		else rebuild = setTimeout(apply, wait);
+	});
+
+	$effect(() => {
+		const v = viz;
+		const test = rooms.test;
+		if (!v) return;
+		if (test) v.startTest(test.kind, test.lights);
+		else v.stopTest();
+	});
+
+	/**
+	 * The light to point out in the preview: the one under the pointer, else the one selected. A
+	 * test pattern says which light it is by itself.
+	 */
+	const highlighted = $derived.by(() => {
+		if (!setupOpen || rooms.test) return null;
+		const hovered = rooms.hovered;
+		if (hovered && rooms.room?.layout.lights.some((l) => l.id === hovered)) return hovered;
+		return rooms.selection?.kind === 'light' ? rooms.selection.id : null;
+	});
+
+	function toggleSetup(open = !setupOpen) {
+		setupOpen = open;
+		if (!open) {
+			rooms.stopTest();
+			rooms.select(null);
+			rooms.settle();
+		}
+	}
+
+	/** The plan's share of the centre column, kept between visits. */
+	let planShare = $state(readShare());
+
+	function readShare(): number {
+		try {
+			const stored = Number(localStorage.getItem('setup-plan-share'));
+			return stored >= 0.25 && stored <= 0.8 ? stored : 0.56;
+		} catch {
+			return 0.56;
+		}
+	}
+
+	function resizePlan(e: PointerEvent) {
+		const handle = e.currentTarget as HTMLElement;
+		const column = handle.parentElement!.getBoundingClientRect();
+		handle.setPointerCapture(e.pointerId);
+		const move = (ev: PointerEvent) => {
+			planShare = Math.min(0.8, Math.max(0.25, (ev.clientY - column.top) / column.height));
+		};
+		const up = () => {
+			handle.removeEventListener('pointermove', move);
+			handle.removeEventListener('pointerup', up);
+			try {
+				localStorage.setItem('setup-plan-share', planShare.toFixed(3));
+			} catch {
+				// A browser that keeps nothing starts from the default next time.
+			}
+		};
+		handle.addEventListener('pointermove', move);
+		handle.addEventListener('pointerup', up);
+	}
+
 	/**
 	 * A tab that starts leading the hardware adopts what the hardware is doing first, so a
 	 * fresh page, or one coming back from the background where it stopped rendering, cannot
@@ -504,8 +536,8 @@
 		try {
 			const res = await fetch('/api/output');
 			if (!res.ok) return;
-			const status = (await res.json()) as { running: boolean; room?: RoomSync };
-			if (status.running && status.room) v.follow(status.room);
+			const status = (await res.json()) as { running: boolean; decisions?: RoomSync };
+			if (status.running && status.decisions) v.follow(status.decisions);
 		} catch {
 			// The next sync carries on regardless.
 		}
@@ -520,7 +552,7 @@
 	// stops leading.
 	$effect(() => {
 		const v = viz;
-		if (!ddpRunning || !v) return;
+		if (!outputRunning || !v) return;
 		void adoptRoom(v);
 		const send = () =>
 			postJson('/api/output', {
@@ -528,9 +560,8 @@
 				position: v.heardPosition,
 				playing: v.isPlaying,
 				...(loadedKey ? { key: loadedKey } : {}),
-				offsetMs: wireOffsetMs,
-				room: v.roomSync(),
-				roomAge: v.roomAge
+				decisions: v.roomSync(),
+				age: v.roomAge
 			}).catch(() => {});
 		void send();
 		syncOutput = send;
@@ -835,47 +866,15 @@
 			setPhase('ready', '');
 			// Wait for decoding before starting playback.
 			await start(viz, key);
-			if (ddpRunning) void startOutput(id);
 		} catch (e) {
 			setPhase('error', (e as Error).message);
 			note(`ERROR ${(e as Error).message}`);
 		}
 	}
 
-	/** Several comma-separated boards split the fixture between them. */
-	function hosts(source: string): string[] {
-		return source
-			.split(',')
-			.map((h) => h.trim())
-			.filter(Boolean);
-	}
-
-	/** Restart output to load the latest show from disk after authoring or rerolling. */
-	function startOutput(id: string | null, to = ddpHost) {
-		return postJson('/api/output', {
-			action: 'start',
-			// Omit trackId to start the resting room before any track is loaded.
-			...(id ? { trackId: id } : {}),
-			hosts: hosts(to),
-			offsetMs: wireOffsetMs
-		});
-	}
-
-	/** Use the pressed address directly; SSE may still report the previous board. */
-	async function connectOutput(host: string) {
-		if (hosts(host).length === 0) return;
-		if (host !== ddpHost) await hardware.setHost('frame', host);
-		const res = await startOutput(trackId, host);
-		if (!res.ok) {
-			note(`ERROR ${await res.text()}`);
-			return;
-		}
-		note(trackId ? `DDP output to ${host}` : `DDP output to ${host}, resting`);
-	}
-
-	async function disconnectOutput() {
-		await postJson('/api/output', { action: 'stop' });
-		note('DDP output stopped');
+	/** The room reads the show from disk again, after it was rerolled or re-read. */
+	function reloadOutput() {
+		if (outputRunning) void postJson('/api/output', { action: 'reload' }).catch(() => {});
 	}
 
 	function openSearch(seed: string) {
@@ -928,6 +927,7 @@
 			if (data.show) viz.loadShow(data.analysis, data.show);
 			note(`re-read at ${data.analysis.tempo.bpm} bpm`);
 			setPhase('ready', '');
+			reloadOutput();
 		} catch (e) {
 			setPhase('error', (e as Error).message);
 		} finally {
@@ -945,7 +945,7 @@
 			show = data.show;
 			viz.loadShow(analysis!, data.show);
 			note(`rerolled: ${data.show.cues.length} cues, seed ${data.show.seed}`);
-			if (ddpRunning) void startOutput(trackId);
+			reloadOutput();
 			void refreshLibrary();
 		} catch (e) {
 			note(`ERROR ${(e as Error).message}`);
@@ -987,6 +987,19 @@
 		}
 		if (searchOpen) return;
 		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+		// A menu or a dialog takes its own keys, Escape first of all.
+		if (menu.open || document.querySelector('[aria-modal="true"]')) return;
+
+		if (setupOpen) {
+			if (plan?.key(e)) {
+				e.preventDefault();
+				return;
+			}
+			if (e.key === 'Escape') {
+				toggleSetup(false);
+				return;
+			}
+		}
 
 		if (e.code === 'Space') {
 			e.preventDefault();
@@ -1001,7 +1014,7 @@
 			rightOpen = !rightOpen;
 		} else if (e.key.toLowerCase() === 'l') {
 			toggleLounge(!settings.lounge);
-		} else if (e.key.toLowerCase() === 'j') {
+		} else if (e.key.toLowerCase() === 'j' && !setupOpen) {
 			void toggleJudge(!judgeOpen);
 		}
 	}
@@ -1016,16 +1029,26 @@
 		{busy}
 		{busyLabel}
 		{failure}
-		hardware={hardware.status}
+		{rooms}
+		{setupOpen}
 		cached={library.length}
 		onsearch={openSearch}
 		onlibrary={() => (libraryOpen = true)}
-		onhardware={() => (hardwareOpen = true)}
+		onsetup={() => toggleSetup()}
 		ontoggleLeft={() => (leftOpen = !leftOpen)}
 		ontoggleRight={() => (rightOpen = !rightOpen)} />
 
 	<div class="body">
-		{#if leftOpen}
+		{#if setupOpen}
+			{#if leftOpen}
+				<RoomRail
+					{rooms}
+					view={planView}
+					localNetworkHint={shell.desktop && shell.platform === 'macos'}
+					ondraw={() => plan?.startDrawing()}
+					onclose={() => toggleSetup(false)} />
+			{/if}
+		{:else if leftOpen}
 			<QueuePanel
 				items={queue.items}
 				currentKey={queue.state.currentKey}
@@ -1048,16 +1071,35 @@
 				onrunShow={(k) => void queue.runShow(k)} />
 		{/if}
 
-		<Stage
-			{viz}
-			{readout}
-			{load}
-			hasShow={!!show}
-			queued={queue.items.length}
-			lounge={settings.lounge}
-			onlounge={() => (loungeOpen = true)} />
+		<div class="centre">
+			{#if setupOpen}
+				<div class="plan-slot" style:height={`${planShare * 100}%`}>
+					<FloorPlan bind:this={plan} {rooms} bind:view={planView} />
+				</div>
+				<div
+					class="splitter floats"
+					role="separator"
+					aria-orientation="horizontal"
+					aria-label="Drag to share the space between the plan and the preview"
+					onpointerdown={resizePlan}>
+				</div>
+			{/if}
+			<Stage
+				{viz}
+				{readout}
+				{load}
+				hasShow={!!show}
+				queued={queue.items.length}
+				lounge={settings.lounge}
+				layout={rooms.room?.layout ?? null}
+				highlight={highlighted}
+				setup={setupOpen}
+				onlounge={() => (loungeOpen = true)} />
+		</div>
 
-		{#if judgeOpen}
+		{#if setupOpen}
+			{#if rightOpen}<Inspector {rooms} {parts} />{/if}
+		{:else if judgeOpen}
 			<JudgePanel
 				{trackId}
 				title={meta?.title ?? ''}
@@ -1149,7 +1191,7 @@
 	evening={evening.live}
 	onpick={pick} />
 
-<RoomModal />
+<InviteModal />
 
 <LibraryModal
 	open={libraryOpen}
@@ -1180,31 +1222,6 @@
 	onambientdone={saveAmbient}
 	onnextscene={() => viz?.nextScene()} />
 
-<HardwareModal
-	open={hardwareOpen}
-	statuses={hardware.statuses}
-	onclose={() => (hardwareOpen = false)}
-	offsetMs={settings.outputOffsetMs}
-	fps={settings.outputFps}
-	brightness={settings.outputBrightness}
-	contrast={settings.outputContrast}
-	lampBrightness={settings.outputLampBrightness}
-	protocol={settings.outputProtocol}
-	onhost={(role, h) => void hardware.setHost(role, h)}
-	onregion={(r) => void hardware.setRegion(r)}
-	onfps={chooseFps}
-	onbrightness={moveBrightness}
-	onbrightnessdone={saveBrightness}
-	oncontrast={moveContrast}
-	oncontrastdone={saveContrast}
-	onlampbrightness={moveLampBrightness}
-	onlampbrightnessdone={saveLampBrightness}
-	onprotocol={chooseProtocol}
-	onoffset={moveOffset}
-	onoffsetdone={saveOffset}
-	onconnect={(h) => void connectOutput(h)}
-	ondisconnect={() => void disconnectOutput()} />
-
 <style>
 	/* Share the root stacking context so the room layer remains below the panels. */
 	.shell {
@@ -1216,5 +1233,32 @@
 		display: flex;
 		flex: 1;
 		min-height: 0;
+	}
+	.centre {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-width: 0;
+		min-height: 0;
+	}
+	.plan-slot {
+		position: relative;
+		z-index: 2;
+		flex: none;
+		min-height: 0;
+	}
+	.plan-slot > :global(.plan) {
+		height: 100%;
+	}
+	/* A hairline to grab between the plan and the preview. */
+	.splitter {
+		flex: none;
+		height: 7px;
+		margin: -4px 0 -3px;
+		cursor: row-resize;
+		touch-action: none;
+	}
+	.splitter:hover {
+		background: linear-gradient(transparent 3px, var(--ring) 3px, var(--ring) 4px, transparent 4px);
 	}
 </style>

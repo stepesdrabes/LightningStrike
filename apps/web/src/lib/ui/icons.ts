@@ -39,6 +39,21 @@ import Volume2 from 'lucide-svelte/icons/volume-2';
 import VolumeX from 'lucide-svelte/icons/volume-x';
 import X from 'lucide-svelte/icons/x';
 import Zap from 'lucide-svelte/icons/zap';
+import Circle from 'lucide-svelte/icons/circle';
+import Copy from 'lucide-svelte/icons/copy';
+import Download from 'lucide-svelte/icons/download';
+import ExternalLink from 'lucide-svelte/icons/external-link';
+import Grid3x3 from 'lucide-svelte/icons/grid-3x3';
+import House from 'lucide-svelte/icons/house';
+import Power from 'lucide-svelte/icons/power';
+import Radar from 'lucide-svelte/icons/radar';
+import Redo2 from 'lucide-svelte/icons/redo-2';
+import Router from 'lucide-svelte/icons/router';
+import Settings2 from 'lucide-svelte/icons/settings-2';
+import Spline from 'lucide-svelte/icons/spline';
+import Square from 'lucide-svelte/icons/square';
+import Undo2 from 'lucide-svelte/icons/undo-2';
+import Upload from 'lucide-svelte/icons/upload';
 
 export const GLYPHS = {
 	alert: TriangleAlert,
@@ -80,7 +95,23 @@ export const GLYPHS = {
 	trash: Trash2,
 	volume: Volume2,
 	volumeOff: VolumeX,
-	x: X
+	x: X,
+	controller: Router,
+	copy: Copy,
+	export: Download,
+	external: ExternalLink,
+	find: Radar,
+	import: Upload,
+	lamp: Lamp,
+	loop: Square,
+	matrix: Grid3x3,
+	power: Power,
+	redo: Redo2,
+	ring: Circle,
+	room: House,
+	settings: Settings2,
+	strip: Spline,
+	undo: Undo2
 };
 
 export type IconName = keyof typeof GLYPHS;

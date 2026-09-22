@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { room } from '$lib/room.svelte.ts';
+	import { invite } from '$lib/invite.svelte.ts';
 	import Icon from '$lib/ui/Icon.svelte';
 	import QrCode from './QrCode.svelte';
 
@@ -8,7 +8,7 @@
 	let open = $state(false);
 
 	$effect(() => {
-		void room.load();
+		void invite.load();
 		open = localStorage.getItem(REMEMBER) === '1';
 	});
 
@@ -18,7 +18,7 @@
 	}
 </script>
 
-{#if room.info?.url}
+{#if invite.info?.url}
 	<div class="invite" class:open>
 		<button class="bar" onclick={toggle} aria-expanded={open}>
 			<Icon name="qr" size={15} />
@@ -28,8 +28,8 @@
 
 		{#if open}
 
-			<button class="code" onclick={() => (room.open = true)} title="Show the code full size">
-				<QrCode value={room.info.url} fluid />
+			<button class="code" onclick={() => (invite.open = true)} title="Show the code full size">
+				<QrCode value={invite.info.url} fluid />
 			</button>
 		{/if}
 	</div>

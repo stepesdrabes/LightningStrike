@@ -1,15 +1,5 @@
 import { error, json } from '@sveltejs/kit';
 import {
-	CONTRAST_MAX,
-	CONTRAST_MIN,
-	OFFSET_MAX_MS,
-	OFFSET_MIN_MS,
-	OUTPUT_BRIGHTNESS_MIN,
-	isOutputFps,
-	isWireProtocol,
-	type WireProtocol
-} from '$lib/hardware.ts';
-import {
 	DRIFT_MAX,
 	DRIFT_MIN,
 	DWELL_MAX,
@@ -47,21 +37,6 @@ export const PUT: RequestHandler = async ({ request }) => {
 	if (number(body.ambientDwell)) {
 		patch.ambientDwell = Math.round(clamp(body.ambientDwell, DWELL_MIN, DWELL_MAX));
 	}
-	if (number(body.outputOffsetMs)) {
-		patch.outputOffsetMs = clamp(body.outputOffsetMs, OFFSET_MIN_MS, OFFSET_MAX_MS);
-	}
-	if (number(body.outputBrightness)) {
-		patch.outputBrightness = clamp(body.outputBrightness, OUTPUT_BRIGHTNESS_MIN, 1);
-	}
-	if (number(body.outputContrast)) {
-		patch.outputContrast = clamp(body.outputContrast, CONTRAST_MIN, CONTRAST_MAX);
-	}
-	if (number(body.outputLampBrightness)) {
-		patch.outputLampBrightness = clamp(body.outputLampBrightness, OUTPUT_BRIGHTNESS_MIN, 1);
-	}
-	// Accept only tuned FPS choices; intermediate rates are not slider values.
-	if (isOutputFps(body.outputFps)) patch.outputFps = body.outputFps;
-	if (isWireProtocol(body.outputProtocol)) patch.outputProtocol = body.outputProtocol;
 	if (Object.keys(patch).length === 0) error(400, 'nothing to change');
 
 	return json(await settings.update(patch));
@@ -71,12 +46,6 @@ interface Writable {
 	deepseekApiKey?: string;
 	authorModel?: string;
 	authorEffort?: EffortLevel;
-	outputOffsetMs?: number;
-	outputFps?: number;
-	outputBrightness?: number;
-	outputContrast?: number;
-	outputLampBrightness?: number;
-	outputProtocol?: WireProtocol;
 	autopilot?: boolean;
 	lounge?: boolean;
 	rest?: boolean;

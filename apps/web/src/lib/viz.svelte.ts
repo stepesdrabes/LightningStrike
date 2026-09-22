@@ -1,13 +1,15 @@
 import {
-	DEFAULT_ROOM,
+	LightTest,
 	RoomDirector,
 	SLOT,
 	compileGenerated,
 	EffectRegistry,
+	roomKey,
 	roomModel,
 	sample,
 	type AmbientSettings,
 	type Geometry,
+	type LightTestKind,
 	type RoomModel,
 	type RoomSync,
 	type Show,
@@ -40,14 +42,19 @@ const FADE_OUT = Float32Array.from({ length: FADE_POINTS }, (_, i) => Math.cos((
 
 /** Keep the render hot path unproxied; publish only the small Readout at 20 Hz. */
 export class Viz {
-	readonly model: RoomModel = roomModel(DEFAULT_ROOM);
-	readonly geometry: Geometry = this.model.geometry;
-	readonly registry = new EffectRegistry();
-	readonly director = new RoomDirector(this.geometry, this.registry, this.model.lamps.length);
+	model: RoomModel = roomModel();
+	geometry: Geometry = this.model.geometry;
+	registry = new EffectRegistry();
+	director = new RoomDirector(this.geometry, this.registry, this.model.lamps.length);
+	private readonly test = new LightTest(this.model);
 
 	roomRenderer: RoomRenderer | null = null;
 	analysis: TrackAnalysis | null = null;
 	show: Show | null = null;
+	private dissolve: number | undefined;
+	/** Kept here as well, so a director built for another room starts out the same. */
+	private ambientSettings: AmbientSettings | null = null;
+	private coverHue: number | null = null;
 
 	lounge = false;
 	rest = true;
@@ -120,12 +127,45 @@ export class Viz {
 	}
 
 	set ambient(s: AmbientSettings) {
+		this.ambientSettings = s;
 		this.director.ambientSettings = s;
 	}
 
 	/** The cover's dominant hue, for a room following a track that has no show yet. */
 	set artHue(h: number | null) {
+		this.coverHue = h;
 		this.director.ambient.artHue = h;
+	}
+
+	/**
+	 * Play another room, or this one edited. Different lights get a director of their own, which
+	 * takes the show that was loaded; the preview is redrawn either way.
+	 */
+	useRoom(model: RoomModel): void {
+		const reshaped =
+			roomKey(model.geometry) !== roomKey(this.geometry) || model.lamps.length !== this.model.lamps.length;
+		this.model = model;
+		if (reshaped) {
+			const was = this.director.sync();
+			this.geometry = model.geometry;
+			this.registry = new EffectRegistry();
+			this.director = new RoomDirector(model.geometry, this.registry, model.lamps.length);
+			if (this.ambientSettings) this.director.ambientSettings = this.ambientSettings;
+			this.director.ambient.artHue = this.coverHue;
+			if (this.analysis && this.show) this.loadShow(this.analysis, this.show, this.dissolve);
+			this.director.succeed(was);
+		}
+		this.test.use(model);
+		this.roomRenderer?.setRoom(model);
+	}
+
+	/** A setup pattern on some lights of the preview, over whatever plays. */
+	startTest(kind: LightTestKind, lights: readonly string[]): void {
+		this.test.start(kind, lights);
+	}
+
+	stopTest(): void {
+		this.test.stop();
 	}
 
 	/** Skip to the next ambient scene. */
@@ -199,6 +239,7 @@ export class Viz {
 	loadShow(analysis: TrackAnalysis, show: Show, dissolve?: number): void {
 		this.analysis = analysis;
 		this.show = show;
+		this.dissolve = dissolve;
 		this.registry.clearGenerated();
 		for (const gen of show.generatedEffects) {
 			const compiled = compileGenerated(gen, this.geometry);
@@ -441,6 +482,7 @@ export class Viz {
 			lounge: this.lounge,
 			rest: this.rest
 		});
+		this.test.apply(this.director.bytes, this.director.lamps, dt);
 		this.roomRenderer?.render(this.director.bytes, dt, this.director.lamps);
 		this.publishReadout(dt, frame);
 	}
