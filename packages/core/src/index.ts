@@ -3,6 +3,7 @@ export type {
 	Geometry,
 	LampLight,
 	Light,
+	LightPart,
 	LightPixels,
 	LightRole,
 	MatrixLight,

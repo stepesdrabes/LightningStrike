@@ -27,14 +27,22 @@ const LIMIT_S = 60;
  * Every other light goes dark while a test runs.
  */
 export class LightTest {
+	private model: RoomModel;
 	private kind: LightTestKind | null = null;
 	private lights = new Set<string>();
 	private t = 0;
 
-	constructor(private readonly model: RoomModel) {}
+	constructor(model: RoomModel) {
+		this.model = model;
+	}
 
 	get active(): boolean {
 		return this.kind !== null;
+	}
+
+	/** Carry on in an edited room: a light moved or rewired mid-test is still the light under test. */
+	use(model: RoomModel): void {
+		this.model = model;
 	}
 
 	start(kind: LightTestKind, lightIds: readonly string[]): void {

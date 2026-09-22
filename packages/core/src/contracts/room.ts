@@ -180,9 +180,13 @@ export interface Geometry {
 	spine: boolean;
 }
 
+/** What a light turned out to be to the show, once `auto` is decided. */
+export type LightPart = Exclude<LightRole, 'auto'>;
+
 /** One light's LEDs in the order its data runs, with where each lands in the effect buffer. */
 export interface LightPixels {
 	light: Light;
+	part: LightPart;
 	/** Effect buffer index per LED. */
 	index: Int32Array;
 	/** Room coordinates per LED, 3 floats each. */

@@ -183,6 +183,20 @@ describe('RoomDirector', () => {
 		expect(lit / (d.bytes.length / 3)).toBeGreaterThan(0.5);
 	});
 
+	it('hands a resting room to a director for other lights without fading it out', () => {
+		const resting = new RoomDirector(g, new EffectRegistry());
+		const state: DirectorState = { playing: false, hasShow: false, lounge: false, rest: true };
+		for (let i = 0; i < 60 * 20; i++) resting.update(0, 1 / 60, state);
+		expect(resting.ambience).toBe(1);
+
+		const smaller = buildGeometry({ ...DEFAULT_ROOM, lights: DEFAULT_ROOM.lights.slice(0, 1) });
+		const next = new RoomDirector(smaller, new EffectRegistry());
+		next.succeed(resting.sync());
+		next.update(0, 1 / 60, state);
+		expect(next.ambience).toBe(1);
+		expect(next.sceneName).toBe(resting.sceneName);
+	});
+
 	it('plays an authored show at its written levels, whatever exposure the room built up', () => {
 		const dim = { ...show, cues: show.cues.map((c) => ({ ...c, intensity: 0.15 })) };
 		const authored = { ...dim, exposure: 'fixed' as const };
