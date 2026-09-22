@@ -118,6 +118,10 @@ export function createSacnSink(opts: SacnOptions): LedSink {
 					resolve();
 				});
 			});
+			// A send that fails later, say to a name that no longer resolves, must not end the process.
+			socket.on('error', (err) => {
+				stats.lastError = err.message;
+			});
 		},
 
 		send(frame: LedFrame) {
