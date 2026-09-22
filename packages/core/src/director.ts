@@ -207,6 +207,20 @@ export class RoomDirector {
 	}
 
 	/**
+	 * Take over from a director of the same room with other lights, stepping straight to where it
+	 * was, so an edit to the lights does not fade the room out and back.
+	 */
+	succeed(s: RoomSync): void {
+		this.follow(s);
+		this.u = clamp(s.ambience);
+		this.pendingU = 0;
+		if (s.exposure !== undefined && Number.isFinite(s.exposure)) {
+			this.meanLevel.gain = s.exposure;
+			this.pendingExposure = 0;
+		}
+	}
+
+	/**
 	 * Returns the track frame for readouts and cue highlighting, even while ambient owns the
 	 * room.
 	 */

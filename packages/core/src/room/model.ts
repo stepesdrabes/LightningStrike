@@ -2,6 +2,7 @@ import type {
 	Geometry,
 	LampLight,
 	Light,
+	LightPart,
 	LightPixels,
 	RoomLayout,
 	RoomModel,
@@ -18,7 +19,6 @@ const LAST_STRIP = 255;
 /** The spacing assumed where a light names none, as for a lone lamp. */
 const FALLBACK_PITCH = 1 / 60;
 
-type Part = 'ring' | 'spine' | 'field';
 
 /** Room coordinates turned so the front wall is south. Quarter turns keep every value exact. */
 export function toShowFrame(front: Wall, x: number, y: number): [number, number] {
@@ -68,7 +68,7 @@ interface Lit {
 	/** What bounds its shape: the drawn points of a path, the LEDs of anything else. */
 	outline: Vec3[];
 	normal: Vec3;
-	part: Part;
+	part: LightPart;
 }
 
 /** A ring member's LEDs in ring order, with how far round the room each one is. */
@@ -265,6 +265,7 @@ function derive(layout: RoomLayout): { geometry: Geometry; pixels: LightPixels[]
 	};
 	const pixels = lit.map((l, li) => ({
 		light: l.light,
+		part: l.part,
 		index: effectIndex[li],
 		position: Float32Array.from(l.placed.position)
 	}));
