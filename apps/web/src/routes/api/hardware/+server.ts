@@ -1,7 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { DEFAULT_ROOM, buildGeometry, roomRegions } from '@mv/core';
 import { hardware } from '$lib/server/hardware.ts';
-import { isLocal } from '$lib/server/access.ts';
 import { isDeviceRole } from '$lib/hardware.ts';
 import type { RequestHandler } from './$types';
 
@@ -10,10 +9,8 @@ export const GET: RequestHandler = async () => json(hardware.statuses);
 /** Hosts are used as an argument to a UDP send, so anything shell-like is simply not one. */
 const HOST = /^[A-Za-z0-9._-]{1,253}$/;
 
-export const POST: RequestHandler = async (event) => {
-	if (!isLocal(event)) error(403, 'the hardware belongs to the machine running the show');
-
-	const body = (await event.request.json()) as {
+export const POST: RequestHandler = async ({ request }) => {
+	const body = (await request.json()) as {
 		action: 'set';
 		role?: string;
 		host?: string;

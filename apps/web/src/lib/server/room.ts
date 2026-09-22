@@ -79,7 +79,7 @@ class Room {
 	private async persist(token: string): Promise<string> {
 		await mkdir(CACHE_DIR, { recursive: true });
 		const tmp = `${ROOM_FILE}.${process.pid}.tmp`;
-		await writeFile(tmp, JSON.stringify({ token } satisfies RoomFile, null, '\t'));
+		await writeFile(tmp, JSON.stringify({ token } satisfies RoomFile, null, '\t'), { mode: 0o600 });
 		await rename(tmp, ROOM_FILE);
 		return token;
 	}

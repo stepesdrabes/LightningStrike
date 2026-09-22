@@ -4,14 +4,10 @@ import { join } from 'node:path';
 import { CACHE_DIR, isValidId } from '@mv/analysis';
 import { currentItem } from '$lib/queueModel.ts';
 import { queue } from '$lib/server/queueStore.ts';
-import { isLocal } from '$lib/server/access.ts';
 import type { RequestHandler } from './$types';
 
-/** Cache deletion is loopback-only because guests do not own downloaded or authored artifacts. */
-export const DELETE: RequestHandler = async (event) => {
-	if (!isLocal(event)) error(403, 'the cache belongs to the machine running the show');
-
-	const id = event.params.id;
+export const DELETE: RequestHandler = async ({ params }) => {
+	const id = params.id;
 	if (!isValidId(id)) error(400, 'valid track id required');
 
 	// Use resolved queue IDs to protect tracks still needed for playback.

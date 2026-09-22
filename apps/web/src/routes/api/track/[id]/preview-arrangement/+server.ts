@@ -3,7 +3,6 @@ import { readFile } from 'node:fs/promises';
 import type { TrackAnalysis } from '@mv/core';
 import { analysisPath, isValidId, readContext, readMeta } from '@mv/analysis';
 import { composeShow } from '@mv/author-engine';
-import { isLocal } from '$lib/server/access.ts';
 import { readJudgements, type JudgedSection } from '$lib/server/judge.ts';
 import { applyHandSections } from '$lib/server/previewArrangement.ts';
 import type { RequestHandler } from './$types';
@@ -15,8 +14,6 @@ import type { RequestHandler } from './$types';
 export const POST: RequestHandler = async (event) => {
 	const id = event.params.id;
 	if (!isValidId(id)) error(400, 'invalid track id');
-
-	if (!isLocal(event)) error(403, 'forbidden');
 
 	let analysis: TrackAnalysis;
 	try {

@@ -288,3 +288,11 @@ export function canGuestRemove(state: QueueState, key: string, guest: string): b
 	const item = state.items.find((i) => i.key === key);
 	return item !== undefined && item.addedBy === guest && state.currentKey !== key;
 }
+
+/** The queue as a guest's phone sees it: no host paths, and no errors that could quote them. */
+export function guestView(state: QueueState): QueueState {
+	return {
+		...state,
+		items: state.items.map((item) => ({ ...item, source: '', message: '', trustNote: undefined }))
+	};
+}

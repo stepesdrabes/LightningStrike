@@ -31,7 +31,6 @@ import { evening } from '$lib/server/evening/store.ts';
 import { queue } from '$lib/server/queueStore.ts';
 import { hardware, packedHosts } from '$lib/server/hardware.ts';
 import { settings, type PublicSettings } from '$lib/server/settings.ts';
-import { isLocal } from '$lib/server/access.ts';
 import type { RequestHandler } from './$types';
 
 /**
@@ -422,8 +421,6 @@ settings.subscribe((s) => output.apply(s));
 export const GET: RequestHandler = async () => json(output.status);
 
 export const POST: RequestHandler = async (event) => {
-	if (!isLocal(event)) error(403, 'the hardware belongs to the machine running the show');
-
 	const body = (await event.request.json()) as {
 		action: 'start' | 'stop' | 'sync';
 		trackId?: string;
