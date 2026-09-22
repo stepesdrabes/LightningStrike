@@ -1,8 +1,11 @@
 export const STRIP_VERTEX = /* glsl */ `
+	attribute vec4 strip;
 	varying vec2 vUv;
 	varying float vDist;
+	flat varying vec4 vStrip;
 	void main() {
 		vUv = uv;
+		vStrip = strip;
 		vec4 mv = modelViewMatrix * vec4(position, 1.0);
 		vDist = -mv.z;
 		gl_Position = projectionMatrix * mv;
@@ -15,20 +18,18 @@ export const STRIP_VERTEX = /* glsl */ `
  */
 export const STRIP_FRAGMENT = /* glsl */ `
 	uniform sampler2D uLed;
-	uniform float uUScale;
-	uniform float uUOffset;
-	uniform float uRow;
-	uniform float uCount;
 	uniform float uGain;
 	varying vec2 vUv;
 	varying float vDist;
+	/// Its atlas strip: u per unit of vUv.x, u at vUv.x = 0, the row's v, and its LED count.
+	flat varying vec4 vStrip;
 
 	void main() {
-		vec3 frosted = texture2D(uLed, vec2(vUv.x * uUScale + uUOffset, uRow)).rgb;
+		vec3 frosted = texture2D(uLed, vec2(vUv.x * vStrip.x + vStrip.y, vStrip.z)).rgb;
 
-		float cell = vUv.x * uCount;
-		float centre = (floor(cell) + 0.5) / uCount;
-		vec3 led = texture2D(uLed, vec2(centre * uUScale + uUOffset, uRow)).rgb;
+		float cell = vUv.x * vStrip.w;
+		float centre = (floor(cell) + 0.5) / vStrip.w;
+		vec3 led = texture2D(uLed, vec2(centre * vStrip.x + vStrip.y, vStrip.z)).rgb;
 		float dx = fract(cell) - 0.5;
 		float dy = vUv.y - 0.5;
 		float emitter = exp(-dx * dx * 22.0 - dy * dy * 9.0);
