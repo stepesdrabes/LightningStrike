@@ -461,10 +461,14 @@
 			v.useRoom(next);
 			model = next;
 		};
-		if (rebuild) clearTimeout(rebuild);
 		const wait = REBUILD_MS - (performance.now() - rebuiltAt);
 		if (wait <= 0) apply();
 		else rebuild = setTimeout(apply, wait);
+		// A later edit, or an undo back to what is shown, replaces a rebuild still waiting.
+		return () => {
+			if (rebuild) clearTimeout(rebuild);
+			rebuild = null;
+		};
 	});
 
 	$effect(() => {
