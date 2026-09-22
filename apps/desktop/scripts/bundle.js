@@ -4,6 +4,7 @@ import { execFileSync, execSync } from 'node:child_process';
 import {
 	cpSync,
 	existsSync,
+	linkSync,
 	mkdirSync,
 	readdirSync,
 	renameSync,
@@ -12,13 +13,22 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { NODE_VERSION, externalsIn, runtimeFilter, serverDependencies, targetPlatform, withDependencies } from './bundle-support.js';
+import {
+	NODE_VERSION,
+	bundledModel,
+	externalsIn,
+	runtimeFilter,
+	serverDependencies,
+	targetPlatform,
+	withDependencies
+} from './bundle-support.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const desktop = resolve(here, '..');
 const root = resolve(desktop, '../..');
 const modules = join(root, 'node_modules');
 const runtime = join(desktop, 'src-tauri/runtime/node_modules');
+const models = join(desktop, 'src-tauri/runtime/models');
 const binaries = join(desktop, 'src-tauri/binaries');
 
 /** Tauri requires the sidecar filename to end in the exact Rust target triple. */
@@ -148,6 +158,18 @@ if (!existsSync(join(runtime, 'onnxruntime-node'))) {
 	console.log(`author CLI  ${mb(sizeOf(join(runtime, cli)))}  ${cli}`);
 }
 
+// The models the app loads, linked where the volume allows rather than copied again.
+rmSync(models, { recursive: true, force: true });
+mkdirSync(models, { recursive: true });
+for (const name of readdirSync(join(root, 'models')).filter(bundledModel)) {
+	const from = join(root, 'models', name);
+	try {
+		linkSync(from, join(models, name));
+	} catch {
+		cpSync(from, join(models, name), { recursive: true, dereference: true });
+	}
+}
+
 console.log(`server      ${mb(sizeOf(build))}`);
 console.log(`runtime     ${mb(sizeOf(runtime))}`);
-console.log(`models      ${mb(sizeOf(join(root, 'models')))}`);
+console.log(`models      ${mb(sizeOf(models))}`);

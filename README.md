@@ -198,8 +198,9 @@ See [performance measurements and M1 Pro profiling](bench/lab/SEPARATION-PERFORM
 
 Analysis retains fallback paths when models are unavailable. Discogs-EffNet and ADTOF
 weights carry CC BY-NC-SA terms and the MDX23C DrumSep weights are non-commercial too; preserve
-their upstream licenses and export restrictions. Desktop builds bundle all of `models/`, so never
-distribute a build that contains them.
+their upstream licenses and export restrictions. Desktop builds bundle every model in `models/`
+the app loads (all but the MusicFM weights, which only the bench uses), so never distribute a
+build that contains them.
 
 The authoring API (`/api/author`) uses the Claude Agent SDK with local Claude authentication,
 or DeepSeek through `DEEPSEEK_API_KEY` or a key saved in `settings.json`. The app no longer

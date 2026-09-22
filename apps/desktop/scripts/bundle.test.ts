@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { externalsIn, runtimeFilter, serverDependencies, targetPlatform, withDependencies } from './bundle-support.js';
+import {
+	bundledModel,
+	externalsIn,
+	runtimeFilter,
+	serverDependencies,
+	targetPlatform,
+	withDependencies
+} from './bundle-support.js';
 
 const fixtures: string[] = [];
 afterEach(() => {
@@ -55,5 +62,12 @@ describe('desktop runtime packaging', () => {
 		cpSync(source, output, { recursive: true, filter: runtimeFilter(source, 'onnxruntime-node', targetPlatform('x86_64-pc-windows-msvc')) });
 		for (const file of keep) expect(existsSync(join(output, file)), file).toBe(true);
 		for (const file of omit) expect(existsSync(join(output, file)), file).toBe(false);
+	});
+
+	it('leaves the bench-only MusicFM weights out of the app', () => {
+		expect(['beat_this.onnx', 'striker.json', 'musicfm_encoder_int8.onnx', 'musicfm_config.json'].filter(bundledModel)).toEqual([
+			'beat_this.onnx',
+			'striker.json'
+		]);
 	});
 });
