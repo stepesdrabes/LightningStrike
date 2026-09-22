@@ -183,7 +183,7 @@ numbers; see that document.
 
 ## Current production state
 
-- Analysis **38**, show **34**, context **3**. No changes to lighting composition.
+- Analysis **39**, show **35**, context **3**.
 - `separation.ts`: HTDemucs, then MDX23C (`drumsep-mdx23c.onnx`) returning kick, snare, hi-hat
   and cymbal (ride/crash); the tom stem is dropped. CPU default, four threads per session, both
   CPU arenas off. Chunks: 343,980 samples for HTDemucs, 1,024 STFT frames (11.9 s) for MDX23C,

@@ -34,11 +34,11 @@ Every 12 V figure is `frame-wiring.md`'s, scaled by address count.
 
 | Branch | Rail | Feeds | Addr | idle | white 200 | white 255 | Fuse |
 |---|---|---|---|---|---|---|---|
-| **A** | CPU 8-pin, half 1 | reel 1 | 281 | 0.38 A | 3.4 A | **5.8 A** | **10 A** red |
-| **B** | CPU 8-pin, half 2 | reel 2 | 281 | 0.38 A | 3.4 A | **5.8 A** | **10 A** red |
+| **A** | CPU 8-pin, half 1 | reel 1 | 282 | 0.38 A | 3.4 A | **5.8 A** | **10 A** red |
+| **B** | CPU 8-pin, half 2 | reel 2 | 282 | 0.38 A | 3.4 A | **5.8 A** | **10 A** red |
 | **C** | Molex yellow | beam | 109 | 0.15 A | 1.3 A | **2.3 A** | **5 A** tan |
 | **5 V** | Molex red | Pico, chip | - | 0.25 A | 0.25 A | 0.25 A | **3 A** violet |
-| | | | **671** | **0.9 A** | **8.1 A** | **13.9 A** | |
+| | | | **673** | **0.9 A** | **8.1 A** | **13.9 A** | |
 
 **ATO blade fuses, not 5x20 glass.** Blade fuses are rated 32 V DC and their holders take 20 A;
 the KLS5-708B family tops out at 10 A, which puts a 10 A branch fuse exactly at its ceiling.
@@ -442,7 +442,7 @@ Off, then ground, then +12 V, then data, one run at a time. Then the board panel
 |---|---|
 | **Frame S** | exactly the bottom 3 m |
 | **Frame W** | exactly the left 2 m |
-| **Whole room** | all 671 |
+| **Whole room** | all 673 |
 
 `Frame S` showing the left 2 m plus 1 m of the bottom means the flip is backwards.
 

@@ -2,7 +2,7 @@
  * The packed DDP payload, the other half of `firmware/wire/src/pack.rs`. Both sides are pinned
  * to the same vector; change one and the other has to move with it.
  *
- * The fixture's 2013 bytes are split into colour planes, each plane is differenced along the
+ * The Frame's 2019 bytes are split into colour planes, each plane is differenced along the
  * strip, and the result is coded in nibbles. It is lossless, so the room shows the same bytes,
  * and it puts most frames in a single datagram rather than two that both have to arrive.
  */
