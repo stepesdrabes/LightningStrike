@@ -20,25 +20,16 @@ import {
 	isColourSource,
 	wrapDegrees
 } from '$lib/ambient.ts';
-import { isLocal } from '$lib/server/access.ts';
 import { settings } from '$lib/server/settings.ts';
 import type { ColourSource } from '@mv/core';
 import { authorModel, isEffort, type EffortLevel } from '@mv/author-ai';
 import type { RequestHandler } from './$types';
 
-/**
- * Settings reads and writes are loopback-only; responses expose key presence, never
- * credentials.
- */
-export const GET: RequestHandler = async (event) => {
-	if (!isLocal(event)) error(403, 'settings belong to the machine running the show');
-	return json(await settings.read());
-};
+/** Responses expose whether a key is set, never the key. */
+export const GET: RequestHandler = async () => json(await settings.read());
 
-export const PUT: RequestHandler = async (event) => {
-	if (!isLocal(event)) error(403, 'settings belong to the machine running the show');
-
-	const body = (await event.request.json()) as Writable;
+export const PUT: RequestHandler = async ({ request }) => {
+	const body = (await request.json()) as Writable;
 
 	const patch: Writable = {};
 	if (typeof body.deepseekApiKey === 'string') patch.deepseekApiKey = body.deepseekApiKey.trim();

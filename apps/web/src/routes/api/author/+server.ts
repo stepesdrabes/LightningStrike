@@ -11,16 +11,11 @@ import {
 import { analysisPath, findAudioFile, isValidId, readContext, readMeta, showPath } from '@mv/analysis';
 import { composeShow, formatFindings, lintShow } from '@mv/author-engine';
 import { reviseShow, type AuthorEvent } from '@mv/author-ai';
-import { isLocal } from '$lib/server/access.ts';
 import { settings } from '$lib/server/settings.ts';
 import type { RequestHandler } from './$types';
 
 /** Stream tool progress over SSE during long-running authoring. */
-export const GET: RequestHandler = async (event) => {
-	const { url, request } = event;
-
-	if (!isLocal(event)) error(403, 'authoring belongs to the machine running the show');
-
+export const GET: RequestHandler = async ({ url, request }) => {
 	const id = url.searchParams.get('id');
 	if (!id || !isValidId(id)) error(400, 'valid track id required');
 

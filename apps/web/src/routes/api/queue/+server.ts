@@ -1,6 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { markGridTrusted } from '@mv/analysis';
-import type { NewItem, QueueState } from '$lib/queueModel.ts';
+import { guestView, type NewItem, type QueueState } from '$lib/queueModel.ts';
 import { isLocal } from '$lib/server/access.ts';
 import { queue } from '$lib/server/queueStore.ts';
 import { enrichFromLibrary, fromRequest } from '$lib/server/queueAdd.ts';
@@ -9,7 +9,10 @@ import { runner } from '$lib/server/ingestRunner.ts';
 import { evening } from '$lib/server/evening/store.ts';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async () => json(await queue.ready());
+export const GET: RequestHandler = async (event) => {
+	const state = await queue.ready();
+	return json(isLocal(event) ? state : guestView(state));
+};
 
 interface Body {
 	action:
@@ -31,11 +34,8 @@ interface Body {
 	from?: string;
 }
 
-export const POST: RequestHandler = async (event) => {
-	// Guests reach the queue through /api/guest, which can only add and take back their own.
-	if (!isLocal(event)) error(403, 'use the guest page to add to this queue');
-
-	const body = (await event.request.json()) as Body;
+export const POST: RequestHandler = async ({ request }) => {
+	const body = (await request.json()) as Body;
 	let state: QueueState;
 
 	switch (body.action) {

@@ -1,7 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import { canGuestRemove, type NewItem } from '$lib/queueModel.ts';
 import { queue } from '$lib/server/queueStore.ts';
-import { enrichFromLibrary, fromRequest } from '$lib/server/queueAdd.ts';
+import { enrichFromLibrary, fromGuest } from '$lib/server/queueAdd.ts';
 import { autopilot } from '$lib/server/autopilot.ts';
 import { runner } from '$lib/server/ingestRunner.ts';
 import { room } from '$lib/server/room.ts';
@@ -41,15 +41,15 @@ export const POST: RequestHandler = async ({ request }) => {
 	}
 
 	if (body.action === 'add') {
-		const item = body.item;
-		if (!item?.source?.trim()) error(400, 'nothing to add');
+		const item = body.item ? fromGuest(body.item, name) : null;
+		if (!item) error(400, 'guests can add songs from search');
 		const now = await queue.ready();
 		const from = Math.max(0, now.items.findIndex((i) => i.key === now.currentKey));
-		if (item.trackId && now.items.slice(from).some((i) => i.trackId === item.trackId)) {
+		if (now.items.slice(from).some((i) => i.trackId === item.trackId)) {
 			error(409, 'That one is already coming up.');
 		}
 
-		const state = await queue.add(await enrichFromLibrary([fromRequest(item, name)]));
+		const state = await queue.add(await enrichFromLibrary([item]));
 		autopilot.handAdded();
 		void runner.pump();
 		return json(state);

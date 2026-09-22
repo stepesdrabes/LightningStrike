@@ -1,10 +1,8 @@
 import { error, json } from '@sveltejs/kit';
-import { isLocal } from '$lib/server/access.ts';
 import { evening } from '$lib/server/evening/store.ts';
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async (event) => {
-	if (!isLocal(event)) error(403, 'the evening belongs to the machine running it');
+export const GET: RequestHandler = async () => {
 	await evening.ready();
 	return json(evening.view());
 };
@@ -35,9 +33,8 @@ interface Body {
 	playing?: boolean;
 }
 
-export const POST: RequestHandler = async (event) => {
-	if (!isLocal(event)) error(403, 'the evening belongs to the machine running it');
-	const body = (await event.request.json()) as Body;
+export const POST: RequestHandler = async ({ request }) => {
+	const body = (await request.json()) as Body;
 	try {
 		switch (body.action) {
 			case 'open':

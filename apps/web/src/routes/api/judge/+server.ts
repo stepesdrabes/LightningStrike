@@ -1,5 +1,4 @@
 import { json } from '@sveltejs/kit';
-import { isLocal } from '$lib/server/access.ts';
 import {
 	clearJudgement,
 	readJudgements,
@@ -8,15 +7,10 @@ import {
 } from '$lib/server/judge.ts';
 import type { RequestHandler } from './$types';
 
-/** Judgements are loopback-only host input. */
-export const GET: RequestHandler = async (event) => {
-	if (!isLocal(event)) return new Response('forbidden', { status: 403 });
-	return json({ judgements: await readJudgements() });
-};
+export const GET: RequestHandler = async () => json({ judgements: await readJudgements() });
 
-export const POST: RequestHandler = async (event) => {
-	if (!isLocal(event)) return new Response('forbidden', { status: 403 });
-	const body = (await event.request.json()) as {
+export const POST: RequestHandler = async ({ request }) => {
+	const body = (await request.json()) as {
 		judgement?: Judgement;
 		trackId?: string;
 		clear?: boolean;

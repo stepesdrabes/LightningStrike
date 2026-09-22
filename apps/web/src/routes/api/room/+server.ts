@@ -1,5 +1,4 @@
 import { error, json } from '@sveltejs/kit';
-import { isLocal } from '$lib/server/access.ts';
 import { lanAddress, room } from '$lib/server/room.ts';
 import type { RequestHandler } from './$types';
 
@@ -21,9 +20,6 @@ export const GET: RequestHandler = async ({ url, request }) => {
 };
 
 export const POST: RequestHandler = async (event) => {
-	// Rotating is how an evening's access is ended, so it belongs to whoever is running it.
-	if (!isLocal(event)) error(403, 'only the machine running the show can rotate the code');
-
 	const body = (await event.request.json()) as { action: 'rotate' };
 	if (body.action !== 'rotate') error(400, 'unknown action');
 
