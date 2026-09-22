@@ -15,6 +15,11 @@ export function targetPlatform(triple) {
 	};
 }
 
+/** The MusicFM weights serve the bench's section experiments; nothing the app runs loads them. */
+export function bundledModel(name) {
+	return !name.startsWith('musicfm_');
+}
+
 export function externalsIn(dir, modules) {
 	const found = new Set();
 	const bare = /(?:require\(|import\(|from\s*)["']([^."'][^"']*)["']/g;
