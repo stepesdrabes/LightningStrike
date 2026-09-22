@@ -19,6 +19,27 @@ export function handMapFingerprint(hand: readonly HandSection[]): string {
 	return hand.map((s) => `${s.kind}@${Math.round(s.startTime * 100) / 100}`).join(',');
 }
 
+export interface HandMarks {
+	readonly sections?: readonly HandSection[];
+	readonly movements?: readonly number[];
+	readonly movementVetoes?: readonly number[];
+}
+
+/**
+ * What analysis stores and ingest compares, computed once for both, so a cached analysis is
+ * reused exactly when the marks it read are the marks on disk. Fewer than two sections are not
+ * a map and do not count.
+ */
+export function handMapStamp(marks: HandMarks): string | undefined {
+	const times = (xs: readonly number[] | undefined) =>
+		(xs ?? []).map((t) => Math.round(t * 100) / 100).join(',');
+	const sections = marks.sections && marks.sections.length >= 2 ? handMapFingerprint(marks.sections) : '';
+	const movements = times(marks.movements);
+	const vetoes = times(marks.movementVetoes);
+	if (!sections && !movements && !vetoes) return undefined;
+	return `${sections}${movements ? `;movements=${movements}` : ''}${vetoes ? `;vetoes=${vetoes}` : ''}`;
+}
+
 /** Keep persisted kinds as strings across vocabulary changes; unknown kinds use the neutral fallback. */
 function coerceKind(kind: string): SectionKind {
 	return (SECTION_KINDS as readonly string[]).includes(kind) ? (kind as SectionKind) : 'groove';

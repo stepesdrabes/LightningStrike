@@ -44,7 +44,7 @@ import {
 import { detectMeter, type Meter } from './downbeats.ts';
 import { barStartsAtCuts, deriveGridCuts, resyncedCuts } from './gridedits.ts';
 import { acceptedRestarts, barLinesFrom, openingRun, phaseRuns, phaseSegments, type PhaseRun } from './downbeatPhase.ts';
-import { handMapFingerprint, handSectionBars, type HandSection } from './handSections.ts';
+import { handMapStamp, handSectionBars, type HandSection } from './handSections.ts';
 import { judgeSeams, proposeSeams, repairGrid, witnessBarLines } from './movements.ts';
 import { applyHeadLabels, type SectionPosteriors } from './headLabels.ts';
 import { assessMetricalLevel } from './metricalLevel.ts';
@@ -927,7 +927,11 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		// Stamped from the map that was READ, not the table that was adopted: a map too
 		// degenerate to adopt has still been seen, and a stamp that only recorded successes
 		// would have ingest re-analysing that track on every play, forever.
-		handMap: input.handSections ? handMapFingerprint(input.handSections) : undefined,
+		handMap: handMapStamp({
+			sections: input.handSections,
+			movements: input.movements,
+			movementVetoes: input.movementVetoes
+		}),
 		movements,
 		moments: buildMoments(barRows, sections, movementBars),
 		beats: Array.from(grid.beats, round3),
