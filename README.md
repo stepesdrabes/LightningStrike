@@ -187,3 +187,8 @@ take them go out packed, losslessly, so The Frame arrives in one datagram instea
 See [firmware/FIRMWARE.md](firmware/FIRMWARE.md) for boards, wiring, the standalone lighting
 state machine, HTTP controls, calibration and flashing. The frame uses three SK6812 RGBWW
 data lines; shows use RGB while standalone lighting can use the warm-white emitters.
+
+## License
+
+LightningStrike is licensed under the [Apache License 2.0](LICENSE). Model weights keep their
+own licences, listed under [Cache and models](#cache-and-models); several are non-commercial.
