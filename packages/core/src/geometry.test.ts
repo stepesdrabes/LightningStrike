@@ -1,31 +1,37 @@
 import { describe, expect, it } from 'vitest';
+import type { PathLight } from './contracts/room.ts';
 import { stripAxis } from './dsl/space.ts';
 import { DEFAULT_ROOM, buildGeometry, roomRegions } from './geometry.ts';
 
 const g = buildGeometry(DEFAULT_ROOM);
-const f = DEFAULT_ROOM.fixture;
+const [ring, beam] = DEFAULT_ROOM.lights as PathLight[];
 
 describe('the frame', () => {
 	it('is the perimeter plus the crossbar, as built', () => {
 		expect(g.count).toBe(673);
 		expect(g.strips.map((s) => s.count)).toEqual([170, 112, 170, 112, 109]);
+		expect(g.spine).toBe(true);
 	});
 
 	it('takes its run lengths from counts, not from the drawn frame', () => {
 		const narrow = buildGeometry({
 			...DEFAULT_ROOM,
-			fixture: { ...f, counts: { along: 10, across: 4, beam: 3 } }
+			lights: [
+				{ ...ring, counts: [10, 4, 10, 4] },
+				{ ...beam, counts: [3] }
+			]
 		});
 		expect(narrow.strips.map((s) => s.count)).toEqual([10, 4, 10, 4, 3]);
 		expect(narrow.count).toBe(31);
-		expect(narrow.perimeterLength).toBeCloseTo(2 * (f.width + f.depth));
+		expect(narrow.perimeterLength).toBeCloseTo(10);
 	});
 
-	it('walks the ring counter-clockwise with no seam', () => {
-		const ring = g.strips.filter((s) => s.inPerimeter);
-		for (let i = 0; i < ring.length; i++) {
-			const next = ring[(i + 1) % ring.length];
-			expect(ring[i].end).toEqual(next.start);
+	it('walks the ring clockwise from the north-west with no seam', () => {
+		const walls = g.strips.filter((s) => s.inPerimeter);
+		expect(walls.map((s) => s.name)).toEqual(['Frame N', 'Frame E', 'Frame S', 'Frame W']);
+		for (let i = 0; i < walls.length; i++) {
+			const next = walls[(i + 1) % walls.length];
+			expect(walls[i].end).toEqual(next.start);
 		}
 	});
 
@@ -51,7 +57,7 @@ describe('the frame', () => {
 
 	it('is coplanar, which several effects are written around', () => {
 		for (let i = 0; i < g.count; i++) expect(g.z[i]).toBe(g.z[0]);
-		expect(g.z[0]).toBeCloseTo(f.height);
+		expect(g.z[0]).toBeCloseTo(2.4);
 	});
 });
 
@@ -62,12 +68,12 @@ describe('normalisation', () => {
 		expect(nxLo).toBeCloseTo(0, 2);
 		expect(nxHi).toBeCloseTo(1, 2);
 		expect(Math.max(...g.r)).toBeCloseTo(1, 2);
-		expect(g.extent).toBe(Math.max(f.width, f.depth));
+		expect(g.extent).toBe(3);
 	});
 
 	it('converts metres per second with the fixture pitch', () => {
-		expect(g.pitch).toBeCloseTo(1 / f.density);
-		expect(g.perimeterLength).toBeCloseTo(2 * (f.width + f.depth));
+		expect(g.pitch).toBeCloseTo(1 / 60);
+		expect(g.perimeterLength).toBeCloseTo(10);
 	});
 });
 
@@ -90,10 +96,10 @@ describe('regions', () => {
 	});
 
 	it('keeps a corner inside the ring rather than walking onto the beam', () => {
-		const beam = g.strips[4];
+		const beamStrip = g.strips[4];
 		for (const region of roomRegions(g).filter((r) => r.id.startsWith('corner-'))) {
 			for (const span of region.spans) {
-				expect(span.firstLed + span.ledCount).toBeLessThanOrEqual(beam.offset);
+				expect(span.firstLed + span.ledCount).toBeLessThanOrEqual(beamStrip.offset);
 			}
 		}
 	});

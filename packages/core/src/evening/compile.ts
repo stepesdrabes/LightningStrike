@@ -34,18 +34,21 @@ import { EVENING_VERSION } from '../contracts/evening.ts';
 import type { SectionKind } from '../contracts/frame.ts';
 import { SECTION_KINDS } from '../contracts/frame.ts';
 import type { ShowPalette } from '../contracts/palette.ts';
+import type { Geometry, RoomLayout } from '../contracts/room.ts';
 import type { GeneratedEffect, LayerSpec } from '../contracts/show.ts';
 import { AMBIENT_SCENES } from '../ambient/scenes.ts';
 import { NAMED_PALETTES } from '../color/named.ts';
 import { BUILT_IN_EFFECTS } from '../effects/index.ts';
-import { compileGenerated } from '../effects/sandbox.ts';
-import { buildGeometry, DEFAULT_ROOM } from '../geometry.ts';
+import { compileGenerated, roomKey } from '../effects/sandbox.ts';
+import { buildGeometry } from '../geometry.ts';
 import { DEFAULT_OPACITY } from '../mixer.ts';
 import { parseClock, parseLength } from './time.ts';
 
 export interface CompileOptions {
 	/** Resolve a narration path written relative to the evening file. */
 	resolvePath?: (path: string) => string;
+	/** The room the evening will play in, which its custom effects are gated for. */
+	room?: RoomLayout;
 }
 
 export interface CompileResult {
@@ -116,12 +119,13 @@ class Compiler {
 	private readonly effects = new Map<string, { source: unknown; gen: GeneratedEffect }>();
 	private readonly stings = new Map<string, { source: unknown; spec: StingSpec }>();
 	private readonly builtIn = new Map(BUILT_IN_EFFECTS.map((e) => [e.id, e]));
-	private readonly geometry = buildGeometry(DEFAULT_ROOM);
+	private readonly geometry: Geometry;
 	private segment: string | undefined;
 	private readonly options: CompileOptions;
 
 	constructor(options: CompileOptions) {
 		this.options = options;
+		this.geometry = buildGeometry(options.room);
 	}
 
 	error(message: string, line?: SourceLine): void {
@@ -866,7 +870,7 @@ class Compiler {
 		const outer = this.segment;
 		this.segment = undefined;
 		const compiled = compileGenerated(gen, this.geometry);
-		if (compiled.def) gen.admitted = true;
+		if (compiled.def) gen.admittedOn = roomKey(this.geometry);
 		for (const failure of compiled.failures) {
 			const hint = /is not defined/.test(failure)
 				? ' Inside create only the effect vocabulary and its own locals exist; move constants into create.'

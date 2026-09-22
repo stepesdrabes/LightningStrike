@@ -98,6 +98,9 @@ interface EffectTaste {
 	activity?: number;
 }
 
+/** Room structure an effect is drawn around. */
+export type RoomFeature = 'spine';
+
 export interface EffectDef {
 	readonly id: string;
 	readonly name: string;
@@ -105,5 +108,7 @@ export interface EffectDef {
 	readonly blurb: string;
 	readonly taste: EffectTaste;
 	readonly params: readonly ParamSpec[];
+	/** What a room must have for the effect to read; a room without it plays a substitute. */
+	readonly needs?: readonly RoomFeature[];
 	create(g: Geometry): Effect;
 }

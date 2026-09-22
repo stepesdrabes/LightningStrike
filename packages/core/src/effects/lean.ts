@@ -36,7 +36,7 @@ export const lean: EffectDef = {
 		// space.
 		const seats: number[] = [];
 		for (const s of g.strips) {
-			if (!s.inPerimeter) continue;
+			if (!s.inPerimeter || s.count === 0) continue;
 			seats.push(g.perim[s.offset + (s.count >> 1)]);
 		}
 		seats.sort((a, b) => a - b);

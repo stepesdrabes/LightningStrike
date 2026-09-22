@@ -11,6 +11,7 @@ export const counterweight: EffectDef = {
 	name: 'Counterweight',
 	role: 'transient',
 	blurb: 'Kicks land ON the beam: it sags dark at the impact and tips light out to its ends.',
+	needs: ['spine'],
 	taste: {
 		energy: 3,
 		sections: ['groove', 'verse', 'breakdown', 'drop', 'chorus'],
@@ -52,8 +53,8 @@ export const counterweight: EffectDef = {
 				const gain = 0.5 + p.intensity * 0.9;
 				const n = home.length;
 				for (let k = 0; k < n; k++) {
-					// 0 at the centre, 1 at either end.
-					const x = Math.abs(k / (n - 1) - 0.5) * 2;
+					// 0 at the centre, 1 at either end; a single LED is its own centre.
+					const x = n > 1 ? Math.abs(k / (n - 1) - 0.5) * 2 : 0;
 					// Displace centre light toward the ends to make the sag read physically.
 					const dip = depth * Math.pow(1 - x, 1.6);
 					const tip = depth * Math.pow(x, 2.2) * 2;

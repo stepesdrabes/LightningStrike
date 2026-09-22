@@ -66,7 +66,7 @@ function capture(analysis: TrackAnalysis, show: Show, fps: number, frozen = fals
 			peak = Math.max(peak, value);
 		}
 		levels.push(mean(l));
-		lamps.push(Math.max(...d.bounce));
+		lamps.push(Math.max(...d.lamps));
 		bytes.push(Uint8Array.from(d.bytes));
 		if (f.snare) snares.push(i / fps);
 	}

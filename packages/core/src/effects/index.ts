@@ -1,4 +1,5 @@
 import type { EffectDef } from '../contracts/effect.ts';
+import type { Geometry } from '../contracts/room.ts';
 
 import { ambientDrift } from './ambientDrift.ts';
 import { anthemWash } from './anthemWash.ts';
@@ -196,13 +197,20 @@ export const BUILT_IN_EFFECTS: readonly EffectDef[] = [
 /** Mutable so a show's generated effects can join the vocabulary at load time. */
 export class EffectRegistry {
 	private readonly byId = new Map<string, EffectDef>();
+	/** What plays in place of an effect drawn around structure this room lacks. */
+	private substitutes = new Map<string, EffectDef>();
 
 	constructor(defs: readonly EffectDef[] = BUILT_IN_EFFECTS) {
 		for (const d of defs) this.byId.set(d.id, d);
 	}
 
 	get(id: string): EffectDef | null {
-		return this.byId.get(id) ?? null;
+		return this.substitutes.get(id) ?? this.byId.get(id) ?? null;
+	}
+
+	/** Shows name effects, not rooms, so a room swaps in its own nearest relative at play time. */
+	fitTo(g: Geometry): void {
+		this.substitutes = substitutesFor([...this.byId.values()], g);
 	}
 
 	add(def: EffectDef): void {
@@ -214,4 +222,41 @@ export class EffectRegistry {
 		const builtIn = new Set(BUILT_IN_EFFECTS.map((d) => d.id));
 		for (const id of [...this.byId.keys()]) if (!builtIn.has(id)) this.byId.delete(id);
 	}
+}
+
+function fits(def: EffectDef, g: Geometry): boolean {
+	return (def.needs ?? []).every((need) => need !== 'spine' || g.spine);
+}
+
+/**
+ * For each effect the room cannot draw, the playable effect of the same role that reads most
+ * like it: the same drum, character and weight first, then energy, sections and motion.
+ */
+export function substitutesFor(defs: readonly EffectDef[], g: Geometry): Map<string, EffectDef> {
+	const out = new Map<string, EffectDef>();
+	const playable = defs.filter((d) => fits(d, g));
+	for (const def of defs) {
+		if (fits(def, g)) continue;
+		let best: EffectDef | null = null;
+		let bestScore = Infinity;
+		for (const c of playable) {
+			if (c.role !== def.role) continue;
+			const [a, b] = [def.taste, c.taste];
+			const shared = a.sections.filter((s) => b.sections.includes(s)).length;
+			const score =
+				(a.kit === b.kit ? 0 : 2) +
+				(a.character === b.character ? 0 : 3) +
+				(a.peakReserved === b.peakReserved ? 0 : 3) +
+				(Boolean(a.hitOnly) === Boolean(b.hitOnly) ? 0 : 3) +
+				Math.abs(a.energy - b.energy) +
+				(a.sections.length - shared) * 0.5 +
+				Math.abs((a.activity ?? 0) - (b.activity ?? 0));
+			if (score < bestScore || (score === bestScore && best && c.id < best.id)) {
+				best = c;
+				bestScore = score;
+			}
+		}
+		if (best) out.set(def.id, best);
+	}
+	return out;
 }

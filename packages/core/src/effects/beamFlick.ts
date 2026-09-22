@@ -20,6 +20,7 @@ export const beamFlick: EffectDef = {
 	name: 'Beam Flick',
 	role: 'transient',
 	blurb: 'The ceiling beam answers: kicks streak centre-out, snares flick ends-in.',
+	needs: ['spine'],
 	taste: {
 		energy: 3,
 		sections: ['groove', 'breakdown', 'build', 'drop'],

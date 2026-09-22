@@ -14,6 +14,7 @@ export const crownSpill: EffectDef = {
 	name: 'Crown Spill',
 	role: 'accent',
 	blurb: 'Ceiling ignites on the downbeat, spilling down the walls a beat behind.',
+	needs: ['spine'],
 	taste: {
 		energy: 4,
 		// Eligible for both drop and chorus arrivals.

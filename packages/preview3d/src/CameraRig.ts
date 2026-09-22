@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { RoomSpec } from '@mv/core';
+import type { RoomLayout } from '@mv/core';
 import type { CameraView, Viewport } from './types.ts';
 
 /** Scratch for the framing maths, which runs on every resize. Module-level, so it allocates once. */
@@ -50,7 +50,7 @@ export class CameraRig {
 	readonly camera: THREE.PerspectiveCamera;
 	readonly controls: OrbitControls;
 
-	private readonly spec: RoomSpec;
+	private readonly spec: RoomLayout;
 	private canvas = { width: 1, height: 1 };
 	private viewport: Viewport = { x: 0, y: 0, width: 1, height: 1 };
 
@@ -62,7 +62,7 @@ export class CameraRig {
 	private readonly toOrbit = new THREE.Quaternion();
 	private readonly fromOrbit = new THREE.Quaternion();
 
-	constructor(canvas: HTMLElement, spec: RoomSpec) {
+	constructor(canvas: HTMLElement, spec: RoomLayout) {
 		this.spec = spec;
 
 		// Both placeholders: `applyProjection` derives them from the viewport on first resize.

@@ -69,8 +69,14 @@ export class RoomDirector {
 	readonly frame: Float32Array;
 	/** What the preview and the wire read. */
 	readonly bytes: Uint8Array;
-	/** The Bounce Lamp's one pixel, gamma-encoded like `bytes`. A second fixture, not a tail. */
-	readonly bounce = new Uint8Array(3);
+	/**
+	 * One pixel per summary lamp, gamma-encoded like `bytes`: the room reduced to one colour.
+	 * Separate fixtures, not a tail of the room.
+	 */
+	readonly lamps: Uint8Array;
+	/** Each lamp's own brightness, scaling its delivered light as `brightness` does the room's. */
+	readonly lampLevels: Float32Array;
+	private readonly lampPixels: Uint8Array[];
 
 	private readonly idle = new IdleClock();
 	private readonly slew: BrightnessSlew;
@@ -114,7 +120,8 @@ export class RoomDirector {
 	private unity = 0;
 	private pendingExposure = 0;
 
-	constructor(geometry: Geometry, registry = new EffectRegistry()) {
+	constructor(geometry: Geometry, registry = new EffectRegistry(), lamps = 1) {
+		registry.fitTo(geometry);
 		this.showMix = new Mixer(geometry);
 		this.ambientMix = new Mixer(geometry);
 		this.player = new ShowPlayer(this.showMix, registry);
@@ -124,6 +131,9 @@ export class RoomDirector {
 		this.held = new Float32Array(geometry.count * 3);
 		this.bytes = new Uint8Array(geometry.count * 3);
 		this.slew = new BrightnessSlew(geometry.count * 3);
+		this.lamps = new Uint8Array(lamps * 3);
+		this.lampLevels = new Float32Array(lamps).fill(MASTER);
+		this.lampPixels = Array.from({ length: lamps }, (_, i) => this.lamps.subarray(i * 3, i * 3 + 3));
 	}
 
 	/** 0 while the show has the room, 1 while ambient does. Eased, so it reads as the picture. */
@@ -141,12 +151,10 @@ export class RoomDirector {
 
 	/**
 	 * Server-only fixture controls; the browser keeps unity for a readable preview.
-	 * Brightness scales after gamma; contrast changes the exponent. Lamp brightness is
-	 * independent.
+	 * Brightness scales after gamma; contrast changes the exponent.
 	 */
 	brightness = MASTER;
 	contrast = GAMMA;
-	lampBrightness = MASTER;
 
 	set ambientSettings(s: AmbientSettings) {
 		this.ambient.settings = s;
@@ -341,7 +349,10 @@ export class RoomDirector {
 		compressHighlights(this.frame);
 		quantize(this.frame, this.bytes, this.contrast, this.brightness);
 		// Reduce the delivered level after the output chain.
-		this.lamp.render(this.frame, f, this.accent(w), dt, this.bounce, this.lampBrightness);
+		const pixels = this.lampPixels;
+		if (pixels.length === 0) return;
+		this.lamp.render(this.frame, f, this.accent(w), dt, pixels[0], this.lampLevels[0]);
+		for (let i = 1; i < pixels.length; i++) quantize(this.lamp.light, pixels[i], GAMMA, this.lampLevels[i]);
 	}
 }
 

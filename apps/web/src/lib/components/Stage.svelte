@@ -37,7 +37,7 @@
 	function mount(canvas: HTMLCanvasElement) {
 		const v = viz;
 		if (!v) return;
-		const r = new RoomRenderer(canvas, v.geometry, { spec: v.spec });
+		const r = new RoomRenderer(canvas, v.model);
 
 		r.bloomIntensity = MAX_BLOOM;
 		renderer = r;
@@ -116,7 +116,7 @@
 	<div class="overlay bottom">
 		<span class="mono subtle">
 			{viz
-				? `${viz.geometry.count} px · ${viz.spec.fixture.width}x${viz.spec.fixture.depth} m frame`
+				? `${viz.geometry.count} px · ${viz.model.layout.width}x${viz.model.layout.depth} m room`
 				: ''}
 		</span>
 		<span class="spacer"></span>

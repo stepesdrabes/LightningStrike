@@ -93,8 +93,8 @@ export interface GeneratedEffect {
 	params: ParamSpec[];
 	/** Plain JavaScript declaring create(g), evaluated with the injected DSL. */
 	source: string;
-	/** Set by the evening loader once this exact effect has passed the gate on the room geometry. */
-	admitted?: boolean;
+	/** Which room this exact effect passed the gate in, set by the evening loader. */
+	admittedOn?: string;
 }
 
 export interface Show {

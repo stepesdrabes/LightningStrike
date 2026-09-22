@@ -12,6 +12,7 @@ export const snareWhip: EffectDef = {
 	name: 'Snare Whip',
 	role: 'transient',
 	blurb: 'A whip-crack streak down the beam on every snare. The backbeat, visible.',
+	needs: ['spine'],
 	taste: {
 		energy: 3,
 		sections: ['groove', 'breakdown', 'build', 'drop'],

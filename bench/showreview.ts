@@ -55,7 +55,7 @@ function capture(a: TrackAnalysis, s: Show, at: number, seconds: number, Directo
 		if ((n - first) % sampleEvery !== 0) continue;
 		const k = (n - first) / sampleEvery;
 		bytes.set(d.bytes, k * stride);
-		bytes.set(d.bounce, k * stride + g.count * 3);
+		bytes.set(d.lamps, k * stride + g.count * 3);
 		marks.push([f.kickEnv, f.snareEnv, f.hatEnv, f.barIndex]);
 		let sum = 0;
 		for (let p = 0; p < d.bytes.length; p += 3) {
@@ -64,7 +64,7 @@ function capture(a: TrackAnalysis, s: Show, at: number, seconds: number, Directo
 		}
 		last = Uint8Array.from(d.bytes);
 		levels.push(sum / g.count);
-		lamp.push(Math.max(...d.bounce));
+		lamp.push(Math.max(...d.lamps));
 	}
 	const mean = (values: number[]) => values.reduce((sum, x) => sum + x, 0) / Math.max(1, values.length);
 	const jumps: number[] = [];

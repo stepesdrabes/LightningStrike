@@ -1,4 +1,22 @@
-export type { Geometry, RoomRegion, RoomSpec, StripSpec } from './contracts/room.ts';
+export type {
+	Corner,
+	Geometry,
+	LampLight,
+	Light,
+	LightPixels,
+	LightRole,
+	MatrixLight,
+	Mount,
+	PathLight,
+	RingLight,
+	RoomLayout,
+	RoomModel,
+	RoomRegion,
+	StripSpec,
+	Vec3,
+	Wall,
+	Wiring
+} from './contracts/room.ts';
 export type { SectionKind, ShowFrame } from './contracts/frame.ts';
 export {
 	BAND_EDGES_HZ,
@@ -30,7 +48,9 @@ export type { Cue, CuePalette, GeneratedEffect, Hit, LayerSpec, Show } from './c
 export { HIT_RULES, SHOW_VERSION, STROBE_MAX_HZ, strobePerBeat } from './contracts/show.ts';
 export { gridTrust } from './trust.ts';
 export type { LedFrame, LedSink, LedSinkStats } from './contracts/sink.ts';
-export { DEFAULT_ROOM, buildGeometry, roomRegions } from './geometry.ts';
+export { DEFAULT_ROOM, buildGeometry, roomModel, roomRegions } from './geometry.ts';
+export { ledCount, matrixOrder, mountNormal, planeOf } from './room/lights.ts';
+export { toShowFrame } from './room/model.ts';
 export { hsv2rgb, rampHueFor } from './color/hsv.ts';
 export { lerpHue, makePalette, sample, swapped, wrapHue } from './color/palette.ts';
 export { NAMED_PALETTES, type NamedPalette } from './color/named.ts';
@@ -60,7 +80,7 @@ export type { ColourSource } from './ambient/colour.ts';
 export { BUILT_IN_EFFECTS, EffectRegistry } from './effects/index.ts';
 export { quietFrames, scriptFrames } from './effects/gate.ts';
 export { measureEffect, type EffectCharacter } from './effects/probe.ts';
-export { compileGenerated, gateVerdicts, rememberGateVerdicts } from './effects/sandbox.ts';
+export { compileGenerated, gateVerdicts, rememberGateVerdicts, roomKey } from './effects/sandbox.ts';
 export { GAMMA, MASTER } from './output.ts';
 export type {
 	BlockSpec,
