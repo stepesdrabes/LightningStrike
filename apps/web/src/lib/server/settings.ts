@@ -1,15 +1,8 @@
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CACHE_DIR } from '@mv/analysis';
-import {
-	DEFAULT_OUTPUT_FPS,
-	isContrast,
-	isOutputBrightness,
-	isOutputFps,
-	isWireProtocol,
-	type WireProtocol
-} from '$lib/hardware.ts';
-import { DEFAULT_AMBIENT, GAMMA, MASTER, type AmbientSettings, type ColourSource } from '@mv/core';
+import { isContrast, isOutputBrightness, isOutputFps } from '$lib/hardware.ts';
+import { DEFAULT_AMBIENT, type AmbientSettings, type ColourSource } from '@mv/core';
 import {
 	AUTHOR_MODELS,
 	CLAUDE,
@@ -28,6 +21,25 @@ const SETTINGS_FILE = join(CACHE_DIR, 'settings.json');
 
 type Listener = (settings: PublicSettings) => void;
 
+/** How output was set before it belonged to a room. Read once, to carry into the first room. */
+const LEGACY_OUTPUT = [
+	'outputOffsetMs',
+	'outputFps',
+	'outputBrightness',
+	'outputContrast',
+	'outputLampBrightness',
+	'outputProtocol'
+] as const;
+
+export interface LegacyOutput {
+	offsetMs?: number;
+	fps?: number;
+	brightness?: number;
+	contrast?: number;
+	lampBrightness?: number;
+	protocol?: string;
+}
+
 interface SettingsFile {
 	/**
 	 * Store the key for desktop launches without shell credentials; cache is ignored and settings
@@ -39,20 +51,6 @@ interface SettingsFile {
 	/** One of `AUTHOR_MODELS`. The backend is whichever one it belongs to. */
 	authorModel?: string;
 	authorEffort?: EffortLevel;
-	/** Installation output lead, milliseconds; positive compensates for transport/controller delay. */
-	outputOffsetMs?: number;
-	/** Frames a second on the wire. Belongs to the fixture, like the trim above it. */
-	outputFps?: number;
-	/**
-	 * Installation tone curve: brightness dims after gamma; contrast sets the exponent and hit
-	 * separation.
-	 */
-	outputBrightness?: number;
-	outputContrast?: number;
-	/** The lamp is a different fixture in a different corner, so it dims on its own. */
-	outputLampBrightness?: number;
-	/** Which wire the fixture is addressed on. Belongs to the installation too. */
-	outputProtocol?: WireProtocol;
 	/** Persist the host's radio preference in settings, outside the shared queue payload. */
 	autopilot?: boolean;
 	/** Calm scenes instead of the authored show, while a track is playing. */
@@ -79,12 +77,6 @@ export interface PublicSettings {
 	authorEffort: EffortLevel;
 	/** Send the model catalogue from the server so newly supported choices need no client copy. */
 	authorModels: readonly AuthorModel[];
-	outputOffsetMs: number;
-	outputFps: number;
-	outputBrightness: number;
-	outputContrast: number;
-	outputLampBrightness: number;
-	outputProtocol: WireProtocol;
 	autopilot: boolean;
 	lounge: boolean;
 	rest: boolean;
@@ -93,13 +85,25 @@ export interface PublicSettings {
 
 class Settings {
 	private cached: SettingsFile | null = null;
+	private exists = false;
 	private readonly listeners = new Set<Listener>();
+	/** Writes land one after another, so two at once cannot race on the file. */
+	private writing: Promise<unknown> = Promise.resolve();
 
 	private async load(): Promise<SettingsFile> {
 		if (this.cached) return this.cached;
+		let raw: string;
 		try {
-			this.cached = JSON.parse(await readFile(SETTINGS_FILE, 'utf8')) as SettingsFile;
+			raw = await readFile(SETTINGS_FILE, 'utf8');
 		} catch {
+			return (this.cached = {});
+		}
+		this.exists = true;
+		try {
+			this.cached = JSON.parse(raw) as SettingsFile;
+		} catch {
+			// Kept beside the fresh file rather than written over, so nothing in it is lost.
+			await rename(SETTINGS_FILE, `${SETTINGS_FILE}.unreadable-${Date.now()}`).catch(() => {});
 			this.cached = {};
 		}
 		return this.cached;
@@ -122,19 +126,8 @@ class Settings {
 			authorModel: model.id,
 			authorEffort: file.authorEffort ?? DEFAULT_EFFORT,
 			authorModels: AUTHOR_MODELS,
-			outputOffsetMs: file.outputOffsetMs ?? 0,
-			outputFps: isOutputFps(file.outputFps) ? file.outputFps : DEFAULT_OUTPUT_FPS,
-			outputBrightness: isOutputBrightness(file.outputBrightness)
-				? file.outputBrightness
-				: MASTER,
-			outputContrast: isContrast(file.outputContrast) ? file.outputContrast : GAMMA,
-			outputLampBrightness: isOutputBrightness(file.outputLampBrightness)
-				? file.outputLampBrightness
-				: MASTER,
-			outputProtocol: isWireProtocol(file.outputProtocol) ? file.outputProtocol : 'ddp',
 			autopilot: file.autopilot ?? false,
 			lounge: file.lounge ?? false,
-
 			rest: file.rest ?? true,
 			ambient: {
 				source: file.ambientColour ?? DEFAULT_AMBIENT.source,
@@ -151,6 +144,29 @@ class Settings {
 		return (await this.load()).autopilot ?? false;
 	}
 
+	/**
+	 * Output as it was set before rooms, or null for an installation that never ran. Taken once:
+	 * the fields are dropped from the file as they move into the first room.
+	 */
+	async takeLegacyOutput(): Promise<LegacyOutput | null> {
+		const file = (await this.load()) as SettingsFile & Record<string, unknown>;
+		if (!this.exists) return null;
+		const legacy: LegacyOutput = {
+			offsetMs: typeof file.outputOffsetMs === 'number' ? file.outputOffsetMs : undefined,
+			fps: isOutputFps(file.outputFps) ? file.outputFps : undefined,
+			brightness: isOutputBrightness(file.outputBrightness) ? file.outputBrightness : undefined,
+			contrast: isContrast(file.outputContrast) ? file.outputContrast : undefined,
+			lampBrightness: isOutputBrightness(file.outputLampBrightness) ? file.outputLampBrightness : undefined,
+			protocol: typeof file.outputProtocol === 'string' ? file.outputProtocol : undefined
+		};
+		if (LEGACY_OUTPUT.some((key) => key in file)) {
+			const rest = { ...file };
+			for (const key of LEGACY_OUTPUT) delete rest[key];
+			await this.write(rest);
+		}
+		return legacy;
+	}
+
 	/** Notify the server renderer directly so settings apply without an open browser. */
 	subscribe(listener: Listener): () => void {
 		this.listeners.add(listener);
@@ -161,16 +177,23 @@ class Settings {
 		const next = { ...(await this.load()), ...patch };
 		// An empty string clears the key; an absent patch field preserves it.
 		if (patch.deepseekApiKey === '') delete next.deepseekApiKey;
-		this.cached = next;
-
-		await mkdir(CACHE_DIR, { recursive: true });
-		const tmp = `${SETTINGS_FILE}.${process.pid}.tmp`;
-		await writeFile(tmp, JSON.stringify(next, null, '\t'), { mode: 0o600 });
-		await rename(tmp, SETTINGS_FILE);
-
+		await this.write(next);
 		const published = await this.read();
 		for (const listener of this.listeners) listener(published);
 		return published;
+	}
+
+	private write(next: SettingsFile): Promise<void> {
+		this.cached = next;
+		const done = this.writing.then(async () => {
+			await mkdir(CACHE_DIR, { recursive: true });
+			const tmp = `${SETTINGS_FILE}.${process.pid}.tmp`;
+			await writeFile(tmp, JSON.stringify(next, null, '\t'), { mode: 0o600 });
+			await rename(tmp, SETTINGS_FILE);
+			this.exists = true;
+		});
+		this.writing = done.catch(() => {});
+		return done;
 	}
 
 	/** Environment credentials override the stored key. */

@@ -11,6 +11,7 @@ import { EMPTY_QUEUE, currentItem, jumpTo, playNext, type QueueItem, type QueueS
 import { narrationDetached } from '../ingestDetached.ts';
 import { prepareTrack, runner } from '../ingestRunner.ts';
 import { queue } from '../queueStore.ts';
+import { rooms } from '../rooms.ts';
 import { eveningGate } from './gate.ts';
 import { libraryTracks } from './library.ts';
 import { loadEvening } from './loader.ts';
@@ -319,7 +320,7 @@ class EveningStore {
 		this.loading = true;
 		this.publish();
 		await this.scanFolder();
-		const result = await loadEvening(file);
+		const result = await loadEvening(file, { room: (await rooms.active()).layout });
 		this.loading = false;
 		const broken = !result.script || result.findings.some((f) => f.severity === 'error');
 		if (this.live && broken && this.data.script) {

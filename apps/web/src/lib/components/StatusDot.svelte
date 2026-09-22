@@ -1,10 +1,10 @@
 <script lang="ts">
-	import type { LinkState } from '$lib/hardware.ts';
+	import type { ControllerState } from '$lib/controllers.ts';
 
-	let { state, size = 7 }: { state: LinkState; size?: number } = $props();
+	let { state, size = 7 }: { state: ControllerState; size?: number } = $props();
 </script>
 
-<!-- Pulse only for live streaming, distinguishing reachable boards from active output. -->
+<!-- Pulse only for confirmed delivery; a receiver that never reports back is sent to, steadily. -->
 <span class="dot {state}" style:width={`${size}px`} style:height={`${size}px`}></span>
 
 <style>
@@ -30,6 +30,9 @@
 	.streaming {
 		background: var(--ok);
 		animation: breathe 1.6s ease-in-out infinite;
+	}
+	.sending {
+		background: var(--ok);
 	}
 	.degraded {
 		background: var(--warn);

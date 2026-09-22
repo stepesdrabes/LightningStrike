@@ -1,20 +1,4 @@
-/** Tolerant ASCII firmware parsers; missing optional fields remain undefined. */
-
-/**
- * Frame and bounce roles receive 673 and one pixel respectively, with separate addresses and
- * state.
- */
-export type DeviceRole = 'frame' | 'bounce';
-export const DEVICE_ROLES: readonly DeviceRole[] = ['frame', 'bounce'];
-
-export const DEVICE_NAMES: Record<DeviceRole, string> = {
-	frame: 'The Frame',
-	bounce: 'Bounce Lamp'
-};
-
-export function isDeviceRole(v: unknown): v is DeviceRole {
-	return DEVICE_ROLES.includes(v as DeviceRole);
-}
+/** Tolerant ASCII parsers for LightningStrike firmware; missing optional fields stay undefined. */
 
 /** Answer to a discovery query. Available whether or not anything is streaming. */
 export interface DeviceIdentity {
@@ -53,14 +37,13 @@ export function lightsRoom(identity: DeviceIdentity | null): boolean {
 
 /**
  * The board cuts each frame into its runs at the lengths it was built with, so a build made for
- * a different room does not reject the stream: it lands the far side of the fixture on the wrong
- * LEDs, and no counter downstream can see that. A region changes what the board is fed, never
- * what it was built to hold, so compare against the room. Firmware too old to report a capacity
- * says 0 and is left alone.
+ * a different layout does not reject the stream: it lands the far side of the fixture on the
+ * wrong LEDs, and no counter downstream can see that. Firmware too old to report a capacity says
+ * 0 and is left alone.
  */
-export function capacityFault(identity: DeviceIdentity | null, room: number): string | null {
-	if (identity === null || identity.pixels === 0 || identity.pixels === room) return null;
-	return `Built for ${identity.pixels} pixels, but the room is ${room}. Reflash it, or the far side of the fixture lights the wrong LEDs.`;
+export function capacityFault(identity: DeviceIdentity | null, sent: number): string | null {
+	if (identity === null || identity.pixels === 0 || identity.pixels === sent) return null;
+	return `Built for ${identity.pixels} pixels, but this room sends it ${sent}. Reflash it for this layout, or the far side lights the wrong LEDs.`;
 }
 
 /** One second of what actually arrived, reported by the board itself. */
@@ -147,14 +130,6 @@ export function parseTelemetry(line: string, at: number): DeviceTelemetry | null
 	};
 }
 
-export type LinkState =
-	| 'unconfigured'
-	| 'searching'
-	| 'offline'
-	| 'online'
-	| 'streaming'
-	| 'degraded';
-
 /**
  * Wire/audio trim, milliseconds. Positive compensates for transport delay; negative allows
  * wired LEDs with slower audio.
@@ -180,33 +155,11 @@ export function isContrast(v: unknown): v is number {
 	return typeof v === 'number' && Number.isFinite(v) && v >= CONTRAST_MIN && v <= CONTRAST_MAX;
 }
 
-/** DDP minimises packet overhead; sACN supports controllers that require it. */
-export type WireProtocol = 'ddp' | 'sacn';
-export const WIRE_PROTOCOLS = ['ddp', 'sacn'] as const;
-
-export function isWireProtocol(v: unknown): v is WireProtocol {
-	return WIRE_PROTOCOLS.includes(v as WireProtocol);
-}
-
 export const OUTPUT_FPS_CHOICES = [30, 60, 120] as const;
 export const DEFAULT_OUTPUT_FPS = 60;
 
 export function isOutputFps(v: unknown): v is number {
 	return OUTPUT_FPS_CHOICES.includes(v as (typeof OUTPUT_FPS_CHOICES)[number]);
-}
-
-export interface HardwareStatus {
-	role: DeviceRole;
-	host: string;
-	/** RoomRegion id for frame only; all covers the fixture. Bounce derives one colour instead. */
-	region: string;
-	state: LinkState;
-	streaming: boolean;
-	identity: DeviceIdentity | null;
-	telemetry: DeviceTelemetry | null;
-	/** Round trip of the last discovery answer, ms. */
-	latencyMs: number | null;
-	message: string;
 }
 
 /**

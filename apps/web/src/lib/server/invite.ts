@@ -4,7 +4,8 @@ import { networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { CACHE_DIR } from '@mv/analysis';
 
-const ROOM_FILE = join(CACHE_DIR, 'room.json');
+/** The file keeps the name it had, so a code already handed out stays good. */
+const INVITE_FILE = join(CACHE_DIR, 'room.json');
 
 /** Human-readable Base32 room code excludes ambiguous characters. */
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
@@ -45,12 +46,12 @@ export function lanAddress(): string | null {
 	return candidates[0].address;
 }
 
-interface RoomFile {
+interface InviteFile {
 	token: string;
 }
 
 /** A rotatable shared room code limits guest access; holders retain access until rotation. */
-class Room {
+class Invite {
 	private loading: Promise<string> | null = null;
 
 	async currentToken(): Promise<string> {
@@ -60,12 +61,12 @@ class Room {
 
 	private async load(): Promise<string> {
 		try {
-			const raw = JSON.parse(await readFile(ROOM_FILE, 'utf8')) as RoomFile;
+			const raw = JSON.parse(await readFile(INVITE_FILE, 'utf8')) as InviteFile;
 			if (typeof raw.token === 'string' && raw.token.length > 0) {
 				return raw.token;
 			}
 		} catch {
-			// No room yet, or one this version cannot read.
+			// No code yet, or one this version cannot read.
 		}
 		return this.persist(mintToken());
 	}
@@ -78,9 +79,9 @@ class Room {
 
 	private async persist(token: string): Promise<string> {
 		await mkdir(CACHE_DIR, { recursive: true });
-		const tmp = `${ROOM_FILE}.${process.pid}.tmp`;
-		await writeFile(tmp, JSON.stringify({ token } satisfies RoomFile, null, '\t'), { mode: 0o600 });
-		await rename(tmp, ROOM_FILE);
+		const tmp = `${INVITE_FILE}.${process.pid}.tmp`;
+		await writeFile(tmp, JSON.stringify({ token } satisfies InviteFile, null, '\t'), { mode: 0o600 });
+		await rename(tmp, INVITE_FILE);
 		return token;
 	}
 
@@ -94,4 +95,4 @@ class Room {
 	}
 }
 
-export const room = new Room();
+export const invite = new Invite();

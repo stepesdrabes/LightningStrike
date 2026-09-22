@@ -1,22 +1,22 @@
 <script lang="ts">
-	import { room } from '$lib/room.svelte.ts';
+	import { invite } from '$lib/invite.svelte.ts';
 	import Dialog from '$lib/ui/Dialog.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import QrCode from './QrCode.svelte';
 </script>
 
-<Dialog open={room.open} onclose={() => (room.open = false)} labelledBy="invite-title">
+<Dialog open={invite.open} onclose={() => (invite.open = false)} labelledBy="invite-title">
 	<div class="big">
 		<h2 id="invite-title">Scan to add tracks</h2>
-		{#if room.info?.url}
-			<QrCode value={room.info.url} size={264} />
-			<p class="url mono">{room.info.url}</p>
+		{#if invite.info?.url}
+			<QrCode value={invite.info.url} size={264} />
+			<p class="url mono">{invite.info.url}</p>
 			<p class="note">
 				Anyone on this network who scans this can search and add to the queue, and take back
 				what they added. Rotating the code shuts out everyone who has it.
 			</p>
-			<Button variant="outline" size="sm" disabled={room.rotating} onclick={() => room.rotate()}>
+			<Button variant="outline" size="sm" disabled={invite.rotating} onclick={() => invite.rotate()}>
 				<Icon name="retry" size={14} />
 				New code
 			</Button>

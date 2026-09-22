@@ -1,8 +1,7 @@
 <script lang="ts">
-	import type { LinkState } from '$lib/hardware.ts';
+	import type { ControllerState } from '$lib/controllers.ts';
 
-	let { state }: { state: LinkState } = $props();
-	const width = 168;
+	let { state, width = 168 }: { state: ControllerState; width?: number } = $props();
 
 	/**
 	 * Match firmware heartbeat_task: solid while connecting, brief one-second heartbeat when

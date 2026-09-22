@@ -92,7 +92,7 @@ describe('loading an evening file', () => {
 
 	it('stops a file that never finishes loading', async () => {
 		const file = write('loop.ts', "import { evening } from 'lightningstrike';\nwhile (true) {}\nexport default evening('x', { segments: [] });\n");
-		const result = await loadEvening(file, 1500);
+		const result = await loadEvening(file, { timeoutMs: 1500 });
 		expect(result.script).toBeNull();
 		expect(result.findings[0].message).toContain('endless loop');
 	});

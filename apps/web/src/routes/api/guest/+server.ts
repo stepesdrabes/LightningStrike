@@ -4,7 +4,7 @@ import { queue } from '$lib/server/queueStore.ts';
 import { enrichFromLibrary, fromGuest } from '$lib/server/queueAdd.ts';
 import { autopilot } from '$lib/server/autopilot.ts';
 import { runner } from '$lib/server/ingestRunner.ts';
-import { room } from '$lib/server/room.ts';
+import { invite } from '$lib/server/invite.ts';
 import type { RequestHandler } from './$types';
 
 /**
@@ -29,7 +29,7 @@ function cleanName(name: string | undefined): string {
 export const POST: RequestHandler = async ({ request }) => {
 	const body = (await request.json()) as Body;
 
-	if (!(await room.accepts(body.token))) {
+	if (!(await invite.accepts(body.token))) {
 		error(403, 'that code is no longer valid; scan the QR again');
 	}
 

@@ -1,5 +1,11 @@
-import { redirect, type Handle } from '@sveltejs/kit';
+import { redirect, type Handle, type ServerInit } from '@sveltejs/kit';
 import { crossSite, guestAllowed, isHostPage, isLocal } from '$lib/server/access.ts';
+import { boot } from '$lib/server/output.ts';
+
+/** The room that plays comes up with the server, so it can light itself before any page opens. */
+export const init: ServerInit = async () => {
+	await boot();
+};
 
 const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
 

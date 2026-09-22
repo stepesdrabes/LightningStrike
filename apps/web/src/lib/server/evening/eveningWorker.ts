@@ -2,14 +2,19 @@ import { registerHooks } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parentPort, workerData } from 'node:worker_threads';
-import { compileEvening, gateVerdicts, rememberGateVerdicts, type Finding } from '@mv/core';
+import { compileEvening, gateVerdicts, rememberGateVerdicts, type Finding, type RoomLayout } from '@mv/core';
 import * as api from '@mv/core/evening';
 
 /**
  * Load one evening file in isolation: its only imports are `lightningstrike` and its own
  * relative files, and the loader bounds how long and how much memory it may take.
  */
-const { file, nonce, verdicts } = workerData as { file: string; nonce: string; verdicts?: [string, string[]][] };
+const { file, nonce, verdicts, room } = workerData as {
+	file: string;
+	nonce: string;
+	verdicts?: [string, string[]][];
+	room?: RoomLayout;
+};
 rememberGateVerdicts(verdicts ?? []);
 
 const SPECIFIER = 'lightningstrike';
@@ -65,7 +70,8 @@ try {
 	url.searchParams.set('v', nonce);
 	const module = (await import(url.href)) as { default?: unknown };
 	const { script, findings } = compileEvening(module.default, {
-		resolvePath: (path) => resolve(dirname(file), path)
+		resolvePath: (path) => resolve(dirname(file), path),
+		room
 	});
 	parentPort?.postMessage({ type: 'done', script, findings, verdicts: gateVerdicts() });
 } catch (error) {

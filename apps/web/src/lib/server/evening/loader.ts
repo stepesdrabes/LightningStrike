@@ -3,7 +3,7 @@ import { stat } from 'node:fs/promises';
 import { dirname, extname, join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { workspaceRoot } from '@mv/analysis';
-import type { EveningScript, Finding } from '@mv/core';
+import type { EveningScript, Finding, RoomLayout } from '@mv/core';
 
 /** Long enough for a large evening's effect gates, short enough that a hang is reported. */
 const LOAD_TIMEOUT_MS = 60_000;
@@ -31,8 +31,14 @@ let loads = 0;
 /** Gate verdicts from earlier loads: saving a file again re-gates only the effects that changed. */
 let verdicts: [string, string[]][] = [];
 
-/** Load, validate and compile an evening file without letting it near the server's own thread. */
-export async function loadEvening(file: string, timeoutMs = LOAD_TIMEOUT_MS): Promise<LoadResult> {
+/**
+ * Load, validate and compile an evening file without letting it near the server's own thread.
+ * Its custom effects are gated for `room`, the Frame's when none is given.
+ */
+export async function loadEvening(
+	file: string,
+	{ room, timeoutMs = LOAD_TIMEOUT_MS }: { room?: RoomLayout; timeoutMs?: number } = {}
+): Promise<LoadResult> {
 	const fail = (message: string, mtimeMs = 0): LoadResult => ({
 		file,
 		script: null,
@@ -56,7 +62,7 @@ export async function loadEvening(file: string, timeoutMs = LOAD_TIMEOUT_MS): Pr
 	return new Promise<LoadResult>((resolve) => {
 		let settled = false;
 		const worker = new Worker(entry, {
-			workerData: { file, nonce, verdicts },
+			workerData: { file, nonce, verdicts, room },
 			execArgv: [],
 			resourceLimits: { maxOldGenerationSizeMb: LOAD_MEMORY_MB }
 		});

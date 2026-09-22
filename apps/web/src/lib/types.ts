@@ -1,5 +1,4 @@
 import type { AmbientSettings, ColourSource } from '@mv/core';
-import type { WireProtocol } from '$lib/hardware.ts';
 
 /**
  * Mirror @mv/analysis TrackMeta: SvelteKit blocks client imports from server modules, even for
@@ -81,18 +80,6 @@ export interface Settings {
 	authorModel: string;
 	authorEffort: AuthorEffort;
 	authorModels: readonly AuthorModelInfo[];
-	/** How far ahead of the audio the strips run, milliseconds. Positive is early. */
-	outputOffsetMs: number;
-	/** Frames a second on the wire. One of `OUTPUT_FPS_CHOICES`. */
-	outputFps: number;
-	/** Master dimmer, `OUTPUT_BRIGHTNESS_MIN`..1. After gamma, so it costs no contrast. */
-	outputBrightness: number;
-	/** The tone curve's exponent, `CONTRAST_MIN`..`CONTRAST_MAX`. */
-	outputContrast: number;
-	/** The lamp's own dimmer, same range as the room's. */
-	outputLampBrightness: number;
-	/** Which wire the fixture is addressed on. */
-	outputProtocol: WireProtocol;
 	/** Whether the radio keeps the queue from running out. */
 	autopilot: boolean;
 	/** Calm scenes instead of the authored show, while a track is playing. */
@@ -111,12 +98,6 @@ export interface SettingsPatch {
 	deepseekApiKey?: string;
 	authorModel?: string;
 	authorEffort?: AuthorEffort;
-	outputOffsetMs?: number;
-	outputFps?: number;
-	outputBrightness?: number;
-	outputContrast?: number;
-	outputLampBrightness?: number;
-	outputProtocol?: WireProtocol;
 	autopilot?: boolean;
 	lounge?: boolean;
 	rest?: boolean;
