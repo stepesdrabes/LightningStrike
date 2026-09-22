@@ -1,7 +1,7 @@
 # LightningStrike
 
 Music-driven lighting for a room, with a 3D preview and matching output to real fixtures.
-The room has a 671-pixel ceiling frame and a one-pixel Bounce Lamp. Local audio analysis
+The room has a 673-pixel ceiling frame and a one-pixel Bounce Lamp. Local audio analysis
 finds the musical grid; a deterministic engine composes the show. An evening file scripts a
 whole night around it: songs, pauses, light moments, transitions and custom effects.
 
@@ -20,7 +20,7 @@ in Node over DDP or sACN; the browser supplies the audio playback position.
   own unplayed additions. Queue management, authoring and hardware controls stay with the host.
 
 Space toggles playback; arrows seek, with Shift for larger jumps. Cmd/Ctrl-K opens search,
-`[` and `]` toggle the side panels, and `L` toggles Lounge.
+`[` and `]` toggle the side panels, `L` toggles Lounge and `J` opens the Judge panel.
 
 ## Evenings
 

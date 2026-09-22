@@ -177,7 +177,7 @@ class Settings {
 	async provider(id: BackendId): Promise<{ provider: AuthorProvider } | { error: string }> {
 		if (id === 'claude') return { provider: CLAUDE };
 		const key = process.env.DEEPSEEK_API_KEY || (await this.load()).deepseekApiKey;
-		if (!key) return { error: 'no DeepSeek API key is stored; add one in the show panel' };
+		if (!key) return { error: 'no DeepSeek API key; set DEEPSEEK_API_KEY before starting the app' };
 		return { provider: deepseek(key) };
 	}
 

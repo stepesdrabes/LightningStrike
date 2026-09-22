@@ -7,7 +7,7 @@ const INFO = {
 	ip: '192.168.0.9',
 	firmware: '0.3.0',
 	uptimeS: 1,
-	pixels: 671,
+	pixels: 673,
 	ddpPort: 4048,
 	statsPort: 4049,
 	leds: 'sk6812',
