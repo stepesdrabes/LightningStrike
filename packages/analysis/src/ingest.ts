@@ -11,7 +11,7 @@ import { decodeAudio, downloadAudio, probe, resamplePcm, type ProbeResult } from
 import { enrichTrack } from './enrich.ts';
 import { mapGenres } from './genreMap.ts';
 import { handMapGrid, type DrawingGrid } from './gridedits.ts';
-import { handMapFingerprint, type HandSection } from './handSections.ts';
+import { handMapStamp, type HandSection } from './handSections.ts';
 import { medianPeriod } from './metricalLevel.ts';
 import { KICK_CLAIMING_FAMILIES, familyCorroborated, loudKickRate } from './vocabulary.ts';
 import { NO_TRANSCRIBER, readDrumEvidence, writeDrumEvidence, type DrumEvidence } from './drumEvidenceCache.ts';
@@ -149,16 +149,6 @@ async function readHandMap(
 	} catch {
 		return null;
 	}
-}
-
-/** Cache stamp includes section and movement marks because either changes analysis. */
-async function handMapStamp(id: string): Promise<string | undefined> {
-	const map = await readHandMap(id);
-	if (!map) return undefined;
-	const list = (xs: number[]) => xs.map((t) => Math.round(t * 100) / 100).join(',');
-	const movements = list(map.movements);
-	const vetoes = list(map.movementVetoes);
-	return `${handMapFingerprint(map.sections)}${movements ? `;movements=${movements}` : ''}${vetoes ? `;vetoes=${vetoes}` : ''}`;
 }
 
 /**
@@ -559,7 +549,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	}
 	if (!opts.force && !relevel) {
 		// Invalidate stale versions and changed hand maps even when their JSON shape still looks compatible.
-		if (cached && cached.version === ANALYSIS_VERSION && cached.handMap === (await handMapStamp(id))
+		if (cached && cached.version === ANALYSIS_VERSION
+			&& cached.handMap === handMapStamp((await readHandMap(id)) ?? {})
 			&& (!cached.striker || strikerCurrent(cached.striker, await readInstalledStriker()))) {
 			let [, context] = await metadata;
 			log('cached');

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { handMapFingerprint, handSectionBars } from './handSections.ts';
+import { handMapFingerprint, handMapStamp, handSectionBars, type HandMarks } from './handSections.ts';
 
 describe('handSectionBars', () => {
 	/** Bars every two seconds, so a bar line sits on every even second. */
@@ -162,5 +162,51 @@ describe('handMapFingerprint', () => {
 		expect(handMapFingerprint([map[0], { kind: 'drop', startTime: 37.4249 }])).toBe(
 			handMapFingerprint(map)
 		);
+	});
+});
+
+describe('handMapStamp', () => {
+	const sections = [
+		{ kind: 'groove', startTime: 1.8 },
+		{ kind: 'drop', startTime: 37.42 }
+	];
+
+	/** What ingest reads from the judge file, and what analysis is handed, for the same marks. */
+	function bothSides(read: { sections: typeof sections; movements: number[]; movementVetoes: number[] }) {
+		const handed: HandMarks = {
+			...(read.sections.length >= 2 ? { sections: read.sections } : {}),
+			...(read.movements.length > 0 ? { movements: read.movements } : {}),
+			...(read.movementVetoes.length > 0 ? { movementVetoes: read.movementVetoes } : {})
+		};
+		return [handMapStamp(read), handMapStamp(handed)];
+	}
+
+	it('keeps the stamp a sections-only map always had, so those caches stay valid', () => {
+		expect(handMapStamp({ sections })).toBe(handMapFingerprint(sections));
+	});
+
+	it('agrees between what ingest reads and what analysis stores', () => {
+		const cases = [
+			{ sections, movements: [], movementVetoes: [] },
+			{ sections, movements: [91.25], movementVetoes: [] },
+			{ sections: sections.slice(0, 1), movements: [91.25], movementVetoes: [] },
+			{ sections: [], movements: [], movementVetoes: [140.5] }
+		];
+		for (const marks of cases) {
+			const [read, stored] = bothSides(marks);
+			expect(read).toBeDefined();
+			expect(stored).toBe(read);
+		}
+	});
+
+	it('changes when a song mark or a veto moves', () => {
+		const base = handMapStamp({ sections, movements: [91.25] });
+		expect(handMapStamp({ sections, movements: [92.25] })).not.toBe(base);
+		expect(handMapStamp({ sections, movements: [91.25], movementVetoes: [10] })).not.toBe(base);
+	});
+
+	it('is absent when nothing usable was drawn', () => {
+		expect(handMapStamp({})).toBeUndefined();
+		expect(handMapStamp({ sections: sections.slice(0, 1) })).toBeUndefined();
 	});
 });
