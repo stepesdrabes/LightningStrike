@@ -96,6 +96,19 @@ DSL exports are also vocabulary for generated effects, even without a built-in c
 Update `renderDslReference()` in [catalog.ts](packages/author-ai/src/catalog.ts) when that
 public vocabulary changes.
 
+## Rooms
+
+A room is a `RoomLayout` in `packages/core/src/contracts/room.ts`: its size, front wall and
+lights. `roomModel()` derives the show's geometry and each light's pixel map from it; effects
+see only the geometry, so any show plays in any room. The Frame (`DEFAULT_ROOM`) is the room
+the shows were tuned in. A change to how layouts become geometry must leave the Frame's output
+byte-identical; `bench/parity.ts` compares it against a checkout of the previous core.
+
+Saved rooms, controllers and wiring belong to `apps/web` (`lib/rooms.ts`,
+`lib/server/rooms.ts`). The server renders the room that plays and assembles each controller's
+frame from the lights wired to it (`lib/wiring.ts`); the browser preview follows the same
+layout.
+
 ## Contracts and cache versions
 
 `TrackAnalysis`, `TrackContext`, `Show` and `ShowFrame` in `packages/core/src/contracts/`
@@ -119,6 +132,8 @@ dependencies. Keep them synchronized instead of importing server code into the b
 ## Style and interface
 
 - TypeScript strict mode, tabs, single quotes, semicolons, roughly 100 columns.
+- The evening worker runs core under Node's type stripping: no enums, namespaces or
+  constructor parameter properties there.
 - No em-dashes in code, comments, documentation or commit messages.
 - Effect imports group contracts, colour, DSL, then helpers.
 - No `text-transform: uppercase`; write labels in the intended case.
