@@ -22,6 +22,7 @@ export const crossbeam: EffectDef = {
 	name: 'Crossbeam',
 	role: 'transient',
 	blurb: 'The kick trades light from the perimeter to the beam and back.',
+	needs: ['spine'],
 	taste: {
 		energy: 3,
 		sections: ['groove', 'breakdown', 'build', 'drop'],

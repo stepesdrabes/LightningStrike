@@ -15,6 +15,7 @@ export const kitStage: EffectDef = {
 	name: 'Kit Stage',
 	role: 'transient',
 	blurb: 'Kick in the corners, snare mid-beam, hats at its ends - each voice keeps its seat.',
+	needs: ['spine'],
 	taste: {
 		energy: 3,
 		sections: ['groove', 'verse', 'breakdown', 'drop', 'chorus'],

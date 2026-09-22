@@ -55,8 +55,25 @@ export function rememberGateVerdicts(entries: readonly (readonly [string, readon
 	}
 }
 
+const roomKeys = new WeakMap<Geometry, string>();
+
+/**
+ * Tells rooms apart as the gate sees them: the same effect can pass in one and go dark or throw
+ * in another, so a verdict or an admission holds only for the room it was reached in.
+ */
+export function roomKey(g: Geometry): string {
+	let key = roomKeys.get(g);
+	if (key !== undefined) return key;
+	let where = 0;
+	for (let i = 0; i < g.count; i++) where += g.x[i] * 31 + g.y[i] * 17 + g.z[i] * 7;
+	const strips = g.strips.map((s) => `${s.count}${s.inPerimeter ? 'r' : ''}`).join('.');
+	key = `${g.count}:${strips}:${g.spine ? 's' : ''}:${Math.round(where * 1000)}`;
+	roomKeys.set(g, key);
+	return key;
+}
+
 function gateVerdict(def: EffectDef, gen: GeneratedEffect, g: Geometry): string[] {
-	const key = JSON.stringify([g.count, gen.role, gen.params, gen.source]);
+	const key = JSON.stringify([roomKey(g), gen.role, gen.params, gen.source]);
 	const known = verdicts.get(key);
 	if (known) return known;
 	const gate = runGate(def, g);
@@ -124,8 +141,8 @@ export function compileGenerated(gen: GeneratedEffect, g: Geometry): CompileResu
 		}
 	};
 
-	// The evening loader gated this effect in its worker; replaying the journey would only stall.
-	const gateFailures = gen.admitted ? [] : gateVerdict(def, gen, g);
+	// The evening loader gated this effect for this room in its worker; replaying would only stall.
+	const gateFailures = gen.admittedOn === roomKey(g) ? [] : gateVerdict(def, gen, g);
 	if (gateFailures.length > 0) return { def: null, failures: gateFailures };
 
 	return { def: guarded(def), failures: [] };

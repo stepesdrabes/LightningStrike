@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Geometry, RoomSpec } from '@mv/core';
+import type { RoomModel } from '@mv/core';
 import { LedTexture } from '../LedTexture.ts';
 import { buildBounceLamp } from './bounceLamp.ts';
 import { buildStrips } from './fixture.ts';
@@ -19,22 +19,22 @@ export class RoomScene {
 
 	private readonly surfaces: SurfaceFactory;
 
-	constructor(geometry: Geometry, spec: RoomSpec) {
-		this.led = new LedTexture(geometry);
-		this.surfaces = new SurfaceFactory(this.led, geometry, spec);
+	constructor(model: RoomModel) {
+		this.led = new LedTexture(model.geometry);
+		this.surfaces = new SurfaceFactory(this.led, model);
 
 		this.scene.background = new THREE.Color(0x05050a);
-		this.scene.add(...buildRoom(spec, this.surfaces));
-		this.scene.add(buildBounceLamp(spec, this.surfaces));
-		this.scene.add(...buildStrips(geometry, this.led));
+		this.scene.add(...buildRoom(model.layout, this.surfaces));
+		if (model.lamps[0]) this.scene.add(buildBounceLamp(model.lamps[0], this.surfaces));
+		this.scene.add(...buildStrips(model.geometry, this.led));
 	}
 
-	/** bounce is the lamp's separate gamma-encoded RGB pixel. */
-	update(bytes: Uint8Array, bounce?: Uint8Array): void {
+	/** `lamps` holds each summary lamp's gamma-encoded RGB pixel. */
+	update(bytes: Uint8Array, lamps?: Uint8Array): void {
 		this.led.upload(bytes);
-		if (bounce) {
+		if (lamps && lamps.length >= 3) {
 			const g = LAMP_PREVIEW_GAIN / 255;
-			this.surfaces.lampColor.value.setRGB(bounce[0] * g, bounce[1] * g, bounce[2] * g);
+			this.surfaces.lampColor.value.setRGB(lamps[0] * g, lamps[1] * g, lamps[2] * g);
 		}
 	}
 

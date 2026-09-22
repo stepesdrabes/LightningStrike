@@ -4,10 +4,11 @@ import {
 	SLOT,
 	compileGenerated,
 	EffectRegistry,
-	buildGeometry,
+	roomModel,
 	sample,
 	type AmbientSettings,
 	type Geometry,
+	type RoomModel,
 	type RoomSync,
 	type Show,
 	type ShowFrame,
@@ -39,10 +40,10 @@ const FADE_OUT = Float32Array.from({ length: FADE_POINTS }, (_, i) => Math.cos((
 
 /** Keep the render hot path unproxied; publish only the small Readout at 20 Hz. */
 export class Viz {
-	readonly geometry: Geometry = buildGeometry(DEFAULT_ROOM);
+	readonly model: RoomModel = roomModel(DEFAULT_ROOM);
+	readonly geometry: Geometry = this.model.geometry;
 	readonly registry = new EffectRegistry();
-	readonly director = new RoomDirector(this.geometry, this.registry);
-	readonly spec = DEFAULT_ROOM;
+	readonly director = new RoomDirector(this.geometry, this.registry, this.model.lamps.length);
 
 	roomRenderer: RoomRenderer | null = null;
 	analysis: TrackAnalysis | null = null;
@@ -440,7 +441,7 @@ export class Viz {
 			lounge: this.lounge,
 			rest: this.rest
 		});
-		this.roomRenderer?.render(this.director.bytes, dt, this.director.bounce);
+		this.roomRenderer?.render(this.director.bytes, dt, this.director.lamps);
 		this.publishReadout(dt, frame);
 	}
 

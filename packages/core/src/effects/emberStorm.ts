@@ -74,7 +74,8 @@ export const emberStorm: EffectDef = {
 				flickPos += (f.dt / f.beatPeriod) * (1.5 + tension * 2.5) * motion;
 
 				const at = tint.update(spectralTilt(f), f.beat, f.dt, f.beatPeriod);
-				const count = Math.floor(MAX_EMBERS * (0.4 + p.count * 0.6));
+				// No more embers than ring pixels, or a tiny ring piles them onto each other.
+				const count = Math.min(ring.length, Math.floor(MAX_EMBERS * (0.4 + p.count * 0.6)));
 				const gain = (0.16 + p.intensity * 0.34) * clamp(0.3 + tension * 0.7) * trailDeposit(f.dt, release);
 				// Use one hue family so overlapping trails cannot mix undeclared colours.
 				const coal = paletteArc(at);

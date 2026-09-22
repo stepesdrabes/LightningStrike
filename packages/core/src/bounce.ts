@@ -11,8 +11,11 @@ const PASSAGE_TAU = 2;
 
 /** Accent-coloured passage glow with kick articulation, in linear light. */
 export class BounceLamp {
-	/** Authoring domain, one pixel. Gamma is applied on the way out, as it is for the room. */
-	private readonly frame = new Float32Array(3);
+	/**
+	 * Authoring domain, one pixel. Gamma is applied on the way out, as it is for the room, so
+	 * any number of lamps can each quantize it at their own level.
+	 */
+	readonly light = new Float32Array(3);
 	private readonly hist = new Uint32Array(LEVEL_BINS);
 	private readonly passage = new Follower(PASSAGE_TAU, PASSAGE_TAU);
 
@@ -37,8 +40,8 @@ export class BounceLamp {
 		const bed = lit > 0 ? FLOOR + (1 - FLOOR) * passage * BED : 0;
 		const level = bed + (1 - bed) * hit;
 		if (peak <= 0 || bed <= 0) {
-			this.frame.fill(0);
-			quantize(this.frame, out, GAMMA, master);
+			this.light.fill(0);
+			quantize(this.light, out, GAMMA, master);
 			return;
 		}
 
@@ -46,14 +49,14 @@ export class BounceLamp {
 		// hue.
 		// Invert gamma here because quantize applies it at the output boundary.
 		const scale = Math.pow(level, 1 / GAMMA) / peak;
-		this.frame[0] = tint[0] * scale;
-		this.frame[1] = tint[1] * scale;
-		this.frame[2] = tint[2] * scale;
-		quantize(this.frame, out, GAMMA, master);
+		this.light[0] = tint[0] * scale;
+		this.light[1] = tint[1] * scale;
+		this.light[2] = tint[2] * scale;
+		quantize(this.light, out, GAMMA, master);
 	}
 
 	reset(): void {
-		this.frame.fill(0);
+		this.light.fill(0);
 		this.passage.reset();
 	}
 }

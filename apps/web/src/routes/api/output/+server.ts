@@ -105,7 +105,7 @@ class Output {
 		// Update the director directly so running output follows settings immediately.
 		this.director.brightness = s.outputBrightness;
 		this.director.contrast = s.outputContrast;
-		this.director.lampBrightness = s.outputLampBrightness;
+		this.director.lampLevels[0] = s.outputLampBrightness;
 		// Restart the clock only when FPS changes; unrelated settings must not drop a frame.
 		if (s.outputFps !== this.fps) {
 			this.fps = s.outputFps;
@@ -200,7 +200,7 @@ class Output {
 				presentAtMs: now
 			});
 			this.bounce?.send({
-				rgb: this.director.bounce,
+				rgb: this.director.lamps,
 				dt,
 				frameId: this.frames,
 				presentAtMs: now

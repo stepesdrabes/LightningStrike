@@ -168,7 +168,7 @@ it('no effect measures a pixel span off the drawn frame', () => {
 	// Same runs and same drawing; only the declared LED/m differs, which moves pitch alone.
 	const loose = buildGeometry({
 		...DEFAULT_ROOM,
-		fixture: { ...DEFAULT_ROOM.fixture, density: 47 }
+		lights: DEFAULT_ROOM.lights.map((l) => (l.kind === 'path' ? { ...l, density: 47 } : l))
 	});
 	const frames = scriptFrames().filter((_, i) => i % 11 === 0);
 

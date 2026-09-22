@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import type { BloomEffect, EffectComposer } from 'postprocessing';
-import type { Geometry } from '@mv/core';
+import type { RoomModel } from '@mv/core';
 import { CameraRig } from './CameraRig.ts';
 import { createComposer } from './post.ts';
 import { RoomScene } from './scene/RoomScene.ts';
-import type { CameraView, RoomRendererOptions, Viewport } from './types.ts';
+import type { CameraView, Viewport } from './types.ts';
 
 /**
  * Cap bloom device pixels to preserve 60 fps; its soft glow benefits less from retina
@@ -21,7 +21,7 @@ export class RoomRenderer {
 	private readonly bloom: BloomEffect;
 	private disposed = false;
 
-	constructor(canvas: HTMLCanvasElement, geometry: Geometry, opts: RoomRendererOptions) {
+	constructor(canvas: HTMLCanvasElement, model: RoomModel) {
 		this.renderer = new THREE.WebGLRenderer({
 			canvas,
 			antialias: false,
@@ -34,8 +34,8 @@ export class RoomRenderer {
 		this.renderer.toneMapping = THREE.NoToneMapping;
 		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-		this.room = new RoomScene(geometry, opts.spec);
-		this.rig = new CameraRig(canvas, opts.spec);
+		this.room = new RoomScene(model);
+		this.rig = new CameraRig(canvas, model.layout);
 
 		const post = createComposer(this.renderer, this.room.scene, this.rig.camera);
 		this.composer = post.composer;
@@ -65,9 +65,9 @@ export class RoomRenderer {
 		this.composer.setSize(width, height);
 	}
 
-	render(bytes: Uint8Array, dt: number, bounce?: Uint8Array): void {
+	render(bytes: Uint8Array, dt: number, lamps?: Uint8Array): void {
 		if (this.disposed) return;
-		this.room.update(bytes, bounce);
+		this.room.update(bytes, lamps);
 		this.rig.update(dt);
 		this.composer.render(dt);
 	}
