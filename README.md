@@ -1,18 +1,20 @@
 # LightningStrike
 
 Music-driven lighting for a room, with a 3D preview and matching output to real fixtures.
-The room has a 673-pixel ceiling frame and a one-pixel Bounce Lamp. Local audio analysis
-finds the musical grid; a deterministic engine composes the show. An evening file scripts a
-whole night around it: songs, pauses, light moments, transitions and custom effects.
+It was made in a room with a 673-pixel ceiling frame and a one-pixel Bounce Lamp, and plays
+in any room you describe: strips, loops, rings, panels and lamps, driven by WLED, by DDP,
+sACN or Art-Net controllers, or by LightningStrike boards. Local audio analysis finds the
+musical grid; a deterministic engine composes the show. An evening file scripts a whole night
+around it: songs, pauses, light moments, transitions and custom effects.
 
-The preview and hardware use the same renderer and encoded pixels. Hardware output runs
-in Node over DDP or sACN; the browser supplies the audio playback position.
+The preview and hardware use the same renderer and encoded pixels. Hardware output runs in
+Node; the browser supplies the audio playback position.
 
 ## Use it
 
 - Search YouTube Music, paste a supported URL, or paste a local audio path.
 - Queue tracks, reorder them, or let radio keep the queue supplied.
-- Watch the room preview, inspect the arrangement, and configure hardware in the app.
+- Watch the room preview, inspect the arrangement, and set up rooms and their lights.
 - Use Lounge for ambient lighting over music. When playback stops, the room fades into
   ambient scenes; stale browser sync also lets the hardware return to ambient.
 - Open an evening from the right-hand rail, rehearse it, then run the night from there.
@@ -21,6 +23,32 @@ in Node over DDP or sACN; the browser supplies the audio playback position.
 
 Space toggles playback; arrows seek, with Shift for larger jumps. Cmd/Ctrl-K opens search,
 `[` and `]` toggle the side panels, `L` toggles Lounge and `J` opens the Judge panel.
+
+## Rooms and lights
+
+The room chip in the top bar switches rooms, lights or darkens the one that plays, and opens
+the setup. Rooms are saved; one plays at a time, and **Export** and **Import** carry a room
+between machines. A new installation starts with a preview-only room: the Frame's lights,
+wired to nothing, so the show has somewhere to play before your own lights are set up.
+
+- The plan shows the room from above, or any wall from inside it. Drag a light to move it,
+  drag a strip's points to reshape it, and double-click a run to add a point. **Draw** places
+  a strip point by point; click its first point to close a loop. Points snap to a 5 cm grid and
+  line up with their neighbours and the walls; hold Alt to place them freely. Arrow keys nudge,
+  Delete removes, Cmd/Ctrl-D duplicates and Cmd/Ctrl-Z undoes.
+- A strip keeps its LEDs per metre: moving a point gives its runs the LEDs their new length
+  holds. Rings, panels and lamps are sized in the inspector, or by their handle on the plan.
+- Every light is part of the show's ring, a spine through the middle, or a field lit by where
+  its LEDs are. **Auto** decides from the shapes: the closed loops become the ring, or else the
+  open runs, and a straight run across the middle is the spine.
+- **Find controllers** listens for WLED, Art-Net and LightningStrike boards; a found one joins
+  the room with a light shaped from what it reports. Others are added by address. A light is
+  wired to a controller from a first pixel, entered at its start or its end.
+- **Find** pulses a light, **Walk** runs a dot from its first LED (green) to its last (red),
+  and **Colours** steps red, green, blue and white. Each shows in the preview, and on the room
+  while it is lit.
+- Output settings belong to the room: level, punch (the tone curve), the lead over the audio,
+  the frame rate, and whether it lights up when the app opens.
 
 ## Evenings
 
@@ -109,7 +137,7 @@ from the browser.
 | `packages/author-engine` | Deterministic show composition and linting |
 | `packages/author-ai` | AI authoring, tools and effect catalog |
 | `packages/preview3d` | three.js room preview |
-| `packages/transport` | DDP and sACN output |
+| `packages/transport` | DDP, sACN and Art-Net output |
 | `firmware` | Frame, bench fixture and Bounce Lamp firmware |
 | `bench` | Measurement, corpus and model-export tools |
 
@@ -179,10 +207,13 @@ opens it; shows it designed earlier keep playing.
 
 ## Hardware
 
-DDP over UDP port 4048 is the default output; sACN is also available. The Bounce Lamp uses
-its own one-pixel stream. Gamma is applied at the host's byte-encoding boundary, so receivers
-must preserve those values without applying gamma again. Frames to a board that says it can
-take them go out packed, losslessly, so The Frame arrives in one datagram instead of two.
+WLED, DDP and LightningStrike controllers are sent DDP over UDP port 4048; sACN (E1.31) and
+Art-Net carry 170 pixels a universe from the first one set. Each controller gets its own frame,
+assembled from the lights wired to it, and the Bounce Lamp is a one-pixel controller of its own.
+Gamma is applied at the host's byte-encoding boundary, so receivers must preserve those values
+without applying gamma again; keep WLED's realtime gamma correction off, as it is by default.
+Frames to a board that says it can take them go out packed, losslessly, so The Frame arrives in
+one datagram instead of two.
 
 See [firmware/FIRMWARE.md](firmware/FIRMWARE.md) for boards, wiring, the standalone lighting
 state machine, HTTP controls, calibration and flashing. The frame uses three SK6812 RGBWW
