@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PathLight } from './contracts/room.ts';
 import { stripAxis } from './dsl/space.ts';
-import { DEFAULT_ROOM, buildGeometry, roomRegions } from './geometry.ts';
+import { DEFAULT_ROOM, buildGeometry } from './geometry.ts';
 
 const g = buildGeometry(DEFAULT_ROOM);
 const [ring, beam] = DEFAULT_ROOM.lights as PathLight[];
@@ -74,33 +74,5 @@ describe('normalisation', () => {
 	it('converts metres per second with the fixture pitch', () => {
 		expect(g.pitch).toBeCloseTo(1 / 60);
 		expect(g.perimeterLength).toBeCloseTo(10);
-	});
-});
-
-describe('regions', () => {
-	it('names corners after the compass, not the walk order', () => {
-		const ids = roomRegions(g).map((r) => r.name);
-		expect(ids).toContain('NE corner');
-		expect(ids).toContain('SE corner');
-		expect(ids).toContain('SW corner');
-		expect(ids).toContain('NW corner');
-	});
-
-	/** A bring-up region must match one 5 m reel: one long run plus one short run. */
-	it('pairs the perimeter into the reels it is wired from', () => {
-		const lines = roomRegions(g).filter((r) => r.id.startsWith('line-'));
-		expect(lines.map((r) => r.name)).toEqual(['Frame N + E', 'Frame S + W']);
-		for (const line of lines) expect(line.count).toBe(282);
-		expect(lines[0].spans[0].firstLed).toBe(0);
-		expect(lines[1].spans[0].firstLed).toBe(g.strips[2].offset);
-	});
-
-	it('keeps a corner inside the ring rather than walking onto the beam', () => {
-		const beamStrip = g.strips[4];
-		for (const region of roomRegions(g).filter((r) => r.id.startsWith('corner-'))) {
-			for (const span of region.spans) {
-				expect(span.firstLed + span.ledCount).toBeLessThanOrEqual(beamStrip.offset);
-			}
-		}
 	});
 });

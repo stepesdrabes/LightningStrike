@@ -105,21 +105,6 @@ export interface RoomLayout {
 	lights: readonly Light[];
 }
 
-/** A contiguous run of the effect buffer. */
-export interface LedSpan {
-	firstLed: number;
-	ledCount: number;
-}
-
-/** Named output region. A region crossing the perimeter seam needs two buffer spans. */
-export interface RoomRegion {
-	id: string;
-	name: string;
-	spans: readonly LedSpan[];
-	/** Total LEDs across every span. */
-	count: number;
-}
-
 export interface StripSpec {
 	/** Its index in `Geometry.strips`. */
 	id: number;
