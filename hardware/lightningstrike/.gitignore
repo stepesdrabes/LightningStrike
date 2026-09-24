@@ -1,0 +1,6 @@
+*.log
+checks/
+.tscircuit/
+__snapshots__/
+.tools/
+*-drc.json

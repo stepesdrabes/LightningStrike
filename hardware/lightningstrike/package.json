@@ -1,0 +1,31 @@
+{
+  "name": "@lightningstrike/pcb",
+  "version": "1.0.0",
+  "description": "Compact RP2040 and ESP32-C3 LightningStrike controller PCB",
+  "main": "index.js",
+  "scripts": {
+    "dev": "tsci dev",
+    "typecheck": "tsc --noEmit",
+    "netlist": "tsci check netlist",
+    "placement": "tsci check placement",
+    "schematic": "tsci check schematic-placement",
+    "build": "tsci build --disable-parts-engine --pcb-png --svgs && node scripts/finalize-circuit.mjs",
+    "shorts": "tsci check shorts dist/index/circuit.json",
+    "build:placement": "tsci build --routing-disabled --disable-parts-engine --pcb-png --svgs",
+    "export:dsn": "node scripts/export-dsn.mjs",
+    "route": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/route.ps1",
+    "assembly": "node scripts/export-assembly.mjs",
+    "check:routes": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/check-routes.ps1",
+    "export": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/export.ps1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "bun": "1.4.2",
+    "fflate": "0.8.2",
+    "tscircuit": "0.0.2596"
+  },
+  "private": true
+}

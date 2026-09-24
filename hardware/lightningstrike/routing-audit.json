@@ -1,0 +1,114 @@
+{
+  "date": "2026-09-20T22:28:35.811Z",
+  "revision": "R2",
+  "circuitSha256": "b6d5c3e5d10848343db3dc89e1e7880d388c4b01a155ff2a7cca3a9fb838c394",
+  "method": "Sum of wire segments, including branches; not point-to-point length or an impedance measurement.",
+  "nets": [
+    {
+      "name": "VSYS",
+      "totalCopperMm": 47.66,
+      "throughVias": 3,
+      "routingLayers": [
+        "top",
+        "inner3"
+      ]
+    },
+    {
+      "name": "SW",
+      "totalCopperMm": 22.165,
+      "throughVias": 0,
+      "routingLayers": [
+        "top"
+      ]
+    },
+    {
+      "name": "BST",
+      "totalCopperMm": 7.38,
+      "throughVias": 0,
+      "routingLayers": [
+        "top"
+      ]
+    },
+    {
+      "name": "V3V3",
+      "totalCopperMm": 216.725,
+      "throughVias": 7,
+      "routingLayers": [
+        "top",
+        "bottom",
+        "inner3",
+        "inner2"
+      ]
+    },
+    {
+      "name": "V1V1",
+      "totalCopperMm": 56.164,
+      "throughVias": 5,
+      "routingLayers": [
+        "top",
+        "inner2",
+        "inner3",
+        "bottom"
+      ]
+    },
+    {
+      "name": "XIN",
+      "totalCopperMm": 16.885,
+      "throughVias": 0,
+      "routingLayers": [
+        "top"
+      ]
+    },
+    {
+      "name": "XOUT",
+      "totalCopperMm": 2.53,
+      "throughVias": 0,
+      "routingLayers": [
+        "top"
+      ]
+    },
+    {
+      "name": "XTAL_OUT",
+      "totalCopperMm": 15.01,
+      "throughVias": 0,
+      "routingLayers": [
+        "top"
+      ]
+    },
+    {
+      "name": "USB_DP",
+      "totalCopperMm": 49.627,
+      "throughVias": 0,
+      "routingLayers": [
+        "top"
+      ]
+    },
+    {
+      "name": "USB_DM",
+      "totalCopperMm": 48.585,
+      "throughVias": 0,
+      "routingLayers": [
+        "top"
+      ]
+    },
+    {
+      "name": "USB_DP_MCU",
+      "totalCopperMm": 5.192,
+      "throughVias": 0,
+      "routingLayers": [
+        "top"
+      ]
+    },
+    {
+      "name": "USB_DM_MCU",
+      "totalCopperMm": 4.943,
+      "throughVias": 0,
+      "routingLayers": [
+        "top"
+      ]
+    }
+  ],
+  "viaHoleToSmtLandMinimumMm": 0.1,
+  "viaHoleNearSmtLand": [],
+  "notes": "Checks hole edge to solderable land (not copper annulus). A flagged hole requires relocation or an explicitly approved filled/capped process."
+}

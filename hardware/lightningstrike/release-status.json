@@ -1,0 +1,17 @@
+{
+  "reviewDate": "2026-09-20T22:29:16.7370058Z",
+  "revision": "R2 prototype",
+  "approvedForManufacture": false,
+  "status": "PROTOTYPE REVIEW - static checks passed; supplier approval required",
+  "reviewedCircuitSha256": "b6d5c3e5d10848343db3dc89e1e7880d388c4b01a155ff2a7cca3a9fb838c394",
+  "requiredBeforePrototypeOrder": [
+    "Obtain fabricator DFM and 90 ohm USB approval for JLC06121H-3313",
+    "Confirm exact BOM sourcing, capacitor DC-bias performance, stencil apertures and component orientation"
+  ],
+  "requiredBeforeFunctionalRelease": [
+    "Implement and validate the documented ESP32-C3 firmware migration when authorized",
+    "Power and test assembled prototypes with the actual antenna and LED frame wiring"
+  ],
+  "physicalValidation": "No boards built or tested",
+  "report": "R2-REVIEW.md"
+}

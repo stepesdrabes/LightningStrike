@@ -1,0 +1,16 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "Bundler",
+		"jsx": "react-jsx",
+		"strict": true,
+		"skipLibCheck": true,
+		"noEmit": true,
+		"resolveJsonModule": true,
+		"types": ["@tscircuit/core", "node"]
+	},
+	"include": ["*.tsx", "imports/*.tsx"]
+}
+
+
