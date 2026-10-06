@@ -94,21 +94,24 @@ export async function readMeta(id: string): Promise<TrackMeta | null> {
 	}
 }
 
-/** ADTOF on the separated drum stem and on each 44.1 kHz source, for Striker. */
+/**
+ * ADTOF on the separated drum stem and on each 44.1 kHz source, for Striker. The recurrent model
+ * keeps about one core busy, so each source runs in its own session at the same time.
+ */
 async function transcribeKit(isolated: SeparatedDrums): Promise<NonNullable<DrumEvidence['activations']>> {
-	const model = await Adtof.create();
-	if (!model) throw new Error('the transcription model is not installed');
-	try {
-		const activations = {} as NonNullable<DrumEvidence['activations']>;
-		for (const name of ['stem', 'kick', 'snare', 'hat', 'cymbal'] as const) {
+	const names = ['stem', 'kick', 'snare', 'hat', 'cymbal'] as const;
+	const results = await Promise.all(names.map(async (name) => {
+		const model = await Adtof.create();
+		if (!model) throw new Error('the transcription model is not installed');
+		try {
 			const result = await model.run(name === 'stem' ? isolated.drums : isolated[name]);
 			if (!result.activations) throw new Error('the transcription returned no activations');
-			activations[name] = result.activations;
+			return result.activations;
+		} finally {
+			await model.close();
 		}
-		return activations;
-	} finally {
-		await model.close();
-	}
+	}));
+	return Object.fromEntries(names.map((name, i) => [name, results[i]])) as NonNullable<DrumEvidence['activations']>;
 }
 
 /** Read raw marks separately from interpretation so cache invalidation can detect any map change. */
