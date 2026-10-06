@@ -55,17 +55,77 @@ async function trimGraphs(directory: string, name: string, keep?: string): Promi
 	return retained;
 }
 
-/** Optional local CPU graph cache. Original model integrity must be verified by the caller. */
-export async function createCachedCpuSession<T>(input: GraphCacheOptions<T>): Promise<T> {
-	const { modelPath, modelSha256, runtimeVersion, cacheDir, sessionOptions, load } = input;
-	if (!cacheDir || !runtimeVersion) return load(modelPath, sessionOptions);
+function graphPrefix(input: GraphCacheOptions<unknown>): string {
+	const { modelPath, modelSha256, runtimeVersion, sessionOptions } = input;
 	const fingerprint = {
 		format: 2, modelSha256, runtimeVersion, platform: platform(), arch: arch(), os: release(),
 		cpu: [...new Set(cpus().map(cpu => cpu.model))].sort(), sessionOptions
 	};
 	const key = createHash('sha256').update(JSON.stringify(fingerprint)).digest('hex');
+	return `${basename(modelPath, '.onnx')}.cpu-v2.${key}.`;
+}
+
+/** A verified published graph, or null. */
+async function publishedGraph(cacheDir: string, name: string, prefix: string): Promise<string | null> {
+	for (const file of await entries(cacheDir)) {
+		if (!file.startsWith(prefix) || !/^[a-f0-9]{64}\.onnx$/.test(file.slice(prefix.length))) continue;
+		const graph = join(cacheDir, file);
+		try {
+			if ((await stat(graph)).size > MAX_GRAPH_BYTES || await hashFile(graph) !== file.slice(prefix.length, -5)) {
+				await rm(graph, { force: true }).catch(() => {});
+				continue;
+			}
+			const now = new Date();
+			await utimes(graph, now, now).catch(() => {});
+			await trimGraphs(cacheDir, name, graph);
+			return graph;
+		} catch { /* Concurrently pruned. */ }
+	}
+	return null;
+}
+
+/**
+ * The optimized graph the CPU session runs, exporting and publishing it on a miss. Null when
+ * it cannot be cached; the Metal engine then leaves the stage to the CPU.
+ */
+export async function cachedCpuGraph<T extends { release(): Promise<void> }>(
+	input: GraphCacheOptions<T>
+): Promise<string | null> {
+	const { modelPath, runtimeVersion, cacheDir, sessionOptions, load } = input;
+	if (!cacheDir || !runtimeVersion) return null;
 	const name = basename(modelPath, '.onnx');
-	const prefix = `${name}.cpu-v2.${key}.`;
+	const prefix = graphPrefix(input);
+	try { await mkdir(cacheDir, { recursive: true }); }
+	catch { return null; }
+	await cleanInterruptedExports(cacheDir, name);
+	const found = await publishedGraph(cacheDir, name, prefix);
+	if (found) return found;
+	const temporary = join(cacheDir, `.${name}.cpu-v2.${process.pid}.${randomUUID()}.tmp.onnx`);
+	try {
+		const session = await load(modelPath, { ...sessionOptions, optimizedModelFilePath: temporary });
+		await session.release();
+		const size = (await stat(temporary)).size;
+		const graph = join(cacheDir, `${prefix}${await hashFile(temporary)}.onnx`);
+		const retained = await trimGraphs(cacheDir, name, graph);
+		const existing = await stat(graph).then(info => info.size).catch(() => 0);
+		if (size > MAX_GRAPH_BYTES || retained + (existing ? 0 : size) > MAX_GRAPH_BYTES) return null;
+		try { await link(temporary, graph); }
+		catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') return null; }
+		await trimGraphs(cacheDir, name, graph);
+		return graph;
+	} catch {
+		return null;
+	} finally {
+		await rm(temporary, { force: true }).catch(() => {});
+	}
+}
+
+/** Optional local CPU graph cache. Original model integrity must be verified by the caller. */
+export async function createCachedCpuSession<T>(input: GraphCacheOptions<T>): Promise<T> {
+	const { modelPath, runtimeVersion, cacheDir, sessionOptions, load } = input;
+	if (!cacheDir || !runtimeVersion) return load(modelPath, sessionOptions);
+	const name = basename(modelPath, '.onnx');
+	const prefix = graphPrefix(input);
 	try { await mkdir(cacheDir, { recursive: true }); }
 	catch { return load(modelPath, sessionOptions); }
 	await cleanInterruptedExports(cacheDir, name);

@@ -69,7 +69,8 @@ interface PendingRun {
 
 /** Native errors reject the open; a worker that cannot start at all falls back to this thread. */
 function openInWorker(
-	file: string, path: string, options: Record<string, unknown>
+	file: string, path: string, options: Record<string, unknown>,
+	inThread: OpenSession | null = openInThread
 ): Promise<OnnxSession> {
 	return new Promise((resolve, reject) => {
 		const worker = new Worker(file, { workerData: { path, options }, execArgv: [] });
@@ -118,7 +119,10 @@ function openInWorker(
 			}
 		});
 		worker.on('error', (error: Error) => {
-			if (!ready) openInThread(path, options).then(resolve, reject);
+			if (!ready) {
+				if (inThread) inThread(path, options).then(resolve, reject);
+				else reject(error);
+			}
 			fail(error);
 		});
 		worker.on('exit', (code) => {
@@ -133,3 +137,15 @@ export const openSession: OpenSession = (path, options) => {
 	const file = workerFile('onnxWorker.ts', 'onnx-worker.mjs');
 	return file ? openInWorker(file, path, options) : openInThread(path, options);
 };
+
+/**
+ * Run ORT's optimized CPU graph on the GPU with the same results (metal/plan.ts). Rejects
+ * when the plan cannot be built, so the caller keeps its CPU sessions.
+ */
+export function openMetalSession(
+	graph: string, options: { parallelism: number; cpu: Record<string, unknown> }
+): Promise<OnnxSession> {
+	const file = workerFile('metalWorker.ts', 'metal-worker.mjs');
+	if (!file) return Promise.reject(new Error('The Metal worker is not available.'));
+	return openInWorker(file, graph, options, null);
+}

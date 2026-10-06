@@ -11,7 +11,7 @@ import {
 	statSync
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { NODE_VERSION, externalsIn, runtimeFilter, serverDependencies, targetPlatform, withDependencies } from './bundle-support.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -96,6 +96,7 @@ console.log('building the workers');
 		['packages/analysis/src/ingestWorker.ts', 'ingest-worker.mjs'],
 		['packages/analysis/src/onnxWorker.ts', 'onnx-worker.mjs'],
 		['packages/analysis/src/dspWorker.ts', 'dsp-worker.mjs'],
+		['packages/analysis/src/metalWorker.ts', 'metal-worker.mjs'],
 		['apps/web/src/lib/server/evening/eveningWorker.ts', 'evening-worker.mjs']
 	]) {
 		const worker = await rolldown({
@@ -111,6 +112,12 @@ console.log('building the workers');
 		await worker.close();
 		if (!existsSync(join(build, file))) throw new Error(`rolldown produced no ${file}`);
 	}
+}
+
+// Apple silicon separates drums on the GPU through this binding, found beside the workers.
+if (target.platform === 'darwin' && target.arch === 'arm64') {
+	const { buildMetalAddon } = await import(pathToFileURL(join(root, 'packages/analysis/native/build.ts')).href);
+	console.log(`metal       ${buildMetalAddon(join(build, 'mlas-metal.node'))}`);
 }
 
 mkdirSync(binaries, { recursive: true });

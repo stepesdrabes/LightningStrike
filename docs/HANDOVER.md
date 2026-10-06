@@ -186,7 +186,8 @@ numbers; see that document.
 - Analysis **38**, show **34**, context **3**. No changes to lighting composition.
 - `separation.ts`: HTDemucs, then MDX23C (`drumsep-mdx23c.onnx`) returning kick, snare, hi-hat
   and cymbal (ride/crash); the tom stem is dropped. CPU default, four threads per session, both
-  CPU arenas off. Chunks: 343,980 samples for HTDemucs, 1,024 STFT frames (11.9 s) for MDX23C,
+  CPU arenas off; on Apple silicon the Metal engine (`metal/`) runs both stages with the CPU's
+  exact results. Chunks: 343,980 samples for HTDemucs, 1,024 STFT frames (11.9 s) for MDX23C,
   25% overlap, centered tail context. `dsp/mdxFft.ts` mirrors the model's torch STFT; the kit
   input is not normalized. `runKit` runs the kit stage alone. Two CPU lanes with at least eight
   logical CPUs and 12 GiB (`MV_DRUM_CPU_LANES`).
@@ -274,24 +275,23 @@ Remaining leads, none implemented:
 
 ## Mac requirements and unverified work
 
-Native ARM64 CPU is the supported production route; no Python or NVIDIA GPU at show time.
-The pinned ONNX ARM64 binaries declare **macOS 14.0**, stricter than Node 24.11's 13.5;
-`tauri.conf.json` now declares 14.0. `check-mac-runtime.ts` verifies Mach-O architecture
-and minimum OS metadata. **Nothing has executed on the M1 Pro in this effort.**
+On Apple silicon both separation stages run on the GPU through a Metal engine that returns
+ONNX Runtime's CPU bits exactly; a Like a Prayer preparation went from 140 s to 45 s with the
+same analysis hash. Design, exactness argument and verification:
+[METAL-SEPARATION.md](../bench/lab/METAL-SEPARATION.md). Any chunk it cannot prove exact runs
+on the CPU kernels; `MV_DRUM_METAL=0` turns it off. CoreML, MPS and Accelerate are not exact
+and stay unused. The pinned ONNX ARM64 binaries declare **macOS 14.0**, stricter than Node
+24.11's 13.5; `tauri.conf.json` declares 14.0. `check-mac-runtime.ts` verifies Mach-O
+architecture and minimum OS metadata.
 
-Build natively on Apple Silicon with the updated models and the normal Tauri prerequisites.
-Keep four intra-op threads per session. Compare `MV_DRUM_CPU_LANES=1` and `2` with
-`profile-ingest.ts` (wall time, peak RSS, timer lateness); the default is two lanes on the
-M1 Pro. On the 16 GB PC with only 6.8 GB free, one lane took 129 s at a 4.3 GB peak and two
-lanes 94 s at 6.7 GB (84 s with more memory free), so close other apps before preparing a
-queue. Finder-launched apps ignore shell exports, so set a lane override with
-`launchctl setenv MV_DRUM_CPU_LANES 1` before opening the app. Watch the LEDs while a
-track prepares during playback; one lane is the fallback if frames hitch. CoreML
-is a future experiment, not a shipping speed claim: the harness supports legacy flags 24
-(MLProgram/static) and 56 (plus CPU/GPU); the MDX23C export already has fixed shapes. Verify
-actual provider placement and cold compilation, then PCM and onset parity.
-Stock Node binding does not expose modern CoreML model-cache options. The Windows GPU
-timing must never be presented as a Mac estimate.
+Build natively on Apple Silicon with the updated models, Xcode's command-line tools (the
+desktop bundle compiles `mlas-metal.node`) and the normal Tauri prerequisites. In a checkout,
+`npm run build:metal -w @mv/analysis` builds the binding; without it the CPU runs. Keep four
+intra-op threads per session: the Metal plan reproduces MLAS blocking for that count. CPU
+separation (other platforms, or Metal off) keeps two lanes by default; on the 16 GB PC with
+6.8 GB free, one lane took 129 s at a 4.3 GB peak and two lanes 94 s at 6.7 GB. Finder-launched
+apps ignore shell exports, so set overrides with `launchctl setenv` before opening the app.
+The Windows GPU timing must never be presented as a Mac estimate.
 
 ## Listening data for the later accuracy session
 

@@ -6,9 +6,11 @@ import { MDX_BINS, MDX_HOP, mdxFrames, mdxIspec, mdxSpec } from './dsp/mdxFft.ts
 import { demucsSpec, demucsIspec } from './dsp/separationFft.ts';
 import { allFinite } from './dsp/stats.ts';
 import { MODEL_DIR } from './paths.ts';
-import { createCachedCpuSession, hashFile } from './cpuGraphCache.ts';
+import { cachedCpuGraph, createCachedCpuSession, hashFile } from './cpuGraphCache.ts';
+import { metalAddonPath } from './metal/addon.ts';
+import { mlasParallelism } from './metal/mlas.ts';
 import {
-	QUIET_THREADS, openSession, type OnnxSession, type OnnxTensor, type OpenSession
+	QUIET_THREADS, openMetalSession, openSession, type OnnxSession, type OnnxTensor, type OpenSession
 } from './onnxSession.ts';
 
 export const SEPARATION_VERSION = 'htdemucs-a6eabce3-mdx23c-e2ec140f-v1';
@@ -32,7 +34,8 @@ const FILES = {
 
 export interface SeparationProgress {
 	stage: 'drums' | 'kit';
-	provider: SeparationProvider;
+	/** 'metal' runs the CPU provider's own graph on the GPU with identical results. */
+	provider: SeparationProvider | 'metal';
 	completed: number;
 	total: number;
 }
@@ -75,6 +78,11 @@ function defaultLanes(): number {
 	return availableParallelism() >= 8 && totalmem() >= 12 * 1024 ** 3 ? 2 : 1;
 }
 
+function metalAvailable(): boolean {
+	return process.platform === 'darwin' && process.arch === 'arm64' && process.env.MV_DRUM_METAL !== '0'
+		&& metalAddonPath() !== null;
+}
+
 export class DrumSeparator {
 	private modelDir: string;
 	private threads: number;
@@ -82,12 +90,13 @@ export class DrumSeparator {
 	private graphCacheDir?: string;
 	private provider: SeparationProvider;
 	private cpuArena?: boolean;
+	private metal: boolean;
 	private pending: Promise<unknown> = Promise.resolve();
 	private closed = false;
 	private warmDrums: Promise<OnnxSession> | null = null;
 	private constructor(
 		modelDir: string, threads: number, lanes: number, graphCacheDir?: string,
-		provider: SeparationProvider = 'cpu', cpuArena?: boolean
+		provider: SeparationProvider = 'cpu', cpuArena?: boolean, metal = false
 	) {
 		this.modelDir = modelDir;
 		this.threads = threads;
@@ -95,6 +104,7 @@ export class DrumSeparator {
 		this.graphCacheDir = graphCacheDir;
 		this.provider = provider;
 		this.cpuArena = cpuArena;
+		this.metal = metal;
 	}
 
 	/** Both optional exports must be installed; see bench/lab/SEPARATION.md. */
@@ -103,6 +113,8 @@ export class DrumSeparator {
 		options: {
 			threads?: number; lanes?: number; graphCacheDir?: string; provider?: SeparationProvider;
 			cpuArena?: boolean;
+			/** Run CPU stages the Metal engine reproduces on the GPU; needs graphCacheDir. */
+			metal?: boolean;
 		} = {}
 	): Promise<DrumSeparator | null> {
 		const provider = options.provider ?? 'cpu';
@@ -118,8 +130,9 @@ export class DrumSeparator {
 		if (!Number.isInteger(lanes) || lanes < 1 || lanes > 4) {
 			throw new Error('Separator lanes must be an integer from 1 to 4.');
 		}
+		const metal = provider === 'cpu' && options.graphCacheDir !== undefined && (options.metal ?? metalAvailable());
 		const separator = new DrumSeparator(
-			modelDir, threads, lanes, options.graphCacheDir, provider, options.cpuArena
+			modelDir, threads, lanes, options.graphCacheDir, provider, options.cpuArena, metal
 		);
 		// DirectML never writes the CPU graph cache, so HTDemucs may compile while the checksums run.
 		const htdemucs = join(modelDir, FILES.htdemucs.name);
@@ -212,15 +225,25 @@ export class DrumSeparator {
 			this.warmDrums = null;
 			return session;
 		};
+		// The kit's Metal plan is built on the CPU while HTDemucs holds the GPU.
+		let warmMetalKit = this.provider === 'cpu' && this.metal
+			? this.openMetal(join(this.modelDir, FILES.kit.name), FILES.kit.sha256, this.sessionOptions('kit', 'cpu'))
+			: null;
+		const takeMetalKit = () => {
+			const session = warmMetalKit;
+			warmMetalKit = null;
+			return session;
+		};
 		try {
 			const [drums] = await this.stage(input, 'drums', openDrums, progress);
-			const [kick, snare, hat, cymbal] = await this.stage(drums, 'kit', openKit, progress);
+			const [kick, snare, hat, cymbal] = await this.stage(drums, 'kit', openKit, progress, takeMetalKit);
 			return {
 				sampleRate: RATE, drums: mono(drums), kick: mono(kick), snare: mono(snare), hat: mono(hat),
 				cymbal: mono(cymbal)
 			};
 		} finally {
 			await warmKit?.then(session => session.release(), () => {});
+			await takeMetalKit()?.then(session => session?.release(), () => {});
 		}
 	}
 
@@ -256,20 +279,42 @@ export class DrumSeparator {
 
 	private async stage(
 		input: Stereo, stage: 'drums' | 'kit', open: OpenSession,
-		progress?: (p: SeparationProgress) => void
+		progress?: (p: SeparationProgress) => void, warmMetal?: () => Promise<OnnxSession | null> | null
 	): Promise<Stereo[]> {
 		try {
-			return await this.stageWithProvider(input, stage, open, this.provider, progress);
+			return await this.stageWithProvider(input, stage, open, this.provider, progress, warmMetal);
 		} catch (error) {
+			if (this.provider === 'cpu' && this.metal) {
+				console.warn(`Metal ${stage} separation failed; restarting stage on the CPU.`, error);
+				this.metal = false;
+				return this.stageWithProvider(input, stage, open, 'cpu', progress);
+			}
 			if (this.provider !== 'dml') throw error;
 			console.warn(`DirectML ${stage} separation failed; restarting stage on CPU.`, error);
 			return this.stageWithProvider(input, stage, open, 'cpu', progress);
 		}
 	}
 
+	/** A Metal session on the CPU session's own optimized graph, or null to stay on the CPU. */
+	private async openMetal(
+		modelPath: string, modelSha256: string, sessionOptions: Record<string, unknown>
+	): Promise<OnnxSession | null> {
+		try {
+			const graph = await cachedCpuGraph({
+				modelPath, modelSha256, cacheDir: this.graphCacheDir, runtimeVersion: runtimeVersion(),
+				sessionOptions, load: openSession
+			});
+			if (!graph) return null;
+			return await openMetalSession(graph, { parallelism: mlasParallelism(this.threads), cpu: sessionOptions });
+		} catch (error) {
+			console.warn('Metal separation unavailable; staying on the CPU.', error);
+			return null;
+		}
+	}
+
 	private async stageWithProvider(
 		input: Stereo, stage: 'drums' | 'kit', open: OpenSession, provider: SeparationProvider,
-		progress?: (p: SeparationProgress) => void
+		progress?: (p: SeparationProgress) => void, warmMetal?: () => Promise<OnnxSession | null> | null
 	): Promise<Stereo[]> {
 		const length = input[0].length;
 		const drums = stage === 'drums';
@@ -283,12 +328,15 @@ export class DrumSeparator {
 		const stride = Math.floor(segment * .75);
 		const total = Math.ceil(length / stride);
 		const weights = new Float32Array(length);
-		progress?.({ stage, provider, completed: 0, total });
 		const model = FILES[drums ? 'htdemucs' : 'kit'];
 		const modelPath = join(this.modelDir, model.name);
 		const sessionOptions = this.sessionOptions(stage, provider);
-		// DirectML serializes a session's runs; CPU lanes share the chunk queue.
-		const lanes = provider === 'dml' ? 1 : Math.min(this.lanes, total);
+		const metal = provider === 'cpu' && this.metal
+			? await (warmMetal?.() ?? this.openMetal(modelPath, model.sha256, sessionOptions)) : null;
+		const reported = metal ? 'metal' : provider;
+		progress?.({ stage, provider: reported, completed: 0, total });
+		// DirectML and Metal serialize a session's runs; CPU lanes share the chunk queue.
+		const lanes = metal || provider === 'dml' ? 1 : Math.min(this.lanes, total);
 		const openLane = () => provider === 'dml'
 			? open(modelPath, sessionOptions)
 			: createCachedCpuSession({
@@ -334,7 +382,7 @@ export class DrumSeparator {
 		const inflight = new Map<number, Promise<Record<string, OnnxTensor>>>();
 		let opening: Promise<void> = Promise.resolve();
 		try {
-			const first = await openLane();
+			const first = metal ?? await openLane();
 			sessions.push(first);
 			idle.push(first);
 			// A session on this thread cannot overlap runs, so more lanes would only add memory.
@@ -384,7 +432,7 @@ export class DrumSeparator {
 						outputs[s][c][offset + i] += value * weight;
 					}
 				}
-				progress?.({ stage, provider, completed: ++completed, total });
+				progress?.({ stage, provider: reported, completed: ++completed, total });
 			}
 			await opening;
 		} catch (error) {
