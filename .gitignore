@@ -8,6 +8,7 @@ cache114/
 cache-eval/
 shows/
 .DS_Store
+.claude/settings.local.json
 bench/corpus/
 bench/reports/
 # Striker is ours and ships here. A directory-level ignore cannot re-include a file
