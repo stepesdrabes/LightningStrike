@@ -302,6 +302,19 @@ function applyAudioGenre(context: TrackContext, top: GenreScores): TrackContext 
 	};
 }
 
+// Record effnet only after successful classification so failures retry on later ingests.
+async function recordAudioGenre(
+	id: string,
+	context: TrackContext,
+	top: GenreScores | null
+): Promise<TrackContext> {
+	if (!top) return context;
+	const refined = applyAudioGenre(context, top);
+	const recorded = refined === context ? { ...context, sources: [...context.sources, 'effnet'] } : refined;
+	await writeFile(contextPath(id), JSON.stringify(recorded, null, '\t'));
+	return recorded;
+}
+
 /**
  * After analysis, remove genre families whose kick claim the loud-bar rate contradicts.
  * Re-vote the same labels and persist the correction. Analysis already gates club privileges
@@ -572,6 +585,12 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 				meta.gridTrust = meta.gridTrust ?? gridTrust(cached, context.publishedBpm);
 				await writeFile(metaPath(id), JSON.stringify(meta, null, '\t'));
 			}
+			// A rebuilt context has lost the audio vote, and only a re-analysis would ask again.
+			if (stale) {
+				const heard = await decodeAudio(audioPath).catch(() => null);
+				const genre = heard ? await classifyAudioGenre(heard.mono, heard.sampleRate) : null;
+				context = await recordAudioGenre(id, context, genre);
+			}
 			context = await settleGenreFamily(id, context, cached);
 			return { id, audioPath, analysis: cached, meta, context, fromCache: true };
 		}
@@ -732,12 +751,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 
 		const [{ genre, tracked, drums }] = await Promise.all([models, separation]);
 		let [, context] = await metadata;
-		// Record effnet only after successful classification so failures retry on later ingests.
-		if (genre) {
-			const refined = applyAudioGenre(context, genre);
-			context = refined === context ? { ...context, sources: [...context.sources, 'effnet'] } : refined;
-			await writeFile(contextPath(id), JSON.stringify(context, null, '\t'));
-		}
+		context = await recordAudioGenre(id, context, genre);
 
 		// Catalogue metrical corrections follow drum inference for the snare check; explicit listener
 		// corrections retain precedence.

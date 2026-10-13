@@ -10,6 +10,7 @@ import { DrumSeparator } from './separation.ts';
 import { Adtof, adtofIdentity } from './adtof.ts';
 import { artworkHue } from './artwork.ts';
 import { enrichTrack } from './enrich.ts';
+import { GenreClassifier } from './genreModel.ts';
 import { ingest, type TrackMeta } from './ingest.ts';
 
 const cache = vi.hoisted(() => ({ dir: '' }));
@@ -27,6 +28,10 @@ vi.mock('./adtof.ts', () => ({
 }));
 vi.mock('./separation.ts', () => ({
 	DrumSeparator: { create: vi.fn().mockResolvedValue(null) }, SEPARATION_VERSION: 'fixture-separator'
+}));
+vi.mock('./genreModel.ts', () => ({
+	genreModelPresent: () => true, ensureGenreModel: vi.fn(),
+	GenreClassifier: { create: vi.fn().mockRejectedValue(new Error('no model')) }
 }));
 
 const youtubeId = 'abcdefghijk';
@@ -305,6 +310,33 @@ describe('queue cache refresh', () => {
 		expect(result.fromCache).toBe(true);
 		expect(decodeAudio).not.toHaveBeenCalled();
 		expect(probe).not.toHaveBeenCalled();
+	});
+
+	it('asks the audio model again when a cached track gets a rebuilt context', async () => {
+		await saveTrack(youtubeId, youtubeSource, ANALYSIS_VERSION);
+		const outdated = { ...emptyContext(), version: 0, sources: ['itunes', 'effnet'], genreFamily: 'ambient' };
+		await writeFile(join(cache.dir, `${youtubeId}.context.json`), JSON.stringify(outdated));
+		vi.mocked(enrichTrack).mockResolvedValueOnce({ ...emptyContext(), sources: ['itunes'] });
+		vi.mocked(GenreClassifier.create).mockResolvedValueOnce({
+			run: vi.fn(async () => ({ top: [{ label: 'Electronic---Ambient', score: 0.6 }] })), close: vi.fn()
+		} as unknown as GenreClassifier);
+		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId });
+		expect(result.fromCache).toBe(true);
+		expect(analyzeTrack).not.toHaveBeenCalled();
+		expect(result.context).toMatchObject({ genreFamily: 'ambient', sources: ['itunes', 'effnet'] });
+		const stored = JSON.parse(await readFile(join(cache.dir, `${youtubeId}.context.json`), 'utf8'));
+		expect(stored).toMatchObject({ genreFamily: 'ambient', sources: ['itunes', 'effnet'] });
+	});
+
+	it('keeps a cached track playable when its audio cannot be decoded for the genre vote', async () => {
+		await saveTrack(youtubeId, youtubeSource, ANALYSIS_VERSION);
+		await writeFile(join(cache.dir, `${youtubeId}.context.json`), JSON.stringify({ ...emptyContext(), version: 0 }));
+		vi.mocked(enrichTrack).mockResolvedValueOnce({ ...emptyContext(), sources: ['itunes'] });
+		vi.mocked(decodeAudio).mockRejectedValueOnce(new Error('ffmpeg: invalid audio data'));
+		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId });
+		expect(decodeAudio).toHaveBeenCalled();
+		expect(result.fromCache).toBe(true);
+		expect(result.context.sources).toEqual(['itunes']);
 	});
 
 	it('keeps explicit source ingest on its original resolution path', async () => {
