@@ -17,6 +17,10 @@ analyses, shows or user settings. Cache selection defaults to the desktop cache;
   pattern completion on the same inference. Its counts are predictions, not labelled accuracy.
 - `node bench/effectpolish.ts --save bench/reports/effects-before.json` captures isolated effect
   output. Use `--compare FILE --html bench/reports/effects.html` for visual comparison.
+- `node bench/roomsheet.ts --effect ID --section drop --raw --out sheet.png` draws the room from
+  above, one tile per interval, through the real mixer and output chain, to judge an effect's
+  motion by eye. Name a cached track with `--at BAR` and `--stack "b:wash r:ID"` to substitute
+  layers into a real passage; `--bare` drops the house floor.
 - `node bench/quietprobe.ts --limit 8 --effects chorusBloom,ambientDrift` measures responsiveness
   in real quiet passages. Compare the whole candidate pool on the same corpus before updating
   ranking metadata.

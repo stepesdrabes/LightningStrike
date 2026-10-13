@@ -33,9 +33,12 @@ import { emberBump } from './emberBump.ts';
 import { embers } from './embers.ts';
 import { emberStorm } from './emberStorm.ts';
 import { feedbackSwell } from './feedbackSwell.ts';
+import { fireflies } from './fireflies.ts';
+import { fireworks } from './fireworks.ts';
 import { flexStrobe } from './flexStrobe.ts';
 import { glitchScan } from './glitchScan.ts';
 import { halftimeBounce } from './halftimeBounce.ts';
+import { harpStrings } from './harpStrings.ts';
 import { harmonicHaze } from './harmonicHaze.ts';
 import { harmonicRibbon } from './harmonicRibbon.ts';
 import { headbang } from './headbang.ts';
@@ -43,6 +46,7 @@ import { hearth } from './hearth.ts';
 import { hueCarousel } from './hueCarousel.ts';
 import { impulseSpin } from './impulseSpin.ts';
 import { iridescence } from './iridescence.ts';
+import { jellyfish } from './jellyfish.ts';
 import { kickCannon } from './kickCannon.ts';
 import { kickTunnel } from './kickTunnel.ts';
 import { kitStage } from './kitStage.ts';
@@ -50,12 +54,17 @@ import { kitTicks } from './kitTicks.ts';
 import { laidbackWave } from './laidbackWave.ts';
 import { lanterns } from './lanterns.ts';
 import { lavaBlobs } from './lavaBlobs.ts';
+import { lighters } from './lighters.ts';
 import { lean } from './lean.ts';
 import { meterBuild } from './meterBuild.ts';
 import { mirrorBall } from './mirrorBall.ts';
+import { mitosis } from './mitosis.ts';
 import { moshSlam } from './moshSlam.ts';
+import { murmuration } from './murmuration.ts';
 import { nebula } from './nebula.ts';
+import { pendulumWave } from './pendulumWave.ts';
 import { phraseArc } from './phraseArc.ts';
+import { pingPong } from './pingPong.ts';
 import { pitchRibbon } from './pitchRibbon.ts';
 import { pixelRain } from './pixelRain.ts';
 import { pump } from './pump.ts';
@@ -145,6 +154,11 @@ export const BUILT_IN_EFFECTS: readonly EffectDef[] = [
 	moshSlam,
 	laidbackWave,
 	spectrumRings,
+	pendulumWave,
+	mitosis,
+	harpStrings,
+	fireflies,
+	jellyfish,
 	// transient
 	ricochet,
 	snareBlade,
@@ -162,6 +176,7 @@ export const BUILT_IN_EFFECTS: readonly EffectDef[] = [
 	doubleKickGatling,
 	pyroBursts,
 	clapAlong,
+	pingPong,
 	// accent
 	pitchRibbon,
 	sparkle,
@@ -182,6 +197,9 @@ export const BUILT_IN_EFFECTS: readonly EffectDef[] = [
 	kickCannon,
 	crownSpill,
 	backbeatBloom,
+	murmuration,
+	lighters,
+	fireworks,
 	// master
 	blinderWall,
 	slam,

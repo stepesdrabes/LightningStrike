@@ -820,7 +820,13 @@ const VARIETY: Record<string, Record<string, readonly number[]>> = {
 	pixelRain: { fallBeats: [3, 4, 6] },
 	pump: { sweep: [0.3, 0.5, 0.8] },
 	blockChase: { order: [0, 1, 2], half: [0, 0, 1] },
-	snapSplit: { hold: [0.6, 0.75, 0.9] }
+	snapSplit: { hold: [0.6, 0.75, 0.9] },
+	pendulumWave: { lamps: [8, 10, 12, 12, 14] },
+	pingPong: { delay: [0.5, 0.75, 0.75, 1] },
+	jellyfish: { pace: [0.35, 0.5, 0.5, 0.65] },
+	murmuration: { birds: [32, 44, 44, 56], pace: [0.35, 0.5, 0.65] },
+	fireflies: { flies: [28, 36, 44] },
+	lighters: { flames: [36, 44, 52] }
 };
 
 /** Override defaults only where track measurements determine the parameter. */
