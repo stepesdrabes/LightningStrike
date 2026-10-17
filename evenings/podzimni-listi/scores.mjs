@@ -1,5 +1,5 @@
 /**
- * Scores for Babí léto's moments. Each lands its events on the times its effect reads from the
+ * Scores for Podzimní listí's moments. Each lands its events on the times its effect reads from the
  * same timing table, builds on its own grid into a drop, and rings out after it. The night is in
  * A: minor for the storm, the fog and the fire's climb, major for every arrival.
  */

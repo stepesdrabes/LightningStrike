@@ -1,7 +1,7 @@
 /**
  * Renders the evening's scored moments beside this script, deterministically:
  *
- *   node evenings/babi-leto/sound.mjs [moment ...] [--wav dir]
+ *   node evenings/podzimni-listi/sound.mjs [moment ...] [--wav dir]
  *
  * Without names it renders them all. Needs Node 22.18 or later (it imports timing.ts) and ffmpeg.
  */

@@ -1,8 +1,9 @@
 /**
- * Babí léto. One October day from a golden afternoon to the first frost, told by a single leaf on
- * the beam, which plays its branch: the last green after the storm at Go, scarlet in the backdraft
- * at midnight, and at the end it lets go and falls into the south-west corner above the Bounce Lamp.
- * At about 21:40 the night stops for a birthday, and at midnight it counts down on the frame.
+ * Podzimní listí. One October day from a golden afternoon to the first frost, told by a single
+ * leaf on the beam, which plays its branch: the last green after the storm at Go, scarlet in the
+ * backdraft at midnight, and at the end it lets go and falls into the south-west corner above the
+ * Bounce Lamp. At about 21:40 the night stops for a birthday, and at midnight it counts down on
+ * the frame.
  *
  * Ring pixels run 0-561 from the north-west corner (north 0-169 west to east, east 170-280,
  * south 281-450 east to west, west 451-561 south to north); the beam runs 562-670 from south to
@@ -61,7 +62,7 @@ import {
 	tugs,
 	tune,
 	warDrums
-} from './babi-leto/timing.ts';
+} from './podzimni-listi/timing.ts';
 
 /** The leaf rides `base` in the canopy, `third` in the day's palettes and `accent` from the fog on. */
 const canopy: ShowPalette = { name: 'canopy', base: 100, accent: 46, third: 72, sat: 0.88, shade: 0.12 };
@@ -71,6 +72,7 @@ const vinice: ShowPalette = { name: 'vinice', base: 285, accent: 46, third: 22, 
 const burcakPalette: ShowPalette = { name: 'burčák', base: 335, accent: 48, third: 30, sat: 0.86, shade: 0.12 };
 const dort: ShowPalette = { name: 'dort', base: 340, accent: 40, third: 28, sat: 0.85, shade: 0.12 };
 const oslava: ShowPalette = { name: 'oslava', base: 45, accent: 320, third: 190, sat: 0.95, shade: 0.1 };
+const lesk: ShowPalette = { name: 'lesk na rty', base: 335, accent: 275, third: 200, sat: 0.8, shade: 0.12 };
 const zare: ShowPalette = { name: 'polární záře', base: 140, accent: 290, third: 350, sat: 0.92, shade: 0.1 };
 const mlha: ShowPalette = { name: 'mlha', base: 212, accent: 34, third: 190, sat: 0.7, shade: 0.12, white: 0.1 };
 /** The fire takes the fog with the leaf still gold; the leaf turns scarlet at midnight. */
@@ -84,10 +86,23 @@ const jinovatka: ShowPalette = { name: 'jinovatka', base: 218, accent: 356, thir
 /** A palette fade is written in beats of the row's own grid. */
 const beatsOf = (seconds: number, bpm: number) => Math.round((seconds * bpm) / 60);
 
+/** Songs taken out of the night, which the fills would otherwise pick from the library. */
+const removed = [
+	'i34pFNr42mc', // Jamaican (Bam Bam)
+	'SBqvDDh_Trw', // NARCOS
+	'jrfpCYp3B1M', // Bomby
+	'zEfM0w7n6XQ', // Givenchy
+	'TNEkNkVByyA', // Deja Vu
+	'aZ1hziFhj1o', // Love Story
+	'p0BiGek2bKA', // Since U Been Gone
+	'lFQdcPTTzSg', // Dai Dai
+	'8GEObTEFEeo' // Baddadan
+];
+
 // ---- Vítr ---------------------------------------------------------------------------------------
 
 /**
- * The doors and the opening, scored by babi-leto/vitr.m4a: a green canopy with the sun through it
+ * The doors and the opening, scored by podzimni-listi/vitr.m4a: a green canopy with the sun through it
  * and gossamer drifting; two gusts out of the west wall; a storm whose vortex of torn leaves laps
  * the room ever faster on the drums; the great gust that takes everything but one leaf; silence,
  * and the gold breaking out of that leaf over the whole frame.
@@ -379,7 +394,7 @@ const vitr = effect({
 // ---- Drakiáda -----------------------------------------------------------------------------------
 
 /**
- * Into the kite block, scored by babi-leto/drakiada.m4a: the kite climbs the beam pull by pull,
+ * Into the kite block, scored by podzimni-listi/drakiada.m4a: the kite climbs the beam pull by pull,
  * each pull firing colour round the room; a gale takes it at the top and the wind races round
  * the frame; the line snaps, and the kite spirals free round the room, faster every lap, painting
  * it in ribbons until it explodes into them.
@@ -589,7 +604,7 @@ const drakiada = effect({
 // ---- Špačci -------------------------------------------------------------------------------------
 
 /**
- * Into the vineyard block, scored by babi-leto/spacci.m4a: the sunset round the frame, gold over
+ * Into the vineyard block, scored by podzimni-listi/spacci.m4a: the sunset round the frame, gold over
  * the west wall going to violet in the east, and a murmuration of starlings black against it,
  * pouring in, swirling back and forth on the drums, tightening into a ball that races round the
  * room, hanging still in the silence, and bursting apart at the vineyard's cannon.
@@ -705,7 +720,7 @@ const spacci = effect({
 // ---- Burčák -------------------------------------------------------------------------------------
 
 /**
- * Into the burčák block, scored by babi-leto/burcak.m4a: a bottle working on the beam, bubbles
+ * Into the burčák block, scored by podzimni-listi/burcak.m4a: a bottle working on the beam, bubbles
  * racing up it, its cap rattling ever faster while the room pumps on the kick; the cap blows off
  * round the room, the foam floods the ring both ways, two glasses close in along the beam and meet.
  */
@@ -870,7 +885,7 @@ const burcak = effect({
 // ---- Hodně štěstí -------------------------------------------------------------------------------
 
 /**
- * The birthday, scored by babi-leto/narozeniny.m4a: the warm room closes into the corner and goes
+ * The birthday, scored by podzimni-listi/narozeniny.m4a: the warm room closes into the corner and goes
  * dark, eighteen candles light one by one round the ring and the beam glows as the cake; the
  * candles pulse with every note of the first verse while everyone sings, the room fills with warm
  * light between them for the second, bursts on every bar, and settles back to the candles burning.
@@ -1009,7 +1024,7 @@ const narozeniny = effect({
 // ---- Sfouknuto ----------------------------------------------------------------------------------
 
 /**
- * When he blows, scored by babi-leto/sfouknuto.m4a: the candles go out round the ring, a beat of
+ * When he blows, scored by podzimni-listi/sfouknuto.m4a: the candles go out round the ring, a beat of
  * dark, then fireworks over the whole frame while it spells HAPPY, then bdAY, then his age, one
  * 7-segment letter at a time with the fireworks burning inside each letter, and the digits of his
  * age trading places on every beat under the barrage at the end.
@@ -1166,7 +1181,7 @@ const sfouknuto = effect({
 // ---- Polární záře -------------------------------------------------------------------------------
 
 /**
- * Into the late evening, scored by babi-leto/zare.m4a: a starry night, a green glow low over the
+ * Into the late evening, scored by podzimni-listi/zare.m4a: a starry night, a green glow low over the
  * north wall, curtains rising and rippling round the sky with violet at their folds, the substorm
  * on the drums with red crowning the brightest of it and the aurora climbing the beam from its
  * north end, a breath, and the corona breaking overhead from the beam's centre.
@@ -1263,7 +1278,7 @@ const polarniZare = effect({
 // ---- Půlnoc -------------------------------------------------------------------------------------
 
 /**
- * The minute before midnight, scored by babi-leto/pulnoc.m4a: fog under three streetlamps going
+ * The minute before midnight, scored by podzimni-listi/pulnoc.m4a: fog under three streetlamps going
  * out one by one while a clock ticks; a match in the corner, the leaf fire running round the frame
  * to war drums while the leaf turns gold; the fire drawn back into the corner; ten to one drawn in
  * flame as 7-segment digits on the whole frame, one a second; and on the stroke of midnight the
@@ -1567,7 +1582,7 @@ const lampionovyPruvod = effect({
 // ---- Orionidy -----------------------------------------------------------------------------------
 
 /**
- * After the lanterns, scored by babi-leto/orionidy.m4a: the real Orionids of that night. Stars,
+ * After the lanterns, scored by podzimni-listi/orionidy.m4a: the real Orionids of that night. Stars,
  * Orion's belt rising in the north-east corner, meteors out of it ever thicker on the drums, a
  * fireball crossing the east and south walls to home and bursting, a breath of dark, and its sonic
  * boom bringing the whole sky down: light before thunder, once more.
@@ -1698,7 +1713,7 @@ const orionidy = effect({
 // ---- Poslední list ------------------------------------------------------------------------------
 
 /**
- * The end, scored by babi-leto/posledni-list.m4a: a clear night, hoarfrost growing feather by
+ * The end, scored by podzimni-listi/posledni-list.m4a: a clear night, hoarfrost growing feather by
  * feather and brightening with the music until the frame is silver; the leaf shivering, and at
  * the silence it lets go and falls through the dark, lighting the frost it passes; its landing
  * throws a last wave of gold round the room, which ebbs back into the corner and leaves the leaf
@@ -1895,7 +1910,7 @@ const skyDrums = Array.from({ length: Math.ceil((ORIONIDY.burst - ORIONIDY.showe
 // Whole, like the moment it hands to, so the fog does not step up when the minute starts.
 const fog = look({ bed: { effect: pulnoc, params: { fog: 1 } }, palette: mlha, intensity: 1, floor: 0 });
 
-export default evening('Babí léto', {
+export default evening('Podzimní listí', {
 	palette: zlato,
 	segments: [
 		hold('Pavučinky', {
@@ -1905,7 +1920,7 @@ export default evening('Babí léto', {
 		}),
 
 		narration('Vítr', {
-			audio: './babi-leto/vitr.m4a',
+			audio: './podzimni-listi/vitr.m4a',
 			palette: canopy,
 			bpm: VITR.bpm,
 			enter: { light: 'cut' },
@@ -1937,7 +1952,6 @@ export default evening('Babí léto', {
 				song('Edge Of Desire', { by: 'Jonas Blue', id: '91ArCmT8cF0' }),
 				song("Movin' To The Sun", { by: 'HUGEL', id: 'n7QlUH0zrPg' }),
 				song('Just The Way You Are', { by: 'Milky', id: '1iDrQta26zo' }),
-				song('Jenny (I Wanna Ruin Our Friendship)', { by: 'Ian Asher', id: '59RVAP0lsuA' }),
 				song('Waterfalls', { by: 'James Hype', id: 'G-VVVGALi1A' }),
 				song('Desire', { by: 'Ian Asher', id: 'UARSiWU8eoo' })
 			]
@@ -1945,7 +1959,7 @@ export default evening('Babí léto', {
 
 		narration('Drakiáda', {
 			id: 'drakiada-launch',
-			audio: './babi-leto/drakiada.m4a',
+			audio: './podzimni-listi/drakiada.m4a',
 			palette: drak,
 			bpm: DRAKIADA.bpm,
 			enter: { light: 'cut' },
@@ -1968,7 +1982,7 @@ export default evening('Babí léto', {
 			songs: [
 				song('Beauty And A Beat', { by: 'Justin Bieber', id: 'aWkPBCF8rFU' }),
 				song('Timber', { by: 'Pitbull', id: 'GcYF1xnmZTI' }),
-				song('Bang Bang', { by: 'Jessie J', id: 'b0U-NcIWz1M' }),
+				song('Party Rock Anthem', { by: 'LMFAO', id: 'kmioyMNkgx4' }),
 				song('Where Have You Been', { by: 'Rihanna', id: 'DxC-PpNdwxo' }),
 				song('Into You', { by: 'Ariana Grande', id: 'Faq-ODnfIPw' }),
 				song('Dynamite', { by: 'Taio Cruz', id: '3MrY_BwLChk' }),
@@ -1978,7 +1992,7 @@ export default evening('Babí léto', {
 
 		narration('Špačci', {
 			id: 'spacci-flock',
-			audio: './babi-leto/spacci.m4a',
+			audio: './podzimni-listi/spacci.m4a',
 			palette: vinice,
 			bpm: SPACCI.bpm,
 			enter: { light: 'cut' },
@@ -1997,21 +2011,21 @@ export default evening('Babí léto', {
 			enter: { light: 'cut', hit: 'bump' },
 			between: { crossfade: 3 },
 			songs: [
-				song('Je mi fajn', { by: 'EARTH', id: 'njqxvonZs0I' }),
+				song('Hannah Montana', { by: 'Calin', id: 'rtRf-iukdvc' }),
 				song('Praha/Vídeň', { by: 'Calin', id: 'NZtZzsI8JTA' }),
-				song('Bomby', { by: 'Ben Cristovao', id: 'jrfpCYp3B1M' }),
-				song('Teď tady', { by: 'Ektor', id: '244WlAyipEA' }),
-				song('Dívej', { by: 'Calin', id: 'npF44EQhhso' }),
-				song('LALALA', { by: 'Grey256', id: '-pnhUQdw3QU' }),
-				song('Sunset', { by: 'Separ', id: 'bEgS_KJCxTU' }),
 				song('Habibi', { by: 'STEIN27', id: 'tWEaUKCQ8Fg' }),
-				song('Hannah Montana', { by: 'Calin', id: 'rtRf-iukdvc' })
+				song('Vandr', { by: 'Skippy McDippy', id: 'cOpRvLUSMiQ' }),
+				song('SuperStar', { by: 'Calin', id: 'cBICopUZveg' }),
+				song('Sunset', { by: 'Separ', id: 'bEgS_KJCxTU' }),
+				song('Ona chce tančit', { by: 'Calin', id: 'vWmy5S1C_yo' }),
+				// The whole EP as its video plays it, ending on Rolls.
+				song('Melanž', { by: 'Yzomandias', id: 'jojRxf2qvqs' })
 			]
 		}),
 
 		narration('Burčák', {
 			id: 'burcak-pop',
-			audio: './babi-leto/burcak.m4a',
+			audio: './podzimni-listi/burcak.m4a',
 			palette: burcakPalette,
 			bpm: BURCAK.bpm,
 			enter: { light: 'cut' },
@@ -2035,8 +2049,7 @@ export default evening('Babí léto', {
 				song('Boston', { by: 'Ian Asher', id: '4HKiZY0wp5Y' }),
 				song('Somebody (2024)', { by: 'FISHER', id: '6tzzrNS56x8' }),
 				song("Baby Don't Hurt Me", { by: 'David Guetta', id: '0zFzJg2srvQ' }),
-				song('Mr. Brightside (Two Friends Remix)', { by: 'The Killers', id: 'NBt4fOBgVFY' }),
-				song('Black Out Days (Stay Away)', { by: 'Ian Asher', id: 'TkgDHsvxhlo' }),
+				song('Forever Young', { by: 'David Guetta', id: 'FFfwiFvwfm8' }),
 				song("I'm Good (Blue)", { by: 'David Guetta', id: 'pIb7QoXdP_k' }),
 				// The slack before the cake: guests' requests first, and it stretches or shrinks to meet 21:40.
 				fill({
@@ -2045,8 +2058,9 @@ export default evening('Babí léto', {
 					order: 'steady',
 					where: {
 						families: ['house', 'edm', 'disco', 'pop', 'trance', 'latin'],
-						heat: [3.3, 4.6],
-						minutes: [2, 4.5]
+						heat: [3, 4.6],
+						minutes: [2, 4.5],
+						exclude: removed
 					}
 				}),
 				song('Think About The Way', { by: 'Ice MC', id: 'MN-OitmV28Q' })
@@ -2063,7 +2077,7 @@ export default evening('Babí léto', {
 		}),
 
 		narration('Hodně štěstí', {
-			audio: './babi-leto/narozeniny.m4a',
+			audio: './podzimni-listi/narozeniny.m4a',
 			palette: dort,
 			bpm: NAROZENINY.bpm,
 			beatsPerBar: 3,
@@ -2086,7 +2100,7 @@ export default evening('Babí léto', {
 		}),
 
 		narration('Sfouknuto', {
-			audio: './babi-leto/sfouknuto.m4a',
+			audio: './podzimni-listi/sfouknuto.m4a',
 			palette: dort,
 			bpm: SFOUKNUTO.bpm,
 			enter: { light: 'cut' },
@@ -2107,23 +2121,43 @@ export default evening('Babí léto', {
 			between: { crossfade: 3 },
 			songs: [
 				song('Až na měsíc', { by: 'Viktor Sheen', id: 'I-HWMiOM8uE' }),
-				song('Deja Vu', { by: 'Viktor Sheen', id: 'TNEkNkVByyA' }),
-				song('Nevezmu tě z klubu domů 3', { by: 'PTK', id: 'Vh18F_05lLw' }),
 				song('Safír', { by: 'Calin', id: 'nTzU8TjvxyE' }),
-				song('Sedm', { by: 'Nik Tendo', id: 'tBFlyVq2uc4' }),
-				song('Alkohol a Molly', { by: 'Viktor Sheen', id: 'L0MwKDyG8I8' }),
-				song('Melanž', { by: 'Yzomandias', id: 'jojRxf2qvqs' }),
-				song('Vítej mezi náma', { by: 'Calin', id: 'ZiJWFrSJ7Gk' }),
-				song('Oblivion', { by: 'Viktor Sheen', id: 'igx0KEebYCc' }),
-				song('Režim nerušit', { by: 'Dollar Prync', id: 'XIqh1Q2FImE' }),
+				song('Dopamin', { by: 'Viktor Sheen', id: 'OUpSvSECgVc' }),
+				song('Plán B', { by: 'Calin', id: 'QKONZV8yEt4' }),
+				song('Dívej', { by: 'Calin', id: 'npF44EQhhso' }),
+				song('Cikády', { by: 'Calin', id: 'jqY_Oi95hUk' }),
+				song('Jedna Dva', { by: 'Yzomandias', id: 'IyqcKddpDKA' }),
+				song('Ibalgin', { by: 'Viktor Sheen', id: 'jhb7g0hM3xE' }),
+				song('Syndrom', { by: 'Viktor Sheen', id: '3rkMo0N-Irc' }),
+				song('dřív bylo líp', { by: 'Yzomandias', id: 'w4M13JKPE2Y' }),
 				song('Cígo a káva', { by: 'Viktor Sheen', id: 'rgN9j5WQVdc' }),
-				song('Jedna Dva', { by: 'Yzomandias', id: 'IyqcKddpDKA' })
+				song('Stíny', { by: 'Viktor Sheen', id: '_VyTeP-35cs' }),
+				song('Rozdělený světy', { by: 'Viktor Sheen', id: 'NcypOs8yC50' }),
+				// Out of the birthday into the songs they grew up on.
+				song('Nostalgie', { by: 'Viktor Sheen', id: 'KCJzMN1vPog' })
+			]
+		}),
+
+		block('White girl music', {
+			palette: lesk,
+			enter: { light: 'cut', hit: 'bump' },
+			between: { crossfade: 3 },
+			songs: [
+				song('Mr. Brightside', { by: 'The Killers', id: 'm2zUrruKjDQ' }),
+				song('Party In The U.S.A.', { by: 'Miley Cyrus', id: '7ARXrfGbQaI' }),
+				song('Toxic', { by: 'Britney Spears', id: 'tVdr_JWmnsA' }),
+				song('Poker Face', { by: 'Lady Gaga', id: 'oG-4Uvhm4lI' }),
+				song('Teenage Dream', { by: 'Katy Perry', id: 'X1yb80PWsN4' }),
+				song('Girlfriend', { by: 'Avril Lavigne', id: 'g0TiuFwX0r8' }),
+				song('TiK ToK', { by: 'Kesha', id: 'RxUZLmN5RsY' }),
+				song('Call Me Maybe', { by: 'Carly Rae Jepsen', id: 'k6jscLH3p2g' }),
+				song('Shake It Off', { by: 'Taylor Swift', id: 'sWMk8dwljFU' })
 			]
 		}),
 
 		narration('Polární záře', {
 			id: 'polarni-zare',
-			audio: './babi-leto/zare.m4a',
+			audio: './podzimni-listi/zare.m4a',
 			palette: zare,
 			bpm: ZARE.bpm,
 			enter: { light: 'cut' },
@@ -2142,19 +2176,12 @@ export default evening('Babí léto', {
 			enter: { light: 'cut', hit: 'bump' },
 			between: { crossfade: 3 },
 			songs: [
+				song('Nicole Kidman', { by: 'ADÉLA', id: 'h-zuG75Ds-w' }),
 				song('APT.', { by: 'ROSÉ', id: 'DiTd771WumE' }),
-				song('Abracadabra', { by: 'Lady Gaga', id: '3zf0cvxd0t0' }),
 				song('Golden', { by: 'HUNTR/X', id: '9_bTl2vvYQg' }),
-				song('This Is What You Came For', { by: 'Calvin Harris', id: 'inCm3ByI17o' }),
-				song('Espresso', { by: 'Sabrina Carpenter', id: 'kIft-LUHHVA' }),
-				song('Lean On', { by: 'Major Lazer', id: '_mmHxzGjUZQ' }),
-				song('Break Free', { by: 'Ariana Grande', id: '1s4-OFCBUGo' }),
-				song('No Broke Boys', { by: 'Disco Lines', id: 'nS-fOh1CfhQ' }),
-				song('Party Rock Anthem', { by: 'LMFAO', id: 'kmioyMNkgx4' }),
-				song("Stumblin' In", { by: 'CYRIL', id: '7sAD23kUZuc' }),
-				song('Hypnotized', { by: 'Purple Disco Machine', id: '91jpOlo3M3Y' }),
-				song('Lose Control', { by: 'MEDUZA', id: 'oFRIda79u_E' }),
-				song('Miracle', { by: 'Calvin Harris', id: '5zC9gkugb0o' })
+				song('Party', { by: 'Troye Sivan', id: 'mFCU_oVnUcI' }),
+				song('Sad Girls', { by: 'Bebe Rexha', id: 'L72P0Os56G4' }),
+				song("Don't Wanna Go Home", { by: 'MEDUZA', id: 'jY33qno7Csg' })
 			]
 		}),
 
@@ -2165,14 +2192,9 @@ export default evening('Babí léto', {
 			songs: [
 				song('FE!N', { by: 'Travis Scott', id: '2nR1zrNzgcY' }),
 				song('Rumble', { by: 'Skrillex', id: 'fFU3VEimqe0' }),
-				song('NOKIA', { by: 'Drake', id: 'RDH71p3LgWM' }),
-				song('Rave in the Grave', { by: 'REDZED', id: 'Ar1uZORi1TM' }),
-				song('Baddadan', { by: 'Chase & Status', id: '8GEObTEFEeo' }),
+				song('NOKIA', { by: 'Drake', id: 'yi4WypSJr2U' }),
 				song('Prada', { by: 'cassö', id: 'KYcSPar5uTk' }),
-				song('For The Night', { by: 'Pop Smoke', id: 'rm6ypCrKFQ8' }),
-				song('Push Up', { by: 'Creeds', id: '5vDvHoiPgOQ' }),
 				song('Not Like Us', { by: 'Kendrick Lamar', id: 'phLb_SoPBlA' }),
-				song('Voices In My Head', { by: 'Anyma', id: 'woeU8oOIKYE' }),
 				song('SICKO MODE', { by: 'Travis Scott', id: 'NQbkGDoD7B0' }),
 				// The slack before midnight, which the birthday's holds spend; it stretches or shrinks to meet 23:56.
 				fill({
@@ -2180,9 +2202,11 @@ export default evening('Babí léto', {
 					from: 'library',
 					order: 'rising',
 					where: {
-						families: ['hiphop', 'bass', 'edm', 'house', 'techno'],
-						heat: [3.8, 5],
-						minutes: [2, 4.5]
+						// Measured heat puts rap under 3.3; a higher floor leaves only bass, all of it named.
+						families: ['hiphop', 'bass', 'edm', 'techno'],
+						heat: [2.7, 5],
+						minutes: [2, 4.5],
+						exclude: removed
 					}
 				}),
 				// Into the fog that the countdown rises out of.
@@ -2207,7 +2231,7 @@ export default evening('Babí léto', {
 		// Its sixtieth second is midnight.
 		narration('Půlnoc', {
 			at: '23:59',
-			audio: './babi-leto/pulnoc.m4a',
+			audio: './podzimni-listi/pulnoc.m4a',
 			palette: mlha,
 			bpm: 60,
 			enter: { light: 'cut' },
@@ -2235,12 +2259,13 @@ export default evening('Babí léto', {
 			songs: [
 				song('Kernkraft 400', { by: 'Zombie Nation', id: '48apI4bpnSo' }),
 				song('Pumpin Blood', { by: 'TWINSICK', id: 'rY_VIdu_mR4' }),
-				song('Move Your Body', { by: 'Öwnboss', id: 'NkMceAV2hVA' }),
+				song('Sandstorm', { by: 'Darude', id: 'XjvkxXblpz8' }),
 				song('Summertime Sadness (Hardstyle)', { id: 'AHaIdOXzzuE' }),
+				song('Turn The Tide', { by: 'Dimitri Vegas', id: 'bopWEN0v9Y8' }),
 				song('Vois sur ton chemin (Techno Mix)', { by: 'BENNETT', id: 'i9Jr50r8L7o' }),
 				song('Freaks', { by: 'Timmy Trumpet', id: 'Y9i2rPVSEok' }),
+				song('Animals', { by: 'Martin Garrix', id: 'DYf28lOb8KU' }),
 				song('We Like To Party (Da Tweekaz Remix)', { by: 'Vengaboys', id: 'P5Djcm-Ufmk' }),
-				song('Brace For Impact', { by: 'Hardwell', id: 'sJ-feZJ60VE' }),
 				song('Tremor', { by: 'Dimitri Vegas & Like Mike', id: '9vMh9f41pqE' }),
 				song('Bangarang', { by: 'Skrillex', id: 'V7hbIzqxhaE' }),
 				song('Thunder', { by: 'Gabry Ponte', id: 'b_bEigUA1kk' })
@@ -2259,21 +2284,27 @@ export default evening('Babí léto', {
 			enter: { light: 3 },
 			between: { crossfade: 3 },
 			songs: [
+				song('Benzínka', { by: 'Stepan Drabek', id: 'j4YQy6uOIGE' }),
+				song('Párno Nýdrle', { by: 'VOJIR', id: 'NDvtXeAVjOM' }),
+				song('ASSETTO CLUB', { by: 'ASSETTO DRIFTER', id: 'DhM_tQAKqB0' }),
+				song('ČIMICE RIDER', { by: 'VOJIR', id: 'j7fLRm-w2cU' }),
+				// Shortened by the friends' songs, so the stars still come at about one.
 				fill({
-					length: '20m',
+					length: '8m',
 					from: 'requests-then-library',
 					order: 'steady',
 					where: {
 						families: ['house', 'edm', 'disco', 'pop', 'hiphop', 'latin', 'trance'],
 						heat: [3, 4.4],
-						minutes: [1.5, 5.5]
+						minutes: [1.5, 5.5],
+						exclude: removed
 					}
 				})
 			]
 		}),
 
 		narration('Orionidy', {
-			audio: './babi-leto/orionidy.m4a',
+			audio: './podzimni-listi/orionidy.m4a',
 			palette: hvezdy,
 			bpm: ORIONIDY.bpm,
 			enter: { light: 'cut' },
@@ -2305,7 +2336,7 @@ export default evening('Babí léto', {
 		}),
 
 		narration('Poslední list', {
-			audio: './babi-leto/posledni-list.m4a',
+			audio: './podzimni-listi/posledni-list.m4a',
 			palette: jinovatka,
 			bpm: 60,
 			enter: { light: 3 },
