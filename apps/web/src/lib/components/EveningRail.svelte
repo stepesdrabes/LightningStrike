@@ -370,6 +370,7 @@
 													<Icon name={ROW_ICON[row.kind]} size={12} />
 													<span class="truncate">{row.kind === 'song' ? row.title : ROW_LABEL[row.kind]}</span>
 													{#if row.addedBy}<span class="guest">{row.addedBy}</span>{/if}
+													{#if row.edited}<span class="chip" title="Plays the sections you marked in the Judge panel">Edited</span>{/if}
 													{#if row.kind === 'song' && !row.ready}<span class="unready" title="Not prepared yet"></span>{/if}
 												</button>
 											</li>
@@ -765,7 +766,7 @@
 	}
 	.rows .row {
 		display: grid;
-		grid-template-columns: 38px 16px 1fr auto auto;
+		grid-template-columns: 38px 16px 1fr auto auto auto;
 		align-items: center;
 		gap: 8px;
 		width: 100%;
@@ -791,6 +792,14 @@
 	.guest {
 		font-size: 11.5px;
 		color: var(--muted-foreground);
+	}
+	.chip {
+		padding: 0 5px;
+		border-radius: 3px;
+		background: var(--muted);
+		color: var(--subtle-foreground);
+		font-size: 10.5px;
+		line-height: 15px;
 	}
 	.unready {
 		width: 5px;

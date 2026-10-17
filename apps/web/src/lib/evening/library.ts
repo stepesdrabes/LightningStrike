@@ -17,6 +17,8 @@ export interface LibraryTrack {
 	/** Cross-track heat, 1 still to 5 peak. */
 	heat: number;
 	loungeOnly: boolean;
+	/** Its analysis follows marks from the Judge panel. */
+	edited?: true;
 }
 
 /** What an analysis says about a track's drive, for heat. */

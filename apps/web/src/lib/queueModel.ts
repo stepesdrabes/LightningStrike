@@ -63,6 +63,8 @@ export interface QueueItem {
 	loungeOnly?: boolean;
 	/** Why the grid is not trusted, for the row and the inspector. */
 	trustNote?: string;
+	/** Re-preparing with new hand edits; the row stays playable with its previous show. */
+	refreshing?: true;
 	/** Reserved for guests adding from their own device. Absent means the host added it. */
 	addedBy?: string;
 	/** Set only by the radio topping the queue up, so a row nobody chose can say so. */

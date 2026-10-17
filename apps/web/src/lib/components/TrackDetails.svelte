@@ -48,6 +48,9 @@
 		{#if context?.genreFamily}
 			<Badge title="The family the show was lit as">{context.genreFamily}</Badge>
 		{/if}
+		{#if analysis.handMap}
+			<Badge title="Plays the sections you marked in the Judge panel">Edited</Badge>
+		{/if}
 		<span class="spacer"></span>
 		<Button
 			variant="ghost"

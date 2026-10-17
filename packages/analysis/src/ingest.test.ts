@@ -11,7 +11,7 @@ import { Adtof, adtofIdentity } from './adtof.ts';
 import { artworkHue } from './artwork.ts';
 import { enrichTrack } from './enrich.ts';
 import { GenreClassifier } from './genreModel.ts';
-import { ingest, type TrackMeta } from './ingest.ts';
+import { handMapStale, ingest, type TrackMeta } from './ingest.ts';
 
 const cache = vi.hoisted(() => ({ dir: '' }));
 vi.mock('./paths.ts', () => ({ get CACHE_DIR() { return cache.dir; }, get MODEL_DIR() { return cache.dir; } }));
@@ -302,6 +302,23 @@ describe('queue cache refresh', () => {
 			movements: [64], movementVetoes: [100]
 		}));
 		for (const [path, body] of artifacts) expect(await readFile(path, 'utf8')).toBe(body);
+	});
+
+	it('flags judgement marks the analysis has not read, movement marks included, until it reads them', async () => {
+		await saveTrack(youtubeId, youtubeSource, ANALYSIS_VERSION);
+		expect(await handMapStale(youtubeId)).toBe(false);
+		await mkdir(join(cache.dir, 'judge'));
+		const judgement = join(cache.dir, 'judge', `${youtubeId}.json`);
+		await writeFile(judgement, JSON.stringify({
+			analysisHash: 'another grid',
+			sections: [{ kind: 'intro', startTime: 0 }, { kind: 'verse', startTime: 8 }], movements: [64]
+		}));
+		expect(await handMapStale(youtubeId)).toBe(true);
+		expect((await ingest(youtubeSource, { cachedTrackId: youtubeId })).fromCache).toBe(false);
+		expect(await handMapStale(youtubeId)).toBe(false);
+		expect((await ingest(youtubeSource, { cachedTrackId: youtubeId })).fromCache).toBe(true);
+		await rm(judgement);
+		expect(await handMapStale(youtubeId)).toBe(true);
 	});
 
 	it('does not redo analysis when the saved version is already current', async () => {

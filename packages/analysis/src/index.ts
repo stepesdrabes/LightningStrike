@@ -8,6 +8,7 @@ export {
 	contextPath,
 	findAudioFile,
 	handMapInput,
+	handMapStale,
 	ingest,
 	isValidId,
 	markGridTrusted,

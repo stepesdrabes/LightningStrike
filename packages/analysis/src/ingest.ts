@@ -164,6 +164,17 @@ async function handMapStamp(id: string): Promise<string | undefined> {
 	return `${handMapFingerprint(map.sections)}${movements ? `;movements=${movements}` : ''}${vetoes ? `;vetoes=${vetoes}` : ''}`;
 }
 
+/** An analysed track whose saved judgement marks differ from the ones its analysis read. */
+export async function handMapStale(id: string): Promise<boolean> {
+	let cached: TrackAnalysis;
+	try {
+		cached = JSON.parse(await readFile(analysisPath(id), 'utf8')) as TrackAnalysis;
+	} catch {
+		return false;
+	}
+	return cached.handMap !== (await handMapStamp(id));
+}
+
 /**
  * Read optional judgement data with the analysis it was drawn on before overwriting the cache.
  * The pinned analysisHash guards the drawing grid; preserve confirmed piecewise cuts.
@@ -768,6 +779,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		}
 
 		log('analysing');
+		const stamp = await handMapStamp(id);
 		const handMap = await handMapInput(id);
 		const installedStriker = drums?.activations && kitActivations ? await readInstalledStriker() : null;
 		if (installedStriker && 'error' in installedStriker) {
@@ -801,6 +813,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		}));
 
 		if (drumSeparation) analysis.drumSeparation = drumSeparation;
+		// The cache check compares the whole stamp; analysis alone cannot see movement marks.
+		analysis.handMap = stamp;
 		await timed('persistence', async () => {
 			await writeFile(analysisPath(id), JSON.stringify(analysis, null, '\t'));
 			// A fresh grid means a fresh verdict on it; the override, being the owner's, survives.

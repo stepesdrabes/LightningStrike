@@ -91,6 +91,7 @@ class EveningStore {
 	private narrations: Record<string, number> = {};
 	private facts = new Map<string, ReturnType<TrackFacts>>();
 	private heat = new Map<string, number>();
+	private edited = new Set<string>();
 	private prepare: EveningView['prepare'] = { running: false, total: 0, done: 0, failed: 0, current: null };
 	private writing: Promise<void> = Promise.resolve();
 
@@ -119,6 +120,7 @@ class EveningStore {
 		this.lastCurrent = state.currentKey;
 		this.lastShape = shapeOf(state);
 		queue.subscribe((s) => this.onQueue(s));
+		runner.onRefreshed(() => this.scheduleReplan());
 
 		if (this.data.file) this.watch(this.data.file);
 		if (this.live) {
@@ -173,7 +175,8 @@ class EveningStore {
 				endAt: r.endAt,
 				ready: r.ready,
 				...(r.addedBy ? { addedBy: r.addedBy } : {}),
-				...(r.heat !== undefined ? { heat: r.heat } : {})
+				...(r.heat !== undefined ? { heat: r.heat } : {}),
+				...(r.trackId && this.edited.has(r.trackId) ? { edited: true as const } : {})
 			})),
 			past,
 			now: this.now(),
@@ -216,7 +219,8 @@ class EveningStore {
 				endAt,
 				ready: item.status === 'ready',
 				...(item.addedBy ? { addedBy: item.addedBy } : {}),
-				...(heat !== undefined ? { heat } : {})
+				...(heat !== undefined ? { heat } : {}),
+				...(item.trackId && this.edited.has(item.trackId) ? { edited: true as const } : {})
 			});
 		}
 		return out;
@@ -393,6 +397,7 @@ class EveningStore {
 		const entries = await readLibrary();
 		const library = await libraryTracks(entries);
 		this.heat = new Map(library.map((t) => [t.id, script.heat[t.id] ?? t.heat]));
+		this.edited = new Set(library.filter((t) => t.edited).map((t) => t.id));
 		this.facts = new Map(
 			entries.map((e) => [
 				e.id,

@@ -6,12 +6,13 @@ import { heatOf, type DriveSummary, type LibraryTrack } from '$lib/evening/libra
 interface Cached {
 	mtimeMs: number;
 	drive: DriveSummary | null;
+	edited: boolean;
 }
 
 const drives = new Map<string, Cached>();
 
-/** Drive figures from one analysis, read once per analysis file version. */
-async function driveOf(id: string): Promise<DriveSummary | null> {
+/** Drive figures and hand edits from one analysis, read once per analysis file version. */
+async function analysisFacts(id: string): Promise<Cached | null> {
 	let path: string;
 	let mtimeMs: number;
 	try {
@@ -21,8 +22,9 @@ async function driveOf(id: string): Promise<DriveSummary | null> {
 		return null;
 	}
 	const cached = drives.get(id);
-	if (cached && cached.mtimeMs === mtimeMs) return cached.drive;
+	if (cached && cached.mtimeMs === mtimeMs) return cached;
 	let drive: DriveSummary | null = null;
+	let edited = false;
 	try {
 		const a = JSON.parse(await readFile(path, 'utf8')) as TrackAnalysis;
 		const loud = [...a.bars].sort((x, y) => y.energy - x.energy).slice(0, Math.max(1, Math.floor(a.bars.length / 2)));
@@ -32,11 +34,13 @@ async function driveOf(id: string): Promise<DriveSummary | null> {
 			loudnessRange: a.loudnessRange,
 			kicksPerLoudBar: loud.reduce((sum, b) => sum + b.kicks, 0) / loud.length
 		};
+		edited = !!a.handMap;
 	} catch {
 		drive = null;
 	}
-	drives.set(id, { mtimeMs, drive });
-	return drive;
+	const facts = { mtimeMs, drive, edited };
+	drives.set(id, facts);
+	return facts;
 }
 
 /** Every library track as the planner sees it, from a library listing when the caller has one. */
@@ -44,7 +48,8 @@ export async function libraryTracks(listing?: Awaited<ReturnType<typeof readLibr
 	const entries = listing ?? (await readLibrary());
 	return Promise.all(
 		entries.map(async (e): Promise<LibraryTrack> => {
-			const drive = e.analysed ? await driveOf(e.id) : null;
+			const facts = e.analysed ? await analysisFacts(e.id) : null;
+			const drive = facts?.drive ?? null;
 			return {
 				id: e.id,
 				title: e.title,
@@ -56,7 +61,8 @@ export async function libraryTracks(listing?: Awaited<ReturnType<typeof readLibr
 				genre: e.genreFamily,
 				bpm: drive?.bpm ?? null,
 				heat: heatOf(e.genreFamily, drive),
-				loungeOnly: e.gridTrust?.trusted === false && !e.gridTrustOverride
+				loungeOnly: e.gridTrust?.trusted === false && !e.gridTrustOverride,
+				...(facts?.edited ? { edited: true } : {})
 			};
 		})
 	);

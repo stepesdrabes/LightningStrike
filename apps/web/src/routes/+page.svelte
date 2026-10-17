@@ -665,12 +665,13 @@
 		const v = viz;
 		const next = upcoming;
 		if (!v) return;
-		// The row after this one changed, or left the evening: whatever was loaded or planned for it goes.
-		if (ahead && (ahead.key !== next?.key || !next?.evening)) {
+		// The row after this one changed, left the evening or is being recomposed: whatever was loaded
+		// or planned for it goes.
+		if (ahead && (ahead.key !== next?.key || !next?.evening || next.refreshing)) {
 			ahead = null;
 			v.clearCrossfade();
 		}
-		if (!next?.evening || next.status !== 'ready' || ahead) return;
+		if (!next?.evening || next.status !== 'ready' || next.refreshing || ahead) return;
 		ahead = { key: next.key, load: fetchRow(v, next.key).catch(() => null) };
 		void planCrossfade(v);
 	});

@@ -1,11 +1,12 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { BUILT_IN_EFFECTS, type Show } from '@mv/core';
-import { isTransientFetchError, showPath, type IngestStage } from '@mv/analysis';
+import { handMapStale, isTransientFetchError, readMeta, showPath, type IngestStage } from '@mv/analysis';
 import { refreshShow, lintShow } from '@mv/author-engine';
 import { currentItem, nextItem, type ItemStatus, type QueueItem } from '$lib/queueModel.ts';
 import { autopilot } from './autopilot.ts';
 import { eveningGate } from './evening/gate.ts';
 import { ingestDetached, narrationDetached } from './ingestDetached.ts';
+import { readJudgements } from './judge.ts';
 import { queue } from './queueStore.ts';
 
 /** Map known ingest stages to queue states; unknown messages leave status unchanged. */
@@ -93,6 +94,9 @@ export async function prepareTrack(item: Preparable, onStage: (stage: string) =>
 const QUEUE_ATTEMPTS = 3;
 const RETRY_WAIT_MS = [20000, 60000];
 
+/** The section editor saves on every drag; re-analyse once the edits pause. */
+const EDIT_SETTLE_MS = 15000;
+
 /**
  * Serialize ONNX analysis to avoid CPU contention and keep the next track ahead of speculative
  * work.
@@ -100,9 +104,42 @@ const RETRY_WAIT_MS = [20000, 60000];
 class IngestRunner {
 	/** Set the guard before the first await so simultaneous callers cannot both enter. */
 	private busy = false;
+	private swept = false;
+	/** Tracks whose judgement marks changed since their analysis; queued rows come first. */
+	private edited = new Set<string>();
+	private settling = new Map<string, ReturnType<typeof setTimeout>>();
+	private refreshed = new Set<(trackId: string) => void>();
+
+	/** Re-prepare a track with its new hand edits; its rows play the previous show meanwhile. */
+	editsChanged(trackId: string, settle = EDIT_SETTLE_MS): void {
+		clearTimeout(this.settling.get(trackId));
+		this.settling.set(
+			trackId,
+			setTimeout(() => {
+				this.settling.delete(trackId);
+				this.edited.add(trackId);
+				void this.pump();
+			}, settle)
+		);
+	}
+
+	onRefreshed(listener: (trackId: string) => void): void {
+		this.refreshed.add(listener);
+	}
+
+	/** Catch marks saved while the server was down or before edits re-prepared their track. */
+	private async sweepEdits(): Promise<void> {
+		for (const j of await readJudgements()) {
+			if (await handMapStale(j.trackId)) this.editsChanged(j.trackId, 0);
+		}
+	}
 
 	/** Prepare the current row, then the one after it, and stop. */
 	async pump(): Promise<void> {
+		if (!this.swept) {
+			this.swept = true;
+			void this.sweepEdits().catch(() => {});
+		}
 		if (this.busy) return;
 		this.busy = true;
 		let more = false;
@@ -116,6 +153,11 @@ class IngestRunner {
 			);
 			if (target) {
 				await this.run(target);
+				more = true;
+			} else if (this.edited.size > 0) {
+				const [trackId] = this.edited;
+				this.edited.delete(trackId);
+				await this.refresh(trackId);
 				more = true;
 			} else if (!eveningGate.active) {
 				// Ask radio when preparation empties, following requests rather than an unattended timer.
@@ -184,6 +226,32 @@ class IngestRunner {
 			// Bound failed radio picks so network or yt-dlp failures cannot enqueue indefinitely.
 			if (item.auto) autopilot.noteFailure();
 		}
+	}
+
+	private async refresh(trackId: string): Promise<void> {
+		const meta = await readMeta(trackId);
+		if (!meta) return;
+		// The playing row keeps the show and trust it started with.
+		const rows = () =>
+			queue.snapshot.items.filter(
+				(i) => i.trackId === trackId && i.status === 'ready' && i.key !== queue.snapshot.currentKey
+			);
+		for (const row of rows()) queue.patch(row.key, { refreshing: true });
+		let facts: Partial<QueueItem> = {};
+		try {
+			const { authored, loungeOnly, trustNote } = await prepareTrack(
+				{ source: meta.source, trackId, thumbnail: '' },
+				() => {}
+			);
+			facts = { authored, loungeOnly, trustNote };
+		} catch (e) {
+			console.warn(`re-preparing ${trackId} with its hand edits failed: ${(e as Error).message.split('\n')[0]}`);
+		}
+		for (const row of rows()) queue.patch(row.key, { ...facts, refreshing: undefined });
+		for (const row of queue.snapshot.items.filter((i) => i.refreshing && i.trackId === trackId)) {
+			queue.patch(row.key, { refreshing: undefined });
+		}
+		for (const listener of this.refreshed) listener(trackId);
 	}
 
 	/** Put a failed row back in line, which is what a retry button means. */

@@ -18,6 +18,8 @@ export interface EveningRowView {
 	ready: boolean;
 	addedBy?: string;
 	heat?: number;
+	/** The song's show follows section marks from the Judge panel. */
+	edited?: true;
 }
 
 export interface PrepareView {
