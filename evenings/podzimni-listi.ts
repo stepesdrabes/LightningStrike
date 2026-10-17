@@ -10,7 +10,8 @@
  * north. Landmarks derive from the run lengths. Every effect is a function of time, so the
  * preview and the fixture draw the same frames. Output gamma is 2.45: 0.45 is the dimmest colour
  * that reads cleanly, so light arrives and leaves as a front or pixel by pixel, never as a fade.
- * Full-room flashes stay single or under three a second; only small regions strobe faster.
+ * Full-room flashes stay single or under three a second; only small regions strobe faster. Every
+ * moment arrives as a bloom opening out of where its story ends, never as a flash.
  *
  * The frame doubles as one 7-segment digit for a guest facing west and looking up: the east wall
  * is the top segment, the west wall the bottom, the north and south walls the sides split at the
@@ -105,7 +106,7 @@ const removed = [
  * The doors and the opening, scored by podzimni-listi/vitr.m4a: a green canopy with the sun through it
  * and gossamer drifting; two gusts out of the west wall; a storm whose vortex of torn leaves laps
  * the room ever faster on the drums; the great gust that takes everything but one leaf; silence,
- * and the gold breaking out of that leaf over the whole frame.
+ * and the gold blooming out of that leaf over the whole frame.
  */
 const vitr = effect({
 	id: 'vitr',
@@ -220,21 +221,17 @@ const vitr = effect({
 				const beat = 60 / p.bpm;
 
 				if (!doors && t >= p.gold) {
-					// The gold breaks out of the leaf: along the beam, out of both its ends and round
+					// The gold blooms out of the leaf: along the beam, out of both its ends and round
 					// the ring both ways, with the sun's spokes turning over it and glitter thrown up.
 					const age = t - p.gold;
-					if (age < 0.1) {
-						for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.5);
-						return;
-					}
-					const along = age * 250;
+					const along = 15 + age * 220;
 					for (let b = 0; b < beamCount; b++) {
 						const off = Math.abs(b - leaf);
 						if (off > along) continue;
 						setSample(out, beamStart + b, palette, SLOT.accent, 0.85 + 0.1 * noise3(b * 0.05, t * 0.3, 4.4));
 						if (along - off < 5 && along < half) addSample(out, beamStart + b, palette, SLOT.white, 1.2);
 					}
-					const round = Math.max(0, (age - half / 250) * 450);
+					const round = Math.max(0, (age - (half - 15) / 220) * 400);
 					const turn = 0.1 * age + 0.6 * (1 - Math.exp(-age / 0.8));
 					const rays = 1 - 0.4 * smoothstep(0, p.end - p.gold, age);
 					for (let i = 0; i < ring; i++) {
@@ -397,13 +394,13 @@ const vitr = effect({
  * Into the kite block, scored by podzimni-listi/drakiada.m4a: the kite climbs the beam pull by pull,
  * each pull firing colour round the room; a gale takes it at the top and the wind races round
  * the frame; the line snaps, and the kite spirals free round the room, faster every lap, painting
- * it in ribbons until it explodes into them.
+ * it in ribbons until it soars and they bloom round the room.
  */
 const drakiada = effect({
 	id: 'drakiada',
 	name: 'Drakiáda',
 	role: 'bed',
-	blurb: 'A kite climbs in pulls, thrashes in a gale, snaps free and spirals the room into ribbons.',
+	blurb: 'A kite climbs in pulls, thrashes in a gale, snaps free, spirals the room and soars into ribbons.',
 	params: DRAKIADA,
 	create(g) {
 		let ring = 0;
@@ -436,23 +433,31 @@ const drakiada = effect({
 				const drop = p.snap + p.spiral;
 
 				if (t >= drop) {
-					// The drop: ribbons in two trains running opposite ways round the room, brightest
-					// where they cross, streaming out of the beam's centre, and confetti over all of it.
+					// It soars: the ribbons it painted bloom out of the north end both ways round the
+					// room into two trains running opposite ways, brightest where they cross, the beam
+					// filling from its north end, and confetti over all of it.
 					const age = t - drop;
-					if (age < 0.1) {
-						for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.5);
-						return;
-					}
 					const run = 300 * 2.5 * (1 - Math.exp(-age / 2.5));
+					const bloom = age * 420;
 					for (let i = 0; i < ring; i++) {
 						const along = wrap(i - north);
+						const behind = bloom - Math.min(along, ring - along);
 						const one = Math.floor((along + run) / 16) % 2 === 0;
 						const two = Math.floor((along - run + 8) / 16) % 2 === 0;
+						if (behind < 0) {
+							// Still the spiral's last layer, until the bloom reaches it.
+							setSample(out, i, palette, Math.floor((along + t * 60) / 14) % 2 === 0 ? SLOT.third : SLOT.accent, 0.9);
+							continue;
+						}
 						setSample(out, i, palette, one ? SLOT.accent : SLOT.third, one === two ? 0.95 : 0.72);
+						if (behind < 30 && bloom < ring / 2 + 30) addSample(out, i, palette, SLOT.white, 1.2 * (1 - behind / 30));
 					}
 					for (let b = 0; b < beamCount; b++) {
+						const behind = bloom * 0.5 - (beamCount - 1 - b);
+						if (behind < 0) continue;
 						const band = Math.floor((Math.abs(b - leaf) - run * 0.5 + 400) / 10) % 2 === 0;
 						setSample(out, beamStart + b, palette, band ? SLOT.accent : SLOT.third, 0.85);
+						if (behind < 10 && bloom * 0.5 < beamCount + 10) addSample(out, beamStart + b, palette, SLOT.white, 1.1 * (1 - behind / 10));
 					}
 					for (let slot = Math.floor(t * 30) - 3; slot <= Math.floor(t * 30); slot++) {
 						if (slot / 30 < drop) continue;
@@ -607,13 +612,13 @@ const drakiada = effect({
  * Into the vineyard block, scored by podzimni-listi/spacci.m4a: the sunset round the frame, gold over
  * the west wall going to violet in the east, and a murmuration of starlings black against it,
  * pouring in, swirling back and forth on the drums, tightening into a ball that races round the
- * room, hanging still in the silence, and bursting apart at the vineyard's cannon.
+ * room, hanging still in the silence, and lifting all at once as the sunset blazes up.
  */
 const spacci = effect({
 	id: 'spacci',
 	name: 'Špačci',
 	role: 'bed',
-	blurb: 'Starlings black against the sunset, swirling on the drums, scattered by the vineyard cannon.',
+	blurb: 'Starlings black against the sunset, swirling on the drums, lifting all at once as it blazes up.',
 	// The soundtrack's timing table arrives as parameters; the flock mirrors flockAt() in timing.ts.
 	params: SPACCI,
 	create(g) {
@@ -640,11 +645,7 @@ const spacci = effect({
 				bird.fill(0);
 				const beat = 60 / p.bpm;
 				const bar = 4 * beat;
-				const scatter = t >= p.bang ? t - p.bang : -1;
-				if (scatter >= 0 && scatter < 0.1) {
-					for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.5);
-					return;
-				}
+				const scatter = t >= p.lift ? t - p.lift : -1;
 				// Mirrors spacciDrums() in timing.ts: the latest drum, for the sky's pulse.
 				let pulse = 0;
 				if (t >= p.swirl && t < p.hush) {
@@ -659,14 +660,18 @@ const spacci = effect({
 					}
 				}
 
-				// The sunset: gold low over the west wall, through orange, to violet in the east.
-				const blaze = scatter < 0 ? 0 : 1 - 0.3 * smoothstep(0, p.end - p.bang, scatter);
+				// The sunset: gold low over the west wall, through orange, to violet in the east. As the
+				// flock lifts it blazes up, a wave of gold running out of the west both ways.
+				const blaze = scatter < 0 ? 0 : smoothstep(0, 0.9, scatter) * (1 - 0.3 * smoothstep(0, p.end - p.lift, scatter));
+				const wave = scatter < 0 ? -1 : scatter * 380;
 				for (let i = 0; i < ring; i++) {
 					const w = fromWest[i];
 					const n = noise3(i * 0.02, t * 0.08, 3.1);
 					const level = (0.6 + 0.1 * n + 0.25 * blaze) * (1 - 0.15 * w) + 0.12 * pulse;
 					setSample(out, i, palette, lerp(SLOT.accent, SLOT.third, clamp(w * 1.6)), level * (1 - 0.6 * smoothstep(0.55, 1, w)));
 					if (w > 0.45) addSample(out, i, palette, SLOT.base, level * smoothstep(0.45, 1, w));
+					const off = Math.abs((w * ring) / 2 - wave);
+					if (wave >= 0 && off < 26 && wave < ring / 2 + 26) addSample(out, i, palette, off < 6 ? SLOT.white : SLOT.accent, 1.1 * (1 - off / 26));
 				}
 				for (let b = 0; b < beamCount; b++) {
 					const n = noise3(b * 0.05, t * 0.1, 6.6);
@@ -702,13 +707,15 @@ const spacci = effect({
 					for (let i = 0; i < ring; i++) if (bird[i]) setSample(out, i, palette, SLOT.base, 0);
 				}
 
-				// After the cannon: glints of the sun on the grapes, thick at first and then settling.
+				// As they lift: glints of the sun on the grapes, thick at first and then settling.
 				for (let slot = Math.floor(t * 30) - 3; slot <= Math.floor(t * 30) && scatter >= 0; slot++) {
-					if (slot / 30 < p.bang) continue;
+					if (slot / 30 < p.lift) continue;
 					const since = t - slot / 30;
-					const count = 2 + Math.round(12 * Math.exp(-(slot / 30 - p.bang) / 2));
+					const count = 2 + Math.round(12 * Math.exp(-(slot / 30 - p.lift) / 2));
 					for (let j = 0; j < count; j++) {
-						addSample(out, Math.floor(hash01(slot * 23 + j * 7 + 5) * g.count), palette, j % 3 === 0 ? SLOT.base : SLOT.white, 1.3 * Math.exp(-since / 0.07));
+						const i = Math.floor(hash01(slot * 23 + j * 7 + 5) * g.count);
+						if (i < ring && bird[i]) continue;
+						addSample(out, i, palette, j % 3 === 0 ? SLOT.base : SLOT.white, 1.3 * Math.exp(-since / 0.07));
 					}
 				}
 				for (let d = -3; d <= 3; d++) setSample(out, beamStart + leaf + d, palette, SLOT.third, 0.55 + 0.4 * (1 - Math.abs(d) / 4));
@@ -753,35 +760,33 @@ const burcak = effect({
 				const top = beamCount - 1;
 
 				if (t >= p.clink) {
-					// Na zdraví: the room goes rosé and gold and fizzing, the ring of the glasses running
-					// out along the beam and round the frame, and a storm of sparkle over it.
+					// Na zdraví: the ring of the glasses runs out along the beam from where they met and
+					// round the frame from its ends, and behind it the room blooms rosé and gold and
+					// fizzing, with a storm of sparkle over it.
 					const age = t - p.clink;
-					if (age < 0.1) {
-						for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.5);
-						return;
-					}
+					const ripple = 6 + age * 260;
+					const round = Math.max(0, ripple - half);
 					for (let i = 0; i < ring; i++) {
+						const behind = round - Math.min(apart(i, north), apart(i, north + ring / 2));
+						if (behind < 0) {
+							setSample(out, i, palette, SLOT.base, 0.48);
+							continue;
+						}
 						const n = noise3(i * 0.3, t * 1.5, 7.7);
 						setSample(out, i, palette, lerp(SLOT.base, SLOT.accent, 0.3 + 0.5 * n), 0.78 + 0.14 * n);
+						if (behind < 20 && round < ring / 2) addSample(out, i, palette, SLOT.white, 1.2 * (1 - behind / 20));
 					}
 					for (let b = 0; b < beamCount; b++) {
+						const behind = ripple - Math.abs(b - leaf);
+						if (behind < 0) continue;
 						setSample(out, beamStart + b, palette, lerp(SLOT.base, SLOT.white, 0.35), 0.8);
 						if (hash01(Math.floor(b - t * 150) * 7 + 3) < 0.1) addSample(out, beamStart + b, palette, SLOT.white, 0.9);
-					}
-					const ripple = age * 300;
-					for (let b = 0; b < beamCount; b++) {
-						const off = Math.abs(Math.abs(b - leaf) - ripple);
-						if (off < 8) addSample(out, beamStart + b, palette, SLOT.white, 1.3 * (1 - off / 8));
-					}
-					const round = Math.max(0, ripple - half);
-					for (let i = 0; i < ring && round < ring / 2; i++) {
-						const off = Math.abs(Math.min(apart(i, north), apart(i, north + ring / 2)) - round);
-						if (off < 20) addSample(out, i, palette, SLOT.white, 1.2 * (1 - off / 20));
+						if (behind < 8 && ripple < half + 8) addSample(out, beamStart + b, palette, SLOT.white, 1.3 * (1 - behind / 8));
 					}
 					for (let slot = Math.floor(t * 30) - 3; slot <= Math.floor(t * 30); slot++) {
 						if (slot / 30 < p.clink) continue;
 						const since = t - slot / 30;
-						const count = 2 + Math.round(14 * Math.exp(-(slot / 30 - p.clink) / 1.8));
+						const count = Math.round(16 * smoothstep(0, 0.5, slot / 30 - p.clink) * Math.exp(-(slot / 30 - p.clink) / 1.8)) + 2;
 						for (let j = 0; j < count; j++) {
 							addSample(out, Math.floor(hash01(slot * 23 + j * 7 + 2) * g.count), palette, j % 2 === 0 ? SLOT.accent : SLOT.white, 1.3 * Math.exp(-since / 0.07));
 						}
@@ -961,10 +966,6 @@ const narozeniny = effect({
 				const building = smoothstep(p.verse2 - 6 * beat, p.verse2, t);
 				const big = t < finish ? building : 1 - smoothstep(finish + 0.5, finish + 4, t);
 
-				if (t >= finish && t < finish + 0.1) {
-					for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.5);
-					return;
-				}
 				// The lights go down: the warm room closes into the corner.
 				if (t < p.dark + 0.6) {
 					const reach = (ring / 2 + 20) * (1 - smoothstep(p.dark, p.dark + 0.6, t));
@@ -1005,6 +1006,15 @@ const narozeniny = effect({
 						const shape = 1 - Math.abs(d) / (tall + 1.5);
 						setSample(out, i, palette, Math.abs(d) < 1 ? lerp(SLOT.accent, SLOT.white, 0.5) : SLOT.accent, Math.max(0.5, (0.75 + 0.3 * flicker) * shape) + 0.3 * note);
 						if (Math.abs(d) <= 2) addSample(out, i, palette, SLOT.white, 1.3 * lit);
+					}
+				}
+				// The cut-off blooms out of every candle at once, warm light running out to meet between them.
+				const opened = t - finish;
+				if (opened >= 0 && opened < 0.9) {
+					const front = opened * 40;
+					for (let i = 0; i < ring; i++) {
+						const off = Math.abs(nearest[i] - front);
+						if (off < 4) addSample(out, i, palette, SLOT.white, 1.1 * (1 - opened / 0.9) * (1 - off / 4));
 					}
 				}
 				// The held last note swells into a shower of sparks, and the cut-off throws more.
@@ -1048,6 +1058,10 @@ const sfouknuto = effect({
 		const north = Math.round(alongRun / 2);
 		const south = alongRun + acrossRun + Math.round(alongRun / 2);
 		const wrap = (i: number) => ((i % ring) + ring) % ring;
+		const apart = (a: number, b: number) => {
+			const d = wrap(a - b);
+			return d > ring / 2 ? ring - d : d;
+		};
 		const hit = (age: number, tau: number) => (age < 0 ? 0 : age < 0.02 ? age / 0.02 : Math.exp(-(age - 0.02) / tau));
 		// Each pixel's segment, top 0 clockwise to upper left 5 and the beam 6, for a guest facing
 		// west; the last three pixels at each end of a segment stay dark so the letters read.
@@ -1089,7 +1103,7 @@ const sfouknuto = effect({
 				const behind = front - Math.abs(d);
 				const i = wrap(at + d);
 				const level = 1.2 * fade * (1 - behind / 14);
-				if (behind < 10 && level >= 0.34) addSample(out, i, palette, colour, level);
+				if (behind < 10 && level >= 0.45) addSample(out, i, palette, colour, level);
 				else if (hash01(i * 17 + Math.floor(age * 30) * 7) < 0.25 * fade) addSample(out, i, palette, SLOT.white, 0.9);
 			}
 			if (age < 0.15) for (let d = -6; d <= 6; d++) addSample(out, wrap(at + d), palette, SLOT.white, 1.4 * (1 - age / 0.15));
@@ -1120,10 +1134,6 @@ const sfouknuto = effect({
 					}
 					return;
 				}
-				if (t < p.boom + 0.1) {
-					for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.5);
-					return;
-				}
 
 				// Mirrors fireworks() in timing.ts: four on the beats after the boom, three in each
 				// blank, and the barrage from the finale.
@@ -1134,6 +1144,20 @@ const sfouknuto = effect({
 				}
 				for (let at = p.finale; at < p.end - 2; at += beat / 2, k++) {
 					firework(out, palette, Math.floor(hash01(k * 37 + 11) * ring), t - at, k % 3, 0.7 + 0.3 * hash01(Math.round(at * 100)));
+				}
+				// Everything goes up out of the cake: a front along the beam from its centre and on round
+				// the ring from both its ends.
+				const up = t - p.boom;
+				if (up < 1.2) {
+					const front = up * 320;
+					for (let b = 0; b < beamCount; b++) {
+						const behind = front - Math.abs(b - leaf);
+						if (behind >= 0 && behind < 10) addSample(out, beamStart + b, palette, behind < 4 ? SLOT.white : SLOT.glow, 1.25 - 0.07 * behind);
+					}
+					for (let i = 0; i < ring; i++) {
+						const behind = front - half - Math.min(apart(i, north), apart(i, south));
+						if (behind >= 0 && behind < 16) addSample(out, i, palette, behind < 5 ? SLOT.white : SLOT.glow, 1.2 - 0.045 * behind);
+					}
 				}
 				// The beam lights with every burst near either of its ends.
 				const ends = Math.max(hit(t - p.boom, 0.5), 0);
@@ -1203,6 +1227,7 @@ const polarniZare = effect({
 		const leaf = Math.floor(beamCount / 2);
 		const north = Math.round(alongRun / 2);
 		const wrap = (i: number) => ((i % ring) + ring) % ring;
+		const south = wrap(north + ring / 2);
 		const apart = (a: number, b: number) => {
 			const d = wrap(a - b);
 			return d > ring / 2 ? ring - d : d;
@@ -1234,10 +1259,8 @@ const polarniZare = effect({
 				}
 				if (t >= p.corona - 0.4 && t < p.corona) return;
 				const corona = t - p.corona;
-				if (corona >= 0 && corona < 0.1) {
-					for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.5);
-					return;
-				}
+				// After the breath the sky comes back out of the corona, overhead first.
+				const opened = corona >= 0 ? 8 + corona * 380 : Infinity;
 
 				// Mirrors auroraReach() in timing.ts.
 				const reach =
@@ -1249,14 +1272,16 @@ const polarniZare = effect({
 				for (let at = p.surge, k = 0; at <= t && at < p.corona - 0.5; at += bar / 2, k++) drum = hit(t - at, 0.3) * (k % 2 === 0 ? 1 : 0.5);
 				for (let i = 0; i < ring; i++) {
 					const d = apart(i, north);
-					if (d > reach) continue;
+					const overhead = half + Math.min(d, apart(i, south));
+					if (d > reach || overhead > opened) continue;
 					curtain(out, palette, i, i, clamp((reach - d) / 25), Math.min(1.2, energy + 0.2 * drum), phase, corona >= 0 ? 1 : surge);
+					if (opened - overhead < 22 && opened < half + ring / 2) addSample(out, i, palette, SLOT.white, 1.1 - 0.03 * (opened - overhead));
 				}
 				// It climbs the beam from the north end through the substorm, and has it at the corona.
 				const climb = corona >= 0 ? beamCount : beamCount * surge;
 				for (let b = 0; b < beamCount; b++) {
 					const up = beamCount - 1 - b;
-					if (up > climb || (corona < 0 && Math.abs(b - leaf) <= 3)) continue;
+					if (up > climb || (corona < 0 && Math.abs(b - leaf) <= 3) || Math.abs(b - leaf) > opened) continue;
 					curtain(out, palette, beamStart + b, 300 + b * 2, clamp((climb - up) / 15), Math.min(1.2, energy + 0.2 * drum), phase, surge);
 				}
 				if (corona >= 0) {
@@ -1382,11 +1407,6 @@ const pulnoc = effect({
 				}
 				const roar = met >= 0 ? 1 + 0.3 * Math.sin(2 * Math.PI * 5 * t) * Math.exp(-met / 1) : 1;
 				const swell = (1 + 0.35 * drum) * roar;
-
-				if (met >= 0 && met < 0.1) {
-					for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.5);
-					return;
-				}
 
 				// Fog drifting along the frame, thinning pixel by pixel once the lamps are out except
 				// where the fire lights it, and gone when the fire draws its breath.
@@ -1584,14 +1604,14 @@ const lampionovyPruvod = effect({
 /**
  * After the lanterns, scored by podzimni-listi/orionidy.m4a: the real Orionids of that night. Stars,
  * Orion's belt rising in the north-east corner, meteors out of it ever thicker on the drums, a
- * fireball crossing the east and south walls to home and bursting, a breath of dark, and its sonic
- * boom bringing the whole sky down: light before thunder, once more.
+ * fireball crossing the east and south walls to home and bursting, a breath of dark, and the whole
+ * sky coming down in a shower of light.
  */
 const orionidy = effect({
 	id: 'orionidy',
 	name: 'Orionidy',
 	role: 'bed',
-	blurb: 'Meteors out of the north-east thickening on the drums, a fireball, a breath, and its sonic boom.',
+	blurb: 'Meteors out of the north-east thickening on the drums, a fireball, a breath, and the sky falling.',
 	// The soundtrack's timing table arrives as parameters; the meteors mirror meteors() in timing.ts.
 	params: ORIONIDY,
 	create(g) {
@@ -1615,46 +1635,43 @@ const orionidy = effect({
 				const t = f.t;
 				out.fill(0);
 				const beat = 60 / p.bpm;
-				const boomed = t >= p.boom ? t - p.boom : -1;
-				if (boomed >= 0 && boomed < 0.1) {
-					for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.5);
-					return;
-				}
+				const fallen = t >= p.fall ? t - p.fall : -1;
 				// The drums brighten the sky.
 				let drum = 0;
 				for (let at = p.shower, k = 0; at <= t && at < p.burst; at += beat / 2, k++) {
 					const strong = at < p.storm ? k % 8 === 0 || k % 8 === 5 : k % 2 === 0;
 					if (strong) drum = hit(t - at, 0.25);
 				}
-				// After the boom the sky itself glows, and the shock runs round from home.
-				if (boomed >= 0) {
-					const front = boomed * 400;
+				// As the sky falls it glows, blooming round from home behind a crest of light.
+				if (fallen >= 0) {
+					const front = 10 + fallen * 340;
 					for (let i = 0; i < ring; i++) {
+						const behind = front - apart(i, home);
+						if (behind < 0) continue;
 						const n = noise3(i * 0.03, t * 0.2, 4.4);
 						setSample(out, i, palette, SLOT.base, 0.5 + 0.15 * n);
-						const off = Math.abs(apart(i, home) - front);
-						if (off < 24 && front < ring / 2 + 24) addSample(out, i, palette, SLOT.white, 1.2 * (1 - off / 24));
+						if (behind < 26 && front < ring / 2 + 26) addSample(out, i, palette, SLOT.white, 1.15 * (1 - behind / 26));
 					}
-					const reach = Math.min(half, boomed * 120);
+					const reach = Math.min(half, fallen * 120);
 					for (let b = 0; b < beamCount; b++) {
 						const off = Math.abs(b - leaf);
 						if (off > reach) continue;
-						const ray = 0.5 + 0.5 * Math.sin(off * 0.5 - boomed * 8);
+						const ray = 0.5 + 0.5 * Math.sin(off * 0.5 - fallen * 8);
 						addSample(out, beamStart + b, palette, SLOT.accent, 0.55 + 0.35 * ray);
 						addSample(out, beamStart + b, palette, SLOT.white, 0.25 * ray);
 					}
 				}
-				// The stars, brighter on the drums and after the boom; Orion's belt in the north-east.
+				// The stars, brighter on the drums and as the sky falls; Orion's belt in the north-east.
 				for (let i = 0; i < g.count; i++) {
-					if (hash01(i * 13 + 7) < 0.05) addSample(out, i, palette, SLOT.white, 0.4 + 0.25 * noise3(i, t * 0.9, 1.1) + 0.3 * drum + (boomed >= 0 ? 0.3 : 0));
+					if (hash01(i * 13 + 7) < 0.05) addSample(out, i, palette, SLOT.white, 0.4 + 0.25 * noise3(i, t * 0.9, 1.1) + 0.3 * drum + (fallen >= 0 ? 0.3 : 0));
 				}
 				for (let k = 0; k < 3; k++) setSample(out, wrap(far - 30 + 4 * k), palette, SLOT.white, 0.85);
 
 				// Mirrors meteors() in timing.ts: each runs away from the radiant, head first.
 				for (let s = Math.max(Math.ceil(p.first / 0.05), Math.floor((t - 1) / 0.05)); s <= Math.floor(t / 0.05); s++) {
 					const at = s * 0.05;
-					if (at >= p.end - 1 || (at >= p.burst && at < p.boom)) continue;
-					const rate = at >= p.boom ? p.rateTo * 1.4 : p.rateFrom * Math.pow(p.rateTo / p.rateFrom, Math.min(1, (at - p.first) / (p.burst - p.first)));
+					if (at >= p.end - 1 || (at >= p.burst && at < p.fall)) continue;
+					const rate = at >= p.fall ? p.rateTo * 1.4 : p.rateFrom * Math.pow(p.rateTo / p.rateFrom, Math.min(1, (at - p.first) / (p.burst - p.first)));
 					if (hash01(s * 7 + 3) > rate * 0.05) continue;
 					const life = 0.35 + 0.45 * hash01(s * 23 + 6);
 					const age = t - at;
@@ -1691,12 +1708,11 @@ const orionidy = effect({
 						for (let i = 0; i < ring; i++) addSample(out, i, palette, SLOT.accent, 0.48 * smoothstep(0.8, 1, u));
 					}
 				}
-				// It bursts over home: a flash, the pieces falling away from it, then nothing but stars.
+				// It bursts over home: a flare there, the pieces falling away from it, then nothing but stars.
 				const burst = t - p.burst;
-				if (burst >= 0 && burst < 1.2 && boomed < 0) {
-					if (burst < 0.1) {
-						for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.4);
-						return;
+				if (burst >= 0 && burst < 1.2 && fallen < 0) {
+					if (burst < 0.12) {
+						for (let d = -40; d <= 40; d++) addSample(out, wrap(home + d), palette, SLOT.white, 1.4 * (1 - Math.abs(d) / 41));
 					}
 					const front = burst * 160;
 					for (let d = -Math.ceil(front); d <= front; d++) {
@@ -1852,17 +1868,15 @@ const posledniList = effect({
 				// The last light: gold out of the corner both ways round the frost, the beam taking it
 				// from both ends; then it ebbs back into the corner and leaves the leaf there.
 				const landed = t - p.land;
-				if (landed < 0.1) {
-					for (let i = 0; i < g.count; i++) setSample(out, i, palette, SLOT.white, 1.4);
-					return;
-				}
-				const reach = t < p.ebb ? Math.min(ring / 2 + 30, (landed - 0.1) * p.wave) : ring / 2 + 30 - (ring / 2 + 30 - 56) * smoothstep(p.ebb, p.rest, t);
+				const reach = t < p.ebb ? Math.min(ring / 2 + 30, 6 + landed * p.wave) : ring / 2 + 30 - (ring / 2 + 30 - 56) * smoothstep(p.ebb, p.rest, t);
 				for (let i = 0; i < g.count; i++) {
 					const d = i < ring ? apart(i, home) : Math.min(toSouth + (i - beamStart), toNorth + beamCount - 1 - (i - beamStart));
 					if (d < reach) {
 						setSample(out, i, palette, SLOT.third, 0.82 + 0.1 * noise3(i * 0.03, t * 0.2, 1.3));
 						if (frost[i] > 0) addSample(out, i, palette, SLOT.white, 0.35 * frost[i] * (0.5 + 0.5 * noise3(i * 0.5, t * 3, 8.8)));
 						if (t < p.ebb && reach - d < 24 && reach < ring / 2) addSample(out, i, palette, SLOT.white, 1.3 * (1 - (reach - d) / 24));
+					} else if (t < p.ebb) {
+						continue;
 					} else if (frost[i] > 0 && hash01(i * 7 + 2) < 1 - 0.88 * after) {
 						setSample(out, i, palette, lerp(SLOT.glow, SLOT.white, 0.75), frost[i]);
 					} else if (frost[i] === 0 && hash01(i * 3 + 11) >= after) {
@@ -1936,7 +1950,7 @@ export default evening('Podzimní listí', {
 				{ at: VITR.peak, kick: true },
 				{ at: VITR.hush, section: 'void' },
 				...hushBeats(VITR).map((at) => ({ at, kick: 0.8 })),
-				{ at: VITR.gold, section: 'drop', kick: true }
+				{ at: VITR.gold, section: 'drop', kick: 0.6 }
 			]
 		}),
 
@@ -1971,7 +1985,7 @@ export default evening('Podzimní listí', {
 				...lapEnds(DRAKIADA)
 					.filter((at) => at < dropTime(DRAKIADA) - 0.05)
 					.map((at) => ({ at, kick: 0.8 })),
-				{ at: dropTime(DRAKIADA), section: 'drop', kick: true }
+				{ at: dropTime(DRAKIADA), section: 'drop', kick: 0.6 }
 			]
 		}),
 
@@ -2002,7 +2016,7 @@ export default evening('Podzimní listí', {
 				{ at: SPACCI.arrive, kick: 0.5 },
 				...spacciDrums(SPACCI).map((d) => ({ at: d.t, kick: 0.35 + 0.45 * d.size })),
 				{ at: SPACCI.hush, section: 'void' },
-				{ at: SPACCI.bang, section: 'drop', kick: true }
+				{ at: SPACCI.lift, section: 'drop', kick: 0.6 }
 			]
 		}),
 
@@ -2037,7 +2051,7 @@ export default evening('Podzimní listí', {
 					.map((at) => ({ at, kick: 0.45 })),
 				...kicks(BURCAK).map((at) => ({ at, kick: 0.75 })),
 				{ at: BURCAK.pop, kick: true },
-				{ at: BURCAK.clink, section: 'drop', kick: true }
+				{ at: BURCAK.clink, section: 'drop', kick: 0.6 }
 			]
 		}),
 
@@ -2089,7 +2103,7 @@ export default evening('Podzimní listí', {
 				...candles(NAROZENINY).map((c) => ({ at: c.t, kick: 0.35 })),
 				...tune(NAROZENINY).map((n) => ({ at: n.t, kick: n.verse === 1 ? 0.3 : 0.55 })),
 				{ at: NAROZENINY.verse2, section: 'drop' },
-				{ at: birthdayEnd, kick: true }
+				{ at: birthdayEnd, kick: 0.6 }
 			]
 		}),
 
@@ -2107,7 +2121,7 @@ export default evening('Podzimní listí', {
 			end: 'hold',
 			timeline: [
 				{ at: 0, section: 'void', look: look({ bed: sfouknuto, floor: 0 }) },
-				{ at: SFOUKNUTO.boom, section: 'drop', palette: oslava, fade: 0, kick: true },
+				{ at: SFOUKNUTO.boom, section: 'drop', palette: oslava, fade: 0, kick: 0.7 },
 				...letters.map((l) => ({ at: l.t, kick: 0.85 })),
 				...fireworks(SFOUKNUTO)
 					.filter((f) => letters.every((l) => Math.abs(l.t - f.t) > 0.01))
@@ -2167,7 +2181,7 @@ export default evening('Podzimní listí', {
 				{ at: ZARE.curtain, section: 'build' },
 				...zareDrums,
 				{ at: ZARE.corona - 0.4, section: 'void' },
-				{ at: ZARE.corona, section: 'drop', kick: true }
+				{ at: ZARE.corona, section: 'drop', kick: 0.6 }
 			]
 		}),
 
@@ -2248,7 +2262,7 @@ export default evening('Podzimní listí', {
 				{ at: PULNOC.inhale, section: 'void' },
 				...countdown(PULNOC).map((c) => ({ at: c.t, kick: 1 })),
 				// The leaf goes scarlet with the blast.
-				{ at: PULNOC.midnight, section: 'drop', palette: ohen, fade: 0, kick: true }
+				{ at: PULNOC.midnight, section: 'drop', palette: ohen, fade: 0, kick: 0.8 }
 			]
 		}),
 
@@ -2315,7 +2329,7 @@ export default evening('Podzimní listí', {
 				...skyDrums.map(({ at }) => ({ at, kick: 0.5 })),
 				{ at: ORIONIDY.burst, kick: 1 },
 				{ at: ORIONIDY.burst + 0.5, section: 'void' },
-				{ at: ORIONIDY.boom, section: 'drop', kick: true }
+				{ at: ORIONIDY.fall, section: 'drop', kick: 0.6 }
 			]
 		}),
 
@@ -2346,7 +2360,7 @@ export default evening('Podzimní listí', {
 				{ at: 0, section: 'outro', look: look({ bed: posledniList, floor: 0 }) },
 				{ at: LIST.letGo, kick: 0.6 },
 				...swingTimes(LIST).map((at) => ({ at, kick: 0.5 })),
-				{ at: LIST.land, kick: true }
+				{ at: LIST.land, kick: 0.5 }
 			]
 		}),
 

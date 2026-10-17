@@ -256,8 +256,8 @@ export function bubbles(o: Burcak): { t: number; speed: number }[] {
 
 /**
  * Špačci, at sundown over the vineyard: a murmuration of starlings, black against the sunset,
- * swirling on the drums and tightening into a racing ball, until the vineyard's carbide cannon
- * blows it apart. 110 bpm: a bar is 240/110 s.
+ * swirling on the drums and tightening into a racing ball, hanging in a silence, then lifting
+ * all at once into the sunset. 110 bpm: a bar is 240/110 s.
  */
 export const SPACCI = {
 	bpm: 110,
@@ -269,8 +269,8 @@ export const SPACCI = {
 	rush: 15.273,
 	/** Everything stops and the flock hangs. */
 	hush: 19.636,
-	/** The carbide cannon: the drop. */
-	bang: 20.182,
+	/** The flock lifts and the sunset blooms: the drop. */
+	lift: 20.182,
 	end: 28
 } as const;
 
@@ -572,7 +572,8 @@ export function pops(o: Pulnoc): { t: number; pixel: number }[] {
 /**
  * Orionidy, after midnight: the Orionids are really falling that night, out of the north-east
  * where Orion rises. Meteors ever thicker on the drums, then a fireball crossing to home and
- * bursting, a breath of silence, and its sonic boom: the drop. 96 bpm.
+ * bursting, a breath of silence, and the whole sky coming down in a shower of light: the drop.
+ * 96 bpm.
  */
 export const ORIONIDY = {
 	bpm: 96,
@@ -583,10 +584,10 @@ export const ORIONIDY = {
 	/** Drums from `shower`, the roll from `storm`. */
 	shower: 7.5,
 	storm: 15,
-	/** The fireball leaves the radiant and bursts over home, and its boom comes after. */
+	/** The fireball leaves the radiant and bursts over home; after a breath the sky falls. */
 	bolide: 20,
 	burst: 21.25,
-	boom: 22.5,
+	fall: 22.5,
 	end: 30
 } as const;
 
@@ -594,14 +595,14 @@ export type Orionidy = { readonly [K in keyof typeof ORIONIDY]: number };
 
 /**
  * Meteors: a slot every 0.05 s, each leaving near the radiant and running away from it round the
- * ring. They thicken to the burst, stop for the breath, and come down hardest after the boom.
+ * ring. They thicken to the burst, stop for the breath, and come down hardest as the sky falls.
  */
 export function meteors(o: Orionidy): { t: number; from: number; dir: number; speed: number; length: number; life: number }[] {
 	const out: { t: number; from: number; dir: number; speed: number; length: number; life: number }[] = [];
 	for (let s = Math.ceil(o.first / 0.05); s * 0.05 < o.end - 1; s++) {
 		const t = s * 0.05;
-		if (t >= o.burst && t < o.boom) continue;
-		const rate = t >= o.boom ? o.rateTo * 1.4 : o.rateFrom * Math.pow(o.rateTo / o.rateFrom, Math.min(1, (t - o.first) / (o.burst - o.first)));
+		if (t >= o.burst && t < o.fall) continue;
+		const rate = t >= o.fall ? o.rateTo * 1.4 : o.rateFrom * Math.pow(o.rateTo / o.rateFrom, Math.min(1, (t - o.first) / (o.burst - o.first)));
 		if (hash01(s * 7 + 3) > rate * 0.05) continue;
 		out.push({
 			t,
