@@ -57,7 +57,7 @@ export async function readInstalledStriker2(): Promise<InstalledStriker2> {
  * cannot be used keeps analyses rather than re-analysing them on an older path.
  */
 export function strikerCurrent(
-	striker: string, installed: InstalledStriker, installed2: InstalledStriker2 = { missing: true }
+	striker: string, installed: InstalledStriker, installed2: InstalledStriker2
 ): boolean {
 	if ('error' in installed2) return true;
 	if ('model' in installed2) return installed2.model.identity === striker;
