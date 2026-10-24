@@ -1,8 +1,11 @@
 // node bench/drumeval/evaluate.ts --label=NAME [--corpus=mdb,rbma] [--jobs=5] [--src=DIR]
 //   [--compare=LABEL] [--window=0.05] [--model=FILE|CV_DIR] [--export-candidates=NAME]
+//   [--striker2=DIR [--striker2-snap]]
 // Replays analyzeTrack on cached evidence (bench/drumeval/prepare.ts) and scores its drum
 // streams against corpus labels. --src imports packages/analysis/src from another checkout;
 // --model runs Striker with that model; --export-candidates writes its training candidates.
+// --striker2 runs the Striker 2.0 in DIR (striker2.json beside its graph) on each track's 44.1 kHz
+// decode as ingest does, needing no separation evidence; --striker2-snap snaps its hits to onsets.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -22,6 +25,7 @@ const window = Number(flag('window') ?? 0.05);
 const src = resolve(flag('src') ?? join(import.meta.dirname, '..', '..', 'packages', 'analysis', 'src'));
 const runDir = join(EVAL_ROOT, 'runs', label);
 const select = flag('corpus')?.split(',') ?? [];
+const striker2Dir = flag('striker2');
 
 const STAGES = ['model', 'modelDrums', 'dsp', 'detected', 'final', 'final05'] as const;
 type Stage = typeof STAGES[number];
@@ -42,8 +46,15 @@ export interface TrackResult {
 
 function ready(track: CorpusTrack): boolean {
 	const dir = evidenceDir(track);
-	return [files.audio, files.beats, files.adtofMix, files.separation, files.kick22, files.snare22, files.hat22, files.cymbal22]
+	const separation = [files.separation, files.kick22, files.snare22, files.hat22, files.cymbal22];
+	return [files.audio, files.beats, files.adtofMix, ...(striker2Dir ? [] : separation)]
 		.every((file) => existsSync(join(dir, file)));
+}
+
+/** What analyses made with that Striker 2.0 record as `striker`: its name, marked with its beats. */
+function striker2Identity(dir: string): string {
+	const manifest = JSON.parse(readFileSync(join(dir, 'striker2.json'), 'utf8')) as { name: string; app?: { beats?: string } };
+	return manifest.app?.beats === 'striker2' ? `${manifest.name} with beats` : manifest.name;
 }
 
 /**
@@ -88,6 +99,9 @@ async function runShard(list: CorpusTrack[]): Promise<void> {
 	const strikerModule = existsSync(join(src, 'striker.ts')) ? await import(url('striker.ts')) : null;
 	const modelFor = strikerModels(flag('model'), (model) => strikerModule!.validateStrikerModel(model));
 	const exportName = flag('export-candidates');
+	const striker2Module = striker2Dir ? await import(url('striker2.ts')) : null;
+	const striker2Model = striker2Module ? await striker2Module.readStriker2(resolve(striker2Dir!)) : null;
+	const striker2 = striker2Model ? await striker2Module!.Striker2.create(striker2Model) : null;
 	for (const track of list) {
 		const at = performance.now();
 		const dir = evidenceDir(track);
@@ -99,8 +113,6 @@ async function runShard(list: CorpusTrack[]): Promise<void> {
 		const model = onsetsFromActivations(mixAct);
 		const drumsAct = existsSync(join(dir, files.adtofDrums)) ? readF32(join(dir, files.adtofDrums)) : null;
 		const modelDrums = drumsAct ? onsetsFromActivations(drumsAct) : null;
-		const [kick, snare, hat, cymbal] = [files.kick22, files.snare22, files.hat22, files.cymbal22]
-			.map((file) => readF32(join(dir, file)));
 		const striker = modelFor(track);
 		const probe: {
 			drums?: { dsp: Record<Kind, { times: number[] }>; detected: Record<Kind, { times: number[] }> };
@@ -108,24 +120,36 @@ async function runShard(list: CorpusTrack[]): Promise<void> {
 				candidates?: Record<string, { times: number[]; features: Float32Array }>;
 				classes?: Record<Kind | 'cymbal' | 'tom', { times: number[]; levels: number[] }>;
 			};
-		} = exportName || striker ? { striker: {} } : {};
-		const input = {
+		} = exportName || striker || striker2 ? { striker: {} } : {};
+		const common = {
 			mono: decoded.mono, left: decoded.left, right: decoded.right, sampleRate: decoded.sampleRate,
-			duration: decoded.duration, hash: decoded.hash, trackId: track.name, title: track.name,
-			beats: beats.beats, downbeats: beats.downbeats, drums: model,
-			separatedDrums: { kick, snare, hat, cymbal, sampleRate: 22050 },
-			separatedOnsets: {
-				kick: sourceOnsets(kick, 22050), snare: sourceOnsets(snare, 22050), hat: sourceOnsets(hat, 22050),
-				cymbal: sourceOnsets(cymbal, 22050)
-			},
-			stemActivations: drumsAct ?? undefined,
-			sourceActivations: existsSync(join(dir, files.adtofCymbal)) ? {
-				kick: readF32(join(dir, files.adtofKick)), snare: readF32(join(dir, files.adtofSnare)),
-				hat: readF32(join(dir, files.adtofHat)), cymbal: readF32(join(dir, files.adtofCymbal))
-			} : undefined,
-			striker,
-			probe
+			duration: decoded.duration, hash: decoded.hash, trackId: track.name, title: track.name, probe
 		};
+		let input;
+		if (striker2) {
+			// As ingest: the 44.1 kHz decode in, no other drum evidence, Beat This! unless app.beats says otherwise.
+			const own = striker2Model.beats === 'striker2';
+			const result = await striker2.run((await decodeAudio(track.audio, 44100)).mono, own);
+			input = { ...common, beats: own ? result.beats : beats.beats, downbeats: own ? result.downbeats : beats.downbeats,
+				striker2: result, striker2Snap: args.includes('--striker2-snap') };
+		} else {
+			const [kick, snare, hat, cymbal] = [files.kick22, files.snare22, files.hat22, files.cymbal22]
+				.map((file) => readF32(join(dir, file)));
+			input = {
+				...common, beats: beats.beats, downbeats: beats.downbeats, drums: model,
+				separatedDrums: { kick, snare, hat, cymbal, sampleRate: 22050 },
+				separatedOnsets: {
+					kick: sourceOnsets(kick, 22050), snare: sourceOnsets(snare, 22050), hat: sourceOnsets(hat, 22050),
+					cymbal: sourceOnsets(cymbal, 22050)
+				},
+				stemActivations: drumsAct ?? undefined,
+				sourceActivations: existsSync(join(dir, files.adtofCymbal)) ? {
+					kick: readF32(join(dir, files.adtofKick)), snare: readF32(join(dir, files.adtofSnare)),
+					hat: readF32(join(dir, files.adtofHat)), cymbal: readF32(join(dir, files.adtofCymbal))
+				} : undefined,
+				striker
+			};
+		}
 		const analysis = analyzeTrack(input);
 		if (exportName && probe.striker?.candidates && track.labeled !== false) {
 			exportCandidates(exportName, track, probe.striker.candidates, strikerModule!.STRIKER_FEATURES, strikerModule!.CANDIDATE_REVISION);
@@ -171,6 +195,7 @@ async function runShard(list: CorpusTrack[]): Promise<void> {
 		console.log(`${trackKey(track)} ${result.seconds.toFixed(1)} s: final light F `
 			+ KIT.map((kind) => prf(scores.final[kind].light!).f.toFixed(2)).join('/'));
 	}
+	await striker2?.close();
 }
 
 /**
@@ -350,7 +375,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
 		const compareRun = compareLabel ? loadRun(compareLabel) : undefined;
 		const compare = compareRun ? summarise(compareRun) : undefined;
 		writeJson(join(runDir, 'summary.json'), {
-			label, src, model: flag('model'), modelVersion: modelVersionOf(flag('model')),
+			label, src, model: striker2Dir ?? flag('model'),
+			modelVersion: striker2Dir ? striker2Identity(striker2Dir) : modelVersionOf(flag('model')),
+			...(striker2Dir ? { striker2Snap: args.includes('--striker2-snap') } : {}),
 			window, created: new Date().toISOString(), summary
 		});
 		const head = `# ${label}\n\n${results.length} tracks, window ${window * 1000} ms`
