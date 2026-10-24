@@ -1,0 +1,9 @@
+striker2.onnx is Striker 2.0, one network that hears drum hits with levels, beats, downbeats,
+bass note onsets and stem activity, trained in the striker-2 project for LightningStrike.
+striker2.json beside it is its manifest: the graph's SHA-256, the front end's parameters and the
+decoding rules and thresholds of the run it came from.
+
+Personal use only. The weights were trained on datasets licensed for non-commercial use and on
+pseudo-labels from a teacher pipeline that contains non-commercial weights (MDX23C DrumSep,
+CC BY-NC-SA 4.0, its checkpoints published as CC BY-NC-ND 4.0; ADTOF, CC BY-NC-SA). Do not
+distribute this file or builds that contain it.

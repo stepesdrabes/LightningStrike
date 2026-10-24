@@ -15,6 +15,7 @@ bench/reports/
 # under it, so the contents are ignored instead of the directory.
 /models/*
 !/models/striker.json
+!/models/striker2.NOTICE
 bench/clicktests/
 bench/renders/
 bench/models/

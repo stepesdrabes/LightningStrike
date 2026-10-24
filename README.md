@@ -155,6 +155,14 @@ model directory. The optional runtime models are:
   [evaluation and known limitations](bench/DRUM_RELIABILITY.md). Songs classified by another
   Striker model are re-analysed when next prepared; a model file that fails to load leaves them
   as they are.
+- **Striker 2.0** (`striker2.json` beside its graph, `striker2.onnx`), one network that hears
+  drum hits with levels, beats, downbeats, bass note onsets and stem activity at 100 fps. When
+  it is installed, preparation runs it in one stage on the 44.1 kHz decode instead of
+  separation, ADTOF and Striker 1.1, in seconds per song on CPU. Beat This! keeps the beats
+  unless the manifest's `app.beats` is `striker2`. The manifest records the graph's SHA-256 and
+  the bass filter's taps; one that does not verify is logged and noted in `.preparation.json`,
+  and preparation takes the path above. Songs another analyser made re-analyse when next
+  prepared. It is copied in by hand: never committed, never downloaded.
 
 Drum listening is available from the Judge panel. It plays the full song with optional kick
 and snare clicks, loops a chosen passage, and keeps missed-hit and timing notes separately
@@ -165,13 +173,16 @@ Successful separation also keeps lossless source evidence and its transcriptions
 `cache/drum-evidence/` (up to 2 GiB, oldest entries evicted). Detector reanalysis can reuse
 it when the audio, separator and ADTOF model match. Hardware-specific optimized CPU graphs
 live in `cache/separator-graphs/`; these are derived files, not portable models. Per-track
-`.preparation.json` records stage timings and the separator and Striker model versions.
+`.preparation.json` records stage timings and the separator and Striker model versions, and
+with Striker 2.0 its name and beat source or why it could not be used.
 See [performance measurements and M1 Pro profiling](bench/lab/SEPARATION-PERFORMANCE.md).
 
 Analysis retains fallback paths when models are unavailable. Discogs-EffNet and ADTOF
 weights carry CC BY-NC-SA terms and the MDX23C DrumSep weights are non-commercial too; preserve
-their upstream licenses and export restrictions. Desktop builds bundle all of `models/`, so never
-distribute a build that contains them.
+their upstream licenses and export restrictions. Striker 2.0's weights are for personal use
+only, because its training data and teacher are non-commercial
+([models/striker2.NOTICE](models/striker2.NOTICE)). Desktop builds bundle all of `models/`, so
+never distribute a build that contains them.
 
 The authoring API (`/api/author`) uses the Claude Agent SDK with local Claude authentication,
 or DeepSeek through `DEEPSEEK_API_KEY` or a key saved in `settings.json`. The app no longer

@@ -24,6 +24,28 @@ perfection is not a release requirement. Ask for judgements when sound classific
 ambiguous. Use useful 8–20 second context, not tiny isolated clips. Rim/side-stick hits are
 allowed as quieter snare accents; claps and snaps are snares.
 
+## Striker 2.0 (analysis 40, branch `feat/striker2-m7`)
+
+Built 2026-10-24 for the striker-2 project's milestone M7 (its `docs/integration.md` is the
+plan); not merged, waiting for the owner's checks and a listening A/B. With `models/striker2.json`
+and its graph installed, ingest runs one Striker 2.0 stage on the 44.1 kHz decode instead of
+separation, ADTOF and Striker 1.1: `striker2.ts` verifies the manifest and the graph's SHA-256,
+computes the features, runs 30 s chunks with 1 s borders and decodes drum hits, DBN beats, bass
+onsets and stem activity, its decoders checked equal to striker-2's Python on fixtures. Beat
+This! keeps beats and downbeats unless the manifest says `"app": {"beats": "striker2"}`; then the
+DBN's beats feed the walk and `striker` gains " with beats". Analysis 40 adds `bass` and
+`activity`, which nothing reads yet. Without the manifest everything runs as at analysis 39.
+
+- Install for a test: copy `striker2.onnx` and `striker2.json` from striker-2's
+  `python -m striker.export` into `models/`. They stay uncommitted: personal-use weights
+  (`models/striker2.NOTICE`).
+- An unusable manifest is logged ("Striker 2.0 unavailable, falling back"), noted as
+  `striker2.error` in `.preparation.json`, and the analysis 39 path runs; cached analyses stay.
+- Bench: `node bench/drumeval/evaluate.ts --label=NAME --striker2=DIR [--striker2-snap]`.
+- Open before a merge: striker-2's integration checks (the benchmarks through this pipeline,
+  snap on against off, the downbeat rule for the lights, the library diff against analysis 39,
+  the owner's saved reviews), the M1 Pro, and the owner's A/B in the room.
+
 ## Striker 1.1
 
 Everything measured is in [drum reliability](../bench/DRUM_RELIABILITY.md#why-electronic-music-fails-september-16);
