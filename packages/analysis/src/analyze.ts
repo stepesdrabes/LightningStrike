@@ -60,6 +60,7 @@ import {
 	type StrikerKind,
 	type StrikerModel
 } from './striker.ts';
+import type { Striker2Result } from './striker2.ts';
 import { analysisPrelude, type AnalysisPrelude } from './prelude.ts';
 import { consolidateSections } from './consolidate.ts';
 import {
@@ -139,6 +140,10 @@ interface AnalyzeInput {
 	stemActivations?: Float32Array;
 	/** Striker model; replaces the rule-based drum merges when every input is present. */
 	striker?: StrikerModel;
+	/** Striker 2.0's streams; they replace every other drum source and bring bass and activity. */
+	striker2?: Striker2Result;
+	/** Snap Striker 2.0's hits to broadband onsets as Striker 1.1's are; off until measured. */
+	striker2Snap?: boolean;
 	/** `analysisPrelude` of mono, left, right and sampleRate, computed ahead. */
 	prelude?: AnalysisPrelude;
 	/** Optional genre family and synced lyrics for section vocabulary and chorus location. */
@@ -369,7 +374,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	// Detect drums before refining boundaries; quantisation waits for repeat groups.
 	const dspDrums = detectDrums(features.spec, { beatPeriod: grid.beatPeriod, odf: features.odf });
 	const { separatedDrums: sources, separatedOnsets } = input;
-	const strikerInputs: StrikerInputs | null = input.drums?.activations && input.stemActivations
+	const s2 = input.striker2?.drums;
+	const strikerInputs: StrikerInputs | null = !s2 && input.drums?.activations && input.stemActivations
 		&& input.sourceActivations && sources?.hat && sources.cymbal && sources.sampleRate === sampleRate
 		? {
 				mix: input.drums.activations, stem: input.stemActivations, sourceActivations: input.sourceActivations,
@@ -392,7 +398,10 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		? runStriker(input.striker, strikerInputs, candidates)
 		: null;
 	const snap = (stream: DrumStream) => snapStream(stream, features.odf, features.curves.fps, grid.beatPeriod);
-	const primaryDrums = strikerDrums
+	const snap2 = (stream: DrumStream) => (input.striker2Snap ? snap(stream) : stream);
+	const primaryDrums = s2
+		? { kick: snap2(s2.kick), snare: snap2(s2.snare), hat: snap2(mergeStreams(s2.hat, s2.cymbal, CYMBAL_MERGE_S)) }
+		: strikerDrums
 		? {
 				kick: snap(strikerDrums.kick),
 				snare: snap(strikerDrums.snare),
@@ -426,7 +435,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	const separatedKit = separatedOnsets?.kick && separatedOnsets.snare
 		? { kick: separatedOnsets.kick, snare: separatedOnsets.snare }
 		: undefined;
-	const separated = sources && !strikerDrums
+	const separated = sources && !strikerDrums && !s2
 		? detectSeparatedDrums(sources, input.mono, sampleRate, features.odf, features.curves.fps, primaryDrums,
 			input.drums ? dspDrums.snare : undefined, separatedKit)
 		: undefined;
@@ -556,7 +565,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		duration
 	};
 	let drums: Record<'kick' | 'snare' | 'hat', ReturnType<typeof quantiseOnsets>>;
-	if (strikerDrums) {
+	if (strikerDrums || s2) {
 		// Striker already weighs bar repetition; completing its hits only adds false ones.
 		drums = {
 			kick: attackHits(detected.kick, duration),
@@ -580,7 +589,12 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		};
 	}
 	if (input.probe) input.probe.drums = { dsp: dspDrums, detected, quantiseOptions, final: drums };
-	if (strikerDrums && input.probe?.striker) {
+	if (s2 && input.probe?.striker) {
+		const alone = (stream: DrumStream) => attackHits(snap2(stream), duration);
+		input.probe.striker.classes = {
+			kick: drums.kick, snare: drums.snare, hat: alone(s2.hat), cymbal: alone(s2.cymbal), tom: alone(s2.tom)
+		};
+	} else if (strikerDrums && input.probe?.striker) {
 		const alone = (stream: DrumStream) => attackHits(snap(stream), duration);
 		input.probe.striker.classes = {
 			kick: drums.kick, snare: drums.snare, hat: alone(strikerDrums.hat), cymbal: alone(strikerDrums.cymbal),
@@ -891,7 +905,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	};
 	return {
 		version: ANALYSIS_VERSION,
-		...(strikerDrums ? { striker: input.striker!.version } : {}),
+		...(input.striker2 ? { striker: input.striker2.name } : strikerDrums ? { striker: input.striker!.version } : {}),
 		hash: input.hash,
 		trackId: input.trackId,
 		title: input.title,
@@ -951,7 +965,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		},
 		integratedLufs: round1(Math.max(loudness.integrated, SILENCE_LUFS)),
 		loudnessRange: round1(loudness.range),
-		peakToLoudness: round1(Number.isFinite(loudness.peakToLoudness) ? loudness.peakToLoudness : 0)
+		peakToLoudness: round1(Number.isFinite(loudness.peakToLoudness) ? loudness.peakToLoudness : 0),
+		...(input.striker2 ? { bass: roundStream(input.striker2.bass), activity: input.striker2.activity } : {})
 	};
 }
 
