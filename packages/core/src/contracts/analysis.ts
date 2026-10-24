@@ -1,6 +1,6 @@
 import type { SectionKind } from './frame.ts';
 
-export const ANALYSIS_VERSION = 39;
+export const ANALYSIS_VERSION = 40;
 
 export interface TempoGrid {
 	/** Median over the track. For display and for a default time constant, never for timing. */
@@ -115,6 +115,9 @@ export interface MovementSpan {
 	note: string;
 }
 
+export const ACTIVITY_STEMS = ['drums', 'bass', 'vocals', 'other'] as const;
+export type ActivityStem = (typeof ACTIVITY_STEMS)[number];
+
 /** One drum's aligned onset times and strengths. */
 export interface OnsetStream {
 	/** Onset times, seconds, ascending. */
@@ -183,7 +186,11 @@ export interface TrackAnalysis {
 	version: number;
 	/** Separation model revision when individual drum sources supplied kick/snare evidence. */
 	drumSeparation?: string;
-	/** Striker model version when it classified the kick, snare and hat onsets. */
+	/**
+	 * The drum model that classified the kick, snare and hat onsets: Striker 1.1's version, or
+	 * Striker 2.0's manifest name, with " with beats" when its beats replaced Beat This!'s. Keep it
+	 * second: the library reads it from the first 2,048 bytes.
+	 */
 	striker?: string;
 	/** Of the decoded audio. A show pinned to a stale hash is rejected. */
 	hash: string;
@@ -235,4 +242,8 @@ export interface TrackAnalysis {
 	 * variation.
 	 */
 	peakToLoudness: number;
+	/** Striker 2.0's bass note onsets; levels are its onset confidence. Absent before analysis v40. */
+	bass?: OnsetStream;
+	/** Striker 2.0's [start, end] spans, seconds, in time order, where it hears each stem. */
+	activity?: Record<ActivityStem, [number, number][]>;
 }

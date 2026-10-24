@@ -12,6 +12,7 @@ export { LAYER_ROLES } from './contracts/effect.ts';
 export type { ShowPalette } from './contracts/palette.ts';
 export { SLOT } from './contracts/palette.ts';
 export type {
+	ActivityStem,
 	BarRow,
 	EventTag,
 	LevelTrack,
@@ -22,7 +23,7 @@ export type {
 	SpectrumTrack,
 	TrackAnalysis
 } from './contracts/analysis.ts';
-export { ANALYSIS_VERSION } from './contracts/analysis.ts';
+export { ACTIVITY_STEMS, ANALYSIS_VERSION } from './contracts/analysis.ts';
 export type { GenreFamily, LyricLine, TrackContext } from './contracts/context.ts';
 export { CONTEXT_VERSION, emptyContext } from './contracts/context.ts';
 export { decodeBase64, encodeBase64 } from './base64.ts';
