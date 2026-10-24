@@ -62,12 +62,19 @@ export interface AdtofFilterbank {
 
 /** The PyTorch port anchors its logarithmic bands at 20 Hz. */
 export function adtofFilterbank(): AdtofFilterbank {
-	const fftBins = FRAME_SIZE / 2;
-	const binHz = SAMPLE_RATE / FRAME_SIZE;
+	return logFilterbank(FRAME_SIZE, SAMPLE_RATE, BANDS_PER_OCTAVE, FMIN, FMAX);
+}
+
+/** Triangular bands on the FFT bins nearest a log-spaced frequency ladder, each row summing to 1. */
+export function logFilterbank(
+	frame: number, rate: number, perOctave: number, fmin: number, fmax: number
+): AdtofFilterbank {
+	const fftBins = frame / 2;
+	const binHz = rate / frame;
 
 	const targets: number[] = [];
-	const factor = Math.pow(2, 1 / BANDS_PER_OCTAVE);
-	for (let f = FMIN; f <= FMAX * (1 + 1e-12); f *= factor) targets.push(f);
+	const factor = Math.pow(2, 1 / perOctave);
+	for (let f = fmin; f <= fmax * (1 + 1e-12); f *= factor) targets.push(f);
 
 	const bins: number[] = [];
 	let last = -1;
@@ -127,7 +134,7 @@ export function filterbankSpans(
 }
 
 /** np.hanning: symmetric, unlike the analysis stack's periodic COLA window. */
-function hannSymmetric(size: number): Float32Array {
+export function hannSymmetric(size: number): Float32Array {
 	const w = new Float32Array(size);
 	for (let i = 0; i < size; i++) w[i] = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (size - 1));
 	return w;
