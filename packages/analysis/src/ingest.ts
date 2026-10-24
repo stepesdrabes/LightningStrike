@@ -16,7 +16,8 @@ import { medianPeriod } from './metricalLevel.ts';
 import { KICK_CLAIMING_FAMILIES, familyCorroborated, loudKickRate } from './vocabulary.ts';
 import { NO_TRANSCRIBER, readDrumEvidence, writeDrumEvidence, type DrumEvidence } from './drumEvidenceCache.ts';
 import { Adtof, adtofIdentity } from './adtof.ts';
-import { readInstalledStriker, strikerCurrent } from './strikerModel.ts';
+import { readInstalledStriker, readInstalledStriker2, strikerCurrent } from './strikerModel.ts';
+import { Striker2, type Striker2Model, type Striker2Result } from './striker2.ts';
 import { onsetsBeside, preludeBeside } from './dsp.ts';
 import type { SeparatedDrumAudio, SourceOnsets } from './separatedDrums.ts';
 import type { SeparatedDrums } from './separation.ts';
@@ -587,7 +588,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	if (!opts.force && !relevel) {
 		// Invalidate stale versions and changed hand maps even when their JSON shape still looks compatible.
 		if (cached && cached.version === ANALYSIS_VERSION && cached.handMap === (await handMapStamp(id))
-			&& (!cached.striker || strikerCurrent(cached.striker, await readInstalledStriker()))) {
+			&& (!cached.striker
+				|| strikerCurrent(cached.striker, await readInstalledStriker(), await readInstalledStriker2()))) {
 			let [, context] = await metadata;
 			log('cached');
 			// Backfill legacy duration/trust metadata to avoid analysis reads for every library row.
@@ -617,6 +619,19 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		}
 	};
 	try {
+		// Striker 2.0, when installed, replaces separation, the ADTOF pass and (by its manifest's
+		// choice) Beat This!. An unusable manifest is reported here and in .preparation.json.
+		const installed2 = await readInstalledStriker2();
+		const striker2Model = 'model' in installed2 ? installed2.model : null;
+		let striker2Note: Record<string, unknown> | undefined;
+		if ('error' in installed2) {
+			log(`Striker 2.0 unavailable, falling back: ${installed2.error.message}`);
+			striker2Note = { error: installed2.error.message };
+		} else if (striker2Model) {
+			for (const warning of striker2Model.warnings) log(`Striker 2.0: ${warning}`);
+			striker2Note = { name: striker2Model.name, beats: striker2Model.beats,
+				...(striker2Model.warnings.length ? { warnings: striker2Model.warnings } : {}) };
+		}
 		audioStarted = true;
 		log('decoding');
 		const decoding = timed('decode', () => decodeAudio(audioPath));
@@ -627,6 +642,24 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		let separating = false;
 		const modelLog = (stage: string) => { if (!separating) log(stage); };
 
+		const transcribe = async (installed: Striker2Model): Promise<Striker2Result | null> => {
+			try {
+				modelLog('transcribing drums');
+				const model = await Striker2.create(installed);
+				try {
+					return await model.run((await wide).mono, installed.beats === 'striker2');
+				} finally {
+					await model.close();
+				}
+			} catch (e) {
+				const reason = e instanceof Error ? e.message : String(e);
+				log(`Striker 2.0 failed, falling back to the DSP drums: ${reason}`);
+				striker2Note = { ...striker2Note, error: reason };
+				return null;
+			}
+		};
+		const striker2Run = striker2Model ? timed('striker2', () => transcribe(striker2Model)) : Promise.resolve(null);
+
 		let separatedDrums: SeparatedDrumAudio | undefined;
 		let kitActivations: DrumEvidence['activations'] | undefined;
 		let separatedOnsets: Promise<Record<'kick' | 'snare' | 'hat' | 'cymbal', SourceOnsets> | undefined> =
@@ -634,7 +667,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		let drumSeparation: string | undefined;
 		let drumEvidenceCacheHit = false;
 		const drumProviders: Record<string, string> = {};
-		const separation = timed('separation', async () => {
+		const separation = striker2Model ? Promise.resolve() : timed('separation', async () => {
 			try {
 				const { DrumSeparator, SEPARATION_VERSION } = await import('./separation.ts');
 				const provider = process.env.MV_DRUM_PROVIDER ?? 'cpu';
@@ -726,7 +759,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			// The model finds the beats; everything after it is unchanged. If the weights are missing
 			// or the graph fails, the in-repo tracker runs instead: a worse grid is a worse show, a
 			// crash here is no show at all.
-			const tracked = await timed('beats', async () => {
+			const tracked = striker2Model?.beats === 'striker2' ? null : await timed('beats', async () => {
 				try {
 					modelLog('tracking beats');
 					const { BeatThis } = await import('./beatthis.ts');
@@ -742,7 +775,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 				}
 			});
 
-			const drums = await timed('transcription', async () => {
+			const drums = striker2Model ? undefined : await timed('transcription', async () => {
 				try {
 					const model = await Adtof.create();
 					if (!model) return undefined;
@@ -760,7 +793,9 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			return { genre, tracked, drums };
 		})();
 
-		const [{ genre, tracked, drums }] = await Promise.all([models, separation]);
+		const [{ genre, tracked: heard, drums }, , striker2] = await Promise.all([models, separation, striker2Run]);
+		const tracked = striker2 && striker2Model?.beats === 'striker2'
+			? { beats: striker2.beats, downbeats: striker2.downbeats } : heard;
 		let [, context] = await metadata;
 		context = await recordAudioGenre(id, context, genre);
 
@@ -770,7 +805,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		if (metricalLevel === undefined && tracked && context.publishedBpm) {
 			const level = publishedLevel(tracked.beats, context.publishedBpm, context.genreFamily, {
 				downbeats: tracked.downbeats,
-				snares: drums?.snare.times
+				snares: striker2 ? striker2.drums.snare.times : drums?.snare.times
 			});
 			if (level !== null) {
 				log(`re-reading the grid at ${level}x toward a published ${context.publishedBpm} bpm`);
@@ -806,6 +841,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 				hat: kitActivations.hat, cymbal: kitActivations.cymbal
 			},
 			striker: striker ?? undefined,
+			striker2: striker2 ?? undefined,
 			prelude: await prelude,
 			metricalLevel,
 			context,
@@ -823,8 +859,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			await writeFile(metaPath(id), JSON.stringify(meta, null, '\t'));
 			context = await settleGenreFamily(id, context, analysis);
 		});
-		const order = ['sourceAndMetadata', 'decode', 'genre', 'beats', 'transcription', 'separation',
-			'analysis', 'persistence'];
+		const order = ['sourceAndMetadata', 'decode', 'genre', 'beats', 'striker2', 'transcription',
+			'separation', 'analysis', 'persistence'];
 		const timings = { totalMs: Math.round(performance.now() - started),
 			stagesMs: Object.fromEntries(order.filter((stage) => stage in stagesMs)
 				.map((stage) => [stage, stagesMs[stage]])),
@@ -832,7 +868,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			drumProviders: Object.keys(drumProviders).length ? drumProviders : undefined };
 		await writeFile(join(CACHE_DIR, `${id}.preparation.json`), JSON.stringify({
 			trackId: id, audioHash: analysis.hash, analysisVersion: analysis.version,
-			drumSeparation, striker: analysis.striker, preparedAt: new Date().toISOString(), ...timings
+			drumSeparation, striker: analysis.striker, ...(striker2Note ? { striker2: striker2Note } : {}),
+			preparedAt: new Date().toISOString(), ...timings
 		}, null, '\t')).catch(() => {});
 		return { id, audioPath, analysis, meta, context, fromCache: false,
 			timings,
