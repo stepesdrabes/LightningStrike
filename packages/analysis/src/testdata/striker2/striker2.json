@@ -1,0 +1,160 @@
+{
+ "format": "striker2-model",
+ "version": 1,
+ "name": "Striker 2.0 (78d63963)",
+ "sha256": "78d63963d6d6867ea3180830ab6539d8ccc4b31da26c5c0de40c16fdfbbaa07d",
+ "bytes": 1058252,
+ "file": "striker2.onnx",
+ "exported": "fixture",
+ "checkpoint": {
+  "path": "tools/m7_fixtures.py",
+  "run": "m7-fixture",
+  "step": 0,
+  "design": "tiny",
+  "sum_head": false,
+  "freq_attn": false,
+  "parameters": 245310,
+  "thresholds": "thresholds.json"
+ },
+ "graph": {
+  "opset": 17,
+  "input": "features",
+  "input_shape": [
+   "batch",
+   400,
+   "bins"
+  ],
+  "outputs": {
+   "drum_onset": 18,
+   "drum_offset": 18,
+   "drum_level": 18,
+   "beat": 2,
+   "beat_offset": 1,
+   "bass": 3,
+   "activity": 4
+  },
+  "chunk": 400,
+  "border": 50,
+  "pad": "zeros after the song's last frame",
+  "activity_stride": 4
+ },
+ "front_end": {
+  "sample_rate": 44100,
+  "fps": 100,
+  "hop": 441,
+  "mono": "ffmpeg aresample=44100:filter_size=64:cutoff=0.98, stereo, (L + R) / 2",
+  "frames": "1 + floor(samples / hop), frame t centred at sample t * hop, zeros outside",
+  "a": {
+   "frame": 2048,
+   "window": "hann symmetric",
+   "per_octave": 12,
+   "fmin": 20.0,
+   "fmax": 20000.0,
+   "bands": 84,
+   "same_as": "adtofFilterbank and adtofSpectrogram (packages/analysis/src/adtof.ts)"
+  },
+  "b": {
+   "decimate": 9,
+   "rate": 4900,
+   "hop": 49,
+   "frame": 1024,
+   "window": "hann symmetric",
+   "per_octave": 24,
+   "fmin": 30.0,
+   "fmax": 1200.0,
+   "bands": 95,
+   "fir_taps": 255,
+   "fir_sha256": "0e0a952323f6a4858cc13c352ee56caa1c85723ef26f606e8b8569dae65345e2",
+   "fir_f32le_base64": "MNIeNQeTADa4IHo2iX/GNu7XCjcrTTA3clFNNz/OWjeTn1E3dXwrNx/zxzY6h860YZQRt+Zjm7cgY/W3vHUnuGclT7hCUmy4D3B5uNdmcbgINVC4BpMTuAscbreupFQ377k4OGo3oziLcuk4GS4UOaFdLDmftTk5pwc5OYfnJzkBBgU5+/ygOPXlQDd7pYm4lQAduczhdbkY5aO5N0LFufD92rmHfeG5GPjVuTPTtrmu8IO54ZL7uF+eJzgbBWU5FDDTOX6iFzpCOD86gDZcOpTbajo+JWg6ZylSOhdhKDo3u9c5Igb7OA60Yrmpaxa6atdyukwfo7pjacS65qXZunDI37oCrdS6uF23upxGiLrQohK6btuGNy96KjqmNKo6zWT6Oi10Hzv6jDg72pFFO8hFRDuGWDM7PJgSO4khxjrHURw6jqPuuYgszrrFVS+7tslwu5zSkrv/RaS7CYSquxP8o7uj9o+7R29du4YgA7tl3a25Ti/IOlEZYjufda07D1biO1JqBTwsRxE8gfoSPFNTCTy1tuc7I+OlOxVgHzvNzTS66AyHu/RW+rvFDTS8DrRjvEvOg7xdwo28ktiNvOCYgrwUHVa8k74NvBPSMrtCCpY7Vh5WPJwIuDzs1AQ9h2YuPc0JVz07CX09G2CPPdVYnT1tzqc9gUeuPW14sD2BR649bc6nPdVYnT0bYI89Owl9Pc0JVz2HZi497NQEPZwIuDxWHlY8QgqWOxPSMruTvg28FB1WvOCYgryS2I28XcKNvEvOg7wOtGO8xQ00vPRW+rvoDIe7zc00uhVgHzsj46U7tbbnO1NTCTyB+hI8LEcRPFJqBTwPVuI7n3WtO1EZYjtOL8g6Zd2tuYYgA7tHb127o/aPuxP8o7sJhKq7/0Wku5zSkru2yXC7xVUvu4gszrqOo+65x1EcOokhxjo8mBI7hlgzO8hFRDvakUU7+ow4Oy10HzvNZPo6pjSqOi96Kjpu24Y30KISupxGiLq4Xbe6Aq3UunDI37rmpdm6Y2nEukwfo7pq13K6qWsWug60YrkiBvs4N7vXORdhKDpnKVI6PiVoOpTbajqANlw6Qjg/On6iFzoUMNM5GwVlOV+eJzjhkvu4rvCDuTPTtrkY+NW5h33hufD92rk3QsW5GOWjuczhdbmVAB25e6WJuPXlQDf7/KA4AQYFOYfnJzmnBzk5n7U5OaFdLDkZLhQ5i3LpOGo3ozjvuTg4rqRUNwscbrcGkxO4CDVQuNdmcbgPcHm4QlJsuGclT7i8dSe4IGP1t+Zjm7dhlBG3OofOtB/zxzZ1fCs3k59RNz/OWjdyUU03K00wN+7XCjeJf8Y2uCB6NgeTADYw0h41"
+  },
+  "compress": "log10(1 + x)",
+  "bins": 179
+ },
+ "decoding": {
+  "drums": {
+   "columns": {
+    "fine": [
+     "kick",
+     "snare",
+     "rim",
+     "clap",
+     "hat_closed",
+     "hat_pedal",
+     "hat_open",
+     "crash",
+     "ride",
+     "tom_high",
+     "tom_mid",
+     "tom_low",
+     "perc"
+    ],
+    "coarse": [
+     "kick",
+     "snare",
+     "hat",
+     "cymbal",
+     "tom"
+    ]
+   },
+   "coarse_column_offset": 13,
+   "threshold": {
+    "kick": 0.55,
+    "snare": 0.6,
+    "hat": 0.5,
+    "cymbal": 0.65,
+    "tom": 0.7
+   },
+   "gap_frames": {
+    "kick": 5,
+    "snare": 3,
+    "hat": 2,
+    "cymbal": 5,
+    "tom": 4
+   },
+   "offset_reach_frames": 2.5,
+   "level": "sigmoid(drum_level) at the peak frame"
+  },
+  "beats": {
+   "channels": [
+    "beat",
+    "downbeat"
+   ],
+   "sum_head": false,
+   "logit_above": 0.0,
+   "radius_frames": 7,
+   "offset_reach_frames": 6.5,
+   "rule": "decode.beats: Beat This! peaks, runs merged, downbeats on the nearest beat, both moved by the beat offset head"
+  },
+  "bass": {
+   "columns": [
+    "onset",
+    "offset",
+    "level"
+   ],
+   "threshold": 0.5,
+   "gap_frames": 4,
+   "offset_reach_frames": 2.5
+  },
+  "activity": {
+   "columns": [
+    "drums",
+    "bass",
+    "vocals",
+    "other"
+   ],
+   "stride_frames": 4,
+   "logits": true
+  },
+  "rounding": {
+   "time_s": 0.001,
+   "level": 0.01,
+   "level_floor": 0.02
+  }
+ },
+ "checked": {
+  "onnxruntime_python": "1.31.0",
+  "max_abs_vs_torch": 2.6226043701171875e-06,
+  "onnxruntime_node": null
+ },
+ "licence": "Personal use only; the weights are not for redistribution (PLAN.md D3)."
+}

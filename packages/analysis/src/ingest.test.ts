@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
@@ -11,10 +11,13 @@ import { Adtof, adtofIdentity } from './adtof.ts';
 import { artworkHue } from './artwork.ts';
 import { enrichTrack } from './enrich.ts';
 import { GenreClassifier } from './genreModel.ts';
+import { BeatThis } from './beatthis.ts';
 import { handMapStale, ingest, type TrackMeta } from './ingest.ts';
 
 const cache = vi.hoisted(() => ({ dir: '' }));
-vi.mock('./paths.ts', () => ({ get CACHE_DIR() { return cache.dir; }, get MODEL_DIR() { return cache.dir; } }));
+vi.mock('./paths.ts', () => ({
+	get CACHE_DIR() { return cache.dir; }, get MODEL_DIR() { return cache.dir; }, workerFile: () => null
+}));
 vi.mock('./decode.ts', () => ({ decodeAudio: vi.fn(), downloadAudio: vi.fn(), probe: vi.fn(), resamplePcm: vi.fn() }));
 vi.mock('./analyze.ts', () => ({ analyzeTrack: vi.fn() }));
 vi.mock('./artwork.ts', () => ({ artworkHue: vi.fn() }));
@@ -23,7 +26,8 @@ vi.mock('./dsp.ts', () => ({
 	preludeBeside: vi.fn(async () => undefined), onsetsBeside: vi.fn(async () => undefined)
 }));
 vi.mock('./beatthis.ts', () => ({ BeatThis: { create: vi.fn().mockRejectedValue(new Error('no model')) } }));
-vi.mock('./adtof.ts', () => ({
+vi.mock('./adtof.ts', async (original) => ({
+	...await original<typeof import('./adtof.ts')>(),
 	Adtof: { create: vi.fn().mockResolvedValue(null) }, adtofIdentity: vi.fn().mockResolvedValue('fixture-adtof')
 }));
 vi.mock('./separation.ts', () => ({
@@ -45,6 +49,20 @@ async function installStrikerModel(version: string) {
 	const classes = Object.fromEntries(STRIKER_KINDS.map((kind) => [kind, { threshold: 0.5, trees: [tree] }]));
 	const model = { version, candidates: CANDIDATE_REVISION, features: STRIKER_FEATURES, classes };
 	await writeFile(join(cache.dir, 'striker.json'), JSON.stringify(model));
+}
+
+/** The tiny Striker 2.0 export from striker-2's tools/m7_fixtures.py, its manifest edited. */
+async function installStriker2(edit: (manifest: Record<string, any>) => void = () => {}) {
+	const fixture = join(import.meta.dirname, 'testdata', 'striker2');
+	const manifest = JSON.parse(await readFile(join(fixture, 'striker2.json'), 'utf8'));
+	edit(manifest);
+	await copyFile(join(fixture, 'striker2.onnx'), join(cache.dir, 'striker2.onnx'));
+	await writeFile(join(cache.dir, 'striker2.json'), JSON.stringify(manifest));
+	return manifest.name as string;
+}
+
+async function preparation() {
+	return JSON.parse(await readFile(join(cache.dir, `${youtubeId}.preparation.json`), 'utf8'));
 }
 
 function fixtureAnalysis(): TrackAnalysis {
@@ -189,6 +207,68 @@ describe('queue cache refresh', () => {
 		expect(await reusedAfter('retired-striker')).toBe(true);
 		await rm(join(cache.dir, 'striker.json'));
 		expect(await reusedAfter('fixture-striker')).toBe(false);
+	});
+
+	it('prepares with Striker 2.0 alone when it is installed, keeping Beat This! for beats', async () => {
+		await saveTrack();
+		await installStrikerModel('fixture-striker');
+		const name = await installStriker2();
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(DrumSeparator.create).not.toHaveBeenCalled();
+		expect(Adtof.create).not.toHaveBeenCalled();
+		expect(BeatThis.create).toHaveBeenCalled();
+		expect(decodeAudio).toHaveBeenCalledWith(join(cache.dir, `${youtubeId}.m4a`), 44100);
+		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({
+			striker2: expect.objectContaining({ name, drums: expect.any(Object), bass: expect.any(Object) }),
+			striker: undefined, drums: undefined, separatedDrums: undefined
+		}));
+		const stamp = await preparation();
+		expect(stamp.striker2).toMatchObject({ name, beats: 'beatthis' });
+		expect(stamp.stagesMs.striker2).toEqual(expect.any(Number));
+		expect(stamp.drumProviders).toBeUndefined();
+		expect(stamp.stagesMs.separation).toBeUndefined();
+	});
+
+	it('takes beats and downbeats from Striker 2.0 when its manifest says so', async () => {
+		await saveTrack();
+		const name = await installStriker2((manifest) => { manifest.app = { beats: 'striker2' }; });
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(BeatThis.create).not.toHaveBeenCalled();
+		const input = vi.mocked(analyzeTrack).mock.lastCall![0];
+		expect(input.striker2?.name).toBe(`${name} with beats`);
+		expect(input.beats).toBe(input.striker2?.beats);
+		expect(input.downbeats).toBe(input.striker2?.downbeats);
+	});
+
+	it('reports an unusable Striker 2.0 manifest and prepares on the older path', async () => {
+		await saveTrack();
+		await installStriker2((manifest) => { manifest.sha256 = '0'.repeat(64); });
+		const progress = vi.fn();
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true, onProgress: progress });
+		expect(progress).toHaveBeenCalledWith(expect.stringMatching(/^Striker 2.0 unavailable, falling back: .*SHA-256/));
+		expect(DrumSeparator.create).toHaveBeenCalled();
+		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({ striker2: undefined }));
+		expect((await preparation()).striker2.error).toMatch(/SHA-256/);
+	});
+
+	it('re-analyses songs another analyser made once Striker 2.0 is installed, not while it is unusable', async () => {
+		await saveTrack(youtubeId, youtubeSource, ANALYSIS_VERSION);
+		await installStrikerModel('fixture-striker');
+		const name = await installStriker2();
+		const reusedAfter = async (striker?: string) => {
+			const analysis = { ...fixtureAnalysis(), trackId: youtubeId, striker };
+			await writeFile(join(cache.dir, `${youtubeId}.analysis.json`), JSON.stringify(analysis));
+			return (await ingest(youtubeSource, { cachedTrackId: youtubeId })).fromCache;
+		};
+		expect(await reusedAfter(name)).toBe(true);
+		expect(await reusedAfter(undefined)).toBe(true);
+		expect(await reusedAfter('fixture-striker')).toBe(false);
+		expect(await reusedAfter('Striker 2.0 (00000000)')).toBe(false);
+		await installStriker2((manifest) => { manifest.app = { beats: 'striker2' }; });
+		expect(await reusedAfter(name)).toBe(false);
+		expect(await reusedAfter(`${name} with beats`)).toBe(true);
+		await writeFile(join(cache.dir, 'striker2.json'), '{"format": "striker2-model"');
+		expect(await reusedAfter('fixture-striker')).toBe(true);
 	});
 
 	it('passes isolated sources into analysis and releases the separator', async () => {

@@ -10,6 +10,8 @@ import { analyseStereo } from './stereo.ts';
 import { ARRANGEMENT, fMeasure, synthesise } from './fixture.ts';
 import { onsetsFromActivations } from './adtof.ts';
 import { CANDIDATE_REVISION, STRIKER_FEATURES, type StrikerModel } from './striker.ts';
+import type { Striker2Result } from './striker2.ts';
+import type { DrumStream } from './drums.ts';
 
 const fixture = synthesise();
 const analysis = analyzeTrack({
@@ -851,5 +853,51 @@ describe('Striker', () => {
 		expect(fMeasure(fixture.hat, withStriker.onsets.hat.times, 0.05).f).toBeGreaterThan(0.95);
 		const withoutStriker = analyzeTrack(inputs);
 		expect(withoutStriker.onsets.kick.times.length).toBeLessThan(fixture.kick.length / 2);
+	});
+});
+
+describe('Striker 2.0', () => {
+	const stream = (times: readonly number[], level = 0.8): DrumStream => ({
+		times: [...times], levels: times.map(() => level), curve: new Float32Array(0), fps: 100
+	});
+	const late = (times: readonly number[]) => times.map((t) => Math.round((t + 0.02) * 1000) / 1000);
+	const result: Striker2Result = {
+		name: 'Striker 2.0 (test)',
+		drums: {
+			kick: stream(late(fixture.kick)), snare: stream(late(fixture.snare)), hat: stream(late(fixture.hat), 0.5),
+			cymbal: stream([1], 0.9), tom: stream([2.5])
+		},
+		beats: [],
+		downbeats: [],
+		bass: { times: [1.004, 3.5], levels: [0.51, 0.02] },
+		activity: { drums: [[7.5, 30]], bass: [[0, 30]], vocals: [], other: [[0, 12.25]] }
+	};
+	const base = {
+		mono: fixture.mono, sampleRate: fixture.sampleRate, duration: fixture.duration, hash: 'test',
+		trackId: 'file-000000000000', title: 'Synthetic Arrangement'
+	};
+	const error = (times: number[], truth: readonly number[]) =>
+		times.reduce((sum, t) => sum + Math.min(...truth.map((r) => Math.abs(r - t))), 0) / times.length;
+
+	it('takes every drum stream from it unsnapped, with cymbals in the hat stream and its name second', () => {
+		const probe: { striker: { classes?: Record<string, { times: number[] }> } } = { striker: {} };
+		const analysis = analyzeTrack({ ...base, striker2: result, probe });
+		expect(Object.keys(analysis).slice(0, 2)).toEqual(['version', 'striker']);
+		expect(analysis.striker).toBe('Striker 2.0 (test)');
+		expect(analysis.onsets.kick.times).toEqual(late(fixture.kick).filter((t) => t <= fixture.duration));
+		expect(analysis.onsets.snare.times).toEqual(late(fixture.snare).filter((t) => t <= fixture.duration));
+		expect(analysis.onsets.hat.times).toContain(1);
+		expect(Object.keys(probe.striker.classes ?? {})).toEqual(['kick', 'snare', 'hat', 'cymbal', 'tom']);
+		expect(probe.striker.classes?.tom.times).toEqual([2.5]);
+		expect(Object.keys(analysis).slice(-2)).toEqual(['bass', 'activity']);
+		expect(analysis.bass).toEqual(result.bass);
+		expect(analysis.activity).toEqual(result.activity);
+	});
+
+	it('snaps its hits to broadband onsets only when asked', () => {
+		const snapped = analyzeTrack({ ...base, striker2: result, striker2Snap: true });
+		expect(error(snapped.onsets.kick.times, fixture.kick)).toBeLessThan(0.015);
+		expect(analysis.bass).toBeUndefined();
+		expect(analysis.activity).toBeUndefined();
 	});
 });
