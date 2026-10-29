@@ -14,8 +14,10 @@ import { handMapGrid, type DrawingGrid } from './gridedits.ts';
 import { handMapFingerprint, type HandSection } from './handSections.ts';
 import { medianPeriod } from './metricalLevel.ts';
 import { KICK_CLAIMING_FAMILIES, familyCorroborated, loudKickRate } from './vocabulary.ts';
-import { chosenAnalysisModel, readInstalledStriker2, striker2Problem, strikerCurrent } from './strikerModel.ts';
-import { Striker2 } from './striker2.ts';
+import {
+	chosenAnalysisModel, chosenAnalysisProvider, readInstalledStriker2, striker2Problem, strikerCurrent
+} from './strikerModel.ts';
+import { withStriker2 } from './striker2Pool.ts';
 import { preludeBeside } from './dsp.ts';
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -598,6 +600,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		const installed = await readInstalledStriker2(choice);
 		if (!('model' in installed)) throw new Error(striker2Problem(choice, installed));
 		const model = installed.model;
+		const provider = await chosenAnalysisProvider();
 		const warnings = [...model.warnings];
 		striker2Note = { model: choice, name: model.name, warnings };
 		for (const warning of warnings) log(`Striker 2.0: ${warning}`);
@@ -607,16 +610,17 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		// The model hears 44.1 kHz; upsampling the analysis PCM cannot restore lost bands.
 		const wide = decodeAudio(audioPath, 44100);
 		wide.catch(() => {});
-		const transcribed = timed('striker2', async () => {
-			const striker = await Striker2.create(model);
+		// The session outlives the song: it opens (and on first use checks its provider) once per run.
+		const transcribed = timed('striker2', () => withStriker2(model, provider, async (striker) => {
 			try {
 				const audio = await wide;
 				log('transcribing');
 				return await striker.run(audio.mono);
 			} finally {
-				await striker.close();
+				Object.assign(striker2Note!, { provider: striker.provider, check: striker.check });
+				warnings.push(...striker.warnings);
 			}
-		}).catch((e: unknown) => {
+		}, { log })).catch((e: unknown) => {
 			throw new Error(`Striker 2.0 failed on this song: ${e instanceof Error ? e.message : String(e)}`);
 		});
 		transcribed.catch(() => {});

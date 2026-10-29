@@ -12,7 +12,7 @@
   "bass": 3,
   "activity": 4
  },
- "graph_max_abs_vs_torch": 2.6226043701171875e-06,
+ "graph_max_abs_vs_torch": 3.0994415283203125e-06,
  "decode": {
   "drums": {
    "kick": {

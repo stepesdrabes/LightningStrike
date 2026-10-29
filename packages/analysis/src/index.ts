@@ -10,6 +10,13 @@ export {
 	type AnalysisModelChoice,
 	type AnalysisModelId
 } from './strikerModel.ts';
+export {
+	ANALYSIS_PROVIDERS,
+	DEFAULT_ANALYSIS_PROVIDER,
+	isAnalysisProvider,
+	type AnalysisProvider
+} from './striker2Provider.ts';
+export { releaseStriker2 } from './striker2Pool.ts';
 export { radioFor, searchSongs, watchUrl, type Song } from './ytmusic.ts';
 export {
 	analysisPath,

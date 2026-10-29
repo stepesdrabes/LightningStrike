@@ -1,9 +1,9 @@
 {
  "format": "striker2-model",
  "version": 1,
- "name": "Striker 2.0 (78d63963)",
- "sha256": "78d63963d6d6867ea3180830ab6539d8ccc4b31da26c5c0de40c16fdfbbaa07d",
- "bytes": 1058252,
+ "name": "Striker 2.0 (fabd0bcd)",
+ "sha256": "fabd0bcd7b183ef463ec93e384a76397e42bea2fe464782fd8385069312fb9b1",
+ "bytes": 1086003,
  "file": "striker2.onnx",
  "exported": "fixture",
  "checkpoint": {
@@ -14,16 +14,18 @@
   "sum_head": false,
   "freq_attn": false,
   "parameters": 245310,
-  "thresholds": "thresholds.json"
+  "thresholds": "thresholds.json",
+  "bass_threshold": null
  },
  "graph": {
   "opset": 17,
   "input": "features",
   "input_shape": [
-   "batch",
+   1,
    400,
    "bins"
   ],
+  "static": true,
   "outputs": {
    "drum_onset": 18,
    "drum_offset": 18,
@@ -38,6 +40,40 @@
   "pad": "zeros after the song's last frame",
   "activity_stride": 4
  },
+ "golden": {
+  "layout": "float32 little-endian; features [chunk, bins]; outputs the graph's outputs in order, each [rows, width], concatenated",
+  "computed_by": "PyTorch, float32, CPU",
+  "chunks": [
+   {
+    "source": "audio.s16 from 0 s",
+    "frames": 400,
+    "features": {
+     "file": "striker2.golden0.features.f32",
+     "bytes": 286400,
+     "sha256": "b8525e8706849906b0c07e6d492a7df3c53e2807d4588646275eea06dd5f0b49"
+    },
+    "outputs": {
+     "file": "striker2.golden0.outputs.f32",
+     "bytes": 97600,
+     "sha256": "0679255aace9e45d315f3040ce871cbd8094381a7d246579ba72149884851b85"
+    }
+   },
+   {
+    "source": "audio.s16 from 6.5 s",
+    "frames": 151,
+    "features": {
+     "file": "striker2.golden1.features.f32",
+     "bytes": 286400,
+     "sha256": "266d400d26e891122f7d02076084f4ca98109470dbcf4c6d833e74d8e44b3b0c"
+    },
+    "outputs": {
+     "file": "striker2.golden1.outputs.f32",
+     "bytes": 97600,
+     "sha256": "3579cbc9647a3cfa6d75672d2ac50475ea241db4c22175c2e827260f503e9447"
+    }
+   }
+  ]
+ },
  "front_end": {
   "sample_rate": 44100,
   "fps": 100,
@@ -51,7 +87,7 @@
    "fmin": 20.0,
    "fmax": 20000.0,
    "bands": 84,
-   "same_as": "adtofFilterbank and adtofSpectrogram (packages/analysis/src/adtof.ts)"
+   "same_as": "branchAFilterbank and branchASpectrogram, ADTOF's spectrogram (packages/analysis/src/striker2Frontend.ts)"
   },
   "b": {
    "decimate": 9,
@@ -153,7 +189,7 @@
  },
  "checked": {
   "onnxruntime_python": "1.31.0",
-  "max_abs_vs_torch": 2.6226043701171875e-06,
+  "max_abs_vs_torch": 3.0994415283203125e-06,
   "onnxruntime_node": null
  },
  "licence": "Personal use only; the weights are not for redistribution (PLAN.md D3)."

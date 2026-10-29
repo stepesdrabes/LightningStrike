@@ -4,28 +4,54 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { ACTIVITY_STEMS, type ActivityStem, type OnsetStream } from '@mv/core';
 import { hashFile } from './fileHash.ts';
-import { QUIET_THREADS, openSession, type OnnxSession, type OpenSession } from './onnxSession.ts';
+import {
+	QUIET_THREADS, openSession, type OnnxSession, type OnnxTensor, type OpenSession
+} from './onnxSession.ts';
 import {
 	STRIKER2_CLASSES, activitySpans, bassOnsets, coarseHits, type PeakRule, type Striker2Class
 } from './striker2Decode.ts';
 import { dbnBeats } from './striker2Dbn.ts';
-import { STRIKER2_FRONT_END, striker2Features } from './striker2Frontend.ts';
+import { STRIKER2_FRONT_END, Striker2FrontEnd } from './striker2Frontend.ts';
 
 /** Striker 2.0 (striker-2 `python -m striker.export`): this manifest beside its graph. */
 export const STRIKER2_MANIFEST = 'striker2.json';
 
-/** Each graph output's width; activity runs at 100 / `activity_stride` fps. */
-const OUTPUTS = {
+/** Each graph output's width, in the graph's order; activity runs at 100 / `activity_stride` fps. */
+export const STRIKER2_OUTPUTS = {
 	drum_onset: 18, drum_offset: 18, drum_level: 18, beat: 2, beat_offset: 1, bass: 3, activity: 4
 } as const;
+const OUTPUTS = STRIKER2_OUTPUTS;
 export type Striker2Output = keyof typeof OUTPUTS;
 export type Striker2Outputs = Record<Striker2Output, Float32Array>;
+
+export interface Striker2GoldenFile {
+	path: string;
+	bytes: number;
+	sha256: string;
+}
+
+/**
+ * One chunk the export ran through PyTorch: its features ([chunk, bins] float32) and PyTorch's
+ * outputs on them (each [rows, width], in the graph's order, concatenated). Only the first
+ * `frames` rows are music; the rest is zero padding.
+ */
+export interface Striker2GoldenChunk {
+	source: string;
+	frames: number;
+	features: Striker2GoldenFile;
+	outputs: Striker2GoldenFile;
+}
 
 export interface Striker2Model {
 	/** The manifest's name, `<release> (<first 8 hex of the graph's SHA-256>)`; analyses record it. */
 	name: string;
 	graph: string;
+	sha256: string;
 	input: string;
+	/** Every shape fixed (batch 1), which Core ML and DirectML need to take the whole graph. */
+	static: boolean;
+	/** The chunks that check a runtime against PyTorch, or why there are none. */
+	golden: { chunks: Striker2GoldenChunk[] } | { problem: string };
 	/** Frames per graph run and frames each neighbour overwrites at either end. */
 	chunk: number;
 	border: number;
@@ -115,7 +141,7 @@ function firTaps(fir: { taps: number; sha256: string; base64: string }): Float32
 	return Float32Array.from({ length: fir.taps }, (_, i) => view.getFloat32(4 * i, true));
 }
 
-function runtimeVersion(): string | null {
+export function runtimeVersion(): string | null {
 	try {
 		const ort = createRequire(import.meta.url)('onnxruntime-node/package.json') as { version: string };
 		return ort.version;
@@ -134,10 +160,41 @@ function warnings(checked: Json): string[] {
 		: [];
 }
 
+function goldenFile(value: unknown, what: string, dir: string, bytes: number): Striker2GoldenFile {
+	const f = object(value, what);
+	if (typeof f.file !== 'string' || !/^[\w.-]+\.f32$/.test(f.file)) fail(`${what}.file is not a .f32 beside the graph`);
+	same(f.bytes, bytes, `${what}.bytes`);
+	if (typeof f.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(f.sha256)) fail(`${what}.sha256 is not a SHA-256`);
+	return { path: join(dir, f.file), bytes, sha256: f.sha256 };
+}
+
+/** The golden section. A malformed one leaves the model usable, but nothing can check a runtime. */
+function goldenChunks(value: unknown, dir: string, chunk: number, stride: number): Striker2Model['golden'] {
+	if (value === undefined) return { problem: 'the manifest lists no golden chunks' };
+	try {
+		const chunks = object(value, 'golden').chunks;
+		if (!Array.isArray(chunks) || chunks.length === 0) fail('golden.chunks is empty');
+		const values = Object.entries(OUTPUTS)
+			.reduce((n, [name, width]) => n + (name === 'activity' ? chunk / stride : chunk) * width, 0);
+		return {
+			chunks: chunks.map((value: unknown, i) => {
+				const what = `golden.chunks[${i}]`;
+				const c = object(value, what);
+				return {
+					source: typeof c.source === 'string' ? c.source : what,
+					frames: number(c.frames, `${what}.frames`, (v) => Number.isInteger(v) && v > 0 && v <= chunk),
+					features: goldenFile(c.features, `${what}.features`, dir, chunk * STRIKER2_FRONT_END.bins * 4),
+					outputs: goldenFile(c.outputs, `${what}.outputs`, dir, values * 4)
+				};
+			})
+		};
+	} catch (e) {
+		return { problem: e instanceof Error ? e.message : String(e) };
+	}
+}
+
 /** A parsed manifest, before the graph's hash is checked. Throws on anything the app cannot honour. */
-function parseManifest(
-	json: unknown, dir: string
-): Striker2Model & { sha256: string; bytes: number } {
+function parseManifest(json: unknown, dir: string): Striker2Model & { bytes: number } {
 	const m = object(json, 'the manifest');
 	same([m.format, m.version], ['striker2-model', 1], 'format and version');
 	if (typeof m.name !== 'string' || !m.name) fail('name is missing');
@@ -152,6 +209,11 @@ function parseManifest(
 	for (const [name, width] of Object.entries(OUTPUTS)) same(widths[name], width, `graph.outputs.${name}`);
 	const activityStride = number(graph.activity_stride, 'graph.activity_stride',
 		(v) => Number.isInteger(v) && v > 0 && chunk % v === 0);
+	if (graph.static !== undefined && typeof graph.static !== 'boolean') fail('graph.static is not a boolean');
+	if (graph.static) {
+		const shape = Array.isArray(graph.input_shape) ? graph.input_shape.slice(0, 2) : graph.input_shape;
+		same(shape, [1, chunk], 'a static graph.input_shape');
+	}
 	const fir = checkFrontEnd(object(m.front_end, 'front_end'));
 	const decoding = object(m.decoding, 'decoding');
 	const drums = object(decoding.drums, 'decoding.drums');
@@ -174,10 +236,10 @@ function parseManifest(
 	same([rounding.time_s, rounding.level], [0.001, 0.01], 'decoding.rounding');
 	const levelFloor = number(rounding.level_floor, 'decoding.rounding.level_floor', (v) => v >= 0 && v < 1);
 	return {
-		name: m.name, graph: join(dir, m.file), input: graph.input, chunk, border, activityStride, taps: firTaps(fir),
-		drums: { firstColumn, rules }, bass: rule(bass, 'decoding.bass'), levelFloor,
-		warnings: warnings(m.checked === undefined ? {} : object(m.checked, 'checked')),
-		sha256: m.sha256, bytes
+		name: m.name, graph: join(dir, m.file), sha256: m.sha256, input: graph.input, static: graph.static === true,
+		golden: goldenChunks(m.golden, dir, chunk, activityStride), chunk, border, activityStride,
+		taps: firTaps(fir), drums: { firstColumn, rules }, bass: rule(bass, 'decoding.bass'), levelFloor,
+		warnings: warnings(m.checked === undefined ? {} : object(m.checked, 'checked')), bytes
 	};
 }
 
@@ -196,10 +258,10 @@ export async function readStriker2(
 		} catch (e) {
 			fail(`not JSON (${e instanceof Error ? e.message : String(e)})`);
 		}
-		const { sha256, bytes, ...model } = parseManifest(json, dir);
+		const { bytes, ...model } = parseManifest(json, dir);
 		const size = (await stat(model.graph).catch(() => fail(`${model.graph} is missing`))).size;
 		if (size !== bytes) fail(`the graph has ${size} bytes, the manifest ${bytes}`);
-		if (verify && await hashFile(model.graph) !== sha256) fail('the graph does not match its SHA-256');
+		if (verify && await hashFile(model.graph) !== model.sha256) fail('the graph does not match its SHA-256');
 		return model;
 	} catch (e) {
 		throw new Error(`${manifest}: ${e instanceof Error ? e.message : String(e)}`);
@@ -227,9 +289,21 @@ export function decodeStriker2(model: Striker2Model, out: Striker2Outputs): Stri
 }
 
 export interface Striker2Options {
-	/** onnxruntime execution providers in order of preference; the CPU is the checked one. */
-	providers?: readonly string[];
+	/** onnxruntime session options over the defaults: the CPU, every graph optimization. */
+	session?: Record<string, unknown>;
 	open?: OpenSession;
+}
+
+/** A chunk's output, refused unless it has the graph's shape and only finite values. */
+function checked(model: Striker2Model, name: Striker2Output, got: OnnxTensor | undefined): Float32Array {
+	const rows = name === 'activity' ? model.chunk / model.activityStride : model.chunk;
+	if (!got || got.dims.join() !== [1, rows, OUTPUTS[name]].join()) {
+		throw new Error(`Striker 2.0's graph returned ${name} as [${got?.dims.join(', ')}]`);
+	}
+	for (const v of got.data) {
+		if (!Number.isFinite(v)) throw new Error(`Striker 2.0's graph returned a non-finite ${name}`);
+	}
+	return got.data;
 }
 
 export class Striker2 {
@@ -237,11 +311,11 @@ export class Striker2 {
 	private model!: Striker2Model;
 
 	static async create(model: Striker2Model, options: Striker2Options = {}): Promise<Striker2> {
-		const { providers = ['cpu'], open = openSession } = options;
+		const { session = {}, open = openSession } = options;
 		const self = new Striker2();
 		self.model = model;
 		self.session = await open(model.graph, {
-			executionProviders: [...providers], graphOptimizationLevel: 'all', ...QUIET_THREADS
+			executionProviders: ['cpu'], graphOptimizationLevel: 'all', ...QUIET_THREADS, ...session
 		});
 		return self;
 	}
@@ -250,37 +324,71 @@ export class Striker2 {
 		await this.session.release();
 	}
 
-	/** Whole-song outputs from features: each chunk's middle kept; activity held over its frames. */
-	async outputs(features: { data: Float32Array; frames: number; bins: number }): Promise<Striker2Outputs> {
-		const { chunk, border, input, activityStride } = this.model;
-		const { data, frames, bins } = features;
+	/** One chunk's outputs ([rows, width] each) from its [chunk, bins] features, left intact. */
+	chunk(features: Float32Array): Promise<Striker2Outputs> {
+		return this.infer(Float32Array.from(features));
+	}
+
+	/** Detaches `x`. */
+	private async infer(x: Float32Array): Promise<Striker2Outputs> {
+		const { chunk, input } = this.model;
+		const out = await this.session.run(
+			{ [input]: { data: x, dims: [1, chunk, x.length / chunk] } }, { transfer: true });
+		return Object.fromEntries((Object.keys(OUTPUTS) as Striker2Output[])
+			.map((name) => [name, checked(this.model, name, out[name])])) as Striker2Outputs;
+	}
+
+	/**
+	 * Whole-song outputs: each chunk's middle kept, activity held over its frames. `input(s)` is the
+	 * zero-padded chunk from frame s; the next one is made while the session runs this one.
+	 */
+	private async stitched(frames: number, input: (start: number) => Float32Array): Promise<Striker2Outputs> {
+		const { chunk, border, activityStride } = this.model;
 		const starts = chunkStarts(frames, chunk, border);
 		const merged = Object.fromEntries(Object.entries(OUTPUTS)
 			.map(([name, width]) => [name, new Float32Array(frames * width)])) as Striker2Outputs;
+		let next = input(starts[0]);
 		for (let c = 0; c < starts.length; c++) {
 			const s = starts[c];
-			const x = new Float32Array(chunk * bins);
-			x.set(data.subarray(s * bins, Math.min(frames, s + chunk) * bins));
-			const out = await this.session.run({ [input]: { data: x, dims: [1, chunk, bins] } }, { transfer: true });
+			const running = this.infer(next);
+			running.catch(() => {});
+			if (c + 1 < starts.length) next = input(starts[c + 1]);
+			const out = await running;
 			const lo = c === 0 ? 0 : border;
 			const hi = Math.min(c === starts.length - 1 ? chunk : chunk - border, frames - s);
 			for (const [name, width] of Object.entries(OUTPUTS) as [Striker2Output, number][]) {
 				const stride = name === 'activity' ? activityStride : 1;
-				const got = out[name];
-				if (!got || got.dims.join() !== [1, chunk / stride, width].join()) {
-					throw new Error(`Striker 2.0's graph returned ${name} as [${got?.dims.join(', ')}]`);
-				}
 				for (let t = lo; t < hi; t++) {
 					const row = Math.floor(t / stride) * width;
-					merged[name].set(got.data.subarray(row, row + width), (s + t) * width);
+					merged[name].set(out[name].subarray(row, row + width), (s + t) * width);
 				}
 			}
 		}
 		return merged;
 	}
 
-	/** 44.1 kHz mono, (L + R) / 2, as ingest decodes it for the model. */
+	/** Whole-song outputs from [frames, bins] features. */
+	async outputs(features: { data: Float32Array; frames: number; bins: number }): Promise<Striker2Outputs> {
+		const { data, frames, bins } = features;
+		const { chunk } = this.model;
+		return this.stitched(frames, (s) => {
+			const x = new Float32Array(chunk * bins);
+			x.set(data.subarray(s * bins, Math.min(frames, s + chunk) * bins));
+			return x;
+		});
+	}
+
+	/** 44.1 kHz mono, (L + R) / 2, as ingest decodes it for the model; features chunk by chunk. */
 	async run(mono: Float32Array): Promise<Striker2Result> {
-		return decodeStriker2(this.model, await this.outputs(striker2Features(mono, this.model.taps)));
+		const front = new Striker2FrontEnd(mono, this.model.taps);
+		const { chunk } = this.model;
+		const { frames, bins, data } = front;
+		return decodeStriker2(this.model, await this.stitched(frames, (s) => {
+			const end = Math.min(frames, s + chunk);
+			front.through(end);
+			const x = new Float32Array(chunk * bins);
+			x.set(data.subarray(s * bins, end * bins));
+			return x;
+		}));
 	}
 }

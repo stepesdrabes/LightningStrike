@@ -11,100 +11,138 @@ import {
 } from '@mv/analysis';
 
 /**
- * Serialize all ingest callers and use a worker to keep DSP off the server thread. Dev uses
- * source; bundles use MV_INGEST_WORKER; missing workers retain in-process fallback.
+ * Serialize all ingest callers and use one worker to keep DSP off the server thread. It stays
+ * between songs, so Striker 2.0's session does too, and closes once idle a little longer than
+ * that session. Dev uses source; bundles use MV_INGEST_WORKER; missing workers run in process.
  */
+export const ingestWorker = { idleMs: 100_000 };
+
 let inFlight: Promise<unknown> = Promise.resolve();
 
-export function ingestDetached(source: string, opts: IngestOptions = {}): Promise<IngestResult> {
-	const run = inFlight.then(() => ingestInWorker(source, opts));
+function serialized<T>(work: () => Promise<T>): Promise<T> {
+	const run = inFlight.then(work);
 	// The chain must survive a rejection or every later ingest inherits the first failure.
 	inFlight = run.catch(() => {});
 	return run;
 }
 
-function ingestInWorker(source: string, opts: IngestOptions): Promise<IngestResult> {
-	const bundled = process.env.MV_INGEST_WORKER;
-	const workerPath =
-		bundled && existsSync(bundled)
-			? bundled
-			: join(workspaceRoot(), 'packages', 'analysis', 'src', 'ingestWorker.ts');
-	if (!existsSync(workerPath)) return ingest(source, opts);
-
-	return new Promise((resolve, reject) => {
-		const worker = new Worker(workerPath, {
-			workerData: {
-				source,
-				// Only the serialisable options cross the boundary; progress comes back as messages.
-				opts: {
-					cachedTrackId: opts.cachedTrackId,
-					force: opts.force,
-					metricalLevel: opts.metricalLevel,
-					artwork: opts.artwork
-				}
-			},
-			// Do not inherit server inspector/eval flags that can break or collide in a worker.
-			execArgv: []
-		});
-		let sawMessage = false;
-		let settled = false;
-		const finish = (act: () => void) => {
-			if (settled) return;
-			settled = true;
-			act();
-			void worker.terminate();
-		};
-		worker.on('message', (m: { type: string; stage?: string; result?: IngestResult; message?: string }) => {
-			sawMessage = true;
-			if (m.type === 'progress' && m.stage) opts.onProgress?.(m.stage);
-			else if (m.type === 'done' && m.result) finish(() => resolve(m.result as IngestResult));
-			else if (m.type === 'error') finish(() => reject(new Error(m.message ?? 'ingest failed')));
-		});
-		// Fall back once if the worker fails before its first message. Later crashes are pipeline
-		// failures.
-		worker.on('error', (e) => {
-			if (!sawMessage) finish(() => resolve(ingest(source, opts)));
-			else finish(() => reject(e));
-		});
-		worker.on('exit', (code) => {
-			if (settled) return;
-			if (!sawMessage) finish(() => resolve(ingest(source, opts)));
-			else finish(() => reject(new Error(`ingest worker exited with code ${code}`)));
-		});
-	});
+export function ingestDetached(source: string, opts: IngestOptions = {}): Promise<IngestResult> {
+	return serialized(() => inWorker<IngestResult>('ingest', source, {
+		// Only the serialisable options cross the boundary; progress comes back as messages.
+		opts: {
+			cachedTrackId: opts.cachedTrackId,
+			force: opts.force,
+			metricalLevel: opts.metricalLevel,
+			artwork: opts.artwork
+		},
+		onProgress: opts.onProgress,
+		fallback: () => ingest(source, opts)
+	}));
 }
 
 /** Measure a narration's audio in the same serialized worker, for the same reason. */
 export function narrationDetached(path: string): Promise<MeasuredAudio> {
-	const run = inFlight.then(() => narrationInWorker(path));
-	inFlight = run.catch(() => {});
-	return run;
+	return serialized(() => inWorker<MeasuredAudio>('narration', path, {
+		opts: {},
+		missing: () => prepareNarration(path)
+	}));
 }
 
-function narrationInWorker(path: string): Promise<MeasuredAudio> {
+type Reply =
+	| { type: 'progress'; stage: string }
+	| { type: 'done'; result: unknown }
+	| { type: 'error'; message?: string }
+	| { type: 'closed' };
+
+interface Thread {
+	worker: Worker;
+	job: { reply(m: Reply): void; lost(error: Error): void } | null;
+}
+
+let thread: Thread | null = null;
+let idle: ReturnType<typeof setTimeout> | null = null;
+
+function workerPath(): string | null {
 	const bundled = process.env.MV_INGEST_WORKER;
-	const workerPath =
-		bundled && existsSync(bundled)
-			? bundled
-			: join(workspaceRoot(), 'packages', 'analysis', 'src', 'ingestWorker.ts');
-	if (!existsSync(workerPath)) return prepareNarration(path);
-	return new Promise((resolve, reject) => {
-		const worker = new Worker(workerPath, {
-			workerData: { source: path, opts: {}, task: 'narration' },
-			execArgv: []
+	const path = bundled && existsSync(bundled)
+		? bundled
+		: join(workspaceRoot(), 'packages', 'analysis', 'src', 'ingestWorker.ts');
+	return existsSync(path) ? path : null;
+}
+
+function spawn(path: string): Thread {
+	// Do not inherit server inspector/eval flags that can break or collide in a worker.
+	const t: Thread = { worker: new Worker(path, { execArgv: [] }), job: null };
+	t.worker.on('message', (m: Reply) => t.job?.reply(m));
+	const lost = (error: Error) => {
+		if (thread === t) thread = null;
+		const job = t.job;
+		t.job = null;
+		job?.lost(error);
+		void t.worker.terminate();
+	};
+	t.worker.on('error', lost);
+	t.worker.on('exit', (code) => lost(new Error(`ingest worker exited with code ${code}`)));
+	return t;
+}
+
+/** Releases the Striker 2.0 session before the worker goes, so native memory is freed in order. */
+async function close(): Promise<void> {
+	const t = thread;
+	if (!t) return;
+	thread = null;
+	await new Promise<void>((done) => {
+		const late = setTimeout(done, 10_000);
+		t.worker.on('message', (m: Reply) => {
+			if (m.type !== 'closed') return;
+			clearTimeout(late);
+			done();
 		});
-		let settled = false;
-		const finish = (act: () => void) => {
-			if (settled) return;
-			settled = true;
-			act();
-			void worker.terminate();
+		t.worker.once('exit', () => {
+			clearTimeout(late);
+			done();
+		});
+		t.worker.postMessage({ type: 'close' });
+	});
+	await t.worker.terminate();
+}
+
+function inWorker<T>(task: 'ingest' | 'narration', source: string, how: {
+	opts: IngestOptions;
+	onProgress?: (stage: string) => void;
+	/** Runs the job here when the worker fails before its first message. */
+	fallback?: () => Promise<T>;
+	missing?: () => Promise<T>;
+}): Promise<T> {
+	const path = workerPath();
+	if (!path) return (how.fallback ?? how.missing)!();
+	if (idle) clearTimeout(idle);
+	idle = null;
+	const t = (thread ??= spawn(path));
+	t.worker.ref();
+	return new Promise<T>((resolve, reject) => {
+		let spoke = false;
+		t.job = {
+			reply(m) {
+				spoke = true;
+				if (m.type === 'progress') how.onProgress?.(m.stage);
+				else if (m.type === 'done') resolve(m.result as T);
+				else if (m.type === 'error') reject(new Error(m.message ?? `${task} failed`));
+			},
+			lost(error) {
+				if (!spoke && how.fallback) resolve(how.fallback());
+				else reject(error);
+			}
 		};
-		worker.on('message', (m: { type: string; result?: MeasuredAudio; message?: string }) => {
-			if (m.type === 'done' && m.result) finish(() => resolve(m.result as MeasuredAudio));
-			else if (m.type === 'error') finish(() => reject(new Error(m.message ?? 'narration failed')));
-		});
-		worker.on('error', (e) => finish(() => reject(e)));
-		worker.on('exit', (code) => finish(() => reject(new Error(`narration worker exited with code ${code}`))));
+		t.worker.postMessage({ type: 'job', task, source, opts: how.opts });
+	}).finally(() => {
+		t.job = null;
+		if (thread !== t) return;
+		t.worker.unref();
+		idle = setTimeout(() => {
+			idle = null;
+			void serialized(close);
+		}, ingestWorker.idleMs);
+		idle.unref();
 	});
 }

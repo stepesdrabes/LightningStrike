@@ -1,6 +1,9 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { readStriker2, type Striker2Model } from './striker2.ts';
+import {
+	DEFAULT_ANALYSIS_PROVIDER, isAnalysisProvider, type AnalysisProvider
+} from './striker2Provider.ts';
 import { CACHE_DIR, MODEL_DIR } from './paths.ts';
 
 /** The analysis models the settings offer, each a manifest in MODEL_DIR beside its graph. */
@@ -17,16 +20,24 @@ export function isAnalysisModel(value: unknown): value is AnalysisModelId {
 
 const described = (id: AnalysisModelId) => ANALYSIS_MODELS.find((m) => m.id === id)!;
 
+async function setting(name: string): Promise<unknown> {
+	try {
+		return (JSON.parse(await readFile(join(CACHE_DIR, 'settings.json'), 'utf8')) as Record<string, unknown>)[name];
+	} catch {
+		return undefined;
+	}
+}
+
 /** The model the settings choose (`analysisModel` in the cache's settings.json), or the default. */
 export async function chosenAnalysisModel(): Promise<AnalysisModelId> {
-	try {
-		const { analysisModel } = JSON.parse(await readFile(join(CACHE_DIR, 'settings.json'), 'utf8')) as {
-			analysisModel?: unknown;
-		};
-		return isAnalysisModel(analysisModel) ? analysisModel : DEFAULT_ANALYSIS_MODEL;
-	} catch {
-		return DEFAULT_ANALYSIS_MODEL;
-	}
+	const analysisModel = await setting('analysisModel');
+	return isAnalysisModel(analysisModel) ? analysisModel : DEFAULT_ANALYSIS_MODEL;
+}
+
+/** Where the settings run it (`analysisProvider`), or the default. */
+export async function chosenAnalysisProvider(): Promise<AnalysisProvider> {
+	const analysisProvider = await setting('analysisProvider');
+	return isAnalysisProvider(analysisProvider) ? analysisProvider : DEFAULT_ANALYSIS_PROVIDER;
 }
 
 /** An installed model, no manifest, or one that cannot be used (malformed or unverified). */

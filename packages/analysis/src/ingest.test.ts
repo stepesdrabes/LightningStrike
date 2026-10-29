@@ -12,6 +12,7 @@ import { enrichTrack } from './enrich.ts';
 import { GenreClassifier } from './genreModel.ts';
 import { handMapStale, ingest, type TrackMeta } from './ingest.ts';
 import { Striker2, type Striker2Result } from './striker2.ts';
+import { releaseStriker2 } from './striker2Pool.ts';
 
 const cache = vi.hoisted(() => ({ dir: '' }));
 vi.mock('./paths.ts', () => ({
@@ -34,11 +35,12 @@ const youtubeSource = `https://www.youtube.com/watch?v=${youtubeId}`;
 const FIXTURE = join(import.meta.dirname, 'testdata', 'striker2');
 const MODEL_NAME = JSON.parse(readFileSync(join(FIXTURE, 'striker2.json'), 'utf8')).name as string;
 
-/** Installs the fixture model with its manifest edited. */
+/** Installs the fixture model, its graph and golden chunks, with its manifest edited. */
 async function installStriker2(edit: (manifest: Record<string, any>) => void = () => {}) {
 	const manifest = JSON.parse(await readFile(join(FIXTURE, 'striker2.json'), 'utf8'));
 	edit(manifest);
-	await copyFile(join(FIXTURE, 'striker2.onnx'), join(cache.dir, 'striker2.onnx'));
+	for (const name of ['striker2.onnx', ...[0, 1].flatMap((n) => [`striker2.golden${n}.features.f32`,
+		`striker2.golden${n}.outputs.f32`])]) await copyFile(join(FIXTURE, name), join(cache.dir, name));
 	await writeFile(join(cache.dir, 'striker2.json'), JSON.stringify(manifest));
 }
 
@@ -69,6 +71,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
 	vi.restoreAllMocks();
+	await releaseStriker2();
 	await rm(cache.dir, { recursive: true, force: true });
 });
 
@@ -99,7 +102,12 @@ describe('queue cache refresh', () => {
 		expect(input.beats).toBe(heard.beats);
 		expect(input.downbeats).toBe(heard.downbeats);
 		const stamp = await preparation();
-		expect(stamp).toMatchObject({ striker: MODEL_NAME, striker2: { name: MODEL_NAME } });
+		// This machine's provider passed its check on the golden chunks, so the note has no warning of it.
+		expect(stamp).toMatchObject({
+			striker: MODEL_NAME, striker2: { name: MODEL_NAME, provider: 'cpu', check: expect.stringMatching(/^[0-9a-f]{16}$/) }
+		});
+		const checks = JSON.parse(await readFile(join(cache.dir, 'striker2-providers.json'), 'utf8')).checks;
+		expect(checks[stamp.striker2.check]).toMatchObject({ verdict: 'pass', key: { provider: 'cpu' } });
 		expect(Object.keys(stamp.stagesMs)).toEqual(['sourceAndMetadata', 'decode', 'genre', 'striker2', 'analysis', 'persistence']);
 		// Eight samples are too few beats for a grid: the onset tracker reads one, and the note says so.
 		expect(stamp.striker2.warnings).toContainEqual(expect.stringMatching(/^it heard \d+ beats, so the onset tracker sets the grid$/));
@@ -168,22 +176,19 @@ describe('queue cache refresh', () => {
 		const downbeats = beats.filter((_, i) => i % 4 === 0);
 		const snares = beats.filter((_, i) => i % 2 === 1);
 		const none = { times: [], levels: [] };
-		const heard = (snare: number[]) => ({
-			run: async () => ({
-				name: MODEL_NAME, beats, downbeats, bass: none,
-				drums: { kick: none, snare: { times: snare, levels: snare.map(() => 0.8) }, hat: none, cymbal: none, tom: none },
-				activity: { drums: [], bass: [], vocals: [], other: [] }
-			}),
-			close: async () => {}
-		}) as unknown as Striker2;
+		const heard = (snare: number[]): Striker2Result => ({
+			name: MODEL_NAME, beats, downbeats, bass: none,
+			drums: { kick: none, snare: { times: snare, levels: snare.map(() => 0.8) }, hat: none, cymbal: none, tom: none },
+			activity: { drums: [], bass: [], vocals: [], other: [] }
+		});
 		const context = JSON.stringify({ ...emptyContext(), publishedBpm: 150, sources: ['deezer', 'effnet'] });
 		await writeFile(join(cache.dir, `${youtubeId}.context.json`), context);
 		// A backbeat on two and four at 75 bpm says a published 150 counts the hats; one between
 		// the beats says 150 is the pulse.
-		vi.spyOn(Striker2, 'create').mockResolvedValueOnce(heard(snares));
+		vi.spyOn(Striker2.prototype, 'run').mockResolvedValueOnce(heard(snares));
 		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
 		expect(vi.mocked(analyzeTrack).mock.lastCall![0].metricalLevel).toBeUndefined();
-		vi.spyOn(Striker2, 'create').mockResolvedValueOnce(heard(beats.map((t) => t + 0.4)));
+		vi.spyOn(Striker2.prototype, 'run').mockResolvedValueOnce(heard(beats.map((t) => t + 0.4)));
 		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
 		expect(vi.mocked(analyzeTrack).mock.lastCall![0].metricalLevel).toBe(2);
 	});

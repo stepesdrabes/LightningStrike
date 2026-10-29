@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { ingest } from '@mv/analysis';
+import { ingest, releaseStriker2 } from '@mv/analysis';
 
 /**
  * Download and analyze the review corpus into MV_CACHE_DIR, preferring explicit YouTube IDs.
@@ -72,4 +72,6 @@ for (const track of TRACKS) {
 		console.log(`${at} ${label}: ${(e as Error).message.split('\n')[0]}`);
 	}
 }
+// The session would otherwise hold the process open until its idle release.
+await releaseStriker2();
 console.log('corpus fetch complete');
