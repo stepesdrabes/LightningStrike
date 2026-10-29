@@ -34,6 +34,7 @@
 	import EveningRail from '$components/EveningRail.svelte';
 	import JudgePanel from '$components/JudgePanel.svelte';
 	import LibraryModal from '$components/LibraryModal.svelte';
+	import ModelView from '$components/ModelView.svelte';
 	import SettingsModal from '$components/SettingsModal.svelte';
 	import LoungeModal from '$components/LoungeModal.svelte';
 	import Menu from '$lib/ui/Menu.svelte';
@@ -1140,7 +1141,15 @@
 				onrelevel={relevel}
 				onreroll={reroll}
 				{relevelling}
-				{rerolling} />
+				{rerolling}>
+				{#snippet top()}
+					<ModelView
+						{trackId}
+						playing={readout.playing}
+						position={() => viz?.position ?? readout.position}
+						audio={() => viz?.audio ?? null} />
+				{/snippet}
+			</EveningRail>
 		{/if}
 	</div>
 

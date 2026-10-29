@@ -8,6 +8,7 @@ import { eveningGate } from './evening/gate.ts';
 import { ingestDetached, narrationDetached } from './ingestDetached.ts';
 import { readJudgements } from './judge.ts';
 import { queue } from './queueStore.ts';
+import { strikerLive } from './strikerLive.ts';
 
 /** Map known ingest stages to queue states; unknown messages leave status unchanged. */
 const STAGES: Record<IngestStage, ItemStatus> = {
@@ -33,15 +34,23 @@ const LABELS: Record<IngestStage | 'composing', string> = {
 };
 
 /** What preparing a track needs to know about where it comes from. */
-type Preparable = Pick<QueueItem, 'source' | 'trackId' | 'thumbnail'>;
+type Preparable = Pick<QueueItem, 'source' | 'trackId' | 'thumbnail' | 'title'>;
 
 /** Prepare audio and analysis, preserving an existing authored show on the same grid. */
 export async function prepareTrack(item: Preparable, onStage: (stage: string) => void) {
+	const pass = strikerLive.open(item.title);
 	// Prefer the catalogue sleeve already on the row to yt-dlp's video still.
 	const result = await ingestDetached(item.source, {
 		cachedTrackId: item.trackId ?? undefined,
 		onProgress: onStage,
+		onStriker: pass.glimpse,
 		artwork: item.thumbnail || undefined
+	}).then((done) => {
+		pass.close(true);
+		return done;
+	}, (e: unknown) => {
+		pass.close(false);
+		throw e;
 	});
 
 	let existing: Show | null = null;
@@ -236,7 +245,7 @@ class IngestRunner {
 		let facts: Partial<QueueItem> = {};
 		try {
 			const { authored, loungeOnly, trustNote } = await prepareTrack(
-				{ source: meta.source, trackId, thumbnail: '' },
+				{ source: meta.source, trackId, thumbnail: '', title: meta.title },
 				() => {}
 			);
 			facts = { authored, loungeOnly, trustNote };

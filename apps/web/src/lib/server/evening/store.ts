@@ -932,7 +932,7 @@ class EveningStore {
 			this.prepare = { ...this.prepare, current: row.title };
 			this.publish();
 			try {
-				await prepareTrack({ source: row.source, trackId: row.trackId, thumbnail: row.thumbnail }, () => {});
+				await prepareTrack({ source: row.source, trackId: row.trackId, thumbnail: row.thumbnail, title: row.title }, () => {});
 			} catch {
 				failed++;
 			}

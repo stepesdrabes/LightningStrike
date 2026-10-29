@@ -7,7 +7,8 @@ import {
 	prepareNarration,
 	workspaceRoot,
 	type IngestOptions,
-	type IngestResult
+	type IngestResult,
+	type Striker2Glimpse
 } from '@mv/analysis';
 
 /**
@@ -36,6 +37,7 @@ export function ingestDetached(source: string, opts: IngestOptions = {}): Promis
 			artwork: opts.artwork
 		},
 		onProgress: opts.onProgress,
+		onStriker: opts.onStriker,
 		fallback: () => ingest(source, opts)
 	}));
 }
@@ -50,6 +52,7 @@ export function narrationDetached(path: string): Promise<MeasuredAudio> {
 
 type Reply =
 	| { type: 'progress'; stage: string }
+	| { type: 'striker'; glimpse: Striker2Glimpse }
 	| { type: 'done'; result: unknown }
 	| { type: 'error'; message?: string }
 	| { type: 'closed' };
@@ -110,6 +113,7 @@ async function close(): Promise<void> {
 function inWorker<T>(task: 'ingest' | 'narration', source: string, how: {
 	opts: IngestOptions;
 	onProgress?: (stage: string) => void;
+	onStriker?: (glimpse: Striker2Glimpse) => void;
 	/** Runs the job here when the worker fails before its first message. */
 	fallback?: () => Promise<T>;
 	missing?: () => Promise<T>;
@@ -126,6 +130,7 @@ function inWorker<T>(task: 'ingest' | 'narration', source: string, how: {
 			reply(m) {
 				spoke = true;
 				if (m.type === 'progress') how.onProgress?.(m.stage);
+				else if (m.type === 'striker') how.onStriker?.(m.glimpse);
 				else if (m.type === 'done') resolve(m.result as T);
 				else if (m.type === 'error') reject(new Error(m.message ?? `${task} failed`));
 			},

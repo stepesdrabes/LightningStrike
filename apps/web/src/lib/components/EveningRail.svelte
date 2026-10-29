@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import type { Show, TrackAnalysis, TrackContext } from '@mv/core';
 	import type { EveningClient } from '$lib/evening.svelte.ts';
 	import type { SegmentProjection } from '$lib/evening/plan.ts';
@@ -35,7 +36,8 @@
 		onrelevel,
 		onreroll,
 		relevelling = false,
-		rerolling = false
+		rerolling = false,
+		top
 	}: {
 		evening: EveningClient;
 		/** The queue's current row. */
@@ -49,6 +51,8 @@
 		onreroll: () => void;
 		relevelling?: boolean;
 		rerolling?: boolean;
+		/** A fixed section above the scrolling rail. */
+		top?: Snippet;
 	} = $props();
 
 	const view = $derived(evening.view);
@@ -156,6 +160,7 @@
 </script>
 
 <aside class="floats">
+	{@render top?.()}
 	<div class="scroll">
 		{#if view.status === 'idle' || !view.file}
 			<section class="open">

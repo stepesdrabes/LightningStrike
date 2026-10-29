@@ -113,6 +113,11 @@ export class Viz {
 		return this.playing;
 	}
 
+	/** The playing song's decoded audio, which the model view draws as its input. */
+	get audio(): AudioBuffer | null {
+		return this.buffer;
+	}
+
 	/** The show's own player, for the cue readout. The room may or may not be showing it. */
 	get player() {
 		return this.director.player;

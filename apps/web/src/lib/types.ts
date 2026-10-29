@@ -1,4 +1,4 @@
-import type { AmbientSettings, ColourSource } from '@mv/core';
+import type { AmbientSettings, ColourSource, HearingInner } from '@mv/core';
 import type { WireProtocol } from '$lib/hardware.ts';
 
 /**
@@ -133,6 +133,51 @@ export interface SystemInfo {
 	tools: { name: string; version: string | null; note: string | null }[];
 	runtime: { node: string; onnxruntime: string | null; analysis: number; show: number };
 }
+
+/** Mirrors @mv/analysis Striker2Stage: one stage of the installed graph. */
+export interface StrikerStage {
+	id: string;
+	kind: 'stem' | 'linear' | 'conv' | 'transformer' | 'down' | 'up' | 'head';
+	/** Frames a second it computes at. */
+	hz: number;
+	width: number;
+	blocks: number;
+	/** Multiply-accumulates for one chunk. */
+	macs: number;
+}
+
+/** Mirrors @mv/analysis Striker2Structure. */
+export interface StrikerGraph {
+	name: string;
+	chunk: number;
+	fps: number;
+	parameters: number;
+	stages: StrikerStage[];
+	skips: { from: string; to: string }[];
+	/** Residual streams, one per rate and width. */
+	spaces: { width: number; hz: number }[];
+	/** The layers whose activations the view shows, in data order. */
+	layers: { id: string; stage: string; space: number }[];
+	links: { stage: string; from: number; to: number }[];
+}
+
+/** Mirrors $lib/server/strikerLive WireGlimpse: byte arrays arrive in base64. */
+export type StrikerGlimpse =
+	| { kind: 'begin'; frames: number; chunks: number; chunk: number; fps: number }
+	| { kind: 'input'; index: number; start: number; frames: number; cols: number; features: string; wave: string }
+	| {
+		kind: 'output'; index: number; start: number; frames: number; cols: number; ms: number;
+		heads: string; activity: string;
+		/** Real activations, [cols][layers][k] signed bytes in base64; empty when not exposed. */
+		inner: string;
+		structure: HearingInner | null;
+	};
+
+/** Mirrors $lib/server/strikerLive StrikerEvent. */
+export type StrikerEvent =
+	| { type: 'pass'; pass: { id: number; title: string; glimpses: StrikerGlimpse[]; end: { ok: boolean; ms: number } | null } }
+	| { type: 'glimpse'; id: number; glimpse: StrikerGlimpse }
+	| { type: 'end'; id: number; ok: boolean; ms: number };
 
 /** Mirrors @mv/analysis YOUTUBE_BROWSERS. */
 export type YouTubeBrowser = 'brave' | 'chrome' | 'edge' | 'firefox' | 'safari';
