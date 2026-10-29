@@ -1,4 +1,5 @@
 import type { Striker2Model, Striker2Result } from './striker2.ts';
+import type { Striker2Watch } from './striker2View.ts';
 import {
 	markFailed, openChecked, type AnalysisProvider, type CheckedStriker2, type ProviderDeps
 } from './striker2Provider.ts';
@@ -12,13 +13,15 @@ export interface Striker2Lease {
 	/** The check key's id. */
 	check: string;
 	warnings: string[];
-	run(mono: Float32Array): Promise<Striker2Result>;
+	run(mono: Float32Array, watch?: Striker2Watch): Promise<Striker2Result>;
 }
 
 interface Held {
 	graph: string;
 	sha256: string;
 	setting: AnalysisProvider;
+	/** The inner tensors the session was asked to expose. */
+	expose: string;
 	checked: CheckedStriker2;
 }
 
@@ -64,21 +67,23 @@ export function withStriker2<T>(
 	return serialized(async () => {
 		if (idle) clearTimeout(idle);
 		idle = null;
-		const same = held?.graph === model.graph && held.sha256 === model.sha256 && held.setting === setting;
+		const expose = (options.expose ?? []).join('\n');
+		const same = held?.graph === model.graph && held.sha256 === model.sha256 && held.setting === setting
+			&& held.expose === expose;
 		if (held && !same) {
 			await drop();
 		}
 		held ??= {
-			graph: model.graph, sha256: model.sha256, setting, checked: await openChecked(model, setting, options)
+			graph: model.graph, sha256: model.sha256, setting, expose, checked: await openChecked(model, setting, options)
 		};
 		const lease: Striker2Lease = {
 			provider: held.checked.label,
 			check: held.checked.check,
 			warnings: [...held.checked.warnings],
-			async run(mono) {
+			async run(mono, watch) {
 				const current = held!.checked;
 				try {
-					return await current.striker.run(mono);
+					return await current.striker.run(mono, watch);
 				} catch (error) {
 					if (current.provider.name === 'cpu') throw error;
 					const reason = message(error);
@@ -88,11 +93,11 @@ export function withStriker2<T>(
 					await drop();
 					const cpu = await openChecked(model, 'cpu', options);
 					cpu.warnings.unshift(`${current.label} is not used: it failed on a song (${reason})`);
-					held = { graph: model.graph, sha256: model.sha256, setting, checked: cpu };
+					held = { graph: model.graph, sha256: model.sha256, setting, expose, checked: cpu };
 					lease.provider = cpu.label;
 					lease.check = cpu.check;
 					lease.warnings.push(line, ...cpu.warnings.slice(1));
-					return cpu.striker.run(mono);
+					return cpu.striker.run(mono, watch);
 				}
 			}
 		};

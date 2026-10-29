@@ -27,6 +27,10 @@ export { ACTIVITY_STEMS, ANALYSIS_VERSION } from './contracts/analysis.ts';
 export type { GenreFamily, LyricLine, TrackContext } from './contracts/context.ts';
 export { CONTEXT_VERSION, emptyContext } from './contracts/context.ts';
 export { decodeBase64, encodeBase64 } from './base64.ts';
+export type { Hearing, HearingHead, HearingHeader, HearingInner } from './contracts/hearing.ts';
+export {
+	HEARING_FORMAT, HEARING_HEADS, HEARING_VERSION, hearingSizes, innerRows, readHearing, writeHearing
+} from './contracts/hearing.ts';
 export type { Cue, CuePalette, GeneratedEffect, Hit, LayerSpec, Show } from './contracts/show.ts';
 export { HIT_RULES, SHOW_VERSION, STROBE_MAX_HZ, strobePerBeat } from './contracts/show.ts';
 export { gridTrust } from './trust.ts';

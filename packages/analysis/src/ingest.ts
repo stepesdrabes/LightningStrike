@@ -3,6 +3,8 @@ import { existsSync } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
 import { CACHE_DIR } from './paths.ts';
 import { createHash } from 'node:crypto';
+import { promisify } from 'node:util';
+import { gzip } from 'node:zlib';
 import type { TrackAnalysis, TrackContext } from '@mv/core';
 import { ANALYSIS_VERSION, CONTEXT_VERSION, gridTrust } from '@mv/core';
 import { analyzeTrack } from './analyze.ts';
@@ -15,9 +17,10 @@ import { handMapFingerprint, type HandSection } from './handSections.ts';
 import { medianPeriod } from './metricalLevel.ts';
 import { KICK_CLAIMING_FAMILIES, familyCorroborated, loudKickRate } from './vocabulary.ts';
 import {
-	chosenAnalysisModel, chosenAnalysisProvider, readInstalledStriker2, striker2Problem, strikerCurrent
+	chosenAnalysisModel, chosenAnalysisProvider, readInstalledStriker2, striker2Problem, striker2Structure, strikerCurrent
 } from './strikerModel.ts';
 import { withStriker2 } from './striker2Pool.ts';
+import { Striker2Recorder, type Striker2Glimpse } from './striker2View.ts';
 import { preludeBeside } from './dsp.ts';
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -49,6 +52,12 @@ function metaPath(id: string): string {
 export function contextPath(id: string): string {
 	assertId(id);
 	return join(CACHE_DIR, `${id}.context.json`);
+}
+
+/** What Striker 2.0 heard and answered, gzipped (`readHearing` layout), for the model view's replay. */
+export function hearingPath(id: string): string {
+	assertId(id);
+	return join(CACHE_DIR, `${id}.hearing.bin`);
 }
 
 export async function readContext(id: string): Promise<TrackContext | null> {
@@ -437,6 +446,8 @@ export interface IngestOptions {
 	/** Prefer caller-supplied square cover art; yt-dlp stills may contain pillarbox fill that biases hue. */
 	artwork?: string;
 	onProgress?: (stage: IngestStage | (string & {})) => void;
+	/** Each chunk as it enters and leaves Striker 2.0, for the model view. */
+	onStriker?: (glimpse: Striker2Glimpse) => void;
 }
 
 /** A YouTube URL or a local audio file path. */
@@ -604,6 +615,16 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		const warnings = [...model.warnings];
 		striker2Note = { model: choice, name: model.name, warnings };
 		for (const warning of warnings) log(`Striker 2.0: ${warning}`);
+		// The model view records real activations of the layers the graph's structure names; a graph
+		// it cannot read is simply prepared without them.
+		const structure = await striker2Structure(model).catch(() => null);
+		const source = structure && structure.layers.length > 0
+			? {
+				graph: model.graph, spaces: structure.spaces, layers: structure.layers, links: structure.links,
+				readouts: structure.readouts
+			}
+			: undefined;
+		const recorder = new Striker2Recorder(model, opts.onStriker, source);
 		audioStarted = true;
 		log('decoding');
 		const decoding = timed('decode', () => decodeAudio(audioPath));
@@ -615,12 +636,12 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			try {
 				const audio = await wide;
 				log('transcribing');
-				return await striker.run(audio.mono);
+				return await striker.run(audio.mono, recorder);
 			} finally {
 				Object.assign(striker2Note!, { provider: striker.provider, check: striker.check });
 				warnings.push(...striker.warnings);
 			}
-		}, { log })).catch((e: unknown) => {
+		}, { log, expose: source?.layers.map((l) => l.tensor) })).catch((e: unknown) => {
 			throw new Error(`Striker 2.0 failed on this song: ${e instanceof Error ? e.message : String(e)}`);
 		});
 		transcribed.catch(() => {});
@@ -679,6 +700,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		analysis.handMap = stamp;
 		await timed('persistence', async () => {
 			await writeFile(analysisPath(id), JSON.stringify(analysis, null, '\t'));
+			// Only the model view reads it, so failing to keep it never fails the song.
+			await writeFile(hearingPath(id), await promisify(gzip)(recorder.bytes())).catch(() => {});
 			// A fresh grid means a fresh verdict on it; the override, being the owner's, survives.
 			meta.duration = meta.duration || analysis.duration;
 			meta.gridTrust = gridTrust(analysis, context.publishedBpm);

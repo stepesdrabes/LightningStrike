@@ -6,6 +6,8 @@ import {
 } from './striker2Provider.ts';
 import { MODEL_DIR } from './paths.ts';
 import { readSetting } from './settingsFile.ts';
+import { readStriker2Graph, type Striker2Graph } from './striker2Graph.ts';
+import { STRIKER2_FRONT_END } from './striker2Frontend.ts';
 
 /** The analysis models the settings offer, each a manifest in MODEL_DIR beside its graph. */
 export const ANALYSIS_MODELS = [
@@ -95,6 +97,34 @@ export async function analysisModelChoices(): Promise<AnalysisModelChoice[]> {
 			? { id, label, name: installed.model.name, problem: null }
 			: { id, label, name: null, problem: striker2Problem(id, installed) };
 	}));
+}
+
+export interface Striker2Structure extends Striker2Graph {
+	name: string;
+	/** Frames a graph run takes, at `fps`. */
+	chunk: number;
+	fps: number;
+}
+
+const structures = new Map<string, Promise<Striker2Structure>>();
+
+/** A model's stages and streams, read once per graph. */
+export function striker2Structure(model: Striker2Model): Promise<Striker2Structure> {
+	const { name, graph, sha256, chunk } = model;
+	const { fps, bins } = STRIKER2_FRONT_END;
+	const key = `${graph}\n${sha256}`;
+	if (!structures.has(key)) {
+		const read = readStriker2Graph(graph, { chunk, fps, bins }).then((g) => ({ ...g, name, chunk, fps }));
+		read.catch(() => structures.delete(key));
+		structures.set(key, read);
+	}
+	return structures.get(key)!;
+}
+
+/** The chosen model's structure for the model view; null when none runs. */
+export async function chosenStriker2Graph(): Promise<Striker2Structure | null> {
+	const installed = await readInstalledStriker2(await chosenAnalysisModel(), { verify: false });
+	return 'model' in installed ? striker2Structure(installed.model) : null;
 }
 
 /**

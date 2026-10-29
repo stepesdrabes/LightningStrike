@@ -123,17 +123,21 @@ export interface CheckKey extends Machine {
 	provider: string;
 	options: Record<string, number | string>;
 	threads: number;
+	/** How many inner tensors the session also outputs, when it does. */
+	exposed?: number;
 }
 
 /** What a verdict depends on, and its short id. A change to any part runs the check again. */
 export function checkKey(
-	model: Striker2Model, provider: ExecutionProvider, machine: Machine
+	model: Striker2Model, provider: ExecutionProvider, machine: Machine, exposed = 0
 ): { key: CheckKey; id: string } {
 	const { platform, arch, release, cpu, model: hardware, gpu } = machine;
 	const key: CheckKey = {
 		check: CHECK_VERSION, graph: model.sha256, ort: runtimeVersion(), provider: provider.name,
 		options: { ...provider.options }, threads: provider.threads ?? 0,
-		platform, arch, release, cpu, model: hardware, gpu
+		platform, arch, release, cpu, model: hardware, gpu,
+		// A session that also outputs inner tensors is checked on its own.
+		...(exposed > 0 ? { exposed } : {})
 	};
 	return { key, id: createHash('sha256').update(JSON.stringify(key)).digest('hex').slice(0, 16) };
 }
@@ -201,6 +205,8 @@ export interface ProviderDeps {
 	bundled?: readonly string[];
 	open?: OpenSession;
 	log?: (line: string) => void;
+	/** Inner tensors for the model view; dropped if the session that exposes them fails its check. */
+	expose?: string[];
 }
 
 /**
@@ -211,7 +217,13 @@ export interface ProviderDeps {
 export async function openChecked(
 	model: Striker2Model, setting: AnalysisProvider, deps: ProviderDeps = {}
 ): Promise<CheckedStriker2> {
-	const { platform = process.platform, arch = process.arch, open, log = () => {} } = deps;
+	const { platform = process.platform, arch = process.arch, open, log = () => {}, expose = [] } = deps;
+	/** The CPU without exposed tensors: the session the check is known to trust. */
+	const plain = async (reason: string) => {
+		const checked = await openChecked(model, setting, { ...deps, expose: [] });
+		checked.warnings.unshift(`the model view shows no activations: ${reason}`);
+		return checked;
+	};
 	const warnings: string[] = [];
 	const warn = (line: string) => {
 		warnings.push(line);
@@ -229,12 +241,13 @@ export async function openChecked(
 			warn(`${label} is not used: this onnxruntime-node build does not have it`);
 			continue;
 		}
-		const { key, id } = checkKey(model, provider, deps.machine ?? await thisMachine(provider));
+		const { key, id } = checkKey(model, provider, deps.machine ?? await thisMachine(provider), expose.length);
 		const known = (await readVerdicts())[id];
 		if (!cpu && known && known.verdict !== 'pass') {
 			warn(`${label} is not used: ${known.reason}`);
 			continue;
 		}
+		if (cpu && expose.length > 0 && known && known.verdict !== 'pass') return plain(known.reason ?? 'its check failed');
 		let chunks: GoldenChunk[] | null = null;
 		let unchecked = '';
 		if (!known) {
@@ -252,8 +265,9 @@ export async function openChecked(
 		const opening = performance.now();
 		let striker: Striker2;
 		try {
-			striker = await Striker2.create(model, { session: providerSession(provider), open });
+			striker = await Striker2.create(model, { session: providerSession(provider), open, expose });
 		} catch (e) {
+			if (cpu && expose.length > 0) return plain(`its session did not open (${message(e)})`);
 			if (cpu) throw e;
 			const reason = `its session did not open (${message(e)})`;
 			const date = new Date().toISOString();
@@ -267,6 +281,10 @@ export async function openChecked(
 			if (known.verdict !== 'pass') warn(`the CPU did not pass its check (${known.reason}) and runs anyway`);
 			return chosen;
 		}
+		if (!chunks && expose.length > 0) {
+			await striker.close().catch(() => {});
+			return plain(`they cannot be checked (${unchecked})`);
+		}
 		if (!chunks) {
 			warn(`the CPU runs unchecked: ${unchecked}`);
 			return chosen;
@@ -279,6 +297,10 @@ export async function openChecked(
 			sessionMs, checkMs: since(checking), date: new Date().toISOString()
 		});
 		if (report.verdict === 'pass') return chosen;
+		if (cpu && expose.length > 0) {
+			await striker.close().catch(() => {});
+			return plain(`exposing them changed the results (${report.reason})`);
+		}
 		if (cpu) {
 			warn(`the CPU did not pass its check (${report.reason}) and runs anyway`);
 			return chosen;

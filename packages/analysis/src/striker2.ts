@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, rm, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { ACTIVITY_STEMS, type ActivityStem, type OnsetStream } from '@mv/core';
@@ -12,6 +12,8 @@ import {
 } from './striker2Decode.ts';
 import { dbnBeats } from './striker2Dbn.ts';
 import { STRIKER2_FRONT_END, Striker2FrontEnd } from './striker2Frontend.ts';
+import { exposedGraph } from './striker2Graph.ts';
+import type { Striker2Watch } from './striker2View.ts';
 
 /** Striker 2.0 (striker-2 `python -m striker.export`): this manifest beside its graph. */
 export const STRIKER2_MANIFEST = 'striker2.json';
@@ -292,7 +294,12 @@ export interface Striker2Options {
 	/** onnxruntime session options over the defaults: the CPU, every graph optimization. */
 	session?: Record<string, unknown>;
 	open?: OpenSession;
+	/** Inner tensors to output as well, for the model view; the graph's own outputs stay bit-identical. */
+	expose?: string[];
 }
+
+/** The exposed inner tensors of one chunk, by name. */
+export type Striker2Inner = Record<string, OnnxTensor>;
 
 /** A chunk's output, refused unless it has the graph's shape and only finite values. */
 function checked(model: Striker2Model, name: Striker2Output, got: OnnxTensor | undefined): Float32Array {
@@ -309,15 +316,28 @@ function checked(model: Striker2Model, name: Striker2Output, got: OnnxTensor | u
 export class Striker2 {
 	private session!: OnnxSession;
 	private model!: Striker2Model;
+	private exposed: string[] = [];
 
 	static async create(model: Striker2Model, options: Striker2Options = {}): Promise<Striker2> {
-		const { session = {}, open = openSession } = options;
+		const { session = {}, open = openSession, expose = [] } = options;
 		const self = new Striker2();
 		self.model = model;
-		self.session = await open(model.graph, {
-			executionProviders: ['cpu'], graphOptimizationLevel: 'all', ...QUIET_THREADS, ...session
-		});
+		self.exposed = expose;
+		// The verified graph stays as it is; a session that exposes tensors reads a temporary copy.
+		const graph = expose.length > 0 ? await exposedGraph(model.graph, expose) : model.graph;
+		try {
+			self.session = await open(graph, {
+				executionProviders: ['cpu'], graphOptimizationLevel: 'all', ...QUIET_THREADS, ...session
+			});
+		} finally {
+			if (graph !== model.graph) await rm(graph, { force: true });
+		}
 		return self;
+	}
+
+	/** Whether this session hands out inner tensors. */
+	get exposes(): boolean {
+		return this.exposed.length > 0;
 	}
 
 	async close(): Promise<void> {
@@ -325,35 +345,48 @@ export class Striker2 {
 	}
 
 	/** One chunk's outputs ([rows, width] each) from its [chunk, bins] features, left intact. */
-	chunk(features: Float32Array): Promise<Striker2Outputs> {
-		return this.infer(Float32Array.from(features));
+	async chunk(features: Float32Array): Promise<Striker2Outputs> {
+		return (await this.infer(Float32Array.from(features))).outputs;
 	}
 
 	/** Detaches `x`. */
-	private async infer(x: Float32Array): Promise<Striker2Outputs> {
+	private async infer(x: Float32Array): Promise<{ outputs: Striker2Outputs; inner: Striker2Inner }> {
 		const { chunk, input } = this.model;
 		const out = await this.session.run(
 			{ [input]: { data: x, dims: [1, chunk, x.length / chunk] } }, { transfer: true });
-		return Object.fromEntries((Object.keys(OUTPUTS) as Striker2Output[])
+		const outputs = Object.fromEntries((Object.keys(OUTPUTS) as Striker2Output[])
 			.map((name) => [name, checked(this.model, name, out[name])])) as Striker2Outputs;
+		const inner: Striker2Inner = {};
+		for (const name of this.exposed) if (out[name]) inner[name] = out[name];
+		return { outputs, inner };
 	}
 
 	/**
 	 * Whole-song outputs: each chunk's middle kept, activity held over its frames. `input(s)` is the
 	 * zero-padded chunk from frame s; the next one is made while the session runs this one.
 	 */
-	private async stitched(frames: number, input: (start: number) => Float32Array): Promise<Striker2Outputs> {
+	private async stitched(
+		frames: number, input: (start: number) => Float32Array, watch?: Striker2Watch, mono?: Float32Array
+	): Promise<Striker2Outputs> {
 		const { chunk, border, activityStride } = this.model;
 		const starts = chunkStarts(frames, chunk, border);
 		const merged = Object.fromEntries(Object.entries(OUTPUTS)
 			.map(([name, width]) => [name, new Float32Array(frames * width)])) as Striker2Outputs;
+		watch?.begin(frames, starts.length, mono);
+		// The watch reads each chunk before infer detaches it.
 		let next = input(starts[0]);
+		watch?.input(0, starts[0], next);
 		for (let c = 0; c < starts.length; c++) {
 			const s = starts[c];
+			const began = performance.now();
 			const running = this.infer(next);
 			running.catch(() => {});
-			if (c + 1 < starts.length) next = input(starts[c + 1]);
-			const out = await running;
+			if (c + 1 < starts.length) {
+				next = input(starts[c + 1]);
+				watch?.input(c + 1, starts[c + 1], next);
+			}
+			const { outputs: out, inner } = await running;
+			const ms = performance.now() - began;
 			const lo = c === 0 ? 0 : border;
 			const hi = Math.min(c === starts.length - 1 ? chunk : chunk - border, frames - s);
 			for (const [name, width] of Object.entries(OUTPUTS) as [Striker2Output, number][]) {
@@ -363,6 +396,7 @@ export class Striker2 {
 					merged[name].set(out[name].subarray(row, row + width), (s + t) * width);
 				}
 			}
+			watch?.output(c, s, lo, hi, out, ms, inner);
 		}
 		return merged;
 	}
@@ -379,7 +413,7 @@ export class Striker2 {
 	}
 
 	/** 44.1 kHz mono, (L + R) / 2, as ingest decodes it for the model; features chunk by chunk. */
-	async run(mono: Float32Array): Promise<Striker2Result> {
+	async run(mono: Float32Array, watch?: Striker2Watch): Promise<Striker2Result> {
 		const front = new Striker2FrontEnd(mono, this.model.taps);
 		const { chunk } = this.model;
 		const { frames, bins, data } = front;
@@ -389,6 +423,6 @@ export class Striker2 {
 			const x = new Float32Array(chunk * bins);
 			x.set(data.subarray(s * bins, end * bins));
 			return x;
-		}));
+		}, watch, mono));
 	}
 }

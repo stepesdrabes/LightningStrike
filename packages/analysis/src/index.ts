@@ -14,9 +14,11 @@ export {
 	ANALYSIS_MODELS,
 	DEFAULT_ANALYSIS_MODEL,
 	analysisModelChoices,
+	chosenStriker2Graph,
 	isAnalysisModel,
 	type AnalysisModelChoice,
-	type AnalysisModelId
+	type AnalysisModelId,
+	type Striker2Structure
 } from './strikerModel.ts';
 export {
 	ANALYSIS_PROVIDERS,
@@ -25,6 +27,8 @@ export {
 	type AnalysisProvider
 } from './striker2Provider.ts';
 export { releaseStriker2 } from './striker2Pool.ts';
+export { readStriker2Graph, type Striker2Graph, type Striker2Stage } from './striker2Graph.ts';
+export { GLIMPSE_COLS, type Striker2Glimpse } from './striker2View.ts';
 export { radioFor, searchSongs, watchUrl, type Song } from './ytmusic.ts';
 export {
 	analysisPath,
@@ -32,6 +36,7 @@ export {
 	findAudioFile,
 	handMapInput,
 	handMapStale,
+	hearingPath,
 	ingest,
 	isValidId,
 	markGridTrusted,

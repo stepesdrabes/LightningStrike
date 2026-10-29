@@ -24,7 +24,8 @@ port.on('message', async (request: Request) => {
 			? await prepareNarration(request.source)
 			: await ingest(request.source, {
 					...request.opts,
-					onProgress: (stage) => port.postMessage({ type: 'progress', stage })
+					onProgress: (stage) => port.postMessage({ type: 'progress', stage }),
+					onStriker: (glimpse) => port.postMessage({ type: 'striker', glimpse })
 				});
 		port.postMessage({ type: 'done', result });
 	} catch (e) {

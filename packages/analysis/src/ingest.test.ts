@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
-import { ANALYSIS_VERSION, emptyContext, type TrackAnalysis } from '@mv/core';
+import { gunzipSync } from 'node:zlib';
+import { ANALYSIS_VERSION, emptyContext, readHearing, type TrackAnalysis } from '@mv/core';
 import { analyzeTrack } from './analyze.ts';
 import { decodeAudio, downloadAudio, probe } from './decode.ts';
 import { artworkHue } from './artwork.ts';
@@ -120,7 +121,7 @@ describe('queue cache refresh', () => {
 			/^Striker 2\.0 is not installed: put striker2\.onnx and striker2\.json in /],
 		['fails its hash check', () => installStriker2((m) => { m.sha256 = '0'.repeat(64); }),
 			/^Striker 2\.0 cannot be used: .*SHA-256/],
-		['fails on the song', async () => { vi.spyOn(Striker2, 'create').mockRejectedValueOnce(new Error('no session')); },
+		['fails on the song', async () => { vi.spyOn(Striker2, 'create').mockRejectedValue(new Error('no session')); },
 			/^Striker 2\.0 failed on this song: no session$/]
 	])('fails the preparation visibly when Striker 2.0 %s', async (_, breakIt, message) => {
 		await saveTrack();
@@ -134,6 +135,22 @@ describe('queue cache refresh', () => {
 		expect(stamp.analysisVersion).toBe(ANALYSIS_VERSION);
 		const stored = JSON.parse(await readFile(join(cache.dir, `${youtubeId}.analysis.json`), 'utf8'));
 		expect(stored.version).toBe(ANALYSIS_VERSION - 1);
+	});
+
+	it('keeps the real activations of every layer beside the song', async () => {
+		await saveTrack();
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		const { header } = readHearing(gunzipSync(await readFile(join(cache.dir, `${youtubeId}.hearing.bin`))));
+		expect(header.inner?.layers.map((l) => l.id)).toEqual(['proj', 'hi.0', 'hi.1', 'stacks.0.0', 'post']);
+	});
+
+	it('prepares without activations when the session that exposes them cannot open', async () => {
+		await saveTrack();
+		const create = vi.spyOn(Striker2, 'create').mockRejectedValueOnce(new Error('no room for the copy'));
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(create.mock.calls.map(([, options]) => (options?.expose?.length ?? 0) > 0)).toEqual([true, false]);
+		expect((await preparation()).striker2.warnings)
+			.toContainEqual(expect.stringMatching(/^the model view shows no activations: its session did not open/));
 	});
 
 	it('prepares with Striker 2.0 Small once the settings choose it, never with the other model', async () => {
