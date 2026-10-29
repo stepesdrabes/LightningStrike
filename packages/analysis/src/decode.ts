@@ -92,13 +92,15 @@ export interface ProbeResult {
 
 /** Retry temporary HTTP failures; check permanent refusals first because takedowns may also say 403. */
 const PERMANENT =
-	/Video unavailable|Private video|removed by the uploader|members-only|Sign in to confirm|not available in your country|account associated with this video has been terminated|violat|copyright|age-restricted|requested format is not available|out of date/i;
+	/Video unavailable|Private video|removed by the uploader|members-only|Sign in to confirm your age|not available in your country|account associated with this video has been terminated|violat|copyright|age-restricted|requested format is not available|out of date/i;
 const TRANSIENT =
 	/HTTP Error 403|HTTP Error 429|HTTP Error 5\d\d|Unable to download (?:webpage|API page|JSON)|timed out|timeout|Connection reset|Remote end closed|temporarily unavailable|EOF occurred|handshake|Network is unreachable|getaddrinfo/i;
+/** YouTube's bot check holds this address for a while; only the queue's slower retries outlast it. */
+const BOT_CHECK = /not a bot/i;
 
 /** Whether a failed fetch is worth asking for again. Shared with the queue, so the two agree. */
 export function isTransientFetchError(message: string): boolean {
-	return !PERMANENT.test(message) && TRANSIENT.test(message);
+	return !PERMANENT.test(message) && (TRANSIENT.test(message) || BOT_CHECK.test(message));
 }
 
 /** How a caller is told a fetch is being tried again, so a row can say so rather than hang. */
@@ -158,7 +160,7 @@ async function withRetry<T>(
 					throw new Error(`${staleBinaryNote(days)}\n${message}`);
 				}
 			}
-			if (attempt >= ATTEMPTS || !isTransientFetchError(message)) throw e;
+			if (attempt >= ATTEMPTS || !isTransientFetchError(message) || BOT_CHECK.test(message)) throw e;
 			onRetry?.(attempt, ATTEMPTS, message);
 			await new Promise((r) => setTimeout(r, BACKOFF_MS[attempt - 1] ?? 4000));
 		}

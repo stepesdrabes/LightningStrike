@@ -14,7 +14,9 @@ describe('which fetch failures are worth asking again', () => {
 		'ERROR: Unable to download API page',
 		'ERROR: [Errno 54] Connection reset by peer',
 		'ERROR: Remote end closed connection without response',
-		'ERROR: [Errno 8] nodename nor servname provided: getaddrinfo failed'
+		'ERROR: [Errno 8] nodename nor servname provided: getaddrinfo failed',
+		'yt-dlp exited 1: ERROR: [youtube] _nF5_jhh7vc: Sign in to confirm you’re not a bot. ' +
+			'Use --cookies-from-browser or --cookies for the authentication.'
 	];
 	for (const message of transient) {
 		it(`retries: ${message.slice(0, 52)}`, () => {
