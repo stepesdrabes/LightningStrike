@@ -38,9 +38,9 @@ Branch `feat/striker2-only`, from `feat/striker2-m7` (striker-2's milestone M7; 
   songs the other model made back in line.
 - The AI authoring tool's tempo re-read (`reanalyse`) keeps the drums the stored analysis heard
   and re-tracks the grid with the onset tracker at the asked tempo.
-- Where it runs (`analysisProvider`: `auto`, `gpu`, `cpu`; `striker2Provider.ts`): Core ML
-  (`coreMlFlags` 56, MLProgram on the CPU and GPU) on Apple silicon, DirectML on Windows only under
-  `gpu` (the RTX 3060 belongs to MAXX 2.0 until the owner says otherwise), the CPU last. Each
+- Where it runs (`analysisProvider`: `auto`, `cpu`; `striker2Provider.ts`): under `auto`, Core ML
+  (`coreMlFlags` 56, MLProgram on the CPU and GPU) on Apple silicon and DirectML on Windows (the
+  owner allows the RTX 3060, 2026-10-29), the CPU last. Each
   provider must first pass Rule P on the manifest's golden chunks (`striker2Parity.ts`; striker-2's
   research/2026-10-29-app-speed.md section 9); verdicts live in `cache/striker2-providers.json`,
   keyed by graph, onnxruntime-node, provider options, threads and machine. `striker2Pool.ts` keeps

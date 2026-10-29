@@ -78,7 +78,7 @@ interface AuthorModelInfo {
 export type AnalysisModelId = 'striker2' | 'striker2-small';
 
 /** Mirrors @mv/analysis AnalysisProvider. */
-export type AnalysisProvider = 'auto' | 'gpu' | 'cpu';
+export type AnalysisProvider = 'auto' | 'cpu';
 
 /** Mirrors @mv/analysis AnalysisModelChoice. */
 export interface AnalysisModelChoice {

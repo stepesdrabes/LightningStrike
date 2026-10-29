@@ -59,6 +59,8 @@ beforeEach(async () => {
 	vi.clearAllMocks();
 	cache.dir = await mkdtemp(join(tmpdir(), 'lightningstrike-ingest-'));
 	await installStriker2();
+	// The CPU, whatever graphics card the test machine has.
+	await writeFile(join(cache.dir, 'settings.json'), JSON.stringify({ analysisProvider: 'cpu' }));
 	vi.mocked(probe).mockRejectedValue(new Error('YouTube is unavailable'));
 	vi.mocked(decodeAudio).mockResolvedValue({
 		mono: new Float32Array(8), left: new Float32Array(8), right: new Float32Array(8),
@@ -136,7 +138,7 @@ describe('queue cache refresh', () => {
 
 	it('prepares with Striker 2.0 Small once the settings choose it, never with the other model', async () => {
 		await saveTrack(youtubeId, youtubeSource, ANALYSIS_VERSION);
-		await writeFile(join(cache.dir, 'settings.json'), JSON.stringify({ analysisModel: 'striker2-small' }));
+		await writeFile(join(cache.dir, 'settings.json'), JSON.stringify({ analysisModel: 'striker2-small', analysisProvider: 'cpu' }));
 		// While Small cannot run the song keeps its analysis, and preparing it again says why.
 		expect((await ingest(youtubeSource, { cachedTrackId: youtubeId })).fromCache).toBe(true);
 		await expect(ingest(youtubeSource, { cachedTrackId: youtubeId, force: true })).rejects.toThrow(
@@ -262,7 +264,7 @@ describe('queue cache refresh', () => {
 				movements: [64], movementVetoes: [100]
 			})],
 			[join(cache.dir, `${youtubeId}.show.json`), '{"seed":7654321,"saved":"owner choice"}'],
-			[join(cache.dir, 'settings.json'), '{"outputBrightness":0.61,"outputOffsetMs":17}']
+			[join(cache.dir, 'settings.json'), '{"outputBrightness":0.61,"outputOffsetMs":17,"analysisProvider":"cpu"}']
 		];
 		for (const [path, body] of artifacts) await writeFile(path, body);
 		await ingest(youtubeSource, { cachedTrackId: youtubeId });

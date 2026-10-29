@@ -48,8 +48,7 @@
 	} = $props();
 
 	const providerOptions: { id: AnalysisProvider; label: string; title: string }[] = [
-		{ id: 'auto', label: 'Auto', title: 'Core ML on Apple silicon once it passes its check, else the CPU' },
-		{ id: 'gpu', label: 'GPU', title: 'As Auto, and DirectML on a Windows graphics card' },
+		{ id: 'auto', label: 'Auto', title: 'The graphics card (Core ML or DirectML) once it passes its check, else the CPU' },
 		{ id: 'cpu', label: 'CPU', title: 'The processor only' }
 	];
 

@@ -13,10 +13,10 @@ import {
 } from './striker2Parity.ts';
 
 /**
- * `analysisProvider` in settings.json. `auto` tries Core ML on Apple silicon and keeps Windows on
- * the CPU; `gpu` also tries DirectML on Windows; `cpu` is the CPU alone.
+ * `analysisProvider` in settings.json. `auto` tries the platform's graphics provider first (Core ML
+ * on Apple silicon, DirectML on Windows); `cpu` is the CPU alone.
  */
-export const ANALYSIS_PROVIDERS = ['auto', 'gpu', 'cpu'] as const;
+export const ANALYSIS_PROVIDERS = ['auto', 'cpu'] as const;
 export type AnalysisProvider = (typeof ANALYSIS_PROVIDERS)[number];
 export const DEFAULT_ANALYSIS_PROVIDER: AnalysisProvider = 'auto';
 
@@ -55,17 +55,14 @@ export function providerSession(provider: ExecutionProvider): Record<string, unk
 	};
 }
 
-/**
- * The providers to try, in order, the CPU always last. Core ML and DirectML get only a static graph;
- * DirectML only when the setting asks for the GPU (the RTX 3060 is not the app's by default).
- */
+/** The providers to try, in order, the CPU always last. Core ML and DirectML get only a static graph. */
 export function providerCandidates(
 	setting: AnalysisProvider, staticGraph: boolean, platform: string = process.platform,
 	arch: string = process.arch
 ): ExecutionProvider[] {
 	if (!staticGraph || setting === 'cpu') return [CPU];
 	if (platform === 'darwin' && arch === 'arm64') return [COREML, CPU];
-	if (platform === 'win32' && arch === 'x64' && setting === 'gpu') return [DIRECTML, CPU];
+	if (platform === 'win32' && arch === 'x64') return [DIRECTML, CPU];
 	return [CPU];
 }
 

@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@mv/analysis', () => ({
 	analysisModelChoices: mocks.choices,
-	isAnalysisProvider: (value: unknown) => ['auto', 'gpu', 'cpu'].includes(value as string)
+	isAnalysisProvider: (value: unknown) => ['auto', 'cpu'].includes(value as string)
 }));
 vi.mock('@mv/author-ai', () => ({ authorModel: () => undefined, isEffort: () => false }));
 // The test runner does not resolve SvelteKit's $lib alias, so each module is named for it.
@@ -69,9 +69,9 @@ describe('choosing where the analysis model runs', () => {
 	it('saves the provider without putting any song back in line', async () => {
 		mocks.choices.mockResolvedValue(choices(null));
 		mocks.update.mockImplementation(async (patch: object) => ({ analysisModel: 'striker2', ...patch }));
-		const response = await put({ analysisProvider: 'gpu' });
-		expect(await response.json()).toEqual({ analysisModel: 'striker2', analysisProvider: 'gpu' });
-		expect(mocks.update).toHaveBeenCalledWith({ analysisProvider: 'gpu' });
+		const response = await put({ analysisProvider: 'cpu' });
+		expect(await response.json()).toEqual({ analysisModel: 'striker2', analysisProvider: 'cpu' });
+		expect(mocks.update).toHaveBeenCalledWith({ analysisProvider: 'cpu' });
 		expect(mocks.stale).not.toHaveBeenCalled();
 		expect(mocks.pump).not.toHaveBeenCalled();
 	});

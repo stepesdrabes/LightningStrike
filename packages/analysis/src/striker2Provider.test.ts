@@ -65,16 +65,14 @@ function sessions(spoil: (out: Record<string, OnnxTensor>, run: number) => void 
 describe('provider candidates', () => {
 	it.each([
 		['darwin', 'arm64', 'auto', true, [COREML, CPU]],
-		['darwin', 'arm64', 'gpu', true, [COREML, CPU]],
 		['darwin', 'arm64', 'cpu', true, [CPU]],
 		['darwin', 'arm64', 'auto', false, [CPU]],
 		['darwin', 'x64', 'auto', true, [CPU]],
-		['win32', 'x64', 'auto', true, [CPU]],
-		['win32', 'x64', 'gpu', true, [DIRECTML, CPU]],
-		['win32', 'x64', 'gpu', false, [CPU]],
+		['win32', 'x64', 'auto', true, [DIRECTML, CPU]],
+		['win32', 'x64', 'auto', false, [CPU]],
 		['win32', 'x64', 'cpu', true, [CPU]],
-		['win32', 'arm64', 'gpu', true, [CPU]],
-		['linux', 'x64', 'gpu', true, [CPU]]
+		['win32', 'arm64', 'auto', true, [CPU]],
+		['linux', 'x64', 'auto', true, [CPU]]
 	] as const)('%s %s, %s, static %s', (platform, arch, setting, graph, want) => {
 		expect(providerCandidates(setting, graph, platform, arch)).toEqual(want);
 	});
@@ -162,7 +160,7 @@ describe('the first-use check', () => {
 		const mock = sessions((out) => {
 			for (let i = 0; i < out.drum_level.data.length; i++) out.drum_level.data[i] += 3e-3;
 		});
-		const chosen = await openChecked(model, 'gpu', { ...ON_MAC, open: mock.open });
+		const chosen = await openChecked(model, 'auto', { ...ON_MAC, open: mock.open });
 		expect(chosen.label).toBe('cpu');
 		expect(chosen.warnings).toEqual([
 			expect.stringMatching(/^coreml:56 is not used: every event matched, but drum_level differs by 3\.0e-3/)
@@ -171,17 +169,17 @@ describe('the first-use check', () => {
 		expect(Object.values(await readVerdicts()).map((v) => v.verdict)).toEqual(['close', 'pass']);
 	});
 
-	it('falls back to the CPU when DirectML does not open, only when the setting allows the GPU', async () => {
+	it('falls back to the CPU when DirectML does not open, and skips it under the CPU setting', async () => {
 		const windows = { platform: 'win32', arch: 'x64', bundled: ['cpu', 'dml', 'webgpu'], machine: { ...MAC,
 			platform: 'win32', arch: 'x64', model: null, gpu: 'NVIDIA GeForce RTX 3060 32.0.15.6094' } };
 		const mock = sessions(undefined, true);
-		const auto = await openChecked(model, 'auto', { ...windows, open: mock.open });
-		await auto.striker.close();
+		const cpu = await openChecked(model, 'cpu', { ...windows, open: mock.open });
+		await cpu.striker.close();
 		expect(mock.opened).toEqual(['cpu']);
-		const gpu = await openChecked(model, 'gpu', { ...windows, open: mock.open });
-		expect(gpu.label).toBe('cpu');
-		expect(gpu.warnings).toEqual(['dml:0 is not used: its session did not open (no dml here)']);
-		await gpu.striker.close();
+		const auto = await openChecked(model, 'auto', { ...windows, open: mock.open });
+		expect(auto.label).toBe('cpu');
+		expect(auto.warnings).toEqual(['dml:0 is not used: its session did not open (no dml here)']);
+		await auto.striker.close();
 		expect(mock.opened).toEqual(['cpu', 'dml', 'cpu']);
 		const verdicts = Object.values(await readVerdicts());
 		expect(verdicts.find((v) => v.key.provider === 'dml'))
