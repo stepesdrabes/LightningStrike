@@ -46,7 +46,10 @@ Install: copy `striker2.onnx` and `striker2.json` from striker-2's `python -m st
 into `models/`. They stay uncommitted: personal-use weights (`models/striker2.NOTICE`).
 On 2026-10-29 the shipped `Striker-2.0-1029 (1254cace)` (XXL, 523 MB) prepared Raveform
 `0004.0EWbonj7f18` (236 s) in 16.0 s and Kernkraft 400 (207 s) in 13.7 s on the Ryzen 5 3600 PC
-under load, its stage 14.8 and 13.3 s, at a 2.4 GB peak working set.
+under load, its stage 14.8 and 13.3 s, at a 2.4 GB peak working set. On the M1 Pro, on the CPU,
+it prepared Take Me (To The Moon) (159 s) in 14.3 s from a checkout (Node 26) and Krystaly
+(181 s) in 26.5 s in the installed app (Node 24.11), its stage 9.0 and 10.1 s; the rest is
+mostly the YouTube fetch.
 
 Bench: `bench/hearing.ts` gives harnesses Striker 2.0's hearing of a file, cached under
 `bench/corpus/.striker2/`; `bench/drumeval/evaluate.ts` scores it on labelled corpora
@@ -54,9 +57,10 @@ Bench: `bench/hearing.ts` gives harnesses Striker 2.0's hearing of a file, cache
 `bench/reanalyse.ts` re-analyses the library in a batch; `bench/lab/striker2-dump.ts` serves
 striker-2's parity tool.
 
-Open before a merge: striker-2's integration checks (the benchmarks through this pipeline, the
-downbeat rule for the lights, the library diff against analysis 39, the owner's saved reviews),
-the M1 Pro, and the owner's listening A/B in the room.
+The owner's verdict in the room, 2026-10-29: the lights look almost exactly as before, quality
+did not go down, and preparation is far faster than with the retired pipeline. Still open:
+striker-2's integration checks (the benchmarks through this pipeline, the downbeat rule for the
+lights, the library diff against analysis 39, the owner's saved reviews).
 
 ## Mac
 
@@ -67,9 +71,8 @@ graphs they name, their notices and Discogs-EffNet (`bundledModels`). No native 
 is built any more. The pinned ONNX ARM64 binaries declare **macOS 14.0**, stricter than Node
 24.11's 13.5; `tauri.conf.json` declares 14.0, and `bench/lab/check-mac-runtime.ts` verifies the
 Mach-O architecture and minimum OS. Build natively on Apple Silicon with Xcode's command-line
-tools and the Tauri prerequisites. Striker 2.0 has not been measured on the M1 Pro yet.
-Finder-launched apps ignore shell exports, so set overrides with `launchctl setenv` before
-opening the app.
+tools and the Tauri prerequisites. Finder-launched apps ignore shell exports, so set overrides
+with `launchctl setenv` before opening the app.
 
 ## Listening data for the later accuracy session
 
