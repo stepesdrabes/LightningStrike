@@ -13,8 +13,6 @@ analyses, shows or user settings. Cache selection defaults to the desktop cache;
   codes and Bounce Lamp duty. `--events` instead lists every event the moment's timing table
   scores with the audio's level and the room's largest pixel move in the same window, which finds
   a gesture that exists on only one side. `--moment NAME --step SECONDS` narrows the output.
-- `node bench/drumprobe.ts ID ID --out bench/reports/drums.json` compares model evidence and
-  pattern completion on the same inference. Its counts are predictions, not labelled accuracy.
 - `node bench/effectpolish.ts --save bench/reports/effects-before.json` captures isolated effect
   output. Use `--compare FILE --html bench/reports/effects.html` for visual comparison.
 - `node bench/roomsheet.ts --effect ID --section drop --raw --out sheet.png` draws the room from
@@ -24,26 +22,11 @@ analyses, shows or user settings. Cache selection defaults to the desktop cache;
 - `node bench/quietprobe.ts --limit 8 --effects chorusBloom,ambientDrift` measures responsiveness
   in real quiet passages. Compare the whole candidate pool on the same corpus before updating
   ranking metadata.
-- `node bench/drumscore.ts --label=NAME` scores every drum stage (DSP, raw model, snapped model,
-  the shipped analysis and a frozen `--before` analyser) against the labelled MDB Drums corpus
-  under `bench/corpus/mdb-drums` at the 50 ms mir_eval tolerance, writing
-  `bench/reports/audio-reliability/mdb/results-NAME.{json,md}`. Model activations and beats are
-  cached per track, so variants re-run in seconds. `bench/lab/mdb.ts` exposes the same corpus,
-  caches and scoring for experiments; `bench/lab/example.ts` is the template.
-- `MV_CACHE_DIR=<library> node bench/lab/library-reanalyse.ts --out=DIR` re-analyses every
-  library track with the working-tree analyser from its cached model beats and the cached
-  ADTOF activations under `bench/reports/audio-reliability/library-activations`, composes its
-  show, and writes both with copies of context and meta into a scratch cache that
-  `compositionprobe`, `lintsweep` and `showreview --analysis/--show` can read. `summary.json`
-  lists per track whether beats, bar lines and sections changed and how the onset counts moved.
 - `node bench/introprobe.ts --id ID [--analysis FILE --show FILE] [--before-shows FILE
   --before-core DIR]` measures one opening: room level at 30, 60 and 120 Hz, what the snares,
   the level track and the spectrum each contribute, the lift around each snare, effect-state
   determinism after a backward seek, and whether anything after the intro changed (only
   meaningful when both sides share an analysis and the shows differ in the intro alone).
-- `node bench/audibility.ts --id ID --from S --to S` writes a 10 ms timeline of level, onset
-  strength, DSP and model drum evidence and per-attack spectral snapshots for one passage, to
-  judge by evidence what is audible where no labels exist.
 - `node bench/transitionprobe.ts --ids ID,ID,ID --out bench/reports/transitions-after.json` walks
   the room through every transition it makes on cached tracks: track to track, a queue jump,
   pause and resume, seeks, lounge on and off, the dissolve into rest and the wake, hardware

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { CACHE_DIR, decodeAudio, publishedLevel, readContext } from '@mv/analysis';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { DEFAULT_TUNING, type StructureTuning } from '../packages/analysis/src/structure.ts';
-import { Adtof } from '../packages/analysis/src/adtof.ts';
+import { hearing, stopHearing } from './hearing.ts';
 
 const argv = process.argv.slice(2);
 const flag = (n: string) => argv.find((a) => a.startsWith(`--${n}=`))?.slice(n.length + 3);
@@ -84,28 +84,9 @@ interface Row {
 	deltas: number[];
 }
 
-const DRUMS = join(import.meta.dirname, 'corpus', '.drums');
-mkdirSync(DRUMS, { recursive: true });
-
-/**
- * Restore drum activations to Float32Array, including legacy JSON objects with numeric index
- * keys.
- */
-function readDrums(path: string): Awaited<ReturnType<Adtof['run']>> {
-	const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
-	for (const key of ['kick', 'snare', 'hat']) {
-		const stream = raw[key] as { curve?: unknown } | undefined;
-		if (!stream || stream.curve === undefined || stream.curve instanceof Float32Array) continue;
-		stream.curve = Float32Array.from(
-			Array.isArray(stream.curve) ? (stream.curve as number[]) : Object.values(stream.curve as Record<string, number>)
-		);
-	}
-	return raw as Awaited<ReturnType<Adtof['run']>>;
-}
 const files = readdirSync(CACHE_DIR);
 const maps = readdirSync(mapsDir).filter((f) => f.endsWith('.map.json'));
 const results = new Map<string, Row[]>();
-let drumModel: Adtof | null | undefined;
 
 for (const f of maps) {
 	const id = f.slice(0, -'.map.json'.length);
@@ -118,22 +99,12 @@ for (const f of maps) {
 	const audio = files.find((x) => x.startsWith(`${id}.`) && /\.(m4a|webm|opus|mp3|ogg|oga|aac|wav|flac|mp4|mka)$/i.test(x));
 	const blobPath = join(CACHE_DIR, `${id}.analysis.json`);
 	if (!audio || !existsSync(blobPath)) continue;
-	const blob = JSON.parse(readFileSync(blobPath, 'utf8')) as { title: string; heard?: { beats: number[]; downbeats: number[] } };
-	if (!blob.heard) continue;
+	const blob = JSON.parse(readFileSync(blobPath, 'utf8')) as { title: string };
 	const decoded = await decodeAudio(join(CACHE_DIR, audio));
-	const drumPath = join(DRUMS, `app-${id}.json`);
-	let drums: Awaited<ReturnType<Adtof['run']>> | undefined;
-	if (existsSync(drumPath)) drums = readDrums(drumPath);
-	else {
-		drumModel ??= await Adtof.create();
-		if (drumModel) {
-			drums = await drumModel.run((await decodeAudio(join(CACHE_DIR, audio), 44100)).mono);
-			writeFileSync(drumPath, JSON.stringify(drums, (_, v) => (v instanceof Float32Array ? Array.from(v) : v)));
-		}
-	}
+	const heard = await hearing(join(CACHE_DIR, audio));
 	const context = (await readContext(id)) ?? undefined;
 	const level = context?.publishedBpm
-		? publishedLevel(blob.heard.beats, context.publishedBpm, context.genreFamily, { downbeats: blob.heard.downbeats, snares: drums?.snare.times })
+		? publishedLevel(heard.beats, context.publishedBpm, context.genreFamily, { downbeats: heard.downbeats, snares: heard.drums.snare.times })
 		: null;
 
 	for (const name of wanted) {
@@ -145,9 +116,9 @@ for (const f of maps) {
 			hash: decoded.hash,
 			trackId: id,
 			title: blob.title,
-			beats: blob.heard.beats,
-			downbeats: blob.heard.downbeats,
-			drums,
+			beats: heard.beats,
+			downbeats: heard.downbeats,
+			striker2: heard,
 			context,
 			metricalLevel: level ?? undefined,
 			tuning
@@ -171,7 +142,7 @@ for (const f of maps) {
 	}
 	console.log(`${id}  ${blob.title.slice(0, 36)}  ${wanted.map((n) => { const r = results.get(n)!.at(-1)!; return `${n}:${r.hits}/${map.sections.length}${r.extra ? `+${r.extra}` : ''}`; }).join('  ')}`);
 }
-if (drumModel) await drumModel.close();
+await stopHearing();
 
 console.log('\nvariant                  hits/total  early  late  label-wrong  extra(accepted)  regressions-on-accepted');
 const base = results.get('current');

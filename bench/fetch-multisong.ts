@@ -1,14 +1,14 @@
 // Fetch stitched-song examples and single-song negatives through YouTube Music art-track
 // search.
 // node bench/fetch-multisong.ts
-// Cache audio/expectations under bench/corpus/multisong and model beats under
-// bench/corpus/.beats.
+// Cache audio and expectations under bench/corpus/multisong, and Striker 2.0's hearing of each
+// (bench/hearing.ts).
 // Expected seams are approximate listening targets, not frame-accurate annotations.
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { decodeAudio, downloadAudio } from '../packages/analysis/src/decode.ts';
+import { downloadAudio } from '../packages/analysis/src/decode.ts';
 import { searchSongs, watchUrl } from '../packages/analysis/src/ytmusic.ts';
-import { BeatThis } from '../packages/analysis/src/beatthis.ts';
+import { hearing, stopHearing } from './hearing.ts';
 
 interface Want {
 	key: string;
@@ -41,14 +41,11 @@ const WANTED: Want[] = [
 
 const ROOT = join(import.meta.dirname, 'corpus', 'multisong');
 const AUDIO = join(ROOT, 'audio');
-const BEATS = join(import.meta.dirname, 'corpus', '.beats');
 mkdirSync(AUDIO, { recursive: true });
-mkdirSync(BEATS, { recursive: true });
 
 const AUDIO_EXT = /\.(m4a|webm|opus|mp3|ogg|oga|aac|wav|flac|mp4|mka)$/i;
 const have = (key: string) => readdirSync(AUDIO).find((f) => f.startsWith(`${key}.`) && AUDIO_EXT.test(f));
 
-let model: BeatThis | null = null;
 const expect: Record<string, { id: string; title: string; switches: number[]; note: string }> = {};
 
 for (const want of WANTED) {
@@ -77,17 +74,11 @@ for (const want of WANTED) {
 		console.log(`${want.key}: download wrote nothing`);
 		continue;
 	}
-	const beatsPath = join(BEATS, `multisong-${want.key}.json`);
-	if (!existsSync(beatsPath)) {
-		const decoded = await decodeAudio(join(AUDIO, file));
-		model ??= await BeatThis.create();
-		const tracked = await model.run(decoded.mono);
-		writeFileSync(beatsPath, JSON.stringify(tracked));
-		console.log(`${want.key}: ${tracked.beats.length} beats, ${tracked.downbeats.length} downbeats over ${Math.round(decoded.duration)}s`);
-	}
+	const tracked = await hearing(join(AUDIO, file));
+	console.log(`${want.key}: ${tracked.beats.length} beats, ${tracked.downbeats.length} downbeats`);
 	expect[want.key] = { id, title, switches: want.switches, note: want.note };
 }
 
 writeFileSync(join(ROOT, 'expect.json'), JSON.stringify(expect, null, '\t'));
-if (model) await model.close();
+await stopHearing();
 console.log('multisong corpus ready');

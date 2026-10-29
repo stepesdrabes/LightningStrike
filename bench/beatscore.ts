@@ -1,12 +1,12 @@
 import { readFile, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { decodeAudio } from '@mv/analysis';
-import { BeatThis } from '../packages/analysis/src/beatthis.ts';
+import { hearing, stopHearing } from './hearing.ts';
 import { scoreBeats } from './metrics.ts';
 
 /**
- * Score GTZAN beats and annotated beat-1 downbeats with F-measure.
+ * Score Striker 2.0's beats and downbeats, as ingest decodes them, against GTZAN's beats and
+ * annotated beat-1 downbeats with F-measure.
  * node bench/beatscore.ts [--limit 100]
  */
 const argv = process.argv.slice(2);
@@ -15,8 +15,6 @@ const flag = (n: string, d: string) => {
 	return i >= 0 ? argv[i + 1] : d;
 };
 const limit = Number(flag('limit', '100'));
-/** An alternative checkpoint exported by bench/export-beatthis.py, in models/. */
-const modelFile = flag('model', 'beat_this.onnx');
 
 const ROOT = join(import.meta.dirname, 'corpus');
 const AUDIO = join(ROOT, 'gtzan_mini-main', 'genres');
@@ -59,15 +57,13 @@ refs.sort((a, b) => a.id.localeCompare(b.id));
 const tracks = refs.slice(0, limit);
 console.error(`${tracks.length} annotated tracks`);
 
-const model = await BeatThis.create(modelFile);
 const beat = { f: 0, cmlT: 0, amlT: 0 };
 const down = { f: 0, cmlT: 0, amlT: 0 };
 let done = 0;
 
 for (const track of tracks) {
 	try {
-		const decoded = await decodeAudio(track.audio);
-		const tracked = await model.run(decoded.mono);
+		const tracked = await hearing(track.audio);
 		const b = scoreBeats(track.beats, tracked.beats);
 		const d = scoreBeats(track.downbeats, tracked.downbeats);
 		beat.f += b.f;
@@ -82,9 +78,9 @@ for (const track of tracks) {
 		console.error(`  ${track.id}: ${(e as Error).message.split('\n')[0]}`);
 	}
 }
-await model.close();
+await stopHearing();
 
 const mean = (v: number) => (v / Math.max(1, done)).toFixed(3);
-console.log(`n=${done}  ${modelFile}`);
+console.log(`n=${done}  Striker 2.0 through its DBN`);
 console.log(`  beat      F=${mean(beat.f)}  CMLt=${mean(beat.cmlT)}  AMLt=${mean(beat.amlT)}`);
 console.log(`  downbeat  F=${mean(down.f)}  CMLt=${mean(down.cmlT)}  AMLt=${mean(down.amlT)}`);

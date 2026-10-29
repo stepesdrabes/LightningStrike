@@ -3,29 +3,16 @@
 // node bench/phasegrid.ts [--cost=8]
 // Convert target bars through the single-phase baseline; earlybars.ts remains the bar-domain
 // comparison.
-import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
-import { BeatThis } from '../packages/analysis/src/beatthis.ts';
+import { hearing, stopHearing } from './hearing.ts';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { TARGETS } from './targets.ts';
 
 const cache = benchmarkCache();
-const beatsDir = join(import.meta.dirname, 'corpus/.beats');
-mkdirSync(beatsDir, { recursive: true });
 const cost = Number(process.argv.find((a) => a.startsWith('--cost='))?.slice(7) ?? NaN);
-
-let model: BeatThis | null = null;
-async function beatsFor(id: string, audio: string): Promise<{ beats: number[]; downbeats: number[] }> {
-	const path = join(beatsDir, `judged-${id}.json`);
-	if (existsSync(path)) return JSON.parse(readFileSync(path, 'utf8'));
-	const decoded = await decodeAudio(audio);
-	model ??= await BeatThis.create();
-	const tracked = await model.run(decoded.mono);
-	writeFileSync(path, JSON.stringify(tracked));
-	return tracked;
-}
 
 const byTrack = new Map<string, typeof TARGETS>();
 for (const t of TARGETS) byTrack.set(t.id, [...(byTrack.get(t.id) ?? []), t]);
@@ -41,7 +28,7 @@ for (const [id, targets] of byTrack) {
 		console.log(`${id}  NO AUDIO in ${cache}`);
 		continue;
 	}
-	const tracked = await beatsFor(id, join(cache, audio));
+	const tracked = await hearing(join(cache, audio));
 	const decoded = await decodeAudio(join(cache, audio));
 	const ctx = join(cache, `${id}.context.json`);
 	const base = {
@@ -53,7 +40,8 @@ for (const [id, targets] of byTrack) {
 		title: id,
 		context: existsSync(ctx) ? JSON.parse(readFileSync(ctx, 'utf8')) : undefined,
 		beats: tracked.beats,
-		downbeats: tracked.downbeats
+		downbeats: tracked.downbeats,
+		striker2: tracked
 	};
 	const a = analyzeTrack({ ...base, phaseResetCost: Infinity });
 	const b = analyzeTrack({ ...base, ...(Number.isFinite(cost) ? { phaseResetCost: cost } : {}) });
@@ -91,3 +79,4 @@ for (const [id, targets] of byTrack) {
 	}
 }
 console.log(`\n${hit} hit, ${closer} closer, ${same} same, ${worse} worse of ${TARGETS.length}`);
+await stopHearing();

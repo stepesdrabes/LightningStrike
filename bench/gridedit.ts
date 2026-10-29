@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
+import { hearing, stopHearing } from './hearing.ts';
 
 const id = process.argv[2];
 const arg = process.argv[3];
@@ -29,15 +30,14 @@ if (arg === 'restore') {
 
 const cuts = arg.split(',').map(Number);
 if (cuts.some((c) => !Number.isFinite(c))) throw new Error('cut points must be seconds');
-const beatsPath = join(import.meta.dirname, 'corpus/.beats', `judged-${id}.json`);
-if (!existsSync(beatsPath)) throw new Error(`no cached beats at ${beatsPath} - run earlybars first`);
-const tracked = JSON.parse(readFileSync(beatsPath, 'utf8')) as { beats: number[]; downbeats: number[] };
 
 const orig = JSON.parse(readFileSync(blobPath, 'utf8')) as { hash: string; trackId: string };
 const meta = JSON.parse(readFileSync(join(cache, `${id}.meta.json`), 'utf8')) as { title: string };
 const files = readdirSync(cache);
 const audioFile = files.find((x) => x.startsWith(`${id}.`) && !x.includes('.json') && !x.endsWith('.pcm'));
 if (!audioFile) throw new Error(`no audio for ${id} in ${cache}`);
+const tracked = await hearing(join(cache, audioFile));
+await stopHearing();
 const context = existsSync(join(cache, `${id}.context.json`))
 	? JSON.parse(readFileSync(join(cache, `${id}.context.json`), 'utf8'))
 	: undefined;
@@ -53,6 +53,7 @@ const analysis = analyzeTrack({
 	context,
 	beats: tracked.beats,
 	downbeats: tracked.downbeats,
+	striker2: tracked,
 	gridCuts: cuts
 });
 

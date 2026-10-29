@@ -1,9 +1,9 @@
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { sectionBase, type SectionKind } from '@mv/core';
 import { decodeAudio } from '@mv/analysis';
-import { BeatThis } from '../packages/analysis/src/beatthis.ts';
+import { hearing, stopHearing } from './hearing.ts';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { DEFAULT_TUNING, type StructureTuning } from '../packages/analysis/src/structure.ts';
 import { DEFAULT_LABEL_TUNING, type LabelTuning } from '../packages/analysis/src/arrange.ts';
@@ -11,8 +11,8 @@ import { fMeasure } from './metrics.ts';
 import { KIND_SONG } from './kinds.ts';
 
 /**
- * Score structure against Harmonix song labels or Raveform club labels, reusing cached model
- * beats.
+ * Score structure against Harmonix song labels or Raveform club labels, on Striker 2.0's beats
+ * and drums (bench/hearing.ts).
  * node bench/structscore.ts --dataset harmonix --limit 60 --variant current
  */
 const argv = process.argv.slice(2);
@@ -73,8 +73,6 @@ if (!labels) throw new Error(`unknown label variant ${labelName}`);
 const useHead = argv.includes('--head');
 
 const ROOT = join(import.meta.dirname, 'corpus');
-const BEATS = join(ROOT, '.beats');
-await mkdir(BEATS, { recursive: true });
 
 const RAVEFORM_KIND: Record<string, SectionKind> = {
 	intro: 'intro',
@@ -156,17 +154,6 @@ async function loadRaveform(): Promise<RefTrack[]> {
 const tracks = dataset === 'harmonix' ? await loadHarmonix() : await loadRaveform();
 console.error(`${dataset}: ${tracks.length} tracks, variant ${variantName}`);
 
-let model: BeatThis | null = null;
-async function beatsFor(track: RefTrack): Promise<{ beats: number[]; downbeats: number[] }> {
-	const cache = join(BEATS, `${dataset}-${track.id}.json`);
-	if (existsSync(cache)) return JSON.parse(await readFile(cache, 'utf8'));
-	const decoded = await decodeAudio(track.audio);
-	model ??= await BeatThis.create();
-	const tracked = await model.run(decoded.mono);
-	await writeFile(cache, JSON.stringify(tracked));
-	return tracked;
-}
-
 const kindAt = (spans: [number, number, SectionKind][], t: number): SectionKind | null => {
 	for (const [from, to, kind] of spans) if (t >= from && t < to) return kind;
 	return null;
@@ -220,7 +207,7 @@ async function posteriorsFor(
 
 for (const track of tracks) {
 	try {
-		const tracked = await beatsFor(track);
+		const tracked = await hearing(track.audio);
 		const decoded = await decodeAudio(track.audio);
 		const sectionPosteriors = await posteriorsFor(track);
 		const analysis = analyzeTrack({
@@ -233,6 +220,7 @@ for (const track of tracks) {
 			sectionPosteriors,
 			beats: tracked.beats,
 			downbeats: tracked.downbeats,
+			striker2: tracked,
 			tuning,
 			labels
 		});
@@ -268,7 +256,7 @@ for (const track of tracks) {
 		console.error(`  ${track.id}: ${(e as Error).message.split('\n')[0]}`);
 	}
 }
-if (model) await (model as BeatThis).close();
+await stopHearing();
 await head?.close();
 if (missingEmb > 0) console.error(`  ${missingEmb} tracks had no stored embedding (rules used)`);
 

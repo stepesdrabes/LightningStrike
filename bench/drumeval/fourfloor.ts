@@ -1,11 +1,12 @@
 // node bench/drumeval/fourfloor.ts --run=lib-v19 [--compare=lib-v22] [--corpus=library] [--genres=bass,techno]
 // How much of the beat grid the kick stream covers. In four on the floor the kick is on every beat,
 // so on hardstyle, hard techno, house and trance this is close to recall without anyone annotating
-// anything. It says nothing on genres that do not play that way, so read it per track.
+// anything. It says nothing on genres that do not play that way, so read it per track. The grid is
+// the beats the --run run's analysis took from Striker 2.0.
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tracks } from './corpus.ts';
-import { EVAL_ROOT, evidenceDir, files, readJson, type BeatsRecord } from './evidence.ts';
+import { EVAL_ROOT } from './evidence.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -15,12 +16,16 @@ const corpusName = flag('corpus') ?? 'library';
 const genres = flag('genres')?.split(',');
 const WINDOW = 0.05;
 
-interface Result { final: Record<string, { times: number[] }> }
+interface Result { final: Record<string, { times: number[] }>; beats?: number[]; duration: number }
+
+function record(label: string, name: string): Result | null {
+	const path = join(EVAL_ROOT, 'runs', label, 'tracks', `${corpusName}__${name}.json`);
+	return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) as Result : null;
+}
 
 function coverage(label: string, name: string, beats: number[]): { share: number; rate: number } | null {
-	const path = join(EVAL_ROOT, 'runs', label, 'tracks', `${corpusName}__${name}.json`);
-	if (!existsSync(path)) return null;
-	const result = JSON.parse(readFileSync(path, 'utf8')) as Result & { duration: number };
+	const result = record(label, name);
+	if (!result) return null;
 	const kicks = result.final.kick?.times ?? [];
 	const share = (grid: number[]) => {
 		let at = 0;
@@ -41,7 +46,7 @@ function coverage(label: string, name: string, beats: number[]): { share: number
 const rows: { name: string; genre: string; title: string; a: number; b: number | null; rate: number }[] = [];
 for (const track of tracks([corpusName])) {
 	if (genres && !genres.includes(track.genre ?? '')) continue;
-	const beats = readJson<BeatsRecord>(join(evidenceDir(track), files.beats))?.beats;
+	const beats = record(run, track.name)?.beats;
 	if (!beats || beats.length < 20) continue;
 	const a = coverage(run, track.name, beats);
 	if (!a) continue;

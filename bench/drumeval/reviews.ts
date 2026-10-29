@@ -2,12 +2,14 @@
 // Scores a library run against the owner's saved drum reviews with the app's review scorer: judged
 // real hits found at lighting level, judged wrong hits still emitted, and missed-hit clicks that now
 // have a hit within 50 ms of their reviewed-grid position. Reviews are partial labels.
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { TrackAnalysis } from '@mv/core';
 import type { DrumReview } from '../../apps/web/src/lib/drumReview.ts';
 import { provisionalIdsForReview, referenceBeatsForReview, scoreDrumReview } from '../score-drum-review.ts';
-import { EVAL_ROOT, evidenceDir, files, readJson, type AudioRecord } from './evidence.ts';
+import { tracks } from './corpus.ts';
+import { EVAL_ROOT } from './evidence.ts';
 import { loadRun } from './evaluate.ts';
 
 const args = process.argv.slice(2);
@@ -16,17 +18,20 @@ const run = loadRun(flag('label')!);
 const root = resolve(flag('reviews') ?? join(EVAL_ROOT, '..', 'audio-reliability', 'drum-review-ui', 'cache'));
 const overlay = JSON.parse(readFileSync(resolve('bench/judged/drum-review-evaluation.json'), 'utf8'));
 const totals = { real: 0, found: 0, wrong: 0, remaining: 0, missed: 0, recovered: 0 };
+const library = new Map(tracks(['library']).map((t) => [t.name, t.audio]));
+/** A review names the bytes it was made on; another file under the same id is another song. */
+const audioSha256 = (path: string | undefined) =>
+	path && existsSync(path) ? createHash('sha256').update(readFileSync(path)).digest('hex') : undefined;
 
 for (const file of readdirSync(join(root, 'drum-reviews')).filter((name) => name.endsWith('.json')).sort()) {
 	const review = JSON.parse(readFileSync(join(root, 'drum-reviews', file), 'utf8')) as DrumReview;
 	const result = run.find((r) => r.corpus === 'library' && r.name === review.trackId);
 	if (!result) continue;
-	const audio = readJson<AudioRecord>(join(evidenceDir({ corpus: 'library', name: review.trackId }), files.audio));
 	const reviewed = join(root, 'drum-review-analyses', `${review.trackId}.${review.analysis.sha256}.analysis.json`);
 	const analysis = {
 		version: 0, trackId: review.trackId, hash: '', onsets: { kick: result.final.kick, snare: result.final.snare }
 	} as unknown as TrackAnalysis;
-	const score = scoreDrumReview(review, analysis, 50, audio?.audioSha256, {
+	const score = scoreDrumReview(review, analysis, 50, audioSha256(library.get(review.trackId)), {
 		provisionalIds: provisionalIdsForReview(review, overlay),
 		referenceBeats: existsSync(reviewed) ? referenceBeatsForReview(review, readFileSync(reviewed)) : undefined
 	});

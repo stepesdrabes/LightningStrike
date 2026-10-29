@@ -11,13 +11,12 @@ import {
 	publishedLevel,
 	refineGenreFromAudio
 } from '@mv/analysis';
-import { BeatThis } from '../packages/analysis/src/beatthis.ts';
-import { Adtof } from '../packages/analysis/src/adtof.ts';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
+import { hearing, stopHearing } from './hearing.ts';
 
 /**
- * Reanalyze cached tracks without re-keying them through ingest; reuse the model across the
- * corpus.
+ * Reanalyze cached tracks without re-keying them through ingest; one Striker 2.0 session serves
+ * the corpus.
  */
 const only = process.argv.find((a) => a.startsWith('--only='))?.slice(7);
 /** Skip current-version tracks so interrupted regeneration resumes. */
@@ -29,8 +28,6 @@ const skipCurrent = process.argv.includes('--skip-current');
 const noHandMaps = process.argv.includes('--no-hand-maps');
 
 const metas = (await readdir(CACHE_DIR)).filter((f) => f.endsWith('.meta.json'));
-const model = await BeatThis.create();
-const drumModel = await Adtof.create();
 let done = 0;
 
 for (const f of metas) {
@@ -56,10 +53,7 @@ for (const f of metas) {
 	const at = `[${++done}]`;
 	try {
 		const decoded = await decodeAudio(join(CACHE_DIR, audio));
-		const tracked = await model.run(decoded.mono);
-		const drums = drumModel
-			? await drumModel.run((await decodeAudio(join(CACHE_DIR, audio), 44100)).mono)
-			: undefined;
+		const tracked = await hearing(join(CACHE_DIR, audio));
 		let context = (await readContext(meta.id)) ?? undefined;
 		if (context && !context.sources.includes('effnet')) {
 			const refined = await refineGenreFromAudio(context, decoded.mono, decoded.sampleRate);
@@ -73,7 +67,7 @@ for (const f of metas) {
 		if (context?.publishedBpm) {
 			const level = publishedLevel(tracked.beats, context.publishedBpm, context.genreFamily, {
 				downbeats: tracked.downbeats,
-				snares: drums?.snare.times
+				snares: tracked.drums.snare.times
 			});
 			if (level !== null) metricalLevel = level;
 		}
@@ -89,7 +83,7 @@ for (const f of metas) {
 			title: meta.title,
 			beats: tracked.beats,
 			downbeats: tracked.downbeats,
-			drums,
+			striker2: tracked,
 			metricalLevel,
 			context,
 			...(noHandMaps ? {} : await handMapInput(meta.id))
@@ -111,6 +105,5 @@ for (const f of metas) {
 		console.log(`${at} ${meta.title}: ${(e as Error).message.split('\n')[0]}`);
 	}
 }
-await model.close();
-await drumModel?.close();
+await stopHearing();
 console.log('reanalyse complete');

@@ -1,5 +1,5 @@
-// Trace every structure stage using cached model beats and meter, then compare with
-// analyzeTrack.
+// Trace every structure stage on Striker 2.0's beats and drums and the cached meter, then compare
+// with analyzeTrack.
 // MV_CACHE_DIR=<cache> node bench/stagetrace.ts <trackId> [fromBar] [toBar]
 // MISMATCH means the mirror has drifted from the shipped pipeline; its intermediate trace is
 // unreliable.
@@ -7,16 +7,14 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
+import { hearing, stopHearing } from './hearing.ts';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { arrange, bandLevels } from '../packages/analysis/src/arrange.ts';
 import { beatSynchronous } from '../packages/analysis/src/beatsync.ts';
 import { chromagram } from '../packages/analysis/src/chroma.ts';
 import { consolidateSections } from '../packages/analysis/src/consolidate.ts';
-import { detectDrums, type DrumStream } from '../packages/analysis/src/drums.ts';
 import { extractFeatures } from '../packages/analysis/src/features.ts';
 import { measureLoudness } from '../packages/analysis/src/loudness.ts';
-import { assessMetricalLevel } from '../packages/analysis/src/metricalLevel.ts';
-import { barGroups, quantiseOnsets } from '../packages/analysis/src/quantise.ts';
 import {
 	DEFAULT_TUNING,
 	arrivalStrengths,
@@ -48,13 +46,12 @@ const from = Number(process.argv[3] ?? 0);
 const to = Number(process.argv[4] ?? 40);
 
 const cache = benchmarkCache();
-const beatsPath = join(import.meta.dirname, 'corpus/.beats', `judged-${id}.json`);
-if (!existsSync(beatsPath)) throw new Error(`no cached beats at ${beatsPath} - run earlybars first`);
-const tracked = JSON.parse(readFileSync(beatsPath, 'utf8')) as { beats: number[]; downbeats: number[] };
 
 const files = readdirSync(cache);
 const audioFile = files.find((x) => x.startsWith(`${id}.`) && !x.includes('.json') && !x.endsWith('.pcm'));
 if (!audioFile) throw new Error(`no audio for ${id} in ${cache}`);
+const tracked = await hearing(join(cache, audioFile));
+await stopHearing();
 const context = existsSync(join(cache, `${id}.context.json`))
 	? JSON.parse(readFileSync(join(cache, `${id}.context.json`), 'utf8'))
 	: undefined;
@@ -76,14 +73,11 @@ if (Number.isFinite(gain) && Math.abs(gain - 1) > 0.01) {
 const features = extractFeatures(mono, decoded.sampleRate);
 const chroma = chromagram(mono, decoded.sampleRate);
 const beats = Float64Array.from(tracked.beats);
-const assessment = assessMetricalLevel(tracked.beats, features.odf, features.curves.fps);
-const beatPeriod = assessment.bpm > 0 ? 60 / assessment.bpm : 0.5;
 const beatFeatures = beatSynchronous(features.spec, chroma, features.curves, features.odf, beats, duration);
 const { beatsPerBar, downbeatPhase } = blob.tempo;
 const bars = barSynchronous(beatFeatures, beatsPerBar, downbeatPhase);
 
-const detected = detectDrums(features.spec, { beatPeriod, odf: features.odf });
-const rawKicks = countPerBar(detected.kick.times, bars.time, bars.count);
+const rawKicks = countPerBar(tracked.drums.kick.times, bars.time, bars.count);
 
 const vocal = new Float64Array(bars.count);
 const lyricLines: { t: number; text: string }[] | null = context?.instrumental ? null : (context?.lyrics ?? null);
@@ -140,11 +134,8 @@ const bounds = rephaseToPins(refined, pinned, bars.count, tuning, movePinned);
 stage('rephaseToPins', bounds);
 
 const groups = groupSegments(sim, bars.count, bounds);
-const barGroup = barGroups(bounds, groups.group, bars.count);
-const quantise = (stream: DrumStream) =>
-	quantiseOnsets(stream, { beats, beatsPerBar, downbeatPhase, barGroup, duration });
-const kicks = countPerBar(quantise(detected.kick).times, bars.time, bars.count);
-const snares = countPerBar(quantise(detected.snare).times, bars.time, bars.count);
+const kicks = rawKicks;
+const snares = countPerBar(tracked.drums.snare.times, bars.time, bars.count);
 
 const barsDb = bandLevels(features.spec, bars.time, bars.count);
 const plan = arrange(
@@ -272,6 +263,7 @@ const real = analyzeTrack({
 	context,
 	beats: tracked.beats,
 	downbeats: tracked.downbeats,
+	striker2: tracked,
 	tuning
 });
 const mine = plan.segments.map((s: { kind: string; startBar: number }) => `${s.kind}@${s.startBar}`).join(' ');

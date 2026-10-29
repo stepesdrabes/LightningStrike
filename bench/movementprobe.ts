@@ -1,15 +1,13 @@
 // Inspect a cached track through current analysis, including movements and per-song tempo.
-// MV_CACHE_DIR=<cache> node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks]
-// [--no-drums] [--out=file]
-// Use stored heard beats or a cached model run, not the already-repaired analysis beats.
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+// MV_CACHE_DIR=<cache> node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks] [--out=file]
+// Hears the track through Striker 2.0, as ingest does, not the already-repaired analysis beats.
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CACHE_DIR, decodeAudio, handMapInput, publishedLevel, readContext } from '@mv/analysis';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
-import { BeatThis } from '../packages/analysis/src/beatthis.ts';
-import { Adtof } from '../packages/analysis/src/adtof.ts';
 import { DEFAULT_TUNING, type GuardDecision, type StructureTuning } from '../packages/analysis/src/structure.ts';
 import type { PhaseRun } from '../packages/analysis/src/downbeatPhase.ts';
+import { hearing, stopHearing } from './hearing.ts';
 
 const id = process.argv[2];
 if (!id) throw new Error('usage: node bench/movementprobe.ts <trackId> [--no-hand-maps] [--no-marks]');
@@ -21,42 +19,14 @@ const audio = files.find((x) => x.startsWith(`${id}.`) && /\.(m4a|webm|opus|mp3|
 if (!audio) throw new Error(`no audio for ${id} in ${CACHE_DIR}`);
 const cached = JSON.parse(readFileSync(join(CACHE_DIR, `${id}.analysis.json`), 'utf8')) as {
 	title: string;
-	beats: number[];
-	downbeats?: number[];
-	heard?: { beats: number[]; downbeats: number[] };
 };
 const decoded = await decodeAudio(join(CACHE_DIR, audio));
-const BEATS = join(import.meta.dirname, 'corpus', '.beats');
-const probed = join(BEATS, `app-${id}.json`);
-let heard = cached.heard;
-if (!heard && existsSync(probed)) heard = JSON.parse(readFileSync(probed, 'utf8')) as { beats: number[]; downbeats: number[] };
-if (!heard) {
-	const model = await BeatThis.create();
-	heard = await model.run(decoded.mono);
-	await model.close();
-	mkdirSync(BEATS, { recursive: true });
-	writeFileSync(probed, JSON.stringify(heard));
-	console.log(`tracked ${heard.beats.length} beats and ${heard.downbeats.length} downbeats fresh; cached at ${probed}`);
-}
+const heard = await hearing(join(CACHE_DIR, audio));
+await stopHearing();
 const hand = noMaps ? {} : await handMapInput(id);
 if (noMarks) {
 	delete hand.movements;
 	delete hand.movementVetoes;
-}
-// The kit the app hears: the drum model, listening at its own rate, exactly as ingest runs
-// it. Without it the DSP detector counts 808 notes as kicks and the kit-driven labels -
-// chorus against verse on HIGHEST IN THE ROOM - are not the app's. --no-drums skips it.
-let drums: Awaited<ReturnType<Adtof['run']>> | undefined;
-if (!process.argv.includes('--no-drums')) {
-	const model = await Adtof.create();
-	if (model) {
-		try {
-			const wide = await decodeAudio(join(CACHE_DIR, audio), 44100);
-			drums = await model.run(wide.mono);
-		} finally {
-			await model.close();
-		}
-	}
 }
 const probe: {
 	arrivals?: Float32Array;
@@ -77,7 +47,7 @@ const tuning = tuningArg ? { ...DEFAULT_TUNING, ...(JSON.parse(tuningArg) as Par
 // tempo, and without the same step here Stranded probes at 92 while the app plays it at 185.
 const context = (await readContext(id)) ?? undefined;
 const level = context?.publishedBpm
-	? publishedLevel(heard.beats, context.publishedBpm, context.genreFamily, { downbeats: heard.downbeats, snares: drums?.snare.times })
+	? publishedLevel(heard.beats, context.publishedBpm, context.genreFamily, { downbeats: heard.downbeats, snares: heard.drums.snare.times })
 	: null;
 const analysis = analyzeTrack({
 	probe,
@@ -90,7 +60,7 @@ const analysis = analyzeTrack({
 	title: cached.title,
 	beats: heard.beats,
 	downbeats: heard.downbeats,
-	drums,
+	striker2: heard,
 	context,
 	tuning,
 	...hand

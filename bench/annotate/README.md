@@ -5,21 +5,19 @@ the library is hardstyle, drum and bass, house and trap, and that is where detec
 clips are the only measurement that speaks for the room.
 
 ```sh
-node bench/annotate/prepare.ts --clips=36 --seconds=24   # cut clips from prepared drumeval evidence
 node bench/annotate/server.ts                            # http://localhost:5190
 node bench/annotate/export.ts                            # write the `owner` corpus
-node bench/drumeval/prepare.ts --corpus=owner --batch=4  # cache its model evidence
-node bench/drumeval/evaluate.ts --label=owner --corpus=owner --model=DIR
+node bench/drumeval/evaluate.ts --label=owner --corpus=owner
 ```
 
 Score the `owner` corpus with the `light` metric. Under `strict` every reference of a class is
 required, including the `unreviewed` markers that stand for the pages nobody confirmed.
 
-`prepare.ts` reads the cached evidence `bench/drumeval/prepare.ts` already wrote, so it costs no
-separation: per clip it writes the mix and the four separated sources as WAV, the beat grid, what
-the `--run` run emitted, and a high-recall proposal set from every view at thresholds far below
-the ones Striker selects on. That last part matters: a hit the shipped model misses is still
-drawn as an unconfirmed proposal, so reviewing does not inherit the model's blind spots.
+The 36 clips under `bench/reports/annotate/clips/` were cut by the retired `prepare.ts` from the
+drum separation evidence: per clip the mix and the four separated sources as WAV, the beat grid,
+what a Striker 1.x run emitted, and a high-recall proposal set from every view of that pipeline.
+The reviewer reads those files as they are. Cutting new clips needs a preparation built on
+Striker 2.0, which has no separated sources to offer as lanes.
 
 ## Reviewing
 
@@ -49,12 +47,10 @@ does differently. Slow the transport to 0.5x for rolls.
 
 ## Which clips are worth annotating first
 
-The synthetic corpus builds its backing by subtracting a library track's cached drum stem, so 16 of
-these 36 clips come from recordings whose accompaniment the classifier has already trained on. It
-never saw their real drums or any label from them, but the recording is not strictly unseen, so an
-annotation there is a weaker benchmark than one on a clip held out entirely. `clips/index.json`
-carries `heldOut` per entry and lists the 20 held-out clips first. Annotate those first, and keep
-`render.py` off any recording that becomes an annotation clip.
+The synthetic corpus built its backing by subtracting a library track's drum stem, so 16 of these
+36 clips come from recordings whose accompaniment Striker 1.x trained on, and striker-2 may have
+too. `clips/index.json` carries `heldOut` per entry and lists the 20 held-out clips first.
+Annotate those first.
 
 ## Partial reviews count
 

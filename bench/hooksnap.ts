@@ -4,16 +4,14 @@ import { benchmarkCache } from './cache.ts';
 import { join } from 'node:path';
 import { sectionBase, type TrackContext } from '@mv/core';
 import { decodeAudio, publishedLevel } from '@mv/analysis';
-import { BeatThis } from '../packages/analysis/src/beatthis.ts';
-import { Adtof } from '../packages/analysis/src/adtof.ts';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { hookStarts } from '../packages/analysis/src/vocabulary.ts';
-import type { DrumStream } from '../packages/analysis/src/drums.ts';
+import { hearing, stopHearing } from './hearing.ts';
 
 /**
  * Compare judged chorus starts with synced lyric hooks and owner targets.
  * node bench/hooksnap.ts --label before
- * Read the desktop cache without modifying it; cache model output in bench/reports/hooksnap.
+ * Read the desktop cache without modifying it; reports go to bench/reports/hooksnap.
  * The annotated corpora lack lyric contexts and cannot test this signal.
  */
 
@@ -111,59 +109,6 @@ const cacheDir = flag('cache', benchmarkCache());
 const modelCacheDir = join(import.meta.dirname, 'reports', 'hooksnap');
 await mkdir(modelCacheDir, { recursive: true });
 
-interface CachedModels {
-	beats: number[];
-	downbeats: number[];
-	drums: {
-		kick: SerialStream;
-		snare: SerialStream;
-		hat: SerialStream;
-	} | null;
-}
-interface SerialStream {
-	times: number[];
-	levels: number[];
-	curve: number[];
-	fps: number;
-}
-
-const serial = (s: DrumStream): SerialStream => ({
-	times: s.times,
-	levels: s.levels,
-	curve: Array.from(s.curve),
-	fps: s.fps
-});
-const revive = (s: SerialStream): DrumStream => ({
-	times: s.times,
-	levels: s.levels,
-	curve: Float32Array.from(s.curve),
-	fps: s.fps
-});
-
-let beatModel: BeatThis | null = null;
-let drumModel: Adtof | null | undefined;
-
-async function models(id: string, audioPath: string): Promise<CachedModels> {
-	const cached = join(modelCacheDir, `${id}.models.json`);
-	if (existsSync(cached)) {
-		return JSON.parse(await readFile(cached, 'utf8')) as CachedModels;
-	}
-	beatModel ??= await BeatThis.create();
-	drumModel ??= await Adtof.create();
-	const decoded = await decodeAudio(audioPath);
-	const tracked = await beatModel.run(decoded.mono);
-	const drums = drumModel ? await drumModel.run((await decodeAudio(audioPath, 44100)).mono) : null;
-	const out: CachedModels = {
-		beats: tracked.beats,
-		downbeats: tracked.downbeats,
-		drums: drums
-			? { kick: serial(drums.kick), snare: serial(drums.snare), hat: serial(drums.hat) }
-			: null
-	};
-	await writeFile(cached, JSON.stringify(out));
-	return out;
-}
-
 interface Report {
 	id: string;
 	title: string;
@@ -185,11 +130,13 @@ for (const t of TRACKS) {
 		await readFile(join(cacheDir, `${t.id}.context.json`), 'utf8')
 	) as TrackContext;
 
-	const m = await models(t.id, audioPath);
+	const heard = await hearing(audioPath);
 	const decoded = await decodeAudio(audioPath);
 	let metricalLevel: number | undefined;
 	if (context.publishedBpm) {
-		const level = publishedLevel(m.beats, context.publishedBpm, context.genreFamily);
+		const level = publishedLevel(heard.beats, context.publishedBpm, context.genreFamily, {
+			downbeats: heard.downbeats, snares: heard.drums.snare.times
+		});
 		if (level !== null) metricalLevel = level;
 	}
 
@@ -202,11 +149,9 @@ for (const t of TRACKS) {
 		hash: decoded.hash,
 		trackId: t.id,
 		title: t.title,
-		beats: m.beats,
-		downbeats: m.downbeats,
-		drums: m.drums
-			? { kick: revive(m.drums.kick), snare: revive(m.drums.snare), hat: revive(m.drums.hat) }
-			: undefined,
+		beats: heard.beats,
+		downbeats: heard.downbeats,
+		striker2: heard,
 		metricalLevel,
 		context
 	});
@@ -290,5 +235,4 @@ await writeFile(
 	JSON.stringify(reports, null, '\t')
 );
 console.log(`\nreport-${label}.json written (${reports.length} tracks)`);
-await beatModel?.close();
-await drumModel?.close();
+await stopHearing();

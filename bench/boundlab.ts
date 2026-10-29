@@ -1,11 +1,10 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CACHE_DIR, decodeAudio } from '@mv/analysis';
-import { BeatThis } from '../packages/analysis/src/beatthis.ts';
+import { hearing, stopHearing } from './hearing.ts';
 import { extractFeatures } from '../packages/analysis/src/features.ts';
 import { beatSynchronous } from '../packages/analysis/src/beatsync.ts';
 import { chromagram } from '../packages/analysis/src/chroma.ts';
-import { detectDrums } from '../packages/analysis/src/drums.ts';
 import { measureLoudness } from '../packages/analysis/src/loudness.ts';
 import {
 	barSynchronous,
@@ -36,9 +35,8 @@ if (Number.isFinite(gain) && Math.abs(gain - 1) > 0.01) {
 	for (let i = 0; i < mono.length; i++) mono[i] *= g;
 }
 
-const model = await BeatThis.create();
-const tracked = await model.run(mono);
-await model.close();
+const tracked = await hearing(join(CACHE_DIR, audio));
+await stopHearing();
 
 const features = extractFeatures(mono, decoded.sampleRate);
 const chroma = chromagram(mono, decoded.sampleRate);
@@ -51,17 +49,13 @@ const beats = Float64Array.from(tracked.beats);
 const bf = beatSynchronous(features.spec, chroma, features.curves, features.odf, beats, decoded.duration);
 const bars = barSynchronous(bf, analysis.tempo.beatsPerBar, analysis.tempo.downbeatPhase);
 
-const detected = detectDrums(features.spec, {
-	beatPeriod: (beats[beats.length - 1] - beats[0]) / (beats.length - 1),
-	odf: features.odf
-});
 const rawKicks = new Int32Array(bars.count);
 {
 	let i = 0;
 	for (let b = 0; b < bars.count; b++) {
-		while (i < detected.kick.times.length && detected.kick.times[i] < bars.time[b]) i++;
+		while (i < tracked.drums.kick.times.length && tracked.drums.kick.times[i] < bars.time[b]) i++;
 		let n = 0;
-		while (i + n < detected.kick.times.length && detected.kick.times[i + n] < bars.time[b + 1]) n++;
+		while (i + n < tracked.drums.kick.times.length && tracked.drums.kick.times[i + n] < bars.time[b + 1]) n++;
 		rawKicks[b] = n;
 	}
 }

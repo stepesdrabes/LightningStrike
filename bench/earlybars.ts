@@ -1,11 +1,11 @@
 // Score frozen 2026-08-14 owner boundary targets against the current pipeline and arrival
 // evidence.
 // node bench/earlybars.ts
-import { readdirSync, readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
-import { BeatThis } from '../packages/analysis/src/beatthis.ts';
+import { hearing, stopHearing } from './hearing.ts';
 import { analyzeTrack } from '../packages/analysis/src/analyze.ts';
 import { DEFAULT_TUNING, type StructureTuning } from '../packages/analysis/src/structure.ts';
 import { TARGETS, type Target } from './targets.ts';
@@ -26,20 +26,6 @@ const noLyrics = process.argv.includes('--no-lyrics');
 
 
 const cache = benchmarkCache();
-const beatsDir = join(import.meta.dirname, 'corpus/.beats');
-mkdirSync(beatsDir, { recursive: true });
-
-let model: BeatThis | null = null;
-async function beatsFor(id: string, audio: string): Promise<{ beats: number[]; downbeats: number[] }> {
-	const path = join(beatsDir, `judged-${id}.json`);
-	if (existsSync(path)) return JSON.parse(readFileSync(path, 'utf8'));
-	const decoded = await decodeAudio(audio);
-	model ??= await BeatThis.create();
-	const tracked = await model.run(decoded.mono);
-	writeFileSync(path, JSON.stringify(tracked));
-	return tracked;
-}
-
 const byTrack = new Map<string, Target[]>();
 for (const t of TARGETS) {
 	const list = byTrack.get(t.id) ?? [];
@@ -58,7 +44,7 @@ for (const [id, targets] of byTrack) {
 		console.log(`${id}  NO AUDIO in ${cache}`);
 		continue;
 	}
-	const tracked = await beatsFor(id, join(cache, audio));
+	const tracked = await hearing(join(cache, audio));
 	const decoded = await decodeAudio(join(cache, audio));
 	let context = existsSync(join(cache, `${id}.context.json`))
 		? JSON.parse(readFileSync(join(cache, `${id}.context.json`), 'utf8'))
@@ -74,6 +60,7 @@ for (const [id, targets] of byTrack) {
 		context,
 		beats: tracked.beats,
 		downbeats: tracked.downbeats,
+		striker2: tracked,
 		tuning
 	});
 	// Exclude build starts: the judged seam is their following arrival.
@@ -96,4 +83,4 @@ for (const [id, targets] of byTrack) {
 	}
 }
 console.log(`\n${hit} hit, ${closer} closer, ${same} same, ${worse} worse of ${hit + closer + same + worse}`);
-await model?.close();
+await stopHearing();

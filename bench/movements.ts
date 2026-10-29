@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from 'node:path';
 import { benchmarkCache } from './cache.ts';
 import { decodeAudio } from '@mv/analysis';
+import { hearing, stopHearing } from './hearing.ts';
 import { extractFeatures } from '../packages/analysis/src/features.ts';
 import { beatSynchronous } from '../packages/analysis/src/beatsync.ts';
 import { chromagram } from '../packages/analysis/src/chroma.ts';
@@ -31,7 +32,6 @@ const verbose = argv.includes('--verbose') || !!only;
 
 const APP_CACHE = benchmarkCache();
 const CORPUS = join(import.meta.dirname, 'corpus');
-const BEATS = join(CORPUS, '.beats');
 const REPORTS = join(import.meta.dirname, 'reports', 'movements');
 mkdirSync(REPORTS, { recursive: true });
 
@@ -58,7 +58,7 @@ interface Track {
 	duration: number;
 }
 
-function loadTracks(): Track[] {
+async function loadTracks(): Promise<Track[]> {
 	const out: Track[] = [];
 	if (set === 'app') {
 		const files = readdirSync(APP_CACHE);
@@ -74,13 +74,11 @@ function loadTracks(): Track[] {
 				heard?: { beats: number[]; downbeats: number[] };
 			};
 			if (!a.downbeats || a.downbeats.length < 4) continue;
-			// The model's own count: from the blob when the analysis kept it, else from the
-			// probe's cache of a fresh tracking run. The blob's `beats` are already repaired,
-			// and repairing them again is not what the app does.
-			const probed = join(BEATS, `app-${id}.json`);
-			const heard =
-				a.heard ?? (existsSync(probed) ? (JSON.parse(readFileSync(probed, 'utf8')) as { beats: number[]; downbeats: number[] }) : undefined);
+			// The model's own count: from the blob when the analysis kept it, else heard again.
+			// The blob's `beats` are already repaired, and repairing them again is not what the
+			// app does.
 			const audio = files.find((x) => x.startsWith(`${id}.`) && AUDIO.test(x));
+			const heard = a.heard ?? (audio ? await hearing(join(APP_CACHE, audio)) : undefined);
 			let marked: number[] = [];
 			const judge = join(APP_CACHE, 'judge', `${id}.json`);
 			if (existsSync(judge)) {
@@ -105,19 +103,15 @@ function loadTracks(): Track[] {
 		const expect = existsSync(expectPath)
 			? (JSON.parse(readFileSync(expectPath, 'utf8')) as Record<string, { title: string; switches: number[] }>)
 			: {};
-		for (const f of readdirSync(BEATS)) {
-			if (!f.startsWith(`${set}-`)) continue;
-			const key = f.slice(set.length + 1, -'.json'.length);
+		for (const audio of existsSync(audioDir) ? readdirSync(audioDir).filter((x) => AUDIO.test(x)) : []) {
+			const key = audio.slice(0, audio.lastIndexOf('.'));
 			if (only && key !== only) continue;
-			const tracked = JSON.parse(readFileSync(join(BEATS, f), 'utf8')) as { beats: number[]; downbeats: number[] };
-			const audio = existsSync(audioDir)
-				? readdirSync(audioDir).find((x) => x.startsWith(`${key}.`) && AUDIO.test(x))
-				: undefined;
+			const tracked = await hearing(join(audioDir, audio));
 			const e = expect[key];
 			out.push({
 				id: key,
 				title: e?.title ?? key,
-				audio: audio ? join(audioDir, audio) : null,
+				audio: join(audioDir, audio),
 				beats: tracked.beats,
 				downbeats: tracked.downbeats,
 				expected: e?.switches ?? [],
@@ -158,7 +152,8 @@ function beatsPerBarOf(beats: readonly number[] | Float64Array, downbeats: reado
 	return bpb === 8 || bpb === 12 ? 4 : bpb === 6 ? 3 : bpb;
 }
 
-const tracks = loadTracks();
+const tracks = await loadTracks();
+await stopHearing();
 console.log(`${tracks.length} tracks in set ${set}${material ? '' : ' (no material pass)'}\n`);
 const report: Record<string, unknown>[] = [];
 let hits = 0;

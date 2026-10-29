@@ -15,7 +15,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { tracks, type DrumEvent } from './corpus.ts';
-import { EVAL_ROOT, evidenceDir, files, readJson, type AudioRecord, type BeatsRecord } from './evidence.ts';
+import { EVAL_ROOT } from './evidence.ts';
+import { hearing, stopHearing } from '../hearing.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
@@ -93,12 +94,9 @@ const out: unknown[] = [];
 let labelled = 0;
 for (const track of tracks([corpusName])) {
 	if (!genres.includes(track.genre ?? '')) continue;
-	const dir = evidenceDir(track);
-	const beats = readJson<BeatsRecord>(join(dir, files.beats))?.beats;
-	const audio = readJson<AudioRecord>(join(dir, files.audio));
-	if (!beats || beats.length < 64 || !audio) continue;
+	const { beats } = await hearing(track.audio);
+	if (beats.length < 64) continue;
 	const decoded = await decodeAudio(track.audio, RATE);
-	if (decoded.hash !== audio.hash44) continue;
 	const start = Math.min(30, Math.max(0, decoded.duration - seconds - 1));
 	const end = Math.min(decoded.duration, start + seconds);
 	const inside = beats.filter((t) => t >= start && t < end);
@@ -203,3 +201,4 @@ writeFileSync(join(OUT, 'tracks.json'), JSON.stringify({
 	tracks: out
 }));
 console.log(`\n${out.length} tracks, ${labelled} kicks -> ${OUT}`);
+await stopHearing();
