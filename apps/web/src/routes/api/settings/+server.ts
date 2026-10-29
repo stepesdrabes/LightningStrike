@@ -24,7 +24,7 @@ import { isLocal } from '$lib/server/access.ts';
 import { runner } from '$lib/server/ingestRunner.ts';
 import { queue } from '$lib/server/queueStore.ts';
 import { settings } from '$lib/server/settings.ts';
-import { analysisModelChoices, isAnalysisProvider } from '@mv/analysis';
+import { analysisModelChoices, isAnalysisProvider, offeredYouTubeBrowsers } from '@mv/analysis';
 import type { ColourSource } from '@mv/core';
 import { authorModel, isEffort, type EffortLevel } from '@mv/author-ai';
 import type { RequestHandler } from './$types';
@@ -86,6 +86,11 @@ export const PUT: RequestHandler = async (event) => {
 		if (!isAnalysisProvider(body.analysisProvider)) error(400, 'unknown analysis provider');
 		patch.analysisProvider = body.analysisProvider;
 	}
+	if (body.youtubeBrowser !== undefined) {
+		const offered: string[] = offeredYouTubeBrowsers();
+		if (body.youtubeBrowser !== 'none' && !offered.includes(body.youtubeBrowser)) error(400, 'unknown browser');
+		patch.youtubeBrowser = body.youtubeBrowser;
+	}
 	if (Object.keys(patch).length === 0) error(400, 'nothing to change');
 
 	const before = (await settings.read()).analysisModel;
@@ -118,6 +123,7 @@ interface Writable {
 	ambientDwell?: number;
 	analysisModel?: string;
 	analysisProvider?: string;
+	youtubeBrowser?: string;
 }
 
 function number(v: unknown): v is number {

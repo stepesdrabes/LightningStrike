@@ -15,6 +15,7 @@
 		onsearch,
 		onlibrary,
 		onhardware,
+		onsettings,
 		ontoggleLeft,
 		ontoggleRight
 	}: {
@@ -27,6 +28,7 @@
 		onsearch: (seed: string) => void;
 		onlibrary: () => void;
 		onhardware: () => void;
+		onsettings: () => void;
 		ontoggleLeft: () => void;
 		ontoggleRight: () => void;
 	} = $props();
@@ -50,10 +52,10 @@
 			onclick={ontoggleLeft}>
 			<Icon name="panelLeft" size={17} />
 		</Button>
-		<span class="brand">
+		<button class="brand" onclick={onsettings} title="Settings (⌘,)" aria-label="Settings">
 			<span class="bolt"><Icon name="bolt" size={13} fill /></span>
 			<span class="mark">LightningStrike</span>
-		</span>
+		</button>
 	</div>
 
 	<button class="search" aria-label="Search" onclick={() => onsearch('')} {onkeydown}>
@@ -131,8 +133,20 @@
 		display: flex;
 		align-items: center;
 		gap: 8px;
-		padding-left: 2px;
 		min-width: 0;
+		height: 30px;
+		padding: 0 8px 0 4px;
+		margin-left: -2px;
+		border-radius: var(--radius-md);
+		color: var(--foreground);
+		transition: background 0.12s;
+	}
+	.brand:hover {
+		background: var(--hover);
+	}
+	.brand:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 1px;
 	}
 	.bolt {
 		display: grid;

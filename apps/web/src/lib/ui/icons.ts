@@ -8,6 +8,7 @@ import ChevronsLeft from 'lucide-svelte/icons/chevrons-left';
 import ChevronsRight from 'lucide-svelte/icons/chevrons-right';
 import Ellipsis from 'lucide-svelte/icons/ellipsis';
 import FileCode from 'lucide-svelte/icons/file-code';
+import FolderOpen from 'lucide-svelte/icons/folder-open';
 import Hand from 'lucide-svelte/icons/hand';
 import Lamp from 'lucide-svelte/icons/lamp';
 import Link from 'lucide-svelte/icons/link';
@@ -52,6 +53,7 @@ export const GLYPHS = {
 	segmentForward: ChevronsRight,
 	more: Ellipsis,
 	file: FileCode,
+	folder: FolderOpen,
 	hold: Hand,
 	lounge: Lamp,
 	link: Link,

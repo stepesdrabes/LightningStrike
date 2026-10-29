@@ -7,7 +7,8 @@ export {
 	type YouTubeBrowser,
 	type YouTubeSession
 } from './youtubeSession.ts';
-export { CACHE_DIR, EVENING_DIR, workspaceRoot } from './paths.ts';
+export { CACHE_DIR, EVENING_DIR, MODEL_DIR, workspaceRoot } from './paths.ts';
+export { runtimeVersion } from './striker2.ts';
 export { readLibrary } from './library.ts';
 export {
 	ANALYSIS_MODELS,

@@ -120,6 +120,28 @@ export interface Settings {
 	analysisModel: AnalysisModelId;
 	analysisModels: readonly AnalysisModelChoice[];
 	analysisProvider: AnalysisProvider;
+	/** The browser whose YouTube sign-in downloads use. */
+	youtubeBrowser: YouTubeBrowser | 'none';
+	youtubeBrowsers: readonly YouTubeBrowser[];
+}
+
+/** Mirrors $lib/server/system SystemInfo. */
+export interface SystemInfo {
+	cacheDir: string;
+	modelDir: string;
+	library: { songs: number; bytes: number };
+	tools: { name: string; version: string | null; note: string | null }[];
+	runtime: { node: string; onnxruntime: string | null; analysis: number; show: number };
+}
+
+/** Mirrors @mv/analysis YOUTUBE_BROWSERS. */
+export type YouTubeBrowser = 'brave' | 'chrome' | 'edge' | 'firefox' | 'safari';
+
+/** Mirrors @mv/analysis YouTubeSession: what yt-dlp found in the chosen browser. */
+export interface YouTubeSession {
+	browser: YouTubeBrowser;
+	signedIn: boolean;
+	problem: string | null;
 }
 
 /**
@@ -146,6 +168,7 @@ export interface SettingsPatch {
 	ambientDwell?: number;
 	analysisModel?: AnalysisModelId;
 	analysisProvider?: AnalysisProvider;
+	youtubeBrowser?: YouTubeBrowser | 'none';
 }
 
 /** Mirrors $lib/server/judge MomentNote. Duplicated so the client does not import the server. */

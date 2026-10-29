@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@mv/analysis', () => ({
 	analysisModelChoices: mocks.choices,
-	isAnalysisProvider: (value: unknown) => ['auto', 'cpu'].includes(value as string)
+	isAnalysisProvider: (value: unknown) => ['auto', 'cpu'].includes(value as string),
+	offeredYouTubeBrowsers: () => ['brave', 'chrome', 'edge', 'firefox']
 }));
 vi.mock('@mv/author-ai', () => ({ authorModel: () => undefined, isEffort: () => false }));
 // The test runner does not resolve SvelteKit's $lib alias, so each module is named for it.
@@ -78,6 +79,21 @@ describe('choosing where the analysis model runs', () => {
 
 	it('refuses a provider it does not know', async () => {
 		await expect(put({ analysisProvider: 'npu' })).rejects.toMatchObject({ status: 400 });
+		expect(mocks.update).not.toHaveBeenCalled();
+	});
+});
+
+describe('choosing the browser that signs YouTube downloads in', () => {
+	it('saves a browser this platform offers, and going back to signed out', async () => {
+		await put({ youtubeBrowser: 'brave' });
+		expect(mocks.update).toHaveBeenLastCalledWith({ youtubeBrowser: 'brave' });
+		await put({ youtubeBrowser: 'none' });
+		expect(mocks.update).toHaveBeenLastCalledWith({ youtubeBrowser: 'none' });
+	});
+
+	it('refuses a browser this platform does not offer', async () => {
+		await expect(put({ youtubeBrowser: 'safari' })).rejects.toMatchObject({ status: 400 });
+		await expect(put({ youtubeBrowser: 'netscape' })).rejects.toMatchObject({ status: 400 });
 		expect(mocks.update).not.toHaveBeenCalled();
 	});
 });

@@ -25,13 +25,16 @@
 		SearchResult,
 		Settings,
 		SettingsPatch,
-		TrackMeta
+		TrackMeta,
+		YouTubeBrowser,
+		YouTubeSession
 	} from '$lib/types.ts';
 	import Backdrop from '$components/Backdrop.svelte';
 	import HardwareModal from '$components/HardwareModal.svelte';
 	import EveningRail from '$components/EveningRail.svelte';
 	import JudgePanel from '$components/JudgePanel.svelte';
 	import LibraryModal from '$components/LibraryModal.svelte';
+	import SettingsModal from '$components/SettingsModal.svelte';
 	import LoungeModal from '$components/LoungeModal.svelte';
 	import Menu from '$lib/ui/Menu.svelte';
 	import PlayerBar from '$components/PlayerBar.svelte';
@@ -90,8 +93,12 @@
 		ambient: { ...DEFAULT_AMBIENT },
 		analysisModel: 'striker2',
 		analysisModels: [],
-		analysisProvider: 'auto'
+		analysisProvider: 'auto',
+		youtubeBrowser: 'none',
+		youtubeBrowsers: []
 	});
+	/** Null while unknown: not checked yet, or downloads go signed out. */
+	let youtubeSession = $state<YouTubeSession | null>(null);
 
 	let suggestions = $state<SearchResult[]>([]);
 	/** Where the rail's window into them starts. */
@@ -102,6 +109,7 @@
 	let laneView = $state<TimeWindow>(FULL_WINDOW);
 	let hardwareOpen = $state(false);
 	let libraryOpen = $state(false);
+	let settingsOpen = $state(false);
 	let loungeOpen = $state(false);
 	let judgeOpen = $state(false);
 	/** By track id. Loaded once when the panel first opens; writes go through saveJudgement. */
@@ -238,6 +246,24 @@
 	async function chooseAnalysisModel(analysisModel: AnalysisModelId) {
 		await patchSettings({ analysisModel });
 		await refreshLibrary();
+	}
+
+	/** The server keeps a recent answer, so reopening the library does not start yt-dlp again. */
+	async function checkYouTube(fresh: boolean) {
+		if (settings.youtubeBrowser === 'none') return;
+		const res = await fetch(`/api/youtube${fresh ? '?fresh' : ''}`);
+		if (res.ok) youtubeSession = (await res.json()) as YouTubeSession | null;
+	}
+
+	async function chooseYouTubeBrowser(youtubeBrowser: YouTubeBrowser | 'none') {
+		youtubeSession = null;
+		await patchSettings({ youtubeBrowser });
+		await checkYouTube(true);
+	}
+
+	function openSettings() {
+		settingsOpen = true;
+		void checkYouTube(false);
 	}
 
 	/** Refresh blended radio suggestions when the set list changes. */
@@ -996,6 +1022,11 @@
 			openSearch('');
 			return;
 		}
+		if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+			e.preventDefault();
+			openSettings();
+			return;
+		}
 		if (searchOpen) return;
 		if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
@@ -1031,6 +1062,7 @@
 		cached={library.length}
 		onsearch={openSearch}
 		onlibrary={() => (libraryOpen = true)}
+		onsettings={openSettings}
 		onhardware={() => (hardwareOpen = true)}
 		ontoggleLeft={() => (leftOpen = !leftOpen)}
 		ontoggleRight={() => (rightOpen = !rightOpen)} />
@@ -1170,12 +1202,18 @@
 	onplay={(e) => void fromLibrary(e, 'now')}
 	onqueue={(e) => void fromLibrary(e, 'queue')}
 	onradio={(e) => void startRadio(e.id, e.title)}
-	ondelete={forget}
-	analysisModel={settings.analysisModel}
-	analysisModels={settings.analysisModels}
+	ondelete={forget} />
+
+<SettingsModal
+	open={settingsOpen}
+	{settings}
+	{youtubeSession}
+	onclose={() => (settingsOpen = false)}
 	onanalysismodel={(analysisModel) => void chooseAnalysisModel(analysisModel)}
-	analysisProvider={settings.analysisProvider}
-	onanalysisprovider={(analysisProvider) => void patchSettings({ analysisProvider })} />
+	onanalysisprovider={(analysisProvider) => void patchSettings({ analysisProvider })}
+	onyoutubebrowser={(browser) => void chooseYouTubeBrowser(browser)}
+	onautopilot={toggleAutopilot}
+	onrest={toggleRest} />
 
 <!-- All at the page root: a panel that blurs its backdrop cannot contain a fixed-position child. -->
 <Menu />

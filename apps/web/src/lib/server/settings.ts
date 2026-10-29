@@ -7,9 +7,12 @@ import {
 	analysisModelChoices,
 	isAnalysisModel,
 	isAnalysisProvider,
+	isYouTubeBrowser,
+	offeredYouTubeBrowsers,
 	type AnalysisModelChoice,
 	type AnalysisModelId,
-	type AnalysisProvider
+	type AnalysisProvider,
+	type YouTubeBrowser
 } from '@mv/analysis';
 import {
 	DEFAULT_OUTPUT_FPS,
@@ -82,6 +85,8 @@ interface SettingsFile {
 	analysisModel?: string;
 	/** One of `ANALYSIS_PROVIDERS`, which ingest reads from this file too. */
 	analysisProvider?: string;
+	/** A browser in `YOUTUBE_BROWSERS` whose YouTube sign-in downloads use, or `none`; ingest reads it. */
+	youtubeBrowser?: string;
 }
 
 export interface PublicSettings {
@@ -109,6 +114,9 @@ export interface PublicSettings {
 	analysisModels: AnalysisModelChoice[];
 	/** Where the model runs; any choice gives the same events. */
 	analysisProvider: AnalysisProvider;
+	youtubeBrowser: YouTubeBrowser | 'none';
+	/** The browsers this platform can lend a YouTube sign-in. */
+	youtubeBrowsers: YouTubeBrowser[];
 }
 
 class Settings {
@@ -167,7 +175,9 @@ class Settings {
 			analysisModels: await analysisModelChoices(),
 			analysisProvider: isAnalysisProvider(file.analysisProvider)
 				? file.analysisProvider
-				: DEFAULT_ANALYSIS_PROVIDER
+				: DEFAULT_ANALYSIS_PROVIDER,
+			youtubeBrowser: isYouTubeBrowser(file.youtubeBrowser) ? file.youtubeBrowser : 'none',
+			youtubeBrowsers: offeredYouTubeBrowsers()
 		};
 	}
 
