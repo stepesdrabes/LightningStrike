@@ -22,15 +22,9 @@ const OUTPUTS = {
 export type Striker2Output = keyof typeof OUTPUTS;
 export type Striker2Outputs = Record<Striker2Output, Float32Array>;
 
-/** Beat This! keeps the beats until a model passes the capstone's beat gate (manifest `app.beats`). */
-export type BeatSource = 'beatthis' | 'striker2';
-
 export interface Striker2Model {
-	/** The manifest's name, `Striker 2.0 (<first 8 hex of the graph's SHA-256>)`. */
+	/** The manifest's name, `<release> (<first 8 hex of the graph's SHA-256>)`; analyses record it. */
 	name: string;
-	/** What analyses record as `striker`: the name, marked when its beats are used. */
-	identity: string;
-	beats: BeatSource;
 	graph: string;
 	input: string;
 	/** Frames per graph run and frames each neighbour overwrites at either end. */
@@ -46,10 +40,10 @@ export interface Striker2Model {
 }
 
 export interface Striker2Result {
-	/** The model's identity (see `Striker2Model.identity`). */
+	/** The model's name (see `Striker2Model.name`). */
 	name: string;
 	drums: Record<Striker2Class, DrumStream>;
-	/** DBN beats and downbeats, seconds to 1 ms, every downbeat one of the beats; empty unless asked. */
+	/** DBN beats and downbeats, seconds to 1 ms, every downbeat one of the beats. */
 	beats: number[];
 	downbeats: number[];
 	bass: OnsetStream;
@@ -177,14 +171,8 @@ export function parseStriker2Manifest(
 	const rounding = object(decoding.rounding, 'decoding.rounding');
 	same([rounding.time_s, rounding.level], [0.001, 0.01], 'decoding.rounding');
 	const levelFloor = number(rounding.level_floor, 'decoding.rounding.level_floor', (v) => v >= 0 && v < 1);
-	const app = m.app === undefined ? {} : object(m.app, 'app');
-	if (app.beats !== undefined && app.beats !== 'beatthis' && app.beats !== 'striker2') {
-		fail('app.beats is neither beatthis nor striker2');
-	}
-	const beats: BeatSource = app.beats === 'striker2' ? 'striker2' : 'beatthis';
 	return {
-		name: m.name, identity: beats === 'striker2' ? `${m.name} with beats` : m.name, beats,
-		graph: join(dir, m.file), input: graph.input, chunk, border, activityStride, taps: firTaps(fir),
+		name: m.name, graph: join(dir, m.file), input: graph.input, chunk, border, activityStride, taps: firTaps(fir),
 		drums: { firstColumn, rules }, bass: rule(bass, 'decoding.bass'), levelFloor,
 		warnings: warnings(m.checked === undefined ? {} : object(m.checked, 'checked')),
 		sha256: m.sha256, bytes
@@ -215,16 +203,13 @@ export function chunkStarts(frames: number, chunk: number, border: number): numb
 	return out;
 }
 
-/**
- * Every stream the app reads, from whole-song outputs ([frames, width] each, 100 fps). The DBN,
- * the slowest decoder, runs only when `beats` asks for it.
- */
-export function decodeStriker2(model: Striker2Model, out: Striker2Outputs, beats = true): Striker2Result {
+/** Every stream the app reads, from whole-song outputs ([frames, width] each, 100 fps). */
+export function decodeStriker2(model: Striker2Model, out: Striker2Outputs): Striker2Result {
 	const heads = { onset: out.drum_onset, offset: out.drum_offset, level: out.drum_level, width: OUTPUTS.drum_onset };
 	return {
-		name: model.identity,
+		name: model.name,
 		drums: coarseHits(heads, model.drums.firstColumn, model.drums.rules, model.levelFloor),
-		...(beats ? dbnBeats(out.beat, out.beat_offset) : { beats: [], downbeats: [] }),
+		...dbnBeats(out.beat, out.beat_offset),
 		bass: bassOnsets(out.bass, model.bass, model.levelFloor),
 		activity: activitySpans(out.activity, ACTIVITY_STEMS)
 	};
@@ -276,8 +261,8 @@ export class Striker2 {
 		return merged;
 	}
 
-	/** 44.1 kHz mono, (L + R) / 2, as the app decodes it for the drum models. */
-	async run(mono: Float32Array, beats = true): Promise<Striker2Result> {
-		return decodeStriker2(this.model, await this.outputs(striker2Features(mono, this.model.taps)), beats);
+	/** 44.1 kHz mono, (L + R) / 2, as ingest decodes it for the model. */
+	async run(mono: Float32Array): Promise<Striker2Result> {
+		return decodeStriker2(this.model, await this.outputs(striker2Features(mono, this.model.taps)));
 	}
 }

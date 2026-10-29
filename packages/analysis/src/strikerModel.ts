@@ -1,34 +1,14 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { validateStrikerModel, type StrikerModel } from './striker.ts';
 import { STRIKER2_MANIFEST, readStriker2, type Striker2Model } from './striker2.ts';
 import { MODEL_DIR } from './paths.ts';
-
-/** The installed Striker model, no file, or a file that cannot be used (unreadable or invalid). */
-export type InstalledStriker = { model: StrikerModel } | { missing: true } | { error: Error };
 
 /** The installed Striker 2.0, no manifest, or one that cannot be used (malformed or unverified). */
 export type InstalledStriker2 = { model: Striker2Model } | { missing: true } | { error: Error };
 
 const failure = (e: unknown) => ({ error: e instanceof Error ? e : new Error(String(e)) });
 
-let parsed: { stamp: string; installed: InstalledStriker } | undefined;
-let parsed2: { stamp: string; installed: InstalledStriker2 } | undefined;
-
-/** Reads and validates `striker.json`, once per revision of the file. */
-export async function readInstalledStriker(): Promise<InstalledStriker> {
-	const path = join(MODEL_DIR, 'striker.json');
-	const info = await stat(path).catch(() => null);
-	if (!info) return { missing: true };
-	const stamp = `${info.mtimeMs}:${info.size}`;
-	if (parsed?.stamp !== stamp) {
-		const installed = await readFile(path, 'utf8')
-			.then((text): InstalledStriker => ({ model: validateStrikerModel(JSON.parse(text) as StrikerModel) }))
-			.catch(failure);
-		parsed = { stamp, installed };
-	}
-	return parsed.installed;
-}
+let parsed: { stamp: string; installed: InstalledStriker2 } | undefined;
 
 /** Reads and verifies `striker2.json` and its graph, once per revision of either file. */
 export async function readInstalledStriker2(): Promise<InstalledStriker2> {
@@ -43,23 +23,25 @@ export async function readInstalledStriker2(): Promise<InstalledStriker2> {
 	}
 	const graph = await stat(join(MODEL_DIR, file)).catch(() => null);
 	const stamp = `${MODEL_DIR}\n${text}\n${graph?.mtimeMs}:${graph?.size}`;
-	if (parsed2?.stamp !== stamp) {
+	if (parsed?.stamp !== stamp) {
 		const installed = await readStriker2(MODEL_DIR)
 			.then((model): InstalledStriker2 => ({ model }), failure);
-		parsed2 = { stamp, installed };
+		parsed = { stamp, installed };
 	}
-	return parsed2.installed;
+	return parsed.installed;
+}
+
+/** What a preparation reports when the model it needs cannot run. */
+export function striker2Problem(installed: Exclude<InstalledStriker2, { model: Striker2Model }>): string {
+	return 'missing' in installed
+		? `Striker 2.0 is not installed: put striker2.onnx and ${STRIKER2_MANIFEST} in ${MODEL_DIR}.`
+		: `Striker 2.0 cannot be used: ${installed.error.message}`;
 }
 
 /**
- * Whether drums a Striker model classified still match the installed one. Striker 2.0 takes
- * precedence: with its manifest installed only its own identity is current. A model file that
- * cannot be used keeps analyses rather than re-analysing them on an older path.
+ * Whether an analysis is still the installed model's: its `striker` names it. While no usable
+ * model is installed, analyses some Striker 2.0 made are kept: nothing could replace them.
  */
-export function strikerCurrent(
-	striker: string, installed: InstalledStriker, installed2: InstalledStriker2
-): boolean {
-	if ('error' in installed2) return true;
-	if ('model' in installed2) return installed2.model.identity === striker;
-	return 'error' in installed || ('model' in installed && installed.model.version === striker);
+export function strikerCurrent(striker: string | null | undefined, installed: InstalledStriker2): boolean {
+	return 'model' in installed ? striker === installed.model.name : typeof striker === 'string';
 }

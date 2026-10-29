@@ -159,8 +159,6 @@ describe('Striker 2.0 manifest', () => {
 		expect(model.drums.rules.tom.threshold).toBe(0.7);
 		expect(model.bass).toEqual({ threshold: 0.5, gap: 4, reach: 2.5 });
 		expect([model.chunk, model.border, model.activityStride, model.levelFloor]).toEqual([400, 50, 4, 0.02]);
-		expect(model.beats).toBe('beatthis');
-		expect(model.identity).toBe(model.name);
 		expect(model.warnings).toEqual(['no onnxruntime-node parity check is recorded for this graph']);
 	});
 
@@ -176,7 +174,7 @@ describe('Striker 2.0 manifest', () => {
 		await expect(readStriker2(dir)).rejects.toThrow('missing');
 	});
 
-	it('refuses a changed FIR, front end, format or beat switch it cannot honour', async () => {
+	it('refuses a changed FIR, front end or format it cannot honour', async () => {
 		await copyFile(join(FIXTURE, 'striker2.onnx'), join(dir, 'striker2.onnx'));
 		await install();
 		await expect(readStriker2(dir)).resolves.toMatchObject({ name: model.name });
@@ -190,17 +188,14 @@ describe('Striker 2.0 manifest', () => {
 		await expect(readStriker2(dir)).rejects.toThrow('format');
 		await install((m) => { m.decoding.drums.threshold.snare = 'high'; });
 		await expect(readStriker2(dir)).rejects.toThrow('snare threshold');
-		await install((m) => { m.app = { beats: 'madmom' }; });
-		await expect(readStriker2(dir)).rejects.toThrow('app.beats');
 		await writeFile(join(dir, STRIKER2_MANIFEST), '{"format": "striker2-model"');
 		await expect(readStriker2(dir)).rejects.toThrow('not JSON');
 	});
 
-	it('marks the identity when its beats replace Beat This!s', async () => {
-		await install((m) => { m.app = { beats: 'striker2' }; m.checked.onnxruntime_node = '1.27.0'; });
-		const withBeats = await readStriker2(dir);
-		expect(withBeats.beats).toBe('striker2');
-		expect(withBeats.identity).toBe(`${model.name} with beats`);
-		expect(withBeats.warnings.every((w) => !w.includes('no onnxruntime-node'))).toBe(true);
+	it('keeps its name whatever an older manifest says about beats, and notes another runtime', async () => {
+		await install((m) => { m.app = { beats: 'striker2' }; m.checked.onnxruntime_node = '0.0.1'; });
+		const older = await readStriker2(dir);
+		expect(older.name).toBe(model.name);
+		expect(older.warnings).toEqual([expect.stringMatching(/^checked with onnxruntime-node 0\.0\.1, running /)]);
 	});
 });

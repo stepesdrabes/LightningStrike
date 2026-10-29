@@ -7,20 +7,16 @@ import type { TrackAnalysis, TrackContext } from '@mv/core';
 import { ANALYSIS_VERSION, CONTEXT_VERSION, gridTrust } from '@mv/core';
 import { analyzeTrack } from './analyze.ts';
 import { artworkHue } from './artwork.ts';
-import { decodeAudio, downloadAudio, probe, resamplePcm, type ProbeResult } from './decode.ts';
+import { decodeAudio, downloadAudio, probe, type ProbeResult } from './decode.ts';
 import { enrichTrack } from './enrich.ts';
 import { mapGenres } from './genreMap.ts';
 import { handMapGrid, type DrawingGrid } from './gridedits.ts';
 import { handMapFingerprint, type HandSection } from './handSections.ts';
 import { medianPeriod } from './metricalLevel.ts';
 import { KICK_CLAIMING_FAMILIES, familyCorroborated, loudKickRate } from './vocabulary.ts';
-import { NO_TRANSCRIBER, readDrumEvidence, writeDrumEvidence, type DrumEvidence } from './drumEvidenceCache.ts';
-import { Adtof, adtofIdentity } from './adtof.ts';
-import { readInstalledStriker, readInstalledStriker2, strikerCurrent } from './strikerModel.ts';
-import { Striker2, type Striker2Model, type Striker2Result } from './striker2.ts';
-import { onsetsBeside, preludeBeside } from './dsp.ts';
-import type { SeparatedDrumAudio, SourceOnsets } from './separatedDrums.ts';
-import type { SeparatedDrums } from './separation.ts';
+import { readInstalledStriker2, striker2Problem, strikerCurrent } from './strikerModel.ts';
+import { Striker2 } from './striker2.ts';
+import { preludeBeside } from './dsp.ts';
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 const LOCAL_ID = /^file-[a-f0-9]{12}$/;
@@ -93,26 +89,6 @@ export async function readMeta(id: string): Promise<TrackMeta | null> {
 	} catch {
 		return null;
 	}
-}
-
-/**
- * ADTOF on the separated drum stem and on each 44.1 kHz source, for Striker. The recurrent model
- * keeps about one core busy, so each source runs in its own session at the same time.
- */
-async function transcribeKit(isolated: SeparatedDrums): Promise<NonNullable<DrumEvidence['activations']>> {
-	const names = ['stem', 'kick', 'snare', 'hat', 'cymbal'] as const;
-	const results = await Promise.all(names.map(async (name) => {
-		const model = await Adtof.create();
-		if (!model) throw new Error('the transcription model is not installed');
-		try {
-			const result = await model.run(name === 'stem' ? isolated.drums : isolated[name]);
-			if (!result.activations) throw new Error('the transcription returned no activations');
-			return result.activations;
-		} finally {
-			await model.close();
-		}
-	}));
-	return Object.fromEntries(names.map((name, i) => [name, results[i]])) as NonNullable<DrumEvidence['activations']>;
 }
 
 /** Read raw marks separately from interpretation so cache invalidation can detect any map change. */
@@ -247,8 +223,7 @@ export interface IngestResult {
 	fromCache: boolean;
 	/** Previous cached grid, sections and punctuation still match; retained shows must also lint. */
 	arrangementUnchanged?: true;
-	timings?: { totalMs: number; stagesMs: Record<string, number>; drumEvidenceCacheHit: boolean;
-		drumProviders?: Record<string, string> };
+	timings?: { totalMs: number; stagesMs: Record<string, number> };
 }
 
 function sameArrangementLayout(previous: TrackAnalysis | null, analysis: TrackAnalysis): boolean {
@@ -447,9 +422,7 @@ export type IngestStage =
 	| 'looking the track up'
 	| 'cached'
 	| 'decoding'
-	| 'tracking beats'
-	| 'transcribing drums'
-	| 'separating drums'
+	| 'transcribing'
 	| 'analysing';
 
 export interface IngestOptions {
@@ -588,8 +561,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	if (!opts.force && !relevel) {
 		// Invalidate stale versions and changed hand maps even when their JSON shape still looks compatible.
 		if (cached && cached.version === ANALYSIS_VERSION && cached.handMap === (await handMapStamp(id))
-			&& (!cached.striker
-				|| strikerCurrent(cached.striker, await readInstalledStriker(), await readInstalledStriker2()))) {
+			&& strikerCurrent(cached.striker, await readInstalledStriker2())) {
 			let [, context] = await metadata;
 			log('cached');
 			// Backfill legacy duration/trust metadata to avoid analysis reads for every library row.
@@ -618,194 +590,57 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			stagesMs[stage] = Math.round(performance.now() - began);
 		}
 	};
+	let striker2Note: Record<string, unknown> | undefined;
 	try {
-		// Striker 2.0, when installed, replaces separation, the ADTOF pass and (by its manifest's
-		// choice) Beat This!. An unusable manifest is reported here and in .preparation.json.
-		const installed2 = await readInstalledStriker2();
-		const striker2Model = 'model' in installed2 ? installed2.model : null;
-		let striker2Note: Record<string, unknown> | undefined;
-		if ('error' in installed2) {
-			log(`Striker 2.0 unavailable, falling back: ${installed2.error.message}`);
-			striker2Note = { error: installed2.error.message };
-		} else if (striker2Model) {
-			for (const warning of striker2Model.warnings) log(`Striker 2.0: ${warning}`);
-			striker2Note = { name: striker2Model.name, beats: striker2Model.beats,
-				...(striker2Model.warnings.length ? { warnings: striker2Model.warnings } : {}) };
-		}
+		// Striker 2.0 hears every drum hit, beat, downbeat and bass note; without it nothing is prepared.
+		const installed = await readInstalledStriker2();
+		if (!('model' in installed)) throw new Error(striker2Problem(installed));
+		const model = installed.model;
+		const warnings = [...model.warnings];
+		striker2Note = { name: model.name, warnings };
+		for (const warning of warnings) log(`Striker 2.0: ${warning}`);
 		audioStarted = true;
 		log('decoding');
 		const decoding = timed('decode', () => decodeAudio(audioPath));
-		// Decode model drums at their training rate; upsampling the analysis PCM cannot restore lost bands.
+		// The model hears 44.1 kHz; upsampling the analysis PCM cannot restore lost bands.
 		const wide = decodeAudio(audioPath, 44100);
 		wide.catch(() => {});
-		// Separation progress is the long wait; model stages report only while it is not running.
-		let separating = false;
-		const modelLog = (stage: string) => { if (!separating) log(stage); };
-
-		const transcribe = async (installed: Striker2Model): Promise<Striker2Result | null> => {
+		const transcribed = timed('striker2', async () => {
+			const striker = await Striker2.create(model);
 			try {
-				modelLog('transcribing drums');
-				const model = await Striker2.create(installed);
-				try {
-					return await model.run((await wide).mono, installed.beats === 'striker2');
-				} finally {
-					await model.close();
-				}
-			} catch (e) {
-				const reason = e instanceof Error ? e.message : String(e);
-				log(`Striker 2.0 failed, falling back to the DSP drums: ${reason}`);
-				striker2Note = { ...striker2Note, error: reason };
-				return null;
+				const audio = await wide;
+				log('transcribing');
+				return await striker.run(audio.mono);
+			} finally {
+				await striker.close();
 			}
-		};
-		const striker2Run = striker2Model ? timed('striker2', () => transcribe(striker2Model)) : Promise.resolve(null);
-
-		let separatedDrums: SeparatedDrumAudio | undefined;
-		let kitActivations: DrumEvidence['activations'] | undefined;
-		let separatedOnsets: Promise<Record<'kick' | 'snare' | 'hat' | 'cymbal', SourceOnsets> | undefined> =
-			Promise.resolve(undefined);
-		let drumSeparation: string | undefined;
-		let drumEvidenceCacheHit = false;
-		const drumProviders: Record<string, string> = {};
-		const separation = striker2Model ? Promise.resolve() : timed('separation', async () => {
-			try {
-				const { DrumSeparator, SEPARATION_VERSION } = await import('./separation.ts');
-				const provider = process.env.MV_DRUM_PROVIDER ?? 'cpu';
-				if (provider !== 'cpu' && provider !== 'dml') {
-					throw new Error(`Unsupported drum provider: ${provider}`);
-				}
-				const arena = process.env.MV_DRUM_CPU_ARENA;
-				if (arena !== undefined && arena !== 'true' && arena !== 'false') {
-					throw new Error('MV_DRUM_CPU_ARENA must be true or false.');
-				}
-				const lanes = process.env.MV_DRUM_CPU_LANES;
-				if (lanes !== undefined && !/^[1-4]$/.test(lanes)) {
-					throw new Error('MV_DRUM_CPU_LANES must be 1 to 4.');
-				}
-				const separator = await DrumSeparator.create(undefined, {
-					graphCacheDir: join(CACHE_DIR, 'separator-graphs'), provider,
-					cpuArena: arena === undefined ? undefined : arena === 'true',
-					lanes: lanes === undefined ? undefined : Number(lanes)
-				});
-				if (!separator) return;
-				separating = true;
-				log('separating drums');
-				try {
-					const [audio, stemModel] = await Promise.all([wide, adtofIdentity()]);
-					const evidenceDir = join(CACHE_DIR, 'drum-evidence');
-					const evidenceKey = { audioHash: audio.hash,
-						modelVersion: provider === 'cpu' ? SEPARATION_VERSION : `${SEPARATION_VERSION}:${provider}`,
-						frames44k: audio.left.length, stemModel: stemModel ?? NO_TRANSCRIBER };
-					const reused = await readDrumEvidence(evidenceDir, evidenceKey);
-					drumEvidenceCacheHit = reused !== null;
-					let sources: SeparatedDrumAudio & { hat: Float32Array; cymbal: Float32Array };
-					if (reused) {
-						log('Reusing separated drums');
-						sources = reused.sources;
-						kitActivations = reused.activations;
-					} else {
-						const isolated = await separator.run(audio.left, audio.right, (progress) => {
-							const { stage, completed, total, provider: actualProvider } = progress;
-							if (actualProvider) drumProviders[stage] = actualProvider;
-							const label = stage === 'drums' ? 'Isolating drums (1/2)'
-								: 'Separating the drum kit (2/2)';
-							log(`${label}: ${Math.round(100 * completed / Math.max(1, total))}%`);
-						});
-						const [kick, snare, hat, cymbal, transcribed] = await Promise.all([
-							resamplePcm(isolated.kick, isolated.sampleRate),
-							resamplePcm(isolated.snare, isolated.sampleRate),
-							resamplePcm(isolated.hat, isolated.sampleRate),
-							resamplePcm(isolated.cymbal, isolated.sampleRate),
-							stemModel ? transcribeKit(isolated).catch((e) => {
-								const reason = e instanceof Error ? e.message : String(e);
-								log(`drum transcription of separated sources unavailable: ${reason}`);
-								return undefined;
-							}) : undefined
-						]);
-						sources = { kick, snare, hat, cymbal, sampleRate: 22050 };
-						kitActivations = transcribed;
-					}
-					separatedDrums = sources;
-					// Analysis waits for these onset curves, not for the cache write below.
-					const { kick, snare, hat, cymbal, sampleRate } = sources;
-					const onsets = [kick, snare, hat, cymbal].map((pcm) => onsetsBeside(pcm, sampleRate));
-					separatedOnsets = Promise.all(onsets)
-						.then(([k, s, h, c]) => (k && s && h && c ? { kick: k, snare: s, hat: h, cymbal: c } : undefined));
-					// With a transcriber installed, only complete evidence is kept, so a transient failure retries.
-					if (!drumEvidenceCacheHit && (kitActivations || !stemModel)) {
-						const evidence = kitActivations ? { sources, activations: kitActivations } : { sources };
-						await writeDrumEvidence(evidenceDir, evidenceKey, evidence).catch(e =>
-							log(`Could not cache separated drums: ${e instanceof Error ? e.message : String(e)}`));
-					}
-					drumSeparation = SEPARATION_VERSION;
-				} finally {
-					separating = false;
-					await separator.close();
-				}
-			} catch (e) {
-				log(`drum separation unavailable, falling back: ${e instanceof Error ? e.message : String(e)}`);
-			}
+		}).catch((e: unknown) => {
+			throw new Error(`Striker 2.0 failed on this song: ${e instanceof Error ? e.message : String(e)}`);
 		});
+		transcribed.catch(() => {});
 
 		const decoded = await decoding;
 		const prelude = preludeBeside(decoded.mono, decoded.left, decoded.right, decoded.sampleRate);
 
 		const needsGenre = stale || !savedContext.sources.includes('effnet');
-		const models = (async () => {
-			const genre = needsGenre
-				? await timed('genre', () => classifyAudioGenre(decoded.mono, decoded.sampleRate)) : null;
-			stagesMs.genre ??= 0;
-
-			// The model finds the beats; everything after it is unchanged. If the weights are missing
-			// or the graph fails, the in-repo tracker runs instead: a worse grid is a worse show, a
-			// crash here is no show at all.
-			const tracked = striker2Model?.beats === 'striker2' ? null : await timed('beats', async () => {
-				try {
-					modelLog('tracking beats');
-					const { BeatThis } = await import('./beatthis.ts');
-					const model = await BeatThis.create();
-					try {
-						return await model.run(decoded.mono);
-					} finally {
-						await model.close();
-					}
-				} catch (e) {
-					log(`beat model unavailable, falling back: ${e instanceof Error ? e.message : String(e)}`);
-					return null;
-				}
-			});
-
-			const drums = striker2Model ? undefined : await timed('transcription', async () => {
-				try {
-					const model = await Adtof.create();
-					if (!model) return undefined;
-					modelLog('transcribing drums');
-					try {
-						return await model.run((await wide).mono);
-					} finally {
-						await model.close();
-					}
-				} catch (e) {
-					log(`drum model unavailable, falling back: ${e instanceof Error ? e.message : String(e)}`);
-					return undefined;
-				}
-			});
-			return { genre, tracked, drums };
-		})();
-
-		const [{ genre, tracked: heard, drums }, , striker2] = await Promise.all([models, separation, striker2Run]);
-		const tracked = striker2 && striker2Model?.beats === 'striker2'
-			? { beats: striker2.beats, downbeats: striker2.downbeats } : heard;
+		const genreVote = needsGenre
+			? timed('genre', () => classifyAudioGenre(decoded.mono, decoded.sampleRate)) : Promise.resolve(null);
+		const [genre, striker2] = await Promise.all([genreVote, transcribed]);
+		stagesMs.genre ??= 0;
+		const { beats, downbeats } = striker2;
+		if (beats.length <= MIN_MODEL_BEATS) {
+			warnings.push(`it heard ${beats.length} beats, so the onset tracker sets the grid`);
+			log(`Striker 2.0: ${warnings[warnings.length - 1]}`);
+		}
 		let [, context] = await metadata;
 		context = await recordAudioGenre(id, context, genre);
 
 		// Catalogue metrical corrections follow drum inference for the snare check; explicit listener
 		// corrections retain precedence.
 		let metricalLevel = opts.metricalLevel;
-		if (metricalLevel === undefined && tracked && context.publishedBpm) {
-			const level = publishedLevel(tracked.beats, context.publishedBpm, context.genreFamily, {
-				downbeats: tracked.downbeats,
-				snares: striker2 ? striker2.drums.snare.times : drums?.snare.times
+		if (metricalLevel === undefined && beats.length > MIN_MODEL_BEATS && context.publishedBpm) {
+			const level = publishedLevel(beats, context.publishedBpm, context.genreFamily, {
+				downbeats, snares: striker2.drums.snare.times
 			});
 			if (level !== null) {
 				log(`re-reading the grid at ${level}x toward a published ${context.publishedBpm} bpm`);
@@ -816,11 +651,6 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 		log('analysing');
 		const stamp = await handMapStamp(id);
 		const handMap = await handMapInput(id);
-		const installedStriker = drums?.activations && kitActivations ? await readInstalledStriker() : null;
-		if (installedStriker && 'error' in installedStriker) {
-			log(`Striker unavailable, falling back: ${installedStriker.error.message}`);
-		}
-		const striker = installedStriker && 'model' in installedStriker ? installedStriker.model : null;
 		const analysis = await timed('analysis', async () => analyzeTrack({
 			mono: decoded.mono,
 			left: decoded.left,
@@ -830,25 +660,15 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			hash: decoded.hash,
 			trackId: id,
 			title,
-			beats: tracked?.beats,
-			downbeats: tracked?.downbeats,
-			drums,
-			separatedDrums,
-			separatedOnsets: await separatedOnsets,
-			stemActivations: kitActivations?.stem,
-			sourceActivations: kitActivations && {
-				kick: kitActivations.kick, snare: kitActivations.snare,
-				hat: kitActivations.hat, cymbal: kitActivations.cymbal
-			},
-			striker: striker ?? undefined,
-			striker2: striker2 ?? undefined,
+			beats,
+			downbeats,
+			striker2,
 			prelude: await prelude,
 			metricalLevel,
 			context,
 			...handMap
 		}));
 
-		if (drumSeparation) analysis.drumSeparation = drumSeparation;
 		// The cache check compares the whole stamp; analysis alone cannot see movement marks.
 		analysis.handMap = stamp;
 		await timed('persistence', async () => {
@@ -859,26 +679,37 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 			await writeFile(metaPath(id), JSON.stringify(meta, null, '\t'));
 			context = await settleGenreFamily(id, context, analysis);
 		});
-		const order = ['sourceAndMetadata', 'decode', 'genre', 'beats', 'striker2', 'transcription',
-			'separation', 'analysis', 'persistence'];
-		const timings = { totalMs: Math.round(performance.now() - started),
-			stagesMs: Object.fromEntries(order.filter((stage) => stage in stagesMs)
-				.map((stage) => [stage, stagesMs[stage]])),
-			drumEvidenceCacheHit,
-			drumProviders: Object.keys(drumProviders).length ? drumProviders : undefined };
+		const timings = { totalMs: Math.round(performance.now() - started), stagesMs: ordered(stagesMs) };
 		await writeFile(join(CACHE_DIR, `${id}.preparation.json`), JSON.stringify({
 			trackId: id, audioHash: analysis.hash, analysisVersion: analysis.version,
-			drumSeparation, striker: analysis.striker, ...(striker2Note ? { striker2: striker2Note } : {}),
+			striker: analysis.striker, striker2: striker2Note,
 			preparedAt: new Date().toISOString(), ...timings
 		}, null, '\t')).catch(() => {});
 		return { id, audioPath, analysis, meta, context, fromCache: false,
 			timings,
 			...(sameArrangementLayout(cached, analysis) ? { arrangementUnchanged: true as const } : {}) };
 	} catch (error) {
+		// Recorded beside the song and shown on its row, so a missing model is never a quiet failure.
+		const reason = error instanceof Error ? error.message : String(error);
+		log(reason);
+		await writeFile(join(CACHE_DIR, `${id}.preparation.json`), JSON.stringify({
+			trackId: id, analysisVersion: ANALYSIS_VERSION, error: reason, striker2: striker2Note,
+			failedAt: new Date().toISOString(),
+			totalMs: Math.round(performance.now() - started), stagesMs: ordered(stagesMs)
+		}, null, '\t')).catch(() => {});
 		// Metadata that finished beside failed audio work is kept, as when lookups ran first.
 		await metadata.catch(() => {});
 		throw error;
 	}
+}
+
+/** With this few model beats there is no grid to read; the onset tracker reads one instead. */
+const MIN_MODEL_BEATS = 8;
+
+const STAGE_ORDER = ['sourceAndMetadata', 'decode', 'genre', 'striker2', 'analysis', 'persistence'];
+
+function ordered(stagesMs: Record<string, number>): Record<string, number> {
+	return Object.fromEntries(STAGE_ORDER.filter((stage) => stage in stagesMs).map((stage) => [stage, stagesMs[stage]]));
 }
 
 /** `correctGenreFamily`, persisted. Both ingest paths end here, cached blob or fresh one. */

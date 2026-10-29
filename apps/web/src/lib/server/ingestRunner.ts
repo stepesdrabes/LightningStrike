@@ -17,9 +17,7 @@ const STAGES: Record<IngestStage, ItemStatus> = {
 	'looking the track up': 'analysing',
 	cached: 'analysing',
 	decoding: 'analysing',
-	'tracking beats': 'analysing',
-	'transcribing drums': 'analysing',
-	'separating drums': 'analysing',
+	transcribing: 'analysing',
 	analysing: 'analysing'
 };
 
@@ -29,9 +27,7 @@ const LABELS: Record<IngestStage | 'composing', string> = {
 	'looking the track up': 'Looking it up',
 	cached: 'Reading cache',
 	decoding: 'Decoding',
-	'tracking beats': 'Tracking beats',
-	'transcribing drums': 'Transcribing drums',
-	'separating drums': 'Separating drums',
+	transcribing: 'Transcribing',
 	analysing: 'Analysing',
 	composing: 'Composing the show'
 };

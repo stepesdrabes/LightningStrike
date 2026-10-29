@@ -3,11 +3,11 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { GenreFamily } from '@mv/core';
 import { ANALYSIS_VERSION, SHOW_VERSION } from '@mv/core';
-import { readInstalledStriker, readInstalledStriker2, strikerCurrent } from './strikerModel.ts';
+import { readInstalledStriker2, strikerCurrent } from './strikerModel.ts';
 import { CACHE_DIR } from './paths.ts';
 import type { TrackMeta } from './ingest.ts';
 
-/** Read version, duration and Striker model from the analysis head; parsing every blob would slow the library. */
+/** Read version, duration and Striker 2.0 model from the analysis head; parsing every blob would slow the library. */
 async function headOfAnalysis(
 	path: string
 ): Promise<{ duration: number | null; version: number | null; striker: string | null }> {
@@ -87,9 +87,7 @@ export async function readLibrary(): Promise<LibraryEntry[]> {
 	if (!existsSync(CACHE_DIR)) return [];
 	const files = await readdir(CACHE_DIR);
 	const ids = files.filter((f) => f.endsWith('.meta.json')).map((f) => f.slice(0, -'.meta.json'.length));
-	const [installedStriker, installedStriker2] = await Promise.all([
-		readInstalledStriker(), readInstalledStriker2()
-	]);
+	const installed = await readInstalledStriker2();
 
 	const entries = await Promise.all(
 		ids.map(async (id): Promise<LibraryEntry | null> => {
@@ -130,8 +128,7 @@ export async function readLibrary(): Promise<LibraryEntry[]> {
 				analysed,
 				current:
 					head.version === ANALYSIS_VERSION &&
-					(head.striker === null
-						|| strikerCurrent(head.striker, installedStriker, installedStriker2)) &&
+					strikerCurrent(head.striker, installed) &&
 					show !== null &&
 					(show.version === SHOW_VERSION || show.authored !== 'engine'),
 				authored: show?.authored ?? 'none',

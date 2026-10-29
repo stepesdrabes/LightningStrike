@@ -184,12 +184,9 @@ export interface StereoImage {
 
 export interface TrackAnalysis {
 	version: number;
-	/** Separation model revision when individual drum sources supplied kick/snare evidence. */
-	drumSeparation?: string;
 	/**
-	 * The drum model that classified the kick, snare and hat onsets: Striker 1.1's version, or
-	 * Striker 2.0's manifest name, with " with beats" when its beats replaced Beat This!'s. Keep it
-	 * second: the library reads it from the first 2,048 bytes.
+	 * The Striker 2.0 manifest name of the model that heard the drums, beats, bass and activity;
+	 * absent in synthesized analyses. Keep it second: the library reads it from the first 2,048 bytes.
 	 */
 	striker?: string;
 	/** Of the decoded audio. A show pinned to a stale hash is rejected. */
@@ -242,7 +239,7 @@ export interface TrackAnalysis {
 	 * variation.
 	 */
 	peakToLoudness: number;
-	/** Striker 2.0's bass note onsets; levels are its onset confidence. Absent before analysis v40. */
+	/** Striker 2.0's bass note onsets; levels are its onset confidence. Absent in synthesized analyses. */
 	bass?: OnsetStream;
 	/** Striker 2.0's [start, end] spans, seconds, in time order, where it hears each stem. */
 	activity?: Record<ActivityStem, [number, number][]>;

@@ -1,64 +1,45 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { ANALYSIS_VERSION, emptyContext, type TrackAnalysis } from '@mv/core';
 import { analyzeTrack } from './analyze.ts';
-import { decodeAudio, downloadAudio, probe, resamplePcm } from './decode.ts';
-import { DrumSeparator } from './separation.ts';
-import { Adtof, adtofIdentity } from './adtof.ts';
+import { decodeAudio, downloadAudio, probe } from './decode.ts';
 import { artworkHue } from './artwork.ts';
 import { enrichTrack } from './enrich.ts';
 import { GenreClassifier } from './genreModel.ts';
-import { BeatThis } from './beatthis.ts';
 import { handMapStale, ingest, type TrackMeta } from './ingest.ts';
+import { Striker2 } from './striker2.ts';
 
 const cache = vi.hoisted(() => ({ dir: '' }));
 vi.mock('./paths.ts', () => ({
 	get CACHE_DIR() { return cache.dir; }, get MODEL_DIR() { return cache.dir; }, workerFile: () => null
 }));
-vi.mock('./decode.ts', () => ({ decodeAudio: vi.fn(), downloadAudio: vi.fn(), probe: vi.fn(), resamplePcm: vi.fn() }));
+vi.mock('./decode.ts', () => ({ decodeAudio: vi.fn(), downloadAudio: vi.fn(), probe: vi.fn() }));
 vi.mock('./analyze.ts', () => ({ analyzeTrack: vi.fn() }));
 vi.mock('./artwork.ts', () => ({ artworkHue: vi.fn() }));
 vi.mock('./enrich.ts', () => ({ enrichTrack: vi.fn() }));
-vi.mock('./dsp.ts', () => ({
-	preludeBeside: vi.fn(async () => undefined), onsetsBeside: vi.fn(async () => undefined)
-}));
-vi.mock('./beatthis.ts', () => ({ BeatThis: { create: vi.fn().mockRejectedValue(new Error('no model')) } }));
-vi.mock('./adtof.ts', async (original) => ({
-	...await original<typeof import('./adtof.ts')>(),
-	Adtof: { create: vi.fn().mockResolvedValue(null) }, adtofIdentity: vi.fn().mockResolvedValue('fixture-adtof')
-}));
-vi.mock('./separation.ts', () => ({
-	DrumSeparator: { create: vi.fn().mockResolvedValue(null) }, SEPARATION_VERSION: 'fixture-separator'
-}));
+vi.mock('./dsp.ts', () => ({ preludeBeside: vi.fn(async () => undefined) }));
 vi.mock('./genreModel.ts', () => ({
 	genreModelPresent: () => true, ensureGenreModel: vi.fn(),
 	GenreClassifier: { create: vi.fn().mockRejectedValue(new Error('no model')) }
 }));
 
 const youtubeId = 'abcdefghijk';
-/** A transcriber whose stem activations fit the fixture's eight 44.1 kHz frames. */
-const stemTranscriber = () => ({ run: vi.fn(async () => ({ activations: new Float32Array(5) })), close: vi.fn() }) as unknown as Adtof;
 const youtubeSource = `https://www.youtube.com/watch?v=${youtubeId}`;
 
-async function installStrikerModel(version: string) {
-	const { CANDIDATE_REVISION, STRIKER_FEATURES, STRIKER_KINDS } = await import('./striker.ts');
-	const tree = { feature: [], threshold: [], left: [], right: [], leaf: [0] };
-	const classes = Object.fromEntries(STRIKER_KINDS.map((kind) => [kind, { threshold: 0.5, trees: [tree] }]));
-	const model = { version, candidates: CANDIDATE_REVISION, features: STRIKER_FEATURES, classes };
-	await writeFile(join(cache.dir, 'striker.json'), JSON.stringify(model));
-}
+/** The tiny Striker 2.0 export from striker-2's tools/m7_fixtures.py. */
+const FIXTURE = join(import.meta.dirname, 'testdata', 'striker2');
+const MODEL_NAME = JSON.parse(readFileSync(join(FIXTURE, 'striker2.json'), 'utf8')).name as string;
 
-/** The tiny Striker 2.0 export from striker-2's tools/m7_fixtures.py, its manifest edited. */
+/** Installs the fixture model with its manifest edited. */
 async function installStriker2(edit: (manifest: Record<string, any>) => void = () => {}) {
-	const fixture = join(import.meta.dirname, 'testdata', 'striker2');
-	const manifest = JSON.parse(await readFile(join(fixture, 'striker2.json'), 'utf8'));
+	const manifest = JSON.parse(await readFile(join(FIXTURE, 'striker2.json'), 'utf8'));
 	edit(manifest);
-	await copyFile(join(fixture, 'striker2.onnx'), join(cache.dir, 'striker2.onnx'));
+	await copyFile(join(FIXTURE, 'striker2.onnx'), join(cache.dir, 'striker2.onnx'));
 	await writeFile(join(cache.dir, 'striker2.json'), JSON.stringify(manifest));
-	return manifest.name as string;
 }
 
 async function preparation() {
@@ -67,30 +48,27 @@ async function preparation() {
 
 function fixtureAnalysis(): TrackAnalysis {
 	return {
-		version: ANALYSIS_VERSION, hash: 'fixture', trackId: youtubeId, title: 'Saved track',
+		version: ANALYSIS_VERSION, striker: MODEL_NAME, hash: 'fixture', trackId: youtubeId, title: 'Saved track',
 		duration: 160, bars: [], sections: [], beats: [], tempo: { beatsPerBar: 4 }
 	} as unknown as TrackAnalysis;
 }
 
 beforeEach(async () => {
 	vi.clearAllMocks();
-	vi.stubEnv('MV_DRUM_PROVIDER', 'cpu');
-	vi.stubEnv('MV_DRUM_CPU_ARENA', undefined);
-	vi.mocked(DrumSeparator.create).mockResolvedValue(null);
-	vi.mocked(Adtof.create).mockResolvedValue(null);
 	cache.dir = await mkdtemp(join(tmpdir(), 'lightningstrike-ingest-'));
+	await installStriker2();
 	vi.mocked(probe).mockRejectedValue(new Error('YouTube is unavailable'));
 	vi.mocked(decodeAudio).mockResolvedValue({
 		mono: new Float32Array(8), left: new Float32Array(8), right: new Float32Array(8),
 		sampleRate: 22050, duration: 160, hash: 'fixture'
 	});
 	vi.mocked(analyzeTrack).mockImplementation((input) => ({
-		...fixtureAnalysis(), trackId: input.trackId, title: input.title, hash: input.hash
+		...fixtureAnalysis(), trackId: input.trackId, title: input.title, hash: input.hash, striker: input.striker2?.name
 	}));
 });
 
 afterEach(async () => {
-	vi.unstubAllEnvs();
+	vi.restoreAllMocks();
 	await rm(cache.dir, { recursive: true, force: true });
 });
 
@@ -111,194 +89,83 @@ async function saveTrack(id = youtubeId, source = youtubeSource, version = ANALY
 }
 
 describe('queue cache refresh', () => {
-	it('reuses lossless source evidence during detector reruns but invalidates changed audio', async () => {
+	it('prepares with Striker 2.0 alone, its beats and downbeats included', async () => {
 		await saveTrack();
-		const kick = new Float32Array([0, 1, 0, 0]);
-		const snare = new Float32Array([0, 0, .001, 0]);
-		const hat = new Float32Array([0, 0, 0, .25]);
-		const cymbal = new Float32Array([.5, 0, 0, 0]);
-		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: kick, kick, snare, hat, cymbal });
-		const close = vi.fn().mockResolvedValue(undefined);
-		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close } as unknown as DrumSeparator);
-		vi.mocked(Adtof.create).mockImplementation(async () => stemTranscriber());
-		vi.mocked(resamplePcm).mockImplementation(async (pcm) => pcm);
 		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(run).toHaveBeenCalledOnce();
-		expect(close).toHaveBeenCalledTimes(2);
-		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({
-			separatedDrums: { kick, snare, hat, cymbal, sampleRate: 22050 }, stemActivations: new Float32Array(5)
-		}));
-		expect(result.timings?.drumEvidenceCacheHit).toBe(true);
-		vi.mocked(decodeAudio).mockResolvedValue({
-			mono: new Float32Array(8), left: new Float32Array(8), right: new Float32Array(8),
-			sampleRate: 22050, duration: 160, hash: 'changed-audio'
-		});
-		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(run).toHaveBeenCalledTimes(2);
-	});
-	it('caches separated sources without a transcription model, and only complete evidence with one', async () => {
-		await saveTrack();
-		const pcm = new Float32Array([0, 1, 0, 0]);
-		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: pcm, kick: pcm, snare: pcm, hat: pcm, cymbal: pcm });
-		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close: vi.fn() } as unknown as DrumSeparator);
-		vi.mocked(resamplePcm).mockImplementation(async value => value);
-		vi.mocked(adtofIdentity).mockResolvedValue(null);
-		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		const bare = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(bare.timings?.drumEvidenceCacheHit).toBe(true);
-		expect(run).toHaveBeenCalledOnce();
-		vi.mocked(adtofIdentity).mockResolvedValue('fixture-adtof');
-		vi.mocked(Adtof.create).mockRejectedValue(new Error('transcriber failed'));
-		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(run).toHaveBeenCalledTimes(3);
-	});
-	it('keeps experimental provider evidence separate from the portable CPU cache', async () => {
-		await saveTrack();
-		const pcm = new Float32Array([0, 1, 0, 0]);
-		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: pcm, kick: pcm, snare: pcm, hat: pcm, cymbal: pcm });
-		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close: vi.fn() } as unknown as DrumSeparator);
-		vi.mocked(Adtof.create).mockImplementation(async () => stemTranscriber());
-		vi.mocked(resamplePcm).mockImplementation(async value => value);
-		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		vi.stubEnv('MV_DRUM_PROVIDER', 'dml');
-		const firstGpu = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(firstGpu.timings?.drumEvidenceCacheHit).toBe(false);
-		expect(run).toHaveBeenCalledTimes(2);
-		const cachedGpu = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(cachedGpu.timings?.drumEvidenceCacheHit).toBe(true);
-		vi.stubEnv('MV_DRUM_PROVIDER', 'cpu');
-		const cachedCpu = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(cachedCpu.timings?.drumEvidenceCacheHit).toBe(true);
-		expect(run).toHaveBeenCalledTimes(2);
-	});
-
-	it('offers Striker only with an installed model and every kit transcription', async () => {
-		await saveTrack();
-		const pcm = new Float32Array([0, 1, 0, 0]);
-		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: pcm, kick: pcm, snare: pcm, hat: pcm, cymbal: pcm });
-		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close: vi.fn() } as unknown as DrumSeparator);
-		vi.mocked(Adtof.create).mockImplementation(async () => stemTranscriber());
-		vi.mocked(resamplePcm).mockImplementation(async value => value);
-		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({ striker: undefined }));
-		await installStrikerModel('fixture-striker');
-		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		const activations = new Float32Array(5);
-		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({
-			striker: expect.objectContaining({ version: 'fixture-striker' }), stemActivations: activations,
-			sourceActivations: { kick: activations, snare: activations, hat: activations, cymbal: activations }
-		}));
-	});
-
-	it('re-analyses cached drums when another or no Striker model is installed, not when its file is unusable', async () => {
-		await saveTrack(youtubeId, youtubeSource, ANALYSIS_VERSION);
-		await installStrikerModel('fixture-striker');
-		const reusedAfter = async (striker?: string) => {
-			const analysis = { ...fixtureAnalysis(), trackId: youtubeId, striker };
-			await writeFile(join(cache.dir, `${youtubeId}.analysis.json`), JSON.stringify(analysis));
-			return (await ingest(youtubeSource, { cachedTrackId: youtubeId })).fromCache;
-		};
-		expect(await reusedAfter('fixture-striker')).toBe(true);
-		expect(await reusedAfter(undefined)).toBe(true);
-		expect(await reusedAfter('retired-striker')).toBe(false);
-		await writeFile(join(cache.dir, 'striker.json'), '{"version": "fixture-striker"');
-		expect(await reusedAfter('retired-striker')).toBe(true);
-		await rm(join(cache.dir, 'striker.json'));
-		expect(await reusedAfter('fixture-striker')).toBe(false);
-	});
-
-	it('prepares with Striker 2.0 alone when it is installed, keeping Beat This! for beats', async () => {
-		await saveTrack();
-		await installStrikerModel('fixture-striker');
-		const name = await installStriker2();
-		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(DrumSeparator.create).not.toHaveBeenCalled();
-		expect(Adtof.create).not.toHaveBeenCalled();
-		expect(BeatThis.create).toHaveBeenCalled();
 		expect(decodeAudio).toHaveBeenCalledWith(join(cache.dir, `${youtubeId}.m4a`), 44100);
-		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({
-			striker2: expect.objectContaining({ name, drums: expect.any(Object), bass: expect.any(Object) }),
-			striker: undefined, drums: undefined, separatedDrums: undefined
-		}));
-		const stamp = await preparation();
-		expect(stamp.striker2).toMatchObject({ name, beats: 'beatthis' });
-		expect(stamp.stagesMs.striker2).toEqual(expect.any(Number));
-		expect(stamp.drumProviders).toBeUndefined();
-		expect(stamp.stagesMs.separation).toBeUndefined();
-	});
-
-	it('takes beats and downbeats from Striker 2.0 when its manifest says so', async () => {
-		await saveTrack();
-		const name = await installStriker2((manifest) => { manifest.app = { beats: 'striker2' }; });
-		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(BeatThis.create).not.toHaveBeenCalled();
 		const input = vi.mocked(analyzeTrack).mock.lastCall![0];
-		expect(input.striker2?.name).toBe(`${name} with beats`);
+		expect(input.striker2).toMatchObject({ name: MODEL_NAME, drums: expect.any(Object), bass: expect.any(Object) });
 		expect(input.beats).toBe(input.striker2?.beats);
 		expect(input.downbeats).toBe(input.striker2?.downbeats);
+		const stamp = await preparation();
+		expect(stamp).toMatchObject({ striker: MODEL_NAME, striker2: { name: MODEL_NAME } });
+		expect(Object.keys(stamp.stagesMs)).toEqual(['sourceAndMetadata', 'decode', 'genre', 'striker2', 'analysis', 'persistence']);
+		// Eight samples are too few beats for a grid: the onset tracker reads one, and the note says so.
+		expect(stamp.striker2.warnings).toContainEqual(expect.stringMatching(/^it heard \d+ beats, so the onset tracker sets the grid$/));
 	});
 
-	it('reports an unusable Striker 2.0 manifest and prepares on the older path', async () => {
+	it.each([
+		['is not installed', async () => { await rm(join(cache.dir, 'striker2.json')); },
+			/^Striker 2\.0 is not installed: put striker2\.onnx and striker2\.json in /],
+		['fails its hash check', () => installStriker2((m) => { m.sha256 = '0'.repeat(64); }),
+			/^Striker 2\.0 cannot be used: .*SHA-256/],
+		['fails on the song', async () => { vi.spyOn(Striker2, 'create').mockRejectedValueOnce(new Error('no session')); },
+			/^Striker 2\.0 failed on this song: no session$/]
+	])('fails the preparation visibly when Striker 2.0 %s', async (_, breakIt, message) => {
 		await saveTrack();
-		await installStriker2((manifest) => { manifest.sha256 = '0'.repeat(64); });
+		await breakIt();
 		const progress = vi.fn();
-		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true, onProgress: progress });
-		expect(progress).toHaveBeenCalledWith(expect.stringMatching(/^Striker 2.0 unavailable, falling back: .*SHA-256/));
-		expect(DrumSeparator.create).toHaveBeenCalled();
-		expect(analyzeTrack).toHaveBeenLastCalledWith(expect.objectContaining({ striker2: undefined }));
-		expect((await preparation()).striker2.error).toMatch(/SHA-256/);
+		await expect(ingest(youtubeSource, { cachedTrackId: youtubeId, onProgress: progress })).rejects.toThrow(message);
+		expect(analyzeTrack).not.toHaveBeenCalled();
+		expect(progress).toHaveBeenCalledWith(expect.stringMatching(message));
+		const stamp = await preparation();
+		expect(stamp.error).toMatch(message);
+		expect(stamp.analysisVersion).toBe(ANALYSIS_VERSION);
+		const stored = JSON.parse(await readFile(join(cache.dir, `${youtubeId}.analysis.json`), 'utf8'));
+		expect(stored.version).toBe(ANALYSIS_VERSION - 1);
 	});
 
-	it('re-analyses songs another analyser made once Striker 2.0 is installed, not while it is unusable', async () => {
+	it('re-analyses songs another model made, and keeps them while no model is usable', async () => {
 		await saveTrack(youtubeId, youtubeSource, ANALYSIS_VERSION);
-		await installStrikerModel('fixture-striker');
-		const name = await installStriker2();
 		const reusedAfter = async (striker?: string) => {
 			const analysis = { ...fixtureAnalysis(), trackId: youtubeId, striker };
 			await writeFile(join(cache.dir, `${youtubeId}.analysis.json`), JSON.stringify(analysis));
 			return (await ingest(youtubeSource, { cachedTrackId: youtubeId })).fromCache;
 		};
-		expect(await reusedAfter(name)).toBe(true);
-		expect(await reusedAfter(undefined)).toBe(true);
-		expect(await reusedAfter('fixture-striker')).toBe(false);
+		expect(await reusedAfter(MODEL_NAME)).toBe(true);
 		expect(await reusedAfter('Striker 2.0 (00000000)')).toBe(false);
-		await installStriker2((manifest) => { manifest.app = { beats: 'striker2' }; });
-		expect(await reusedAfter(name)).toBe(false);
-		expect(await reusedAfter(`${name} with beats`)).toBe(true);
+		expect(await reusedAfter(undefined)).toBe(false);
 		await writeFile(join(cache.dir, 'striker2.json'), '{"format": "striker2-model"');
-		expect(await reusedAfter('fixture-striker')).toBe(true);
+		expect(await reusedAfter('Striker 2.0 (00000000)')).toBe(true);
+		await rm(join(cache.dir, 'striker2.json'));
+		expect(await reusedAfter(MODEL_NAME)).toBe(true);
+		await expect(reusedAfter(undefined)).rejects.toThrow('Striker 2.0 is not installed');
 	});
 
-	it('passes isolated sources into analysis and releases the separator', async () => {
+	it('checks a published tempo octave against the snares Striker 2.0 heard', async () => {
 		await saveTrack();
-		const kick = new Float32Array([0, 1, 0]);
-		const snare = new Float32Array([0, 0, 1]);
-		const hat = new Float32Array([1, 0, 0]);
-		const cymbal = new Float32Array([.5, 0, 0]);
-		const run = vi.fn().mockResolvedValue({ sampleRate: 44100, drums: kick, kick, snare, hat, cymbal });
-		const close = vi.fn().mockResolvedValue(undefined);
-		vi.mocked(DrumSeparator.create).mockResolvedValue({ run, close } as unknown as DrumSeparator);
-		vi.mocked(resamplePcm).mockImplementation(async (pcm) => pcm);
-		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
-		expect(run).toHaveBeenCalledOnce();
-		expect(close).toHaveBeenCalledOnce();
-		expect(result.analysis.drumSeparation).toBe('fixture-separator');
-		expect(analyzeTrack).toHaveBeenCalledWith(expect.objectContaining({ separatedDrums: { kick, snare, hat, cymbal, sampleRate: 22050 } }));
-	});
-
-	it('completes analysis with the fallback if separation fails and still releases resources', async () => {
-		await saveTrack();
-		const close = vi.fn().mockResolvedValue(undefined);
-		vi.mocked(DrumSeparator.create).mockResolvedValue({
-			run: vi.fn().mockRejectedValue(new Error('inference failed')), close
-		} as unknown as DrumSeparator);
-		const progress = vi.fn();
-		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true, onProgress: progress });
-		expect(close).toHaveBeenCalledOnce();
-		expect(analyzeTrack).toHaveBeenCalledWith(expect.objectContaining({ separatedDrums: undefined }));
-		expect(progress).toHaveBeenCalledWith('drum separation unavailable, falling back: inference failed');
+		const beats = Array.from({ length: 200 }, (_, i) => i * 0.8);
+		const downbeats = beats.filter((_, i) => i % 4 === 0);
+		const snares = beats.filter((_, i) => i % 2 === 1);
+		const none = { times: [], levels: [] };
+		const heard = (snare: number[]) => ({
+			run: async () => ({
+				name: MODEL_NAME, beats, downbeats, bass: none,
+				drums: { kick: none, snare: { times: snare, levels: snare.map(() => 0.8) }, hat: none, cymbal: none, tom: none },
+				activity: { drums: [], bass: [], vocals: [], other: [] }
+			}),
+			close: async () => {}
+		}) as unknown as Striker2;
+		const context = JSON.stringify({ ...emptyContext(), publishedBpm: 150, sources: ['deezer', 'effnet'] });
+		await writeFile(join(cache.dir, `${youtubeId}.context.json`), context);
+		// A backbeat on two and four at 75 bpm says a published 150 counts the hats; one between
+		// the beats says 150 is the pulse.
+		vi.spyOn(Striker2, 'create').mockResolvedValueOnce(heard(snares));
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(vi.mocked(analyzeTrack).mock.lastCall![0].metricalLevel).toBeUndefined();
+		vi.spyOn(Striker2, 'create').mockResolvedValueOnce(heard(beats.map((t) => t + 0.4)));
+		await ingest(youtubeSource, { cachedTrackId: youtubeId, force: true });
+		expect(vi.mocked(analyzeTrack).mock.lastCall![0].metricalLevel).toBe(2);
 	});
 
 	it('reports compatible arrangement inputs across fresh analysis without persisting that verdict', async () => {
