@@ -1,5 +1,12 @@
 export { analyzeTrack, storedTranscription } from './analyze.ts';
-export { decodeAudio, isTransientFetchError } from './decode.ts';
+export { checkYouTubeSession, decodeAudio, isTransientFetchError } from './decode.ts';
+export {
+	YOUTUBE_BROWSERS,
+	isYouTubeBrowser,
+	offeredYouTubeBrowsers,
+	type YouTubeBrowser,
+	type YouTubeSession
+} from './youtubeSession.ts';
 export { CACHE_DIR, EVENING_DIR, workspaceRoot } from './paths.ts';
 export { readLibrary } from './library.ts';
 export {

@@ -1,5 +1,8 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import {
+	chosenYouTubeBrowser, readSessionLog, sessionArgs, type YouTubeBrowser, type YouTubeSession
+} from './youtubeSession.ts';
 
 interface DecodedAudio {
 	mono: Float32Array;
@@ -18,9 +21,11 @@ interface DecodedAudio {
  */
 export const ANALYSIS_RATE = 22050;
 
-function run(cmd: string, args: string[], input?: Buffer): Promise<{ stdout: Buffer; stderr: string }> {
+function run(
+	cmd: string, args: string[], input?: Buffer, timeoutMs?: number
+): Promise<{ stdout: Buffer; stderr: string }> {
 	return new Promise((resolve, reject) => {
-		const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'] });
+		const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], timeout: timeoutMs });
 		child.stdin.on('error', () => { /* Process errors are reported by error/close below. */ });
 		child.stdin.end(input);
 		const out: Buffer[] = [];
@@ -30,8 +35,9 @@ function run(cmd: string, args: string[], input?: Buffer): Promise<{ stdout: Buf
 		child.on('error', (e) =>
 			reject(new Error(`${cmd} failed to start (is it installed?): ${e.message}`))
 		);
-		child.on('close', (code) => {
-			if (code !== 0) reject(new Error(`${cmd} exited ${code}: ${err.slice(-2000)}`));
+		child.on('close', (code, signal) => {
+			if (code === null) reject(new Error(`${cmd} stopped (${signal}): ${err.slice(-2000)}`));
+			else if (code !== 0) reject(new Error(`${cmd} exited ${code}: ${err.slice(-2000)}`));
 			else resolve({ stdout: Buffer.concat(out), stderr: err });
 		});
 	});
@@ -168,8 +174,9 @@ async function withRetry<T>(
 }
 
 export async function probe(url: string, onRetry?: RetryNote): Promise<ProbeResult> {
+	const session = sessionArgs(url, await chosenYouTubeBrowser());
 	const { stdout } = await withRetry(
-		() => run('yt-dlp', ['--no-playlist', '--skip-download', '--dump-single-json', '--no-warnings', url]),
+		() => run('yt-dlp', ['--no-playlist', '--skip-download', '--dump-single-json', '--no-warnings', ...session, url]),
 		onRetry
 	);
 	const j = JSON.parse(stdout.toString()) as Record<string, unknown>;
@@ -193,6 +200,7 @@ export async function downloadAudio(
 	outTemplate: string,
 	onRetry?: RetryNote
 ): Promise<void> {
+	const session = sessionArgs(url, await chosenYouTubeBrowser());
 	await withRetry(
 		() =>
 			run('yt-dlp', [
@@ -200,10 +208,29 @@ export async function downloadAudio(
 				'--no-warnings',
 				'-f',
 				'140/251/bestaudio[ext=m4a]/bestaudio',
+				...session,
 				'-o',
 				outTemplate,
 				url
 			]),
 		onRetry
 	);
+}
+
+/** Long enough to answer macOS's one-time Keychain prompt for the browser's cookie key. */
+const SESSION_CHECK_MS = 120_000;
+/** Public and permanent: YouTube's first upload. */
+const SESSION_CHECK_URL = 'https://www.youtube.com/watch?v=jNQXAC9IVRw';
+
+/** Whether yt-dlp finds a YouTube sign-in in the browser; reads the video's page, downloads nothing. */
+export async function checkYouTubeSession(browser: YouTubeBrowser): Promise<YouTubeSession> {
+	const args = ['-v', '--simulate', '--no-playlist', ...sessionArgs(SESSION_CHECK_URL, browser), SESSION_CHECK_URL];
+	try {
+		return readSessionLog(browser, (await run('yt-dlp', args, undefined, SESSION_CHECK_MS)).stderr);
+	} catch (e) {
+		const message = e instanceof Error ? e.message : String(e);
+		return message.startsWith('yt-dlp stopped')
+			? { browser, signedIn: false, problem: 'No answer in time: allow the Keychain prompt, then choose the browser again' }
+			: readSessionLog(browser, message);
+	}
 }

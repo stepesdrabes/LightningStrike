@@ -4,7 +4,8 @@ import { readStriker2, type Striker2Model } from './striker2.ts';
 import {
 	DEFAULT_ANALYSIS_PROVIDER, isAnalysisProvider, type AnalysisProvider
 } from './striker2Provider.ts';
-import { CACHE_DIR, MODEL_DIR } from './paths.ts';
+import { MODEL_DIR } from './paths.ts';
+import { readSetting } from './settingsFile.ts';
 
 /** The analysis models the settings offer, each a manifest in MODEL_DIR beside its graph. */
 export const ANALYSIS_MODELS = [
@@ -20,23 +21,15 @@ export function isAnalysisModel(value: unknown): value is AnalysisModelId {
 
 const described = (id: AnalysisModelId) => ANALYSIS_MODELS.find((m) => m.id === id)!;
 
-async function setting(name: string): Promise<unknown> {
-	try {
-		return (JSON.parse(await readFile(join(CACHE_DIR, 'settings.json'), 'utf8')) as Record<string, unknown>)[name];
-	} catch {
-		return undefined;
-	}
-}
-
 /** The model the settings choose (`analysisModel` in the cache's settings.json), or the default. */
 export async function chosenAnalysisModel(): Promise<AnalysisModelId> {
-	const analysisModel = await setting('analysisModel');
+	const analysisModel = await readSetting('analysisModel');
 	return isAnalysisModel(analysisModel) ? analysisModel : DEFAULT_ANALYSIS_MODEL;
 }
 
 /** Where the settings run it (`analysisProvider`), or the default. */
 export async function chosenAnalysisProvider(): Promise<AnalysisProvider> {
-	const analysisProvider = await setting('analysisProvider');
+	const analysisProvider = await readSetting('analysisProvider');
 	return isAnalysisProvider(analysisProvider) ? analysisProvider : DEFAULT_ANALYSIS_PROVIDER;
 }
 
