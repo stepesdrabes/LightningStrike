@@ -17,6 +17,7 @@
 	import { FULL_WINDOW, type TimeWindow } from '$lib/timeline.ts';
 	import { libraryToCandidate, type Candidate } from '$lib/search.svelte.ts';
 	import type {
+		AnalysisModelId,
 		Judgement,
 		JudgementPatch,
 		LibraryEntry,
@@ -86,7 +87,9 @@
 		autopilot: false,
 		lounge: false,
 		rest: true,
-		ambient: { ...DEFAULT_AMBIENT }
+		ambient: { ...DEFAULT_AMBIENT },
+		analysisModel: 'striker2',
+		analysisModels: []
 	});
 
 	let suggestions = $state<SearchResult[]>([]);
@@ -228,6 +231,12 @@
 		});
 		if (res.ok) settings = (await res.json()) as Settings;
 		else note(`settings: ${await res.text()}`);
+	}
+
+	/** Songs the other model prepared show as stale until they are prepared again. */
+	async function chooseAnalysisModel(analysisModel: AnalysisModelId) {
+		await patchSettings({ analysisModel });
+		await refreshLibrary();
 	}
 
 	/** Refresh blended radio suggestions when the set list changes. */
@@ -1160,7 +1169,10 @@
 	onplay={(e) => void fromLibrary(e, 'now')}
 	onqueue={(e) => void fromLibrary(e, 'queue')}
 	onradio={(e) => void startRadio(e.id, e.title)}
-	ondelete={forget} />
+	ondelete={forget}
+	analysisModel={settings.analysisModel}
+	analysisModels={settings.analysisModels}
+	onanalysismodel={(analysisModel) => void chooseAnalysisModel(analysisModel)} />
 
 <!-- All at the page root: a panel that blurs its backdrop cannot contain a fixed-position child. -->
 <Menu />

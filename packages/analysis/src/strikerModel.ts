@@ -1,20 +1,53 @@
 import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
-import { STRIKER2_MANIFEST, readStriker2, type Striker2Model } from './striker2.ts';
-import { MODEL_DIR } from './paths.ts';
+import { readStriker2, type Striker2Model } from './striker2.ts';
+import { CACHE_DIR, MODEL_DIR } from './paths.ts';
 
-/** The installed Striker 2.0, no manifest, or one that cannot be used (malformed or unverified). */
+/** The analysis models the settings offer, each a manifest in MODEL_DIR beside its graph. */
+export const ANALYSIS_MODELS = [
+	{ id: 'striker2', label: 'Striker 2.0', manifest: 'striker2.json', graph: 'striker2.onnx' },
+	{ id: 'striker2-small', label: 'Striker 2.0 Small', manifest: 'striker2-small.json', graph: 'striker2-small.onnx' }
+] as const;
+export type AnalysisModelId = (typeof ANALYSIS_MODELS)[number]['id'];
+export const DEFAULT_ANALYSIS_MODEL: AnalysisModelId = 'striker2';
+
+export function isAnalysisModel(value: unknown): value is AnalysisModelId {
+	return ANALYSIS_MODELS.some((m) => m.id === value);
+}
+
+const described = (id: AnalysisModelId) => ANALYSIS_MODELS.find((m) => m.id === id)!;
+
+/** The model the settings choose (`analysisModel` in the cache's settings.json), or the default. */
+export async function chosenAnalysisModel(): Promise<AnalysisModelId> {
+	try {
+		const { analysisModel } = JSON.parse(await readFile(join(CACHE_DIR, 'settings.json'), 'utf8')) as {
+			analysisModel?: unknown;
+		};
+		return isAnalysisModel(analysisModel) ? analysisModel : DEFAULT_ANALYSIS_MODEL;
+	} catch {
+		return DEFAULT_ANALYSIS_MODEL;
+	}
+}
+
+/** An installed model, no manifest, or one that cannot be used (malformed or unverified). */
 export type InstalledStriker2 = { model: Striker2Model } | { missing: true } | { error: Error };
 
 const failure = (e: unknown) => ({ error: e instanceof Error ? e : new Error(String(e)) });
 
-let parsed: { stamp: string; installed: InstalledStriker2 } | undefined;
+const parsed = new Map<string, { stamp: string; installed: InstalledStriker2 }>();
 
-/** Reads and verifies `striker2.json` and its graph, once per revision of either file. */
-export async function readInstalledStriker2(): Promise<InstalledStriker2> {
-	const text = await readFile(join(MODEL_DIR, STRIKER2_MANIFEST), 'utf8').catch(() => null);
+/**
+ * Reads and checks a model's manifest and its graph, once per revision of either file. A
+ * preparation verifies the graph's SHA-256 too; `verify: false` checks its size only, which is
+ * enough to name the model in the library and the settings.
+ */
+export async function readInstalledStriker2(
+	id: AnalysisModelId = DEFAULT_ANALYSIS_MODEL, { verify = true } = {}
+): Promise<InstalledStriker2> {
+	const { manifest, graph: defaultGraph } = described(id);
+	const text = await readFile(join(MODEL_DIR, manifest), 'utf8').catch(() => null);
 	if (text === null) return { missing: true };
-	let file = 'striker2.onnx';
+	let file: string = defaultGraph;
 	try {
 		const named = (JSON.parse(text) as { file?: unknown }).file;
 		if (typeof named === 'string' && /^[\w.-]+\.onnx$/.test(named)) file = named;
@@ -23,24 +56,46 @@ export async function readInstalledStriker2(): Promise<InstalledStriker2> {
 	}
 	const graph = await stat(join(MODEL_DIR, file)).catch(() => null);
 	const stamp = `${MODEL_DIR}\n${text}\n${graph?.mtimeMs}:${graph?.size}`;
-	if (parsed?.stamp !== stamp) {
-		const installed = await readStriker2(MODEL_DIR)
+	const key = `${id}:${verify}`;
+	if (parsed.get(key)?.stamp !== stamp) {
+		const installed = await readStriker2(MODEL_DIR, manifest, { verify })
 			.then((model): InstalledStriker2 => ({ model }), failure);
-		parsed = { stamp, installed };
+		parsed.set(key, { stamp, installed });
 	}
-	return parsed.installed;
+	return parsed.get(key)!.installed;
 }
 
-/** What a preparation reports when the model it needs cannot run. */
-export function striker2Problem(installed: Exclude<InstalledStriker2, { model: Striker2Model }>): string {
+/** What a preparation, or the settings, report when a model cannot run. */
+export function striker2Problem(
+	id: AnalysisModelId, installed: Exclude<InstalledStriker2, { model: Striker2Model }>
+): string {
+	const { label, manifest, graph } = described(id);
 	return 'missing' in installed
-		? `Striker 2.0 is not installed: put striker2.onnx and ${STRIKER2_MANIFEST} in ${MODEL_DIR}.`
-		: `Striker 2.0 cannot be used: ${installed.error.message}`;
+		? `${label} is not installed: put ${graph} and ${manifest} in ${MODEL_DIR}.`
+		: `${label} cannot be used: ${installed.error.message}`;
+}
+
+/** Each model the settings offer, with the name of what is installed or why it cannot run. */
+export interface AnalysisModelChoice {
+	id: AnalysisModelId;
+	label: string;
+	/** The installed manifest's name, null when the model cannot run. */
+	name: string | null;
+	problem: string | null;
+}
+
+export async function analysisModelChoices(): Promise<AnalysisModelChoice[]> {
+	return Promise.all(ANALYSIS_MODELS.map(async ({ id, label }) => {
+		const installed = await readInstalledStriker2(id, { verify: false });
+		return 'model' in installed
+			? { id, label, name: installed.model.name, problem: null }
+			: { id, label, name: null, problem: striker2Problem(id, installed) };
+	}));
 }
 
 /**
- * Whether an analysis is still the installed model's: its `striker` names it. While no usable
- * model is installed, analyses some Striker 2.0 made are kept: nothing could replace them.
+ * Whether an analysis is still the chosen model's: its `striker` names it. While the chosen model
+ * cannot run, analyses some Striker 2.0 made are kept: nothing could replace them.
  */
 export function strikerCurrent(striker: string | null | undefined, installed: InstalledStriker2): boolean {
 	return 'model' in installed ? striker === installed.model.name : typeof striker === 'string';

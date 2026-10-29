@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { GenreFamily } from '@mv/core';
 import { ANALYSIS_VERSION, SHOW_VERSION } from '@mv/core';
-import { readInstalledStriker2, strikerCurrent } from './strikerModel.ts';
+import { chosenAnalysisModel, readInstalledStriker2, strikerCurrent } from './strikerModel.ts';
 import { CACHE_DIR } from './paths.ts';
 import type { TrackMeta } from './ingest.ts';
 
@@ -87,7 +87,7 @@ export async function readLibrary(): Promise<LibraryEntry[]> {
 	if (!existsSync(CACHE_DIR)) return [];
 	const files = await readdir(CACHE_DIR);
 	const ids = files.filter((f) => f.endsWith('.meta.json')).map((f) => f.slice(0, -'.meta.json'.length));
-	const installed = await readInstalledStriker2();
+	const installed = await readInstalledStriker2(await chosenAnalysisModel(), { verify: false });
 
 	const entries = await Promise.all(
 		ids.map(async (id): Promise<LibraryEntry | null> => {

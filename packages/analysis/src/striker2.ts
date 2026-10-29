@@ -55,7 +55,7 @@ export type Transcription = Omit<Striker2Result, 'beats' | 'downbeats'>;
 type Json = Record<string, unknown>;
 
 function fail(what: string): never {
-	throw new Error(`${STRIKER2_MANIFEST}: ${what}`);
+	throw new Error(what);
 }
 
 function object(value: unknown, what: string): Json {
@@ -135,7 +135,7 @@ function warnings(checked: Json): string[] {
 }
 
 /** A parsed manifest, before the graph's hash is checked. Throws on anything the app cannot honour. */
-export function parseStriker2Manifest(
+function parseManifest(
 	json: unknown, dir: string
 ): Striker2Model & { sha256: string; bytes: number } {
 	const m = object(json, 'the manifest');
@@ -181,20 +181,29 @@ export function parseStriker2Manifest(
 	};
 }
 
-/** Reads and verifies `striker2.json` in `dir` and the graph it names (size and SHA-256). */
-export async function readStriker2(dir: string): Promise<Striker2Model> {
-	const text = await readFile(join(dir, STRIKER2_MANIFEST), 'utf8');
-	let json: unknown;
+/**
+ * Reads and checks the manifest in `dir` and the graph it names: its size, and its SHA-256 unless
+ * `verify` is false. Every refusal names the manifest.
+ */
+export async function readStriker2(
+	dir: string, manifest = STRIKER2_MANIFEST, { verify = true } = {}
+): Promise<Striker2Model> {
 	try {
-		json = JSON.parse(text);
+		const text = await readFile(join(dir, manifest), 'utf8');
+		let json: unknown;
+		try {
+			json = JSON.parse(text);
+		} catch (e) {
+			fail(`not JSON (${e instanceof Error ? e.message : String(e)})`);
+		}
+		const { sha256, bytes, ...model } = parseManifest(json, dir);
+		const size = (await stat(model.graph).catch(() => fail(`${model.graph} is missing`))).size;
+		if (size !== bytes) fail(`the graph has ${size} bytes, the manifest ${bytes}`);
+		if (verify && await hashFile(model.graph) !== sha256) fail('the graph does not match its SHA-256');
+		return model;
 	} catch (e) {
-		fail(`not JSON (${e instanceof Error ? e.message : String(e)})`);
+		throw new Error(`${manifest}: ${e instanceof Error ? e.message : String(e)}`);
 	}
-	const { sha256, bytes, ...model } = parseStriker2Manifest(json, dir);
-	const size = (await stat(model.graph).catch(() => fail(`${model.graph} is missing`))).size;
-	if (size !== bytes) fail(`the graph has ${size} bytes, the manifest ${bytes}`);
-	if (await hashFile(model.graph) !== sha256) fail('the graph does not match its SHA-256');
-	return model;
 }
 
 /** evaluate.chunked's starts: a step of chunk - 2 * border, the last one ending on the song. */

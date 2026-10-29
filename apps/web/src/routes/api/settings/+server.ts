@@ -21,7 +21,10 @@ import {
 	wrapDegrees
 } from '$lib/ambient.ts';
 import { isLocal } from '$lib/server/access.ts';
+import { runner } from '$lib/server/ingestRunner.ts';
+import { queue } from '$lib/server/queueStore.ts';
 import { settings } from '$lib/server/settings.ts';
+import { analysisModelChoices } from '@mv/analysis';
 import type { ColourSource } from '@mv/core';
 import { authorModel, isEffort, type EffortLevel } from '@mv/author-ai';
 import type { RequestHandler } from './$types';
@@ -71,9 +74,23 @@ export const PUT: RequestHandler = async (event) => {
 	// Accept only tuned FPS choices; intermediate rates are not slider values.
 	if (isOutputFps(body.outputFps)) patch.outputFps = body.outputFps;
 	if (isWireProtocol(body.outputProtocol)) patch.outputProtocol = body.outputProtocol;
+	// Only a model that can run may prepare songs; one that cannot says why instead.
+	if (body.analysisModel !== undefined) {
+		const choice = (await analysisModelChoices()).find((m) => m.id === body.analysisModel);
+		if (!choice) error(400, 'unknown analysis model');
+		if (choice.problem) error(409, choice.problem);
+		patch.analysisModel = choice.id;
+	}
 	if (Object.keys(patch).length === 0) error(400, 'nothing to change');
 
-	return json(await settings.update(patch));
+	const before = (await settings.read()).analysisModel;
+	const published = await settings.update(patch);
+	// Songs the other model prepared are prepared again as they come up, as after a version bump.
+	if (published.analysisModel !== before) {
+		await queue.prepareStaleAgain();
+		void runner.pump();
+	}
+	return json(published);
 };
 
 interface Writable {
@@ -94,6 +111,7 @@ interface Writable {
 	ambientSat?: number;
 	ambientDrift?: number;
 	ambientDwell?: number;
+	analysisModel?: string;
 }
 
 function number(v: unknown): v is number {

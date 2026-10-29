@@ -126,6 +126,25 @@ describe('queue cache refresh', () => {
 		expect(stored.version).toBe(ANALYSIS_VERSION - 1);
 	});
 
+	it('prepares with Striker 2.0 Small once the settings choose it, never with the other model', async () => {
+		await saveTrack(youtubeId, youtubeSource, ANALYSIS_VERSION);
+		await writeFile(join(cache.dir, 'settings.json'), JSON.stringify({ analysisModel: 'striker2-small' }));
+		// While Small cannot run the song keeps its analysis, and preparing it again says why.
+		expect((await ingest(youtubeSource, { cachedTrackId: youtubeId })).fromCache).toBe(true);
+		await expect(ingest(youtubeSource, { cachedTrackId: youtubeId, force: true })).rejects.toThrow(
+			`Striker 2.0 Small is not installed: put striker2-small.onnx and striker2-small.json in ${cache.dir}.`);
+		expect(analyzeTrack).not.toHaveBeenCalled();
+		const manifest = JSON.parse(await readFile(join(FIXTURE, 'striker2.json'), 'utf8'));
+		await copyFile(join(FIXTURE, 'striker2.onnx'), join(cache.dir, 'striker2-small.onnx'));
+		await writeFile(join(cache.dir, 'striker2-small.json'),
+			JSON.stringify({ ...manifest, name: 'Striker 2.0 Small (fixture)', file: 'striker2-small.onnx' }));
+		const result = await ingest(youtubeSource, { cachedTrackId: youtubeId });
+		expect(result.fromCache).toBe(false);
+		expect(result.analysis.striker).toBe('Striker 2.0 Small (fixture)');
+		expect((await preparation()).striker2).toMatchObject({ model: 'striker2-small', name: 'Striker 2.0 Small (fixture)' });
+		expect((await ingest(youtubeSource, { cachedTrackId: youtubeId })).fromCache).toBe(true);
+	});
+
 	it('re-analyses songs another model made, and keeps them while no model is usable', async () => {
 		await saveTrack(youtubeId, youtubeSource, ANALYSIS_VERSION);
 		const reusedAfter = async (striker?: string) => {

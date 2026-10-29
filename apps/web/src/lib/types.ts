@@ -74,6 +74,18 @@ interface AuthorModelInfo {
 	backend: AuthorBackend;
 }
 
+/** Mirrors @mv/analysis AnalysisModelId. */
+export type AnalysisModelId = 'striker2' | 'striker2-small';
+
+/** Mirrors @mv/analysis AnalysisModelChoice. */
+export interface AnalysisModelChoice {
+	id: AnalysisModelId;
+	label: string;
+	/** The installed manifest's name, null when the model cannot run. */
+	name: string | null;
+	problem: string | null;
+}
+
 /** Mirrors PublicSettings from the server. The key itself never crosses this boundary. */
 export interface Settings {
 	hasDeepseekKey: boolean;
@@ -101,6 +113,9 @@ export interface Settings {
 	rest: boolean;
 	/** AmbientSettings is shared with the renderer that also runs in this browser. */
 	ambient: AmbientSettings;
+	/** The model that prepares songs. */
+	analysisModel: AnalysisModelId;
+	analysisModels: readonly AnalysisModelChoice[];
 }
 
 /**
@@ -125,6 +140,7 @@ export interface SettingsPatch {
 	ambientSat?: number;
 	ambientDrift?: number;
 	ambientDwell?: number;
+	analysisModel?: AnalysisModelId;
 }
 
 /** Mirrors $lib/server/judge MomentNote. Duplicated so the client does not import the server. */

@@ -14,7 +14,7 @@ import { handMapGrid, type DrawingGrid } from './gridedits.ts';
 import { handMapFingerprint, type HandSection } from './handSections.ts';
 import { medianPeriod } from './metricalLevel.ts';
 import { KICK_CLAIMING_FAMILIES, familyCorroborated, loudKickRate } from './vocabulary.ts';
-import { readInstalledStriker2, striker2Problem, strikerCurrent } from './strikerModel.ts';
+import { chosenAnalysisModel, readInstalledStriker2, striker2Problem, strikerCurrent } from './strikerModel.ts';
 import { Striker2 } from './striker2.ts';
 import { preludeBeside } from './dsp.ts';
 
@@ -552,6 +552,8 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	metadata.catch(() => {});
 
 	const relevel = opts.metricalLevel !== undefined && Math.abs(opts.metricalLevel - 1) > 1e-6;
+	// The settings choose the model; an analysis another model made is prepared again.
+	const choice = await chosenAnalysisModel();
 	let cached: TrackAnalysis | null = null;
 	try {
 		cached = JSON.parse(await readFile(analysisPath(id), 'utf8')) as TrackAnalysis;
@@ -561,7 +563,7 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	if (!opts.force && !relevel) {
 		// Invalidate stale versions and changed hand maps even when their JSON shape still looks compatible.
 		if (cached && cached.version === ANALYSIS_VERSION && cached.handMap === (await handMapStamp(id))
-			&& strikerCurrent(cached.striker, await readInstalledStriker2())) {
+			&& strikerCurrent(cached.striker, await readInstalledStriker2(choice, { verify: false }))) {
 			let [, context] = await metadata;
 			log('cached');
 			// Backfill legacy duration/trust metadata to avoid analysis reads for every library row.
@@ -593,11 +595,11 @@ export async function ingest(source: string, opts: IngestOptions = {}): Promise<
 	let striker2Note: Record<string, unknown> | undefined;
 	try {
 		// Striker 2.0 hears every drum hit, beat, downbeat and bass note; without it nothing is prepared.
-		const installed = await readInstalledStriker2();
-		if (!('model' in installed)) throw new Error(striker2Problem(installed));
+		const installed = await readInstalledStriker2(choice);
+		if (!('model' in installed)) throw new Error(striker2Problem(choice, installed));
 		const model = installed.model;
 		const warnings = [...model.warnings];
-		striker2Note = { name: model.name, warnings };
+		striker2Note = { model: choice, name: model.name, warnings };
 		for (const warning of warnings) log(`Striker 2.0: ${warning}`);
 		audioStarted = true;
 		log('decoding');

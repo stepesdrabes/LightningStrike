@@ -51,4 +51,17 @@ describe('library', () => {
 		await rm(join(dirs.models, 'striker2.json'));
 		expect(await currentById()).toEqual({ made: true, other: true, unmarked: false });
 	});
+
+	it('follows the model the settings choose', async () => {
+		const name = await installStriker2();
+		const fixture = join(import.meta.dirname, 'testdata', 'striker2');
+		const manifest = JSON.parse(await readFile(join(fixture, 'striker2.json'), 'utf8'));
+		await copyFile(join(fixture, 'striker2.onnx'), join(dirs.models, 'striker2-small.onnx'));
+		await writeFile(join(dirs.models, 'striker2-small.json'),
+			JSON.stringify({ ...manifest, name: 'Striker 2.0 Small (fixture)', file: 'striker2-small.onnx' }));
+		await Promise.all([saveSong('full', name), saveSong('small', 'Striker 2.0 Small (fixture)')]);
+		expect(await currentById()).toEqual({ full: true, small: false });
+		await writeFile(join(dirs.cache, 'settings.json'), JSON.stringify({ analysisModel: 'striker2-small' }));
+		expect(await currentById()).toEqual({ full: false, small: true });
+	});
 });

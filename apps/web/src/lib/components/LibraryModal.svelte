@@ -1,11 +1,12 @@
 <script lang="ts">
-	import type { LibraryEntry } from '$lib/types.ts';
+	import type { AnalysisModelChoice, AnalysisModelId, LibraryEntry } from '$lib/types.ts';
 	import { filterLibrary } from '$lib/search.svelte.ts';
 	import { clock } from '$lib/format.ts';
 	import Dialog from '$lib/ui/Dialog.svelte';
 	import Badge from '$lib/ui/Badge.svelte';
 	import Button from '$lib/ui/Button.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
+	import Segmented from '$lib/ui/Segmented.svelte';
 	import Spinner from '$lib/ui/Spinner.svelte';
 
 	let {
@@ -17,7 +18,10 @@
 		onplay,
 		onqueue,
 		onradio,
-		ondelete
+		ondelete,
+		analysisModel = 'striker2',
+		analysisModels = [],
+		onanalysismodel
 	}: {
 		open?: boolean;
 		library: LibraryEntry[];
@@ -27,7 +31,23 @@
 		onqueue: (entry: LibraryEntry) => void;
 		onradio: (entry: LibraryEntry) => void;
 		ondelete: (entry: LibraryEntry) => Promise<void>;
+		/** The model that prepares songs, and every one the settings offer. */
+		analysisModel?: AnalysisModelId;
+		analysisModels?: readonly AnalysisModelChoice[];
+		onanalysismodel: (id: AnalysisModelId) => void;
 	} = $props();
+
+	// A model that cannot run cannot be chosen; its reason is the option's title.
+	const modelOptions = $derived(
+		analysisModels.map((m) => ({
+			id: m.id,
+			label: m.label,
+			disabled: m.problem !== null && m.id !== analysisModel,
+			title: m.problem ?? m.name ?? undefined
+		}))
+	);
+	const chosen = $derived(analysisModels.find((m) => m.id === analysisModel));
+	const absent = $derived(analysisModels.filter((m) => m.id !== analysisModel && m.problem !== null));
 
 	let query = $state('');
 	let confirming = $state<string | null>(null);
@@ -66,6 +86,25 @@
 			{#if hours >= 0.1}<span class="sep">·</span>{hours.toFixed(1)} h{/if}
 		</span>
 	</header>
+
+	{#if analysisModels.length > 0}
+		<div class="model">
+			<span>Analysis</span>
+			<Segmented
+				options={modelOptions}
+				value={analysisModel}
+				ariaLabel="The model that prepares songs"
+				onpick={onanalysismodel} />
+			<span class="note truncate" class:warn={chosen?.problem}>
+				{#if chosen?.problem}
+					{chosen.problem}
+				{:else}
+					<span class="mono subtle">{chosen?.name}</span>
+					{#each absent as m (m.id)}<span class="sep">·</span><span class="subtle">{m.label} not installed</span>{/each}
+				{/if}
+			</span>
+		</div>
+	{/if}
 
 	<div class="find">
 		<Icon name="search" size={15} />
@@ -192,6 +231,23 @@
 	.sep {
 		opacity: 0.4;
 		margin: 0 5px;
+	}
+
+	.model {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 16px;
+		border-bottom: 1px solid var(--border-soft);
+		font-size: 12px;
+		color: var(--muted-foreground);
+	}
+	.note {
+		min-width: 0;
+		font-size: 11.5px;
+	}
+	.note.warn {
+		color: var(--warn);
 	}
 
 	.find {

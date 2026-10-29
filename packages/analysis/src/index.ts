@@ -2,6 +2,14 @@ export { analyzeTrack, storedTranscription } from './analyze.ts';
 export { decodeAudio, isTransientFetchError } from './decode.ts';
 export { CACHE_DIR, EVENING_DIR, workspaceRoot } from './paths.ts';
 export { readLibrary } from './library.ts';
+export {
+	ANALYSIS_MODELS,
+	DEFAULT_ANALYSIS_MODEL,
+	analysisModelChoices,
+	isAnalysisModel,
+	type AnalysisModelChoice,
+	type AnalysisModelId
+} from './strikerModel.ts';
 export { radioFor, searchSongs, watchUrl, type Song } from './ytmusic.ts';
 export {
 	analysisPath,

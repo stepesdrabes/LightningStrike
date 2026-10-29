@@ -155,6 +155,16 @@ class QueueStore {
 		return this.commit(clearQueue(this.state, keepCurrent));
 	}
 
+	/** Ready rows whose analysis is no longer current wait to be prepared again; the playing one stays. */
+	async prepareStaleAgain(): Promise<void> {
+		await this.ready();
+		const current = new Map((await readLibrary()).map((e) => [e.id, e.current]));
+		for (const item of this.state.items) {
+			if (item.status !== 'ready' || item.key === this.state.currentKey || !item.trackId) continue;
+			if (current.get(item.trackId) === false) this.patch(item.key, { status: 'pending', message: '' });
+		}
+	}
+
 	/** Used by the ingest runner to report progress against a row. */
 	patch(key: string, patch: Partial<Omit<QueueItem, 'key'>>): QueueState {
 		return this.commit(patchItem(this.state, key, patch));

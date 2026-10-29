@@ -1,6 +1,13 @@
 import { readFile, writeFile, mkdir, rename } from 'node:fs/promises';
 import { join } from 'node:path';
-import { CACHE_DIR } from '@mv/analysis';
+import {
+	CACHE_DIR,
+	DEFAULT_ANALYSIS_MODEL,
+	analysisModelChoices,
+	isAnalysisModel,
+	type AnalysisModelChoice,
+	type AnalysisModelId
+} from '@mv/analysis';
 import {
 	DEFAULT_OUTPUT_FPS,
 	isContrast,
@@ -68,6 +75,8 @@ interface SettingsFile {
 	ambientDrift?: number;
 	/** Seconds a scene holds when nothing is playing. */
 	ambientDwell?: number;
+	/** One of `ANALYSIS_MODELS`. Ingest and the library read it from this file themselves. */
+	analysisModel?: string;
 }
 
 export interface PublicSettings {
@@ -89,6 +98,10 @@ export interface PublicSettings {
 	lounge: boolean;
 	rest: boolean;
 	ambient: AmbientSettings;
+	/** The model that prepares songs. */
+	analysisModel: AnalysisModelId;
+	/** Every model the settings offer, with what is installed or why it cannot run. */
+	analysisModels: AnalysisModelChoice[];
 }
 
 class Settings {
@@ -142,7 +155,9 @@ class Settings {
 				sat: file.ambientSat ?? DEFAULT_AMBIENT.sat,
 				drift: file.ambientDrift ?? DEFAULT_AMBIENT.drift,
 				dwell: file.ambientDwell ?? DEFAULT_AMBIENT.dwell
-			}
+			},
+			analysisModel: isAnalysisModel(file.analysisModel) ? file.analysisModel : DEFAULT_ANALYSIS_MODEL,
+			analysisModels: await analysisModelChoices()
 		};
 	}
 
