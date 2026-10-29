@@ -24,7 +24,7 @@ import { isLocal } from '$lib/server/access.ts';
 import { runner } from '$lib/server/ingestRunner.ts';
 import { queue } from '$lib/server/queueStore.ts';
 import { settings } from '$lib/server/settings.ts';
-import { analysisModelChoices } from '@mv/analysis';
+import { analysisModelChoices, isAnalysisProvider } from '@mv/analysis';
 import type { ColourSource } from '@mv/core';
 import { authorModel, isEffort, type EffortLevel } from '@mv/author-ai';
 import type { RequestHandler } from './$types';
@@ -81,6 +81,11 @@ export const PUT: RequestHandler = async (event) => {
 		if (choice.problem) error(409, choice.problem);
 		patch.analysisModel = choice.id;
 	}
+	// Every provider gives the same events (its check against PyTorch), so analyses stay current.
+	if (body.analysisProvider !== undefined) {
+		if (!isAnalysisProvider(body.analysisProvider)) error(400, 'unknown analysis provider');
+		patch.analysisProvider = body.analysisProvider;
+	}
 	if (Object.keys(patch).length === 0) error(400, 'nothing to change');
 
 	const before = (await settings.read()).analysisModel;
@@ -112,6 +117,7 @@ interface Writable {
 	ambientDrift?: number;
 	ambientDwell?: number;
 	analysisModel?: string;
+	analysisProvider?: string;
 }
 
 function number(v: unknown): v is number {

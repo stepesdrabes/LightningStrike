@@ -89,7 +89,8 @@
 		rest: true,
 		ambient: { ...DEFAULT_AMBIENT },
 		analysisModel: 'striker2',
-		analysisModels: []
+		analysisModels: [],
+		analysisProvider: 'auto'
 	});
 
 	let suggestions = $state<SearchResult[]>([]);
@@ -1172,7 +1173,9 @@
 	ondelete={forget}
 	analysisModel={settings.analysisModel}
 	analysisModels={settings.analysisModels}
-	onanalysismodel={(analysisModel) => void chooseAnalysisModel(analysisModel)} />
+	onanalysismodel={(analysisModel) => void chooseAnalysisModel(analysisModel)}
+	analysisProvider={settings.analysisProvider}
+	onanalysisprovider={(analysisProvider) => void patchSettings({ analysisProvider })} />
 
 <!-- All at the page root: a panel that blurs its backdrop cannot contain a fixed-position child. -->
 <Menu />

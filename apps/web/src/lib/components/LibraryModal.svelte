@@ -1,5 +1,10 @@
 <script lang="ts">
-	import type { AnalysisModelChoice, AnalysisModelId, LibraryEntry } from '$lib/types.ts';
+	import type {
+		AnalysisModelChoice,
+		AnalysisModelId,
+		AnalysisProvider,
+		LibraryEntry
+	} from '$lib/types.ts';
 	import { filterLibrary } from '$lib/search.svelte.ts';
 	import { clock } from '$lib/format.ts';
 	import Dialog from '$lib/ui/Dialog.svelte';
@@ -21,7 +26,9 @@
 		ondelete,
 		analysisModel = 'striker2',
 		analysisModels = [],
-		onanalysismodel
+		onanalysismodel,
+		analysisProvider = 'auto',
+		onanalysisprovider
 	}: {
 		open?: boolean;
 		library: LibraryEntry[];
@@ -35,7 +42,16 @@
 		analysisModel?: AnalysisModelId;
 		analysisModels?: readonly AnalysisModelChoice[];
 		onanalysismodel: (id: AnalysisModelId) => void;
+		/** Where it runs. Every choice hears the same events, so analyses stay current. */
+		analysisProvider?: AnalysisProvider;
+		onanalysisprovider: (id: AnalysisProvider) => void;
 	} = $props();
+
+	const providerOptions: { id: AnalysisProvider; label: string; title: string }[] = [
+		{ id: 'auto', label: 'Auto', title: 'Core ML on Apple silicon once it passes its check, else the CPU' },
+		{ id: 'gpu', label: 'GPU', title: 'As Auto, and DirectML on a Windows graphics card' },
+		{ id: 'cpu', label: 'CPU', title: 'The processor only' }
+	];
 
 	// A model that cannot run cannot be chosen; its reason is the option's title.
 	const modelOptions = $derived(
@@ -95,6 +111,11 @@
 				value={analysisModel}
 				ariaLabel="The model that prepares songs"
 				onpick={onanalysismodel} />
+			<Segmented
+				options={providerOptions}
+				value={analysisProvider}
+				ariaLabel="Where the model runs"
+				onpick={onanalysisprovider} />
 			<span class="note truncate" class:warn={chosen?.problem}>
 				{#if chosen?.problem}
 					{chosen.problem}

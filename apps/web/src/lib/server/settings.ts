@@ -3,10 +3,13 @@ import { join } from 'node:path';
 import {
 	CACHE_DIR,
 	DEFAULT_ANALYSIS_MODEL,
+	DEFAULT_ANALYSIS_PROVIDER,
 	analysisModelChoices,
 	isAnalysisModel,
+	isAnalysisProvider,
 	type AnalysisModelChoice,
-	type AnalysisModelId
+	type AnalysisModelId,
+	type AnalysisProvider
 } from '@mv/analysis';
 import {
 	DEFAULT_OUTPUT_FPS,
@@ -77,6 +80,8 @@ interface SettingsFile {
 	ambientDwell?: number;
 	/** One of `ANALYSIS_MODELS`. Ingest and the library read it from this file themselves. */
 	analysisModel?: string;
+	/** One of `ANALYSIS_PROVIDERS`, which ingest reads from this file too. */
+	analysisProvider?: string;
 }
 
 export interface PublicSettings {
@@ -102,6 +107,8 @@ export interface PublicSettings {
 	analysisModel: AnalysisModelId;
 	/** Every model the settings offer, with what is installed or why it cannot run. */
 	analysisModels: AnalysisModelChoice[];
+	/** Where the model runs; any choice gives the same events. */
+	analysisProvider: AnalysisProvider;
 }
 
 class Settings {
@@ -157,7 +164,10 @@ class Settings {
 				dwell: file.ambientDwell ?? DEFAULT_AMBIENT.dwell
 			},
 			analysisModel: isAnalysisModel(file.analysisModel) ? file.analysisModel : DEFAULT_ANALYSIS_MODEL,
-			analysisModels: await analysisModelChoices()
+			analysisModels: await analysisModelChoices(),
+			analysisProvider: isAnalysisProvider(file.analysisProvider)
+				? file.analysisProvider
+				: DEFAULT_ANALYSIS_PROVIDER
 		};
 	}
 

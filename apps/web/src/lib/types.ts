@@ -77,6 +77,9 @@ interface AuthorModelInfo {
 /** Mirrors @mv/analysis AnalysisModelId. */
 export type AnalysisModelId = 'striker2' | 'striker2-small';
 
+/** Mirrors @mv/analysis AnalysisProvider. */
+export type AnalysisProvider = 'auto' | 'gpu' | 'cpu';
+
 /** Mirrors @mv/analysis AnalysisModelChoice. */
 export interface AnalysisModelChoice {
 	id: AnalysisModelId;
@@ -116,6 +119,7 @@ export interface Settings {
 	/** The model that prepares songs. */
 	analysisModel: AnalysisModelId;
 	analysisModels: readonly AnalysisModelChoice[];
+	analysisProvider: AnalysisProvider;
 }
 
 /**
@@ -141,6 +145,7 @@ export interface SettingsPatch {
 	ambientDrift?: number;
 	ambientDwell?: number;
 	analysisModel?: AnalysisModelId;
+	analysisProvider?: AnalysisProvider;
 }
 
 /** Mirrors $lib/server/judge MomentNote. Duplicated so the client does not import the server. */
