@@ -14,7 +14,7 @@ export interface AnalysisPrelude {
 	features: AnalysisFeatures;
 }
 
-/** Analysis steps that need only the decoded audio, so a worker can run them during separation. */
+/** Analysis steps that need only the decoded audio, so a worker can run them beside the model. */
 export function analysisPrelude(
 	mono: Float32Array,
 	left: Float32Array | undefined,

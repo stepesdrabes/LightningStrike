@@ -28,7 +28,7 @@ function meanAt(odf: Float32Array, fps: number, times: readonly number[]): numbe
 	return acc / times.length;
 }
 
-/** Use 8-beat spans to reduce the model's 20 ms beat-time quantisation error by a factor of eight. */
+/** Use 8-beat spans to divide a tracker's beat-time quantisation error by eight. */
 export function medianPeriod(beats: readonly number[]): number {
 	if (beats.length < 2) return 0;
 	const span = beats.length >= 18 ? 8 : 1;

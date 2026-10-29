@@ -83,14 +83,16 @@ builds the web server and assembles its Node 24.11.0 sidecar automatically, pinn
 development separately, run `npm run bundle -w @mv/desktop`, then
 `npm run dev -w @mv/desktop`. The desktop app still expects the audio tools on PATH.
 The bundled native runtimes require macOS 14 or newer. Build on Apple Silicon for a native
-ARM64 application; the drum pipeline runs locally on CPU without Python or an NVIDIA GPU.
+ARM64 application; Striker 2.0 runs locally on CPU without Python or an NVIDIA GPU. Copy its
+model into `models/` first: the build refuses to bundle without it.
 
 ## How it works
 
 Ingest downloads or copies audio, decodes it with ffmpeg, and produces a `TrackAnalysis`:
-beats, bars, sections, spectral features and musical events. Optional metadata, lyrics and
-audio models refine the result. The engine turns that analysis into a bar-addressed `Show`;
-the linter checks the show before playback. AI authors use the same contracts and effect gate.
+beats, bars, sections, spectral features and musical events. Striker 2.0 hears the beats and
+drums; metadata, lyrics and a genre model refine the result. The engine turns that analysis
+into a bar-addressed `Show`; the linter checks the show before playback. AI authors use the
+same contracts and effect gate.
 
 The queue is server state, persisted between runs and observed by clients over SSE. Track
 preparation is serialized, prioritizing the current track and the next one. The server
@@ -105,7 +107,7 @@ from the browser.
 | `apps/desktop` | Tauri window and Node server sidecar |
 | `apps/controller` | Standalone web controls for the lights' HTTP API |
 | `packages/core` | Contracts, grid, colour, effects/sandbox, mixing and byte encoding |
-| `packages/analysis` | Audio ingest, DSP, optional models and enrichment |
+| `packages/analysis` | Audio ingest, Striker 2.0, DSP and enrichment |
 | `packages/author-engine` | Deterministic show composition and linting |
 | `packages/author-ai` | AI authoring, tools and effect catalog |
 | `packages/preview3d` | three.js room preview |
@@ -137,52 +139,35 @@ and the show remains valid; other engine shows regenerate with their saved rerol
 AI-authored arrangements are retained when the audio identity still matches.
 
 Workspace analysis reads `models/`, overridden by `MV_MODEL_DIR`. Desktop uses its bundled
-model directory. The optional runtime models are:
+model directory. The models are:
 
-- **Beat This!** for beats and downbeats, downloaded on demand with pinned digests.
-- **Discogs-EffNet** for genre evidence, also downloaded with a pinned digest.
-- **ADTOF** for kick/snare/hi-hat transcription, exported locally with
-  [bench/export-adtof.py](bench/export-adtof.py).
-- **HTDemucs + MDX23C DrumSep** separate the drums and then kick, snare, hi-hat and cymbal
-  sources; ADTOF also transcribes the drum stem and each source. See
-  [setup and model provenance](bench/lab/SEPARATION.md). Preparation can take minutes per song
-  on CPU. Install the models before refreshing tracks; installing them later requires a fresh
-  analysis of previously cached tracks.
-- **Striker 1.1** (`striker.json`), LightningStrike's drum hit classifier trained by
-  [bench/drumeval](bench/drumeval/README.md), picks the kick, snare and hi-hat hits from all of
-  that evidence; without it, rule-based source recovery runs. It is ours rather than fetched, so
-  it is the one model committed here and a checkout already has it. See
-  [evaluation and known limitations](bench/DRUM_RELIABILITY.md). Songs classified by another
-  Striker model are re-analysed when next prepared; a model file that fails to load leaves them
-  as they are.
 - **Striker 2.0** (`striker2.json` beside its graph, `striker2.onnx`), one network that hears
-  drum hits with levels, beats, downbeats, bass note onsets and stem activity at 100 fps. When
-  it is installed, preparation runs it in one stage on the 44.1 kHz decode instead of
-  separation, ADTOF and Striker 1.1, in seconds per song on CPU. Beat This! keeps the beats
-  unless the manifest's `app.beats` is `striker2`. The manifest records the graph's SHA-256 and
-  the bass filter's taps; one that does not verify is logged and noted in `.preparation.json`,
-  and preparation takes the path above. Songs another analyser made re-analyse when next
-  prepared. It is copied in by hand: never committed, never downloaded.
+  drum hits with levels, beats, downbeats, bass note onsets and stem activity at 100 fps.
+  Preparation runs it in one stage on the 44.1 kHz decode; its beats go through a DBN to the
+  grid, and its kick, snare and hat (with cymbals) are the hits the lights follow. The manifest
+  records the graph's SHA-256 and the bass filter's taps, and the graph is checked against them
+  before a song is prepared. It is copied in by hand: never committed, never downloaded.
+- **Striker 2.0 Small** (`striker2-small.json` and `striker2-small.onnx`), a smaller export of
+  the same network for slower machines, chosen in the library dialog. Until its files are in
+  `models/` the dialog shows it as not installed and cannot choose it.
+- **Discogs-EffNet** for genre evidence, downloaded on demand with a pinned digest.
+
+Without a usable Striker 2.0 nothing is prepared: a missing file, a failed check or a failed run
+stops the preparation with its reason, on the queue row and in `.preparation.json`, and never
+falls back to another analyser. Songs keep the analyses they have meanwhile. An analysis
+records the model's manifest name as `striker`; songs another model made, or made before a
+model change, are re-analysed when next prepared. `.preparation.json` records stage timings and
+the model's name and warnings, or the error.
 
 Drum listening is available from the Judge panel. It plays the full song with optional kick
 and snare clicks, loops a chosen passage, and keeps missed-hit and timing notes separately
 from the show. Click empty space in either drum lane to mark a missed hit; save notes for
 later comparison. Drafts remain in the browser if the page reloads.
 
-Successful separation also keeps lossless source evidence and its transcriptions in
-`cache/drum-evidence/` (up to 2 GiB, oldest entries evicted). Detector reanalysis can reuse
-it when the audio, separator and ADTOF model match. Hardware-specific optimized CPU graphs
-live in `cache/separator-graphs/`; these are derived files, not portable models. Per-track
-`.preparation.json` records stage timings and the separator and Striker model versions, and
-with Striker 2.0 its name and beat source or why it could not be used.
-See [performance measurements and M1 Pro profiling](bench/lab/SEPARATION-PERFORMANCE.md).
-
-Analysis retains fallback paths when models are unavailable. Discogs-EffNet and ADTOF
-weights carry CC BY-NC-SA terms and the MDX23C DrumSep weights are non-commercial too; preserve
-their upstream licenses and export restrictions. Striker 2.0's weights are for personal use
-only, because its training data and teacher are non-commercial
-([models/striker2.NOTICE](models/striker2.NOTICE)). Desktop builds bundle all of `models/`, so
-never distribute a build that contains them.
+Discogs-EffNet weights carry CC BY-NC-SA terms; preserve their upstream license. Striker 2.0's
+weights, Small's included, are for personal use only, because its training data and teacher are
+non-commercial ([models/striker2.NOTICE](models/striker2.NOTICE)). Desktop builds bundle them,
+so never distribute a build that contains them.
 
 The authoring API (`/api/author`) uses the Claude Agent SDK with local Claude authentication,
 or DeepSeek through `DEEPSEEK_API_KEY` or a key saved in `settings.json`. The app no longer

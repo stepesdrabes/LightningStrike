@@ -46,7 +46,7 @@ const GUARD = 2;
 const FLIP_RATIOS = [2, 3, 0.5, 1 / 3];
 /** Triplet/dotted ratios fold only when phase continues on the old grid; real 3:2 tempo changes may not. */
 const TRIPLET_FLIP_RATIOS = [1.5, 4 / 3, 2 / 3, 0.75];
-/** How near the old grid a beat must land to count as on it: two frames of the model's 20 ms grid. */
+/** How near the old grid a beat must land to count as on it: two frames of a 20 ms grid. */
 const ON_GRID_S = 0.04;
 /** Low steadiness means speech/silence; the threshold must leave swung live drums intact. */
 const CHAOS = 0.4;
