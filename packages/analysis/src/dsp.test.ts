@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeTrack } from './analyze.ts';
-import { onsetsBeside, preludeBeside } from './dsp.ts';
+import { preludeBeside } from './dsp.ts';
 import { synthesise } from './fixture.ts';
 import { analysisPrelude } from './prelude.ts';
 import { sourceOnsets } from './separatedDrums.ts';
@@ -27,13 +27,6 @@ describe('analysis steps computed beside other work', () => {
 		expect(remote!.features.spec.timeOf(37)).toBe(direct.features.spec.timeOf(37));
 		expect(remote!.features.spec.frameOf(1.234)).toBe(direct.features.spec.frameOf(1.234));
 		expect(remote!.features.chroma.timeOf(11)).toBe(direct.features.chroma.timeOf(11));
-	});
-
-	it('returns the same separated onset curve from a worker', async () => {
-		const remote = await onsetsBeside(fixture.mono, fixture.sampleRate);
-		const direct = sourceOnsets(fixture.mono, fixture.sampleRate);
-		expect(remote?.fps).toBe(direct.fps);
-		expect(bytes(remote!.odf).equals(bytes(direct.odf))).toBe(true);
 	});
 
 	it('analyses identically with precomputed steps', () => {

@@ -3,7 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { ACTIVITY_STEMS, type ActivityStem, type OnsetStream } from '@mv/core';
-import { hashFile } from './cpuGraphCache.ts';
+import { hashFile } from './fileHash.ts';
 import type { DrumStream } from './drums.ts';
 import { QUIET_THREADS, openSession, type OnnxSession, type OpenSession } from './onnxSession.ts';
 import {
@@ -215,15 +215,22 @@ export function decodeStriker2(model: Striker2Model, out: Striker2Outputs): Stri
 	};
 }
 
+export interface Striker2Options {
+	/** onnxruntime execution providers in order of preference; the CPU is the checked one. */
+	providers?: readonly string[];
+	open?: OpenSession;
+}
+
 export class Striker2 {
 	private session!: OnnxSession;
 	private model!: Striker2Model;
 
-	static async create(model: Striker2Model, open: OpenSession = openSession): Promise<Striker2> {
+	static async create(model: Striker2Model, options: Striker2Options = {}): Promise<Striker2> {
+		const { providers = ['cpu'], open = openSession } = options;
 		const self = new Striker2();
 		self.model = model;
 		self.session = await open(model.graph, {
-			executionProviders: ['cpu'], graphOptimizationLevel: 'all', ...QUIET_THREADS
+			executionProviders: [...providers], graphOptimizationLevel: 'all', ...QUIET_THREADS
 		});
 		return self;
 	}

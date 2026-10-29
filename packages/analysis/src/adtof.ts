@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { hashFile } from './cpuGraphCache.ts';
+import { hashFile } from './fileHash.ts';
 import { RealFft } from './dsp/fft.ts';
 import { QUIET_THREADS, openSession, type OnnxSession } from './onnxSession.ts';
 import { MODEL_DIR } from './paths.ts';

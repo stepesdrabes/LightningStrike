@@ -1,11 +1,8 @@
 import { Worker } from 'node:worker_threads';
 import { workerFile } from './paths.ts';
 import { restorePrelude, type AnalysisPrelude } from './prelude.ts';
-import type { SourceOnsets } from './separatedDrums.ts';
 
-export type DspTask =
-	| { task: 'prelude'; mono: Float32Array; left?: Float32Array; right?: Float32Array; sampleRate: number }
-	| { task: 'onsets'; source: Float32Array; sampleRate: number };
+export type DspTask = { task: 'prelude'; mono: Float32Array; left?: Float32Array; right?: Float32Array; sampleRate: number };
 
 function inWorker(job: DspTask): Promise<unknown> {
 	const file = workerFile('dspWorker.ts', 'dsp-worker.mjs');
@@ -28,16 +25,6 @@ export async function preludeBeside(
 ): Promise<AnalysisPrelude | undefined> {
 	try {
 		return restorePrelude(await inWorker({ task: 'prelude', mono, left, right, sampleRate }));
-	} catch {
-		return undefined;
-	}
-}
-
-export async function onsetsBeside(
-	source: Float32Array, sampleRate: number
-): Promise<SourceOnsets | undefined> {
-	try {
-		return await inWorker({ task: 'onsets', source, sampleRate }) as SourceOnsets;
 	} catch {
 		return undefined;
 	}

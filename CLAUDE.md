@@ -12,7 +12,6 @@ npm test                            # Vitest
 npm run check                       # TypeScript packages, web and controller
 npm run build                       # production web build
 npm run build -w @mv/desktop         # bundles server/runtime and builds desktop
-npm run build:metal -w @mv/analysis  # GPU separation binding on Apple silicon
 ```
 
 Use Node 22+ with `ffmpeg`, `ffprobe` and `yt-dlp` on PATH. Desktop also needs the platform's
@@ -27,9 +26,6 @@ before committing. Test behavior that can regress, not comment wording or trivia
 - `apps/desktop` runs the web server as a Node sidecar. `apps/controller` calls the firmware API.
 - Keep the desktop Node version pinned in `apps/desktop/scripts/bundle-support.js`; the
   build machine's Node version must not silently change the shipped runtime.
-- `packages/analysis/src/metal/` must return ONNX Runtime's CPU bits exactly. Verify kernel
-  changes with `plan.test.ts` and `bench/lab/metal-compare.ts`
-  ([METAL-SEPARATION.md](bench/lab/METAL-SEPARATION.md)).
 - Respect package boundaries and declared dependencies. Workspace packages expose TypeScript
   source; no intermediate package build is needed.
 - Product features belong in the app, not a new CLI. Build scripts and measurement harnesses

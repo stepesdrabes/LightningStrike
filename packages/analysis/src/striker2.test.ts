@@ -10,7 +10,7 @@ import {
 import { DBN, dbnBeats, dbnIntervals } from './striker2Dbn.ts';
 import { STRIKER2_CLASSES, roundLevel, sigmoid32 } from './striker2Decode.ts';
 import { striker2Features } from './striker2Frontend.ts';
-import { openSession } from './onnxSession.ts';
+import { openSession, type OnnxSession } from './onnxSession.ts';
 
 // Written by striker-2's tools/m7_fixtures.py: a tiny random network, its PyTorch outputs and
 // Python's decoded events.
@@ -75,6 +75,17 @@ describe('Striker 2.0 graph', () => {
 		for (const name of NAMES) expect(largest(got[name], golden[name]), name).toBeLessThan(1e-4);
 		const fromAudio = await striker.outputs(striker2Features(mono(), model.taps));
 		for (const name of NAMES) expect(largest(fromAudio[name], golden[name]), name).toBeLessThan(1e-3);
+	});
+
+	it('opens its session on the providers it is given, the CPU alone by default', async () => {
+		const asked: unknown[] = [];
+		const open = async (_: string, options: Record<string, unknown>) => {
+			asked.push(options.executionProviders);
+			return { release: async () => {} } as unknown as OnnxSession;
+		};
+		await (await Striker2.create(model, { open })).close();
+		await (await Striker2.create(model, { open, providers: ['coreml', 'cpu'] })).close();
+		expect(asked).toEqual([['cpu'], ['coreml', 'cpu']]);
 	});
 
 	it('returns every stream from one call', async () => {
