@@ -38,9 +38,15 @@ Branch `feat/striker2-only`, from `feat/striker2-m7` (striker-2's milestone M7; 
   songs the other model made back in line.
 - The AI authoring tool's tempo re-read (`reanalyse`) keeps the drums the stored analysis heard
   and re-tracks the grid with the onset tracker at the asked tempo.
-- `Striker2.create` takes a list of ONNX Runtime execution providers, `['cpu']` by default; the
-  per-platform list (CoreML on macOS, DirectML on Windows) behind a parity self-check is the next
-  step, being designed in striker-2.
+- Where it runs (`analysisProvider`: `auto`, `gpu`, `cpu`; `striker2Provider.ts`): Core ML
+  (`coreMlFlags` 56, MLProgram on the CPU and GPU) on Apple silicon, DirectML on Windows only under
+  `gpu` (the RTX 3060 belongs to MAXX 2.0 until the owner says otherwise), the CPU last. Each
+  provider must first pass Rule P on the manifest's golden chunks (`striker2Parity.ts`; striker-2's
+  research/2026-10-29-app-speed.md section 9); verdicts live in `cache/striker2-providers.json`,
+  keyed by graph, onnxruntime-node, provider options, threads and machine. `striker2Pool.ts` keeps
+  one session for the run, and the ingest worker now lives between songs so it can.
+- The front end is computed chunk by chunk while the previous chunk runs; the features are the
+  same bits as one pass (`Striker2FrontEnd`).
 
 Install: copy `striker2.onnx` and `striker2.json` from striker-2's `python -m striker.export`
 into `models/`. They stay uncommitted: personal-use weights (`models/striker2.NOTICE`).
@@ -66,13 +72,26 @@ lights, the library diff against analysis 39, the owner's saved reviews).
 
 The desktop bundle carries the pinned Node 24.11.0 runtime for the target, onnxruntime-node's
 binaries for that platform and architecture only (`runtimeFilter` in
-`apps/desktop/scripts/bundle-support.js`), and `runtime/models`: Striker 2.0's manifests and the
-graphs they name, their notices and Discogs-EffNet (`bundledModels`). No native addon of ours
+`apps/desktop/scripts/bundle-support.js`), and `runtime/models`: Striker 2.0's manifests, the
+graphs and golden chunks they name, their notices and Discogs-EffNet (`bundledModels`). No native addon of ours
 is built any more. The pinned ONNX ARM64 binaries declare **macOS 14.0**, stricter than Node
 24.11's 13.5; `tauri.conf.json` declares 14.0, and `bench/lab/check-mac-runtime.ts` verifies the
 Mach-O architecture and minimum OS. Build natively on Apple Silicon with Xcode's command-line
-tools and the Tauri prerequisites. Finder-launched apps ignore shell exports, so set overrides
-with `launchctl setenv` before opening the app.
+tools and the Tauri prerequisites. To measure Striker 2.0's execution providers there, copy a
+model folder (static `striker2.onnx`, `striker2.json` and its golden files; optionally the older
+dynamic graph) to the Mac and, in the checkout after `npm ci`, with nothing else running and on
+mains power:
+
+```sh
+node bench/lab/striker2-providers.ts --model=<folder> --song=<audio file> [--dynamic=<old graph>]
+```
+
+It runs the CPU at the default threads and at the performance-core count, Core ML 56, 24 and 25,
+each in its own process, and prints a table: session, first and median chunk, front end, network,
+decoders and the app's whole song, peak memory, Core ML's partition count, Rule P and the song's
+events against the CPU. The JSON report lands in `bench/reports/striker2-providers/`.
+Finder-launched apps ignore shell exports, so set overrides with `launchctl setenv` before
+opening the app.
 
 ## Listening data for the later accuracy session
 

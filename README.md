@@ -83,8 +83,9 @@ builds the web server and assembles its Node 24.11.0 sidecar automatically, pinn
 development separately, run `npm run bundle -w @mv/desktop`, then
 `npm run dev -w @mv/desktop`. The desktop app still expects the audio tools on PATH.
 The bundled native runtimes require macOS 14 or newer. Build on Apple Silicon for a native
-ARM64 application; Striker 2.0 runs locally on CPU without Python or an NVIDIA GPU. Copy its
-model into `models/` first: the build refuses to bundle without it.
+ARM64 application; Striker 2.0 runs locally, on the GPU through Core ML once it passes its check
+there, else on the CPU, without Python or an NVIDIA GPU. Copy its model into `models/` first: the
+build refuses to bundle without it.
 
 ## How it works
 
@@ -157,7 +158,18 @@ stops the preparation with its reason, on the queue row and in `.preparation.jso
 falls back to another analyser. Songs keep the analyses they have meanwhile. An analysis
 records the model's manifest name as `striker`; songs another model made, or made before a
 model change, are re-analysed when next prepared. `.preparation.json` records stage timings and
-the model's name and warnings, or the error.
+the model's name, provider and warnings, or the error.
+
+Where Striker 2.0 runs is the dialog's other Analysis setting (`analysisProvider`): Auto tries
+Core ML on Apple silicon and keeps Windows on the CPU, GPU also tries DirectML on Windows, CPU is
+the processor alone. Only a static graph goes to Core ML or DirectML. Before a provider is used on
+a machine it runs the manifest's golden chunks and must match PyTorch: every output within 1e-3,
+every decoded event the same, within one frame and 0.01 in level. Otherwise the next one is tried,
+ending with the CPU, which is checked too and runs whatever its verdict. Verdicts are kept per
+graph, runtime, provider, threads and machine in `cache/striker2-providers.json`, so a pass is
+checked once; a provider that fails on a song is marked failed and the song runs again on the CPU.
+One session serves a whole preparation run (the ingest worker stays between songs) and closes
+after 90 idle seconds. Changing the provider leaves analyses current.
 
 Drum listening is available from the Judge panel. It plays the full song with optional kick
 and snare clicks, loops a chosen passage, and keeps missed-hit and timing notes separately
