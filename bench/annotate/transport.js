@@ -1,7 +1,7 @@
 // Gapless loop of one page with a click on every mark: the check that decides whether a mark is
 // right. The loop runs on the buffer source itself, and clicks are scheduled a cycle ahead.
 
-const CLICK_HZ = { kick: 660, snare: 990, hat: 1500, cymbal: 1980 };
+const CLICK_HZ = { kick: 660, snare: 990, hat: 1500, cymbal: 1980, tom: 440 };
 
 export class Transport {
 	constructor(audio) {

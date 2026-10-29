@@ -1,4 +1,4 @@
-// Spectrogram and per-source attack envelopes, built in the page from the clip's WAVs.
+// Spectrogram, per-lane attack envelopes and the bands of the mix, built in the page from the WAVs.
 
 /** 64 samples at 22050 Hz gives the envelope 2.9 ms of resolution, which is what snapping needs. */
 const HOP = 64;
@@ -108,6 +108,18 @@ export function envelope(buffer) {
 
 const SNAP_S = 0.035;
 
+/** The nearest proposal to `t` within the snap window, or null. */
+export function nearestProposal(proposals, t) {
+	let best = null, distance = SNAP_S;
+	for (const p of proposals) {
+		if (Math.abs(p.t - t) <= distance) {
+			distance = Math.abs(p.t - t);
+			best = p.t;
+		}
+	}
+	return best;
+}
+
 /** The strongest attack in that source's envelope near `t`, or `t` itself when there is none. */
 export function snapTime(attack, t) {
 	const { rise, fps } = attack;
@@ -121,4 +133,52 @@ export function snapTime(attack, t) {
 		}
 	}
 	return best < 0 ? t : best / fps;
+}
+
+/**
+ * A Striker 2.0 clip has no separated sources, so each lane is a band of the mix in Hz, [high-pass,
+ * low-pass], 0 for none: something to hear and snap to, not a source.
+ */
+export const BANDS = {
+	kick: [0, 150], snare: [1000, 5000], hat: [7000, 0], cymbal: [3000, 0], tom: [60, 400]
+};
+
+/** RBJ cookbook Butterworth section, normalised by a0. */
+function section(kind, hz, rate) {
+	const w = (2 * Math.PI * hz) / rate;
+	const alpha = Math.sin(w) / (2 * Math.SQRT1_2);
+	const cos = Math.cos(w);
+	const a0 = 1 + alpha;
+	const b = kind === 'low'
+		? [(1 - cos) / 2, 1 - cos, (1 - cos) / 2]
+		: [(1 + cos) / 2, -(1 + cos), (1 + cos) / 2];
+	return { b0: b[0] / a0, b1: b[1] / a0, b2: b[2] / a0, a1: (-2 * cos) / a0, a2: (1 - alpha) / a0 };
+}
+
+function run(y, { b0, b1, b2, a1, a2 }) {
+	let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+	for (let i = 0; i < y.length; i++) {
+		const x = y[i];
+		const out = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+		x2 = x1;
+		x1 = x;
+		y2 = y1;
+		y1 = out;
+		y[i] = out;
+	}
+}
+
+/** `x` through the band, each section run forward then backward so no attack moves in time. */
+export function bandOf(x, rate, [low, high]) {
+	const y = Float32Array.from(x);
+	const sections = [];
+	if (low > 0) sections.push(section('high', low, rate));
+	if (high > 0) sections.push(section('low', high, rate));
+	for (const s of sections) {
+		run(y, s);
+		y.reverse();
+		run(y, s);
+		y.reverse();
+	}
+	return y;
 }

@@ -1,8 +1,8 @@
 /**
  * A clip's pages: two bars each, from the downbeats the beat tracker found.
  *
- * A confirmation is stored as a page index, so the annotator and the exporter must agree on what
- * index 0 covers: both import this rather than keeping a copy.
+ * A confirmation is stored as a page index, so the annotator and the exporters must agree on what
+ * index 0 covers: all of them import this rather than keeping a copy.
  */
 export function buildPages(clip) {
 	const bars = clip.downbeats.length >= 2 ? [...clip.downbeats] : [];
@@ -14,4 +14,9 @@ export function buildPages(clip) {
 		pages.push({ from: bars[i], to: bars[Math.min(bars.length - 1, i + 2)] });
 	}
 	return pages;
+}
+
+/** The classes a clip was cut to be reviewed for: Striker 1.x clips never had a tom lane. */
+export function clipClasses(clip) {
+	return clip.classes ?? ['kick', 'snare', 'hat', 'cymbal'];
 }

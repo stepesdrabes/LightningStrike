@@ -1,17 +1,22 @@
-// The editor canvas: spectrogram of the mix, one lane per class with its own attack envelope, the
-// beat grid, and every mark, proposal and Striker emission on the page.
+// The editor canvas: spectrogram of the mix, one lane per class with its own attack envelope and,
+// for a Striker 2.0 clip, its onset probability, the beat grid, and every mark, proposal and Striker
+// emission on the page.
+import { proposalState, supportOf } from './marks.js';
 
-export const CLASSES = ['kick', 'snare', 'hat', 'cymbal'];
-export const NAMES = { kick: 'kick', snare: 'snare, clap', hat: 'hi-hat', cymbal: 'cymbal, ride' };
-export const COLOUR = { kick: '#5b9dff', snare: '#ff6f8b', hat: '#4ecf9a', cymbal: '#b389ff' };
+/** The open clip's classes, one lane each. */
+export let CLASSES = ['kick', 'snare', 'hat', 'cymbal'];
+export const NAMES = {
+	kick: 'kick', snare: 'snare, clap', hat: 'hi-hat', cymbal: 'cymbal, ride', tom: 'tom'
+};
+export const COLOUR = {
+	kick: '#5b9dff', snare: '#ff6f8b', hat: '#4ecf9a', cymbal: '#b389ff', tom: '#e8a65d'
+};
 
 export const RULER = 26;
 /** Marks on the page boundary would be half a stem wide without it. */
 export const PAD = 10;
 
 const HEAD = 20, PROP_TOP = 5;
-/** A proposal this strong is real evidence; weaker ones stay a tick and are never bulk accepted. */
-export const SUPPORT = 0.12;
 /** The editor takes the height the window has to spare; lanes are served before the spectrogram. */
 export const metrics = { spec: 152, lane: 88, top: RULER + 152, height: RULER + 152 + 88 * 4 };
 
@@ -20,6 +25,11 @@ export function setMetrics(spec, lane) {
 	metrics.lane = lane;
 	metrics.top = RULER + spec;
 	metrics.height = metrics.top + lane * CLASSES.length;
+}
+
+export function setClasses(classes) {
+	CLASSES = classes;
+	setMetrics(metrics.spec, metrics.lane);
 }
 
 const envBase = () => metrics.lane - 13;
@@ -58,6 +68,7 @@ export function drawEditor(g, m) {
 
 	drawGrid(g, m, toX);
 	for (const cls of CLASSES) drawEnvelope(g, m, toX, cls);
+	for (const cls of CLASSES) drawCurve(g, m, toX, cls);
 	for (const cls of CLASSES) if (cls !== m.active) drawClass(g, m, toX, cls);
 	drawClass(g, m, toX, m.active);
 	drawRuler(g, m, toX);
@@ -137,6 +148,45 @@ function drawEnvelope(g, m, toX, cls) {
 	g.stroke();
 }
 
+/** Striker 2.0's onset probability on the lane's 0 to 1 scale, its threshold dashed. */
+function drawCurve(g, m, toX, cls) {
+	const curves = m.clip.curves;
+	const values = curves?.values[cls];
+	if (!values) return;
+	const on = cls === m.active;
+	const base = laneTop(cls) + envBase();
+	const frame = (t) => (t - curves.from) * curves.fps;
+	const from = Math.round(toX(m.view.from)), to = Math.round(toX(m.view.to));
+	// A faint area, so a confident peak never reads as a mark.
+	g.beginPath();
+	g.moveTo(from, base);
+	for (let x = from; x <= to; x++) {
+		let p = 0;
+		const a = Math.max(0, Math.floor(frame(timeAt(m, x))));
+		const b = Math.min(values.length - 1, Math.ceil(frame(timeAt(m, x + 1))));
+		for (let i = a; i <= b; i++) p = Math.max(p, values[i]);
+		g.lineTo(x + 0.5, base - p * envMax());
+	}
+	g.lineTo(to, base);
+	g.closePath();
+	g.fillStyle = COLOUR[cls];
+	g.globalAlpha = on ? 0.3 : 0.15;
+	g.fill();
+	const threshold = m.clip.thresholds?.[cls];
+	if (threshold) {
+		const y = Math.round(base - threshold * envMax()) + 0.5;
+		g.lineWidth = 1;
+		g.globalAlpha = on ? 0.45 : 0.2;
+		g.setLineDash([3, 4]);
+		g.beginPath();
+		g.moveTo(from, y);
+		g.lineTo(to, y);
+		g.stroke();
+		g.setLineDash([]);
+	}
+	g.globalAlpha = 1;
+}
+
 function timeAt(m, x) {
 	const inner = Math.max(1, m.w - PAD * 2);
 	return m.view.from + ((x - PAD) / inner) * (m.view.to - m.view.from);
@@ -146,22 +196,21 @@ function drawClass(g, m, toX, cls) {
 	const top = laneTop(cls);
 	const on = cls === m.active;
 	const hits = m.hits[cls] ?? [];
-	const near = (t, list, window) => list.some((x) => Math.abs(x - t) < window);
 
 	if (m.showProposals) {
 		for (const p of m.clip.proposals[cls] ?? []) {
 			if (p.t < m.view.from || p.t > m.view.to) continue;
-			const answered = near(p.t, hits, 0.04);
+			const state = proposalState(p, hits, supportOf(m.clip));
 			const x = Math.round(toX(p.t)) + 0.5;
 			g.lineWidth = 1;
-			if (answered) {
+			if (state === 'answered') {
 				if (!on) continue;
 				g.strokeStyle = '#2a2a32';
 				g.beginPath();
 				g.moveTo(x, top + PROP_TOP);
 				g.lineTo(x, top + PROP_TOP + 5);
 				g.stroke();
-			} else if (p.score >= SUPPORT) {
+			} else if (state === 'ring') {
 				// An unanswered proposal with real support: a hit the marks do not yet account for.
 				g.globalAlpha = on ? 0.8 : 0.45;
 				g.strokeStyle = COLOUR[cls];

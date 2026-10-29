@@ -1,0 +1,11 @@
+[
+	{
+		"file": "groove.wav",
+		"start": 1.5,
+		"seconds": 6,
+		"id": "example-groove",
+		"tags": ["example"],
+		"title": "Synthetic groove",
+		"genre": "example"
+	}
+]

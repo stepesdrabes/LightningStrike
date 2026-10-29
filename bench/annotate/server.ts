@@ -1,13 +1,15 @@
-// node bench/annotate/server.ts [--port=5190]
-// Serves the drum annotation app over bench/reports/annotate: clips from prepare.ts in, one
-// annotation file per clip out. export.ts turns those into a drumeval corpus.
+// node bench/annotate/server.ts [--port=5190] [--root=DIR]
+// Serves the drum annotation app over bench/reports/annotate (or DIR): clips from prepare.ts in, one
+// annotation file per clip out. export.ts and export-striker2.ts turn those into ground truth.
 import { createReadStream, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { extname, join, normalize, sep } from 'node:path';
+import { extname, join, normalize, resolve, sep } from 'node:path';
 import { EVAL_ROOT } from '../drumeval/evidence.ts';
 
-const port = Number(process.argv.slice(2).find((a) => a.startsWith('--port='))?.slice(7) ?? 5190);
-const ROOT = join(EVAL_ROOT, '..', 'annotate');
+const args = process.argv.slice(2);
+const flag = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.slice(name.length + 3);
+const port = Number(flag('port') ?? 5190);
+const ROOT = resolve(flag('root') ?? join(EVAL_ROOT, '..', 'annotate'));
 const CLIPS = join(ROOT, 'clips');
 const SAVED = join(ROOT, 'annotations');
 const UI = import.meta.dirname;

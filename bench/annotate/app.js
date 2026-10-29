@@ -1,10 +1,11 @@
-// Confirm every kick, snare, hi-hat and cymbal in a clip, one page of two bars at a time. Only
-// pages the owner confirms become ground truth; the rest stay unjudged.
-import { buildSpectrogram, envelope, snapTime } from './dsp.js';
-import { buildPages } from './pages.js';
+// Confirm every kick, snare, hi-hat, cymbal and, in a Striker 2.0 clip, tom, one page of two bars at
+// a time. Only pages the owner confirms become ground truth; the rest stay unjudged.
+import { BANDS, bandOf, buildSpectrogram, envelope, nearestProposal, snapTime } from './dsp.js';
+import { startingHits, supportOf, withSupported } from './marks.js';
+import { buildPages, clipClasses } from './pages.js';
 import { Transport } from './transport.js';
 import {
-	CLASSES, COLOUR, NAMES, PAD, RULER, SUPPORT, drawEditor, laneAt, metrics, setMetrics,
+	CLASSES, COLOUR, NAMES, PAD, RULER, drawEditor, laneAt, metrics, setClasses, setMetrics,
 	subdivisions
 } from './view.js';
 
@@ -66,7 +67,7 @@ function buildDispute(source, list) {
 		for (const cls of CLASSES) {
 			const emitted = (source.striker?.[cls] ?? []).filter((t) => inPage(t, v));
 			for (const p of source.proposals[cls] ?? []) {
-				if (!inPage(p.t, v) || p.score < SUPPORT) continue;
+				if (!inPage(p.t, v) || p.score < supportOf(source)) continue;
 				if (!emitted.some((t) => Math.abs(t - p.t) < 0.04)) score++;
 			}
 			for (const t of emitted) {
@@ -84,11 +85,15 @@ async function loadClip(id) {
 	clip = null;
 	renderRail();
 	const loaded = await (await fetch(`/clips/${id}/clip.json`)).json();
+	const bands = loaded.lanes === 'bands';
+	setClasses(clipClasses(loaded));
+	if (!CLASSES.includes(active)) active = CLASSES[0];
 	buffers = {};
-	await Promise.all(['mix', ...CLASSES].map(async (name) => {
+	await Promise.all(['mix', ...(bands ? [] : CLASSES)].map(async (name) => {
 		const raw = await (await fetch(`/clips/${id}/${name}.wav`)).arrayBuffer();
 		buffers[name] = await audio.decodeAudioData(raw);
 	}));
+	if (bands) for (const cls of CLASSES) buffers[cls] = bandBuffer(buffers.mix, BANDS[cls]);
 	clip = loaded;
 	spectrogram = buildSpectrogram(buffers.mix);
 	attacks = Object.fromEntries(CLASSES.map((cls) => [cls, envelope(buffers[cls])]));
@@ -97,7 +102,7 @@ async function loadClip(id) {
 	annotation = stored ?? {
 		id, corpus: clip.corpus, track: clip.track, title: clip.title, genre: clip.genre,
 		start: clip.start, seconds: clip.seconds,
-		hits: Object.fromEntries(CLASSES.map((cls) => [cls, (clip.striker?.[cls] ?? []).slice()])),
+		hits: startingHits(clip, CLASSES),
 		confirmed: []
 	};
 	for (const cls of CLASSES) annotation.hits[cls] ??= [];
@@ -113,6 +118,12 @@ async function loadClip(id) {
 	localStorage.setItem('annotate.clip', id);
 	render();
 	renderRail();
+}
+
+function bandBuffer(mix, band) {
+	const out = audio.createBuffer(1, mix.length, mix.sampleRate);
+	out.copyToChannel(bandOf(mix.getChannelData(0), mix.sampleRate, band), 0);
+	return out;
 }
 
 /* ---------- rendering ---------- */
@@ -134,6 +145,7 @@ function renderHead() {
 	$('clipArtist').textContent = clip.artist ?? '';
 	$('clipGenre').textContent = clip.genre;
 	$('clipGenre').hidden = !clip.genre;
+	$('strikerName').textContent = clip.model ? 'Striker 2.0' : 'Striker 1.0';
 	const done = annotation.confirmed.length;
 	const marks = CLASSES.reduce((sum, cls) => sum + hits(cls).length, 0);
 	$('clipStat').innerHTML = `<b class="mono">${done}</b> of <b class="mono">${pages.length}`
@@ -207,12 +219,13 @@ function renderBar() {
 		restart();
 		render();
 	});
-	segment('sources', [{ id: 'mix', label: 'the mix' },
-		{ id: 'solo', label: `${active} alone` }], solo ? 'solo' : 'mix', (id) => {
-		solo = id === 'solo';
-		restart();
-		render();
-	});
+	const alone = `${active} ${clip.lanes === 'bands' ? 'band' : 'alone'}`;
+	segment('sources', [{ id: 'mix', label: 'the mix' }, { id: 'solo', label: alone }],
+		solo ? 'solo' : 'mix', (id) => {
+			solo = id === 'solo';
+			restart();
+			render();
+		});
 }
 
 function renderReadout() {
@@ -229,8 +242,8 @@ function renderReadout() {
 
 function renderRail() {
 	const query = $('filter').value.trim().toLowerCase();
-	const shown = index.filter((c) => !query
-		|| `${c.title} ${c.artist} ${c.genre}`.toLowerCase().includes(query));
+	const shown = index.filter((c) => !query || [c.title, c.artist, c.genre, ...(c.tags ?? [])]
+		.join(' ').toLowerCase().includes(query));
 	$('clipList').innerHTML = shown.map((c) => {
 		const total = pageCounts[c.id] ?? 0;
 		const done = saved[c.id]?.confirmed?.length ?? 0;
@@ -308,10 +321,13 @@ function say(text) {
 }
 
 /**
- * A distorted electronic kick barely reaches its separated source, so that lane has no attack to
- * snap to and a click would land wherever the mouse was. The mixture always has one.
+ * A Striker 2.0 clip snaps to the nearest of its proposals first. A distorted electronic kick barely
+ * reaches its separated source, so that lane has no attack to snap to and a click would land
+ * wherever the mouse was. The mixture always has one.
  */
 function snapFor(cls, t) {
+	const peak = clip.lanes === 'bands' ? nearestProposal(clip.proposals[cls] ?? [], t) : null;
+	if (peak !== null) return peak;
 	const at = snapTime(attacks[cls], t);
 	return at === t ? snapTime(attacks.mix, t) : at;
 }
@@ -392,14 +408,8 @@ function copyPrevious() {
 }
 
 function acceptProposals() {
-	const v = view();
-	const supported = (clip.proposals[active] ?? [])
-		.filter((p) => inPage(p.t, v) && p.score >= SUPPORT);
-	const added = hits().filter((t) => inPage(t, v));
-	for (const p of supported) {
-		if (!added.some((t) => Math.abs(t - p.t) < 0.02)) added.push(p.t);
-	}
-	replacePage(added, 'after the proposals');
+	replacePage(withSupported(clip.proposals[active] ?? [], hits(), view(), supportOf(clip)),
+		'after the proposals');
 }
 
 function clearPage() {
@@ -643,7 +653,7 @@ addEventListener('keydown', (event) => {
 	if (key === '?') toggleSheet();
 	else if (key === 'escape') $('sheet').hidden = true;
 	else if (key === ' ') toggleTransport();
-	else if (key >= '1' && key <= '4') choose(CLASSES[Number(key) - 1]);
+	else if (key >= '1' && key <= String(CLASSES.length)) choose(CLASSES[Number(key) - 1]);
 	else if (key === 'arrowright') goto(page + 1);
 	else if (key === 'arrowleft') goto(page - 1);
 	else if (key === 'f') fillGrid();

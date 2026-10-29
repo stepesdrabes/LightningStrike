@@ -58,7 +58,7 @@
 				<div class="headtop">
 					<span class="viewtoggles">
 						<label class="toggle"><input type="checkbox" id="showProposals" checked><span>Proposals</span></label>
-						<label class="toggle"><input type="checkbox" id="showStriker" checked><span>Striker 1.0</span></label>
+						<label class="toggle"><input type="checkbox" id="showStriker" checked><span id="strikerName">Striker 1.0</span></label>
 					</span>
 					<span class="headline">Marks on this page</span>
 				</div>
@@ -115,7 +115,7 @@
 			</button>
 		</header>
 		<div class="grid">
-			<p><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd> <span>choose kick, snare, hi-hat or cymbal</span></p>
+			<p><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd><kbd>4</kbd><kbd>5</kbd> <span>choose kick, snare, hi-hat, cymbal or tom</span></p>
 			<p><kbd>space</kbd> <span>loop this page with a click on every mark</span></p>
 			<p><kbd>f</kbd> <span>fill the page on the grid</span></p>
 			<p><kbd>q</kbd> <span>change the grid</span></p>
@@ -124,12 +124,12 @@
 			<p><kbd>a</kbd> <span>accept every supported proposal on the page</span></p>
 			<p><kbd>x</kbd> <span>clear this class on the page</span></p>
 			<p><kbd>z</kbd> <span>undo</span></p>
-			<p><kbd>s</kbd> <span>hear this class alone</span></p>
+			<p><kbd>s</kbd> <span>hear this class alone, or its band of the mix</span></p>
 			<p><kbd>m</kbd> <span>hear the mix</span></p>
 			<p><kbd>n</kbd> <span>jump to the most disputed page</span></p>
 			<p><kbd>enter</kbd> <span>confirm the page and move on</span></p>
 			<p><kbd>←</kbd><kbd>→</kbd> <span>page back and forward</span></p>
-			<p class="wide"><span>Click a lane to add a mark; it lands on the nearest attack in that source.
+			<p class="wide"><span>Click a lane to add a mark; it lands on the nearest proposal or attack in that lane.
 				Hold <kbd>shift</kbd> to place it exactly where you click. Drag a mark to move it,
 				<kbd>alt</kbd> click or right click to delete it.</span></p>
 		</div>
