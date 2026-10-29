@@ -21,7 +21,7 @@
 		"externalBin": ["binaries/node"],
 		"resources": {
 			"../../web/build": "server",
-			"../../../models": "models",
+			"runtime/models": "models",
 			"../../../evenings": "evenings",
 			"runtime/node_modules": "server/node_modules"
 		},

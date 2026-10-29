@@ -63,6 +63,31 @@ export function withDependencies(names, modules) {
 	return closed;
 }
 
+/** Striker 2.0's manifests; each names its graph. The first one is required. */
+const STRIKER2_MANIFESTS = ['striker2.json', 'striker2-small.json'];
+/** Read beside the manifests when present: the weights' notices and the genre model. */
+const OPTIONAL_MODELS = ['striker2.NOTICE', 'striker2-small.NOTICE', 'discogs-effnet-bsdynamic-1.onnx'];
+
+/**
+ * The files of `models/` the app reads. Anything else there (retired separators, local
+ * experiments) stays out of the bundle; without Striker 2.0 the app could prepare nothing.
+ */
+export function bundledModels(dir) {
+	const files = [];
+	for (const manifest of STRIKER2_MANIFESTS) {
+		if (!existsSync(join(dir, manifest))) continue;
+		const { file } = JSON.parse(readFileSync(join(dir, manifest), 'utf8'));
+		if (typeof file !== 'string' || !existsSync(join(dir, file))) {
+			throw new Error(`models/${manifest} names a graph that is not there: ${file}`);
+		}
+		files.push(manifest, file);
+	}
+	if (!files.includes(STRIKER2_MANIFESTS[0])) {
+		throw new Error('models/ has no striker2.json: copy Striker 2.0 in before bundling');
+	}
+	return [...files, ...OPTIONAL_MODELS.filter((name) => existsSync(join(dir, name)))];
+}
+
 export function runtimeFilter(packageRoot, name, target) {
 	return (source) => {
 		const path = relative(packageRoot, source).split(sep);

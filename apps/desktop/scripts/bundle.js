@@ -12,13 +12,16 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { NODE_VERSION, externalsIn, runtimeFilter, serverDependencies, targetPlatform, withDependencies } from './bundle-support.js';
+import {
+	NODE_VERSION, bundledModels, externalsIn, runtimeFilter, serverDependencies, targetPlatform, withDependencies
+} from './bundle-support.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const desktop = resolve(here, '..');
 const root = resolve(desktop, '../..');
 const modules = join(root, 'node_modules');
 const runtime = join(desktop, 'src-tauri/runtime/node_modules');
+const models = join(desktop, 'src-tauri/runtime/models');
 const binaries = join(desktop, 'src-tauri/binaries');
 
 /** Tauri requires the sidecar filename to end in the exact Rust target triple. */
@@ -133,9 +136,9 @@ for (const name of all) {
 }
 console.log(`node_modules ${all.size} packages (${direct.size} needed directly)`);
 
-// Fail if ONNX is missing; otherwise analysis silently falls back to the weaker tracker.
+// Striker 2.0 runs on onnxruntime-node; without it no song could be prepared.
 if (!existsSync(join(runtime, 'onnxruntime-node'))) {
-	throw new Error('onnxruntime-node did not make it into the bundle; beat tracking would fall back');
+	throw new Error('onnxruntime-node did not make it into the bundle; no song could be prepared');
 }
 
 // The SDK needs its platform-specific optional CLI package to author; fail the build if absent.
@@ -148,6 +151,14 @@ if (!existsSync(join(runtime, 'onnxruntime-node'))) {
 	console.log(`author CLI  ${mb(sizeOf(join(runtime, cli)))}  ${cli}`);
 }
 
+// Only the models the app reads; the folder may also hold retired ones.
+rmSync(models, { recursive: true, force: true });
+mkdirSync(models, { recursive: true });
+for (const name of bundledModels(join(root, 'models'))) {
+	cpSync(join(root, 'models', name), join(models, name));
+	console.log(`model       ${mb(sizeOf(join(models, name)))}  ${name}`);
+}
+
 console.log(`server      ${mb(sizeOf(build))}`);
 console.log(`runtime     ${mb(sizeOf(runtime))}`);
-console.log(`models      ${mb(sizeOf(join(root, 'models')))}`);
+console.log(`models      ${mb(sizeOf(models))}`);

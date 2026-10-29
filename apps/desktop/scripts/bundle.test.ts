@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { externalsIn, runtimeFilter, serverDependencies, targetPlatform, withDependencies } from './bundle-support.js';
+import {
+	bundledModels, externalsIn, runtimeFilter, serverDependencies, targetPlatform, withDependencies
+} from './bundle-support.js';
 
 const fixtures: string[] = [];
 afterEach(() => {
@@ -44,6 +46,21 @@ describe('desktop runtime packaging', () => {
 		write(root, 'build/entry.cjs', "const x = require('server/subpath');");
 		const direct = new Set([...externalsIn(join(root, 'build'), modules), ...serverDependencies(root)]);
 		expect([...withDependencies(direct, modules)].sort()).toEqual(['@vendor/sdk', 'native', 'server', 'transitive']);
+	});
+	it('bundles only the models the app reads, and refuses to bundle without Striker 2.0', () => {
+		const root = fixture();
+		const retired = ['htdemucs.onnx', 'drumsep-mdx23c.onnx', 'drumsep-mdx23c.NOTICE', 'adtof_frame_rnn.onnx',
+			'beat_this.onnx', 'mel-filterbank.bin', 'striker.json', 'README.md'];
+		for (const name of retired) write(root, name);
+		expect(() => bundledModels(root)).toThrow('no striker2.json');
+		write(root, 'striker2.json', JSON.stringify({ file: 'striker2.onnx' }));
+		expect(() => bundledModels(root)).toThrow('striker2.onnx');
+		for (const name of ['striker2.onnx', 'striker2.NOTICE', 'discogs-effnet-bsdynamic-1.onnx']) write(root, name);
+		expect(bundledModels(root)).toEqual(['striker2.json', 'striker2.onnx', 'striker2.NOTICE', 'discogs-effnet-bsdynamic-1.onnx']);
+		write(root, 'striker2-small.json', JSON.stringify({ file: 'striker2-small.onnx' }));
+		write(root, 'striker2-small.onnx');
+		expect(bundledModels(root)).toEqual(['striker2.json', 'striker2.onnx', 'striker2-small.json', 'striker2-small.onnx',
+			'striker2.NOTICE', 'discogs-effnet-bsdynamic-1.onnx']);
 	});
 	it('copies code, licenses and matching native binaries while omitting declarations', () => {
 		const root = fixture();
