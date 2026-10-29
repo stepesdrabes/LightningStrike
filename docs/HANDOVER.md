@@ -68,6 +68,41 @@ did not go down, and preparation is far faster than with the retired pipeline. S
 striker-2's integration checks (the benchmarks through this pipeline, the downbeat rule for the
 lights, the library diff against analysis 39, the owner's saved reviews).
 
+## Model view
+
+- `striker2Graph.ts` reads the installed graph's stages without loading its weights (node names,
+  conv strides, weight shapes); `chosenStriker2Graph` caches it per graph. Its per-stage
+  multiply-accumulates equal ONNX shape inference's: 1029 does 334 G a chunk, `stacks.1` 35.6%,
+  `stacks.0` 31.5%, the stem 15.4%, `stacks.2` 10.5%.
+- `Striker2.run` takes an optional `Striker2Watch`. `Striker2Recorder` reads each chunk's features
+  before `infer` detaches them and its outputs after; glimpses go worker, `strikerLive`,
+  `/api/striker/stream`, and the song's `<id>.hearing.bin` (`readHearing` in core) is written with
+  the analysis.
+- Inner activations are real. `exposedGraph` writes a temporary copy of the verified graph that
+  also returns each layer's result (every transformer and 100 Hz block, `proj`, `post`); Striker's
+  own outputs stay bit-identical (tested on onnxruntime-node 1.27). Rule P checks the exposing
+  session under its own key (`exposed` in `checkKey`); if it cannot open or fails, the song is
+  prepared by a plain session and the view simply has no activations.
+- `striker2Inner.ts` keeps 12 neurons per residual stream (320 @ 100 Hz, 640 @ 25 Hz, 768 @
+  12.5 Hz), chosen on the first chunk by spread; the stream the drum heads read keeps those that
+  move the heads most. Values are standard deviations from the first chunk, 25 rows a second.
+  The header carries the learned weights between kept neurons where one stream feeds the next,
+  and from the last layer into eight output neurons (kick to bass, beat, downbeat).
+- The view (`modelNet3d.ts`, three.js) draws each layer as a ring of its kept neurons in a turning
+  tube. The painter judges each neuron against its own song-wide mean and spread, so a channel
+  offset since the first chunk does not stay lit; threads and links light only while both ends
+  are active. The output neurons light from the recorded head probabilities. A live pass lights
+  the stages in data order, paced by their arithmetic share, until the chunk returns and its own
+  activations play through.
+
+## YouTube on this network
+
+The owner's fixed O2 address gets every signed-out yt-dlp client refused by Google's video
+servers (403 from `gvs`, fallback nodes included), with or without PO tokens (bgutil 2.0.2
+tried, 2026-10-29), while a signed-in browser plays. `youtubeBrowser` in the settings adds
+`--cookies-from-browser` to YouTube URLs only (`youtubeSession.ts`); `/api/youtube` checks the
+sign-in. The owner's Premium account is signed in to Brave.
+
 ## Mac
 
 The desktop bundle carries the pinned Node 24.11.0 runtime for the target, onnxruntime-node's
@@ -90,6 +125,11 @@ It runs the CPU at the default threads and at the performance-core count, Core M
 each in its own process, and prints a table: session, first and median chunk, front end, network,
 decoders and the app's whole song, peak memory, Core ML's partition count, Rule P and the song's
 events against the CPU. The JSON report lands in `bench/reports/striker2-providers/`.
+On the M1 Pro (2026-10-29, Raveform `0693.FgTY7x8yhRE`, 233 s, under light load) every provider
+passed Rule P with equal events: CPU 9.04 s a song (6.86 s at the 8 performance-core threads),
+Core ML 56 1.69 s, Core ML 24 2.01 s. But each Core ML session compiled for 212 to 282 s, twice
+measured, and onnxruntime-node 1.27 takes no compiled-model cache, while the pool drops an idle
+session after 90 s: nearly every song would pay it. The owner set this Mac to CPU.
 Finder-launched apps ignore shell exports, so set overrides with `launchctl setenv` before
 opening the app.
 

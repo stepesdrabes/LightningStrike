@@ -18,6 +18,18 @@ in Node over DDP or sACN; the browser supplies the audio playback position.
 - Open an evening from the right-hand rail, rehearse it, then run the night from there.
 - Share the queue's QR code so guests can add tracks from their phones and withdraw their
   own unplayed additions. Queue management, authoring and hardware controls stay with the host.
+- Click the LightningStrike mark (⌘,) for Settings: the analysis model and where it runs, the
+  browser whose YouTube sign-in downloads use, radio and rest, the library and model folders,
+  and the versions of the tools the app relies on.
+- Watch Striker 2.0 at the top of the right rail. While a song plays, the view replays what the
+  network heard and answered for it, locked to the music; while one prepares, each 90-second
+  chunk's input goes in, the stages light in the order data passes them, each for its share of
+  the arithmetic, and the outputs come back. The stages are read from the installed graph.
+
+If YouTube refuses downloads on your network (some addresses get every signed-out request
+refused while a signed-in browser still plays), choose that browser under Settings, YouTube.
+Downloads then carry its YouTube cookies, read fresh each time by yt-dlp; no other site sees
+them. macOS asks once for access to the browser's cookie key.
 
 Space toggles playback; arrows seek, with Shift for larger jumps. Cmd/Ctrl-K opens search,
 `[` and `]` toggle the side panels, and `L` toggles Lounge.
@@ -131,7 +143,10 @@ also honors `MV_CACHE_DIR`.
 
 The cache holds audio and each track's `.analysis.json`, `.show.json`, `.meta.json` and
 `.context.json`, plus queue state, settings and review data. Treat saved shows, track edits
-and settings as user data. Cache and downloaded models are gitignored.
+and settings as user data. Cache and downloaded models are gitignored. Each song prepared by
+Striker 2.0 also keeps a `.hearing.bin` (1 to 3 MB, gzipped) for the model view: its input
+features, its output heads and the real activations of its kept neurons, in bytes. Nothing
+composes a show from it.
 
 After analysis or engine updates, queued tracks refresh as they become current or next.
 Preparation reuses saved audio, so the original URL or imported file need not remain
