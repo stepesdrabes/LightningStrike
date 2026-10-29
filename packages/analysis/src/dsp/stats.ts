@@ -2,12 +2,6 @@ export function clamp01(v: number): number {
 	return v < 0 ? 0 : v > 1 ? 1 : v;
 }
 
-/** A plain loop: `every(Number.isFinite)` is far slower on whole songs. */
-export function allFinite(a: Float32Array): boolean {
-	for (let i = 0; i < a.length; i++) if (!Number.isFinite(a[i])) return false;
-	return true;
-}
-
 export function mean(a: ArrayLike<number>, from = 0, to = a.length): number {
 	const lo = Math.max(0, from);
 	const hi = Math.min(a.length, to);
@@ -60,31 +54,6 @@ export function normalise(
 	const hi = quantile(a, hiQ);
 	const span = Math.max(hi - lo, 1e-9);
 	for (let i = 0; i < a.length; i++) out[i] = clamp01((a[i] - lo) / span);
-	return out;
-}
-
-/** Sliding maximum over a centred window of `2 * radius + 1`, O(n) via a monotonic deque. */
-export function maxFilter(a: Float32Array, radius: number, out = new Float32Array(a.length)) {
-	const n = a.length;
-	if (radius <= 0) {
-		out.set(a);
-		return out;
-	}
-	const deque = new Int32Array(n);
-	let head = 0;
-	let tail = 0;
-
-	for (let i = 0; i < n + radius; i++) {
-		if (i < n) {
-			while (tail > head && a[deque[tail - 1]] <= a[i]) tail--;
-			deque[tail++] = i;
-		}
-		const centre = i - radius;
-		if (centre >= 0) {
-			while (deque[head] < centre - radius) head++;
-			out[centre] = a[deque[head]];
-		}
-	}
 	return out;
 }
 

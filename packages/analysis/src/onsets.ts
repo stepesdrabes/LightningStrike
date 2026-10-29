@@ -1,5 +1,5 @@
 import type { Spectrogram } from './dsp/spectrogram.ts';
-import { maxFilter, quantile, smooth } from './dsp/stats.ts';
+import { quantile, smooth } from './dsp/stats.ts';
 
 /**
  * SuperFlux (Böck & Widmer, DAFx 2013): max-filter the preceding log-frequency frame before
@@ -87,64 +87,4 @@ export function conditionCurve(curve: Float32Array, fps: number, windowSec = 1.5
 	const top = quantile(out, 0.98);
 	if (top > 1e-9) for (let i = 0; i < n; i++) out[i] /= top;
 	return out;
-}
-
-interface PeakOptions {
-	/** A peak must be the maximum over this radius, in seconds. */
-	localMaxSec: number;
-	/** ... and exceed the moving mean over this radius by `delta`. */
-	movingMeanSec: number;
-	delta: number;
-	/** Minimum gap between reported peaks, in seconds. */
-	refractorySec: number;
-}
-
-export interface Peak {
-	frame: number;
-	time: number;
-	strength: number;
-}
-
-/** Adaptive-floor local maxima with a refractory gap. Strength is the excess above the floor. */
-export function pickPeaks(curve: Float32Array, fps: number, opts: PeakOptions): Peak[] {
-	const n = curve.length;
-	if (n === 0) return [];
-
-	const maxRadius = Math.max(1, Math.round(opts.localMaxSec * fps));
-	const meanRadius = Math.max(1, Math.round(opts.movingMeanSec * fps));
-	const refractory = Math.max(1, Math.round(opts.refractorySec * fps));
-
-	const local = maxFilter(curve, maxRadius);
-	const floor = smooth(curve, meanRadius);
-
-	const peaks: Peak[] = [];
-	let last = -refractory - 1;
-	for (let i = 0; i < n; i++) {
-		const v = curve[i];
-		if (v < local[i] || v < floor[i] + opts.delta || v <= 0) continue;
-		if (i - last < refractory) {
-			// Keep the stronger of two peaks inside one refractory window rather than the first,
-			// so a soft pre-hit cannot mask the beat behind it.
-			const prev = peaks[peaks.length - 1];
-			if (prev && v - floor[i] > prev.strength) {
-				peaks[peaks.length - 1] = { frame: i, time: i / fps, strength: v - floor[i] };
-				last = i;
-			}
-			continue;
-		}
-		peaks.push({ frame: i, time: i / fps, strength: v - floor[i] });
-		last = i;
-	}
-	return peaks;
-}
-
-/** Peaks refined to sub-frame accuracy by a parabola through the three samples at the top. */
-export function refinePeakTime(curve: Float32Array, frame: number, fps: number): number {
-	if (frame <= 0 || frame >= curve.length - 1) return frame / fps;
-	const a = curve[frame - 1];
-	const b = curve[frame];
-	const c = curve[frame + 1];
-	const denom = a - 2 * b + c;
-	const shift = Math.abs(denom) < 1e-12 ? 0 : (0.5 * (a - c)) / denom;
-	return (frame + Math.max(-0.5, Math.min(0.5, shift))) / fps;
 }

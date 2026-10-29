@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { RealFft, hannWindow } from './fft.ts';
 import { applyBiquad, kWeighting, lowpass } from './filters.ts';
 import { computeSpectrogram, logFilterBank } from './spectrogram.ts';
-import { maxFilter, quantile, smooth } from './stats.ts';
+import { quantile, smooth } from './stats.ts';
 
 function naiveDft(x: Float32Array, k: number): [number, number] {
 	let re = 0;
@@ -153,19 +153,6 @@ describe('biquads', () => {
 });
 
 describe('stats', () => {
-	const sample = Float32Array.from([3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5]);
-
-	it('slides a maximum over a centred window', () => {
-		const max = maxFilter(sample, 2);
-		for (let i = 0; i < sample.length; i++) {
-			let hi = -Infinity;
-			for (let k = Math.max(0, i - 2); k <= Math.min(sample.length - 1, i + 2); k++) {
-				hi = Math.max(hi, sample[k]);
-			}
-			expect(max[i]).toBe(hi);
-		}
-	});
-
 	it('interpolates quantiles', () => {
 		expect(quantile([0, 1, 2, 3, 4], 0)).toBe(0);
 		expect(quantile([0, 1, 2, 3, 4], 1)).toBe(4);
