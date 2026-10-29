@@ -62,6 +62,29 @@ describe('desktop runtime packaging', () => {
 		expect(bundledModels(root)).toEqual(['striker2.json', 'striker2.onnx', 'striker2-small.json', 'striker2-small.onnx',
 			'striker2.NOTICE', 'discogs-effnet-bsdynamic-1.onnx']);
 	});
+	it('bundles the golden chunks each manifest lists beside its graph, and refuses a missing one', () => {
+		const root = fixture();
+		const golden = (prefix: string) => ({ chunks: [0, 1].map((n) => ({
+			features: { file: `${prefix}.golden${n}.features.f32` }, outputs: { file: `${prefix}.golden${n}.outputs.f32` }
+		})) });
+		write(root, 'striker2.json', JSON.stringify({ file: 'striker2.onnx', golden: golden('striker2') }));
+		write(root, 'striker2-small.json', JSON.stringify({ file: 'striker2-small.onnx', golden: golden('striker2-small') }));
+		for (const name of ['striker2.onnx', 'striker2-small.onnx', 'striker2.golden0.features.f32',
+			'striker2.golden0.outputs.f32', 'striker2.golden1.features.f32']) write(root, name);
+		expect(() => bundledModels(root)).toThrow('golden file that is not there: striker2.golden1.outputs.f32');
+		for (const name of ['striker2.golden1.outputs.f32', ...[0, 1].flatMap((n) =>
+			[`striker2-small.golden${n}.features.f32`, `striker2-small.golden${n}.outputs.f32`])]) write(root, name);
+		write(root, 'striker2.golden9.outputs.f32');
+		expect(bundledModels(root)).toEqual(['striker2.json', 'striker2.onnx', 'striker2.golden0.features.f32',
+			'striker2.golden0.outputs.f32', 'striker2.golden1.features.f32', 'striker2.golden1.outputs.f32',
+			'striker2-small.json', 'striker2-small.onnx', 'striker2-small.golden0.features.f32',
+			'striker2-small.golden0.outputs.f32', 'striker2-small.golden1.features.f32',
+			'striker2-small.golden1.outputs.f32']);
+		write(root, 'striker2.json', JSON.stringify({ file: 'striker2.onnx', golden: { chunks: [{
+			features: { file: '../escape.f32' }, outputs: { file: 'striker2.golden0.outputs.f32' }
+		}] } }));
+		expect(() => bundledModels(root)).toThrow('golden file');
+	});
 	it('copies code, licenses and matching native binaries while omitting declarations', () => {
 		const root = fixture();
 		const source = join(root, 'source');

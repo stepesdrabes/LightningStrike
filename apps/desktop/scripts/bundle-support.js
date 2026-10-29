@@ -69,18 +69,27 @@ const STRIKER2_MANIFESTS = ['striker2.json', 'striker2-small.json'];
 const OPTIONAL_MODELS = ['striker2.NOTICE', 'striker2-small.NOTICE', 'discogs-effnet-bsdynamic-1.onnx'];
 
 /**
- * The files of `models/` the app reads. Anything else there (retired separators, local
- * experiments) stays out of the bundle; without Striker 2.0 the app could prepare nothing.
+ * The files of `models/` the app reads: each manifest, its graph and the golden chunks that check
+ * a runtime against PyTorch. Anything else there (retired separators, local experiments) stays
+ * out of the bundle; without Striker 2.0 the app could prepare nothing.
  */
 export function bundledModels(dir) {
 	const files = [];
 	for (const manifest of STRIKER2_MANIFESTS) {
 		if (!existsSync(join(dir, manifest))) continue;
-		const { file } = JSON.parse(readFileSync(join(dir, manifest), 'utf8'));
+		const { file, golden } = JSON.parse(readFileSync(join(dir, manifest), 'utf8'));
 		if (typeof file !== 'string' || !existsSync(join(dir, file))) {
 			throw new Error(`models/${manifest} names a graph that is not there: ${file}`);
 		}
 		files.push(manifest, file);
+		for (const chunk of golden?.chunks ?? []) {
+			for (const named of [chunk?.features?.file, chunk?.outputs?.file]) {
+				if (typeof named !== 'string' || !/^[\w.-]+\.f32$/.test(named) || !existsSync(join(dir, named))) {
+					throw new Error(`models/${manifest} names a golden file that is not there: ${named}`);
+				}
+				files.push(named);
+			}
+		}
 	}
 	if (!files.includes(STRIKER2_MANIFESTS[0])) {
 		throw new Error('models/ has no striker2.json: copy Striker 2.0 in before bundling');
