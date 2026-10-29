@@ -1,3 +1,5 @@
+import type { Transcription } from './striker2.ts';
+
 /**
  * Synthetic ground truth needs arrangement dynamics and realistic transient spectra: relative
  * detectors cannot be calibrated on clicks. Ramp kicks, sustain snares, and band-limit hats.
@@ -129,6 +131,19 @@ export function synthesise(
 
 	for (let i = 0; i < mono.length; i++) mono[i] = Math.max(-1, Math.min(1, mono[i]));
 	return { mono, sampleRate, duration, bpm, beatsPerBar: 4, kick, snare, hat, stageBars };
+}
+
+/** What a perfect Striker 2.0 hears in a fixture: its drums at one level, and nothing else. */
+export function transcription(fixture?: Pick<Fixture, 'kick' | 'snare' | 'hat'>, level = 0.8): Transcription {
+	const stream = (times: readonly number[] = []) => ({ times: [...times], levels: times.map(() => level) });
+	return {
+		name: 'Striker 2.0 (fixture)',
+		drums: {
+			kick: stream(fixture?.kick), snare: stream(fixture?.snare), hat: stream(fixture?.hat), cymbal: stream(), tom: stream()
+		},
+		bass: stream(),
+		activity: { drums: [], bass: [], vocals: [], other: [] }
+	};
 }
 
 /** Greedy one-to-one matching within `tol`, the standard onset and beat F-measure. */

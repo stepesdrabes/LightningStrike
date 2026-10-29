@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { OnsetStream, TrackAnalysis } from '@mv/core';
 import { benchmarkCache } from './cache.ts';
-import { matchEvents } from './lab/mdb.ts';
+import { matchEvents } from './drumeval/score.ts';
 
 const KIT = ['kick', 'snare', 'hat'] as const;
 type Kind = typeof KIT[number];

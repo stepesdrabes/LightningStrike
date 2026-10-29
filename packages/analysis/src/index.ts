@@ -1,4 +1,4 @@
-export { analyzeTrack } from './analyze.ts';
+export { analyzeTrack, storedTranscription } from './analyze.ts';
 export { decodeAudio, isTransientFetchError } from './decode.ts';
 export { CACHE_DIR, EVENING_DIR, workspaceRoot } from './paths.ts';
 export { readLibrary } from './library.ts';

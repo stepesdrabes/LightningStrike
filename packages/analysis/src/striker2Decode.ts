@@ -1,5 +1,4 @@
 import type { ActivityStem, OnsetStream } from '@mv/core';
-import type { DrumStream } from './drums.ts';
 
 /** Striker 2.0's coarse drum classes, in its output columns' order after the 13 fine ones. */
 export const STRIKER2_CLASSES = ['kick', 'snare', 'hat', 'cymbal', 'tom'] as const;
@@ -68,7 +67,7 @@ export function probabilities(data: Float32Array, width: number, column: number)
 function hits(
 	prob: Float32Array, offset: Float32Array, width: number, column: number, rule: PeakRule,
 	level: (frame: number) => number, floor: number
-): { times: number[]; levels: number[] } {
+): OnsetStream {
 	const reach = Math.fround(rule.reach);
 	const frames = peaks(prob, rule.threshold, rule.gap);
 	const shift = (f: number) => Math.min(reach, Math.max(-reach, offset[f * width + column]));
@@ -85,15 +84,13 @@ function hits(
 export function coarseHits(
 	outputs: { onset: Float32Array; offset: Float32Array; level: Float32Array; width: number },
 	firstColumn: number, rules: Record<Striker2Class, PeakRule>, floor: number
-): Record<Striker2Class, DrumStream> {
+): Record<Striker2Class, OnsetStream> {
 	const { onset, offset, level, width } = outputs;
-	const out = {} as Record<Striker2Class, DrumStream>;
+	const out = {} as Record<Striker2Class, OnsetStream>;
 	STRIKER2_CLASSES.forEach((cls, i) => {
 		const column = firstColumn + i;
-		const curve = probabilities(onset, width, column);
 		const loudness = (f: number) => sigmoid32(level[f * width + column]);
-		const picked = hits(curve, offset, width, column, rules[cls], loudness, floor);
-		out[cls] = { ...picked, curve, fps: STRIKER2_FPS };
+		out[cls] = hits(probabilities(onset, width, column), offset, width, column, rules[cls], loudness, floor);
 	});
 	return out;
 }

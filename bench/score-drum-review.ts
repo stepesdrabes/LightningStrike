@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { TrackAnalysis } from '@mv/core';
 import type { DrumReview } from '../apps/web/src/lib/drumReview.ts';
-import { matchEvents } from './lab/mdb.ts';
+import { matchEvents } from './drumeval/score.ts';
 import { snapToReviewedGrid } from './align-drum-review.ts';
 
 export interface DrumReviewScoreOptions {

@@ -17,7 +17,7 @@ import { lintShow } from '@mv/author-engine';
 const SR = 22050;
 
 /** A short but structurally complete track, cheap enough to analyse inside a test. */
-function synth(): { mono: Float32Array; duration: number } {
+function synth(): { mono: Float32Array; duration: number; kicks: number[] } {
 	const bpm = 120;
 	const beat = 60 / bpm;
 	const bar = beat * 4;
@@ -38,11 +38,13 @@ function synth(): { mono: Float32Array; duration: number } {
 		return seed / 4294967296 - 0.5;
 	};
 
+	const kicks: number[] = [];
 	let b = 0;
 	for (const s of stages) {
 		for (let k = 0; k < s.bars; k++, b++) {
 			const start = b * bar;
 			for (let beatIdx = 0; beatIdx < 4 && s.kick > 0; beatIdx++) {
+				kicks.push(start + beatIdx * beat);
 				const i0 = Math.floor((start + beatIdx * beat) * SR);
 				for (let i = 0; i < 0.14 * SR && i0 + i < mono.length; i++) {
 					mono[i0 + i] += Math.sin((2 * Math.PI * 55 * i) / SR) * Math.exp((-i / SR) * 34) * s.kick;
@@ -64,17 +66,25 @@ function synth(): { mono: Float32Array; duration: number } {
 		}
 	}
 	for (let i = 0; i < mono.length; i++) mono[i] = Math.max(-1, Math.min(1, mono[i]));
-	return { mono, duration };
+	return { mono, duration, kicks };
 }
 
 const track = synth();
+const none = { times: [], levels: [] };
 const analysis: TrackAnalysis = analyzeTrack({
 	mono: track.mono,
 	sampleRate: SR,
 	duration: track.duration,
 	hash: 'e2ehash',
 	trackId: 'file-0123456789ab',
-	title: 'E2E'
+	title: 'E2E',
+	// The kicks as Striker 2.0 would hear them, so the kit gates have drums to read.
+	striker2: {
+		name: 'Striker 2.0 (e2e)',
+		drums: { kick: { times: track.kicks, levels: track.kicks.map(() => 0.8) }, snare: none, hat: none, cymbal: none, tom: none },
+		bass: none,
+		activity: { drums: [], bass: [], vocals: [], other: [] }
+	}
 });
 
 /** The DSL exercise a generated effect is expected to survive. */

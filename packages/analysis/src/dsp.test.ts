@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeTrack } from './analyze.ts';
 import { preludeBeside } from './dsp.ts';
-import { synthesise } from './fixture.ts';
+import { synthesise, transcription } from './fixture.ts';
 import { analysisPrelude } from './prelude.ts';
-import { sourceOnsets } from './separatedDrums.ts';
 
 const fixture = synthesise(124, [
 	{ bars: 4, kick: 1, snare: 0.8, hat: 0.6, bass: 0.9, pad: 0.6, riser: false },
@@ -30,22 +29,12 @@ describe('analysis steps computed beside other work', () => {
 	});
 
 	it('analyses identically with precomputed steps', () => {
-		const separatedDrums = {
-			kick: fixture.mono.slice(), snare: right.slice(), cymbal: left.slice(), sampleRate: 22050
-		};
 		const input = {
 			mono: fixture.mono, left, right, sampleRate: fixture.sampleRate, duration: fixture.duration,
-			hash: 'fixture', trackId: 'abcdefghijk', title: 'Fixture', separatedDrums
+			hash: 'fixture', trackId: 'abcdefghijk', title: 'Fixture', striker2: transcription(fixture)
 		};
 		const plain = analyzeTrack(input);
-		const ahead = analyzeTrack({
-			...input,
-			prelude: analysisPrelude(fixture.mono, left, right, fixture.sampleRate),
-			separatedOnsets: {
-				kick: sourceOnsets(separatedDrums.kick, 22050),
-				snare: sourceOnsets(separatedDrums.snare, 22050)
-			}
-		});
+		const ahead = analyzeTrack({ ...input, prelude: analysisPrelude(fixture.mono, left, right, fixture.sampleRate) });
 		expect(JSON.stringify(ahead)).toBe(JSON.stringify(plain));
 	});
 });

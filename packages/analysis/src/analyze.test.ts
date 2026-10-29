@@ -7,20 +7,20 @@ import { detectBeats } from './beats.ts';
 import { extractFeatures } from './features.ts';
 import { measureLoudness } from './loudness.ts';
 import { analyseStereo } from './stereo.ts';
-import { ARRANGEMENT, fMeasure, synthesise } from './fixture.ts';
-import { onsetsFromActivations } from './adtof.ts';
-import { CANDIDATE_REVISION, STRIKER_FEATURES, type StrikerModel } from './striker.ts';
-import type { Striker2Result } from './striker2.ts';
-import type { DrumStream } from './drums.ts';
+import { ARRANGEMENT, fMeasure, synthesise, transcription } from './fixture.ts';
+import type { Transcription } from './striker2.ts';
 
 const fixture = synthesise();
+/** A perfect transcriber's hearing of the fixture. */
+const heard = transcription(fixture);
 const analysis = analyzeTrack({
 	mono: fixture.mono,
 	sampleRate: fixture.sampleRate,
 	duration: fixture.duration,
 	hash: 'test',
 	trackId: 'file-000000000000',
-	title: 'Synthetic Arrangement'
+	title: 'Synthetic Arrangement',
+	striker2: heard
 });
 
 describe('tempo', () => {
@@ -250,17 +250,13 @@ describe('sections', () => {
 });
 
 describe('onsets', () => {
-	it('finds the kick pattern', () => {
-		expect(fMeasure(fixture.kick, analysis.onsets.kick.times, 0.05).f).toBeGreaterThan(0.8);
-	});
-
-	it('finds the hat pattern', () => {
-		expect(fMeasure(fixture.hat, analysis.onsets.hat.times, 0.05).f).toBeGreaterThan(0.7);
-	});
-
-	it('finds most of the snares', () => {
-		// Snare spectra overlap hats and bass. This floor pins measured DSP accuracy, below kick/hat recall.
-		expect(fMeasure(fixture.snare, analysis.onsets.snare.times, 0.05).recall).toBeGreaterThan(0.6);
+	it('takes every kick, snare and hat Striker 2.0 heard inside the track', () => {
+		const inside = (times: readonly number[]) =>
+			times.filter((t) => t <= fixture.duration).map((t) => Math.round(t * 1000) / 1000);
+		expect(analysis.onsets.kick.times).toEqual(inside(fixture.kick));
+		expect(analysis.onsets.snare.times).toEqual(inside(fixture.snare));
+		expect(analysis.onsets.hat.times).toEqual(inside(fixture.hat));
+		expect(analysis.onsets.kick.levels.every((level) => level === 0.8)).toBe(true);
 	});
 
 	it('keeps every onset inside the track', () => {
@@ -337,6 +333,7 @@ describe('determinism', () => {
 		const again = analyzeTrack({
 			mono: fixture.mono,
 			sampleRate: fixture.sampleRate,
+			striker2: heard,
 			duration: fixture.duration,
 			hash: 'test',
 			trackId: 'file-000000000000',
@@ -350,6 +347,7 @@ describe('determinism', () => {
 		analyzeTrack({
 			mono: fixture.mono,
 			sampleRate: fixture.sampleRate,
+			striker2: heard,
 			duration: fixture.duration,
 			hash: 'test',
 			trackId: 'file-000000000000',
@@ -376,6 +374,7 @@ describe('degenerate input', () => {
 		const quiet = analyzeTrack({
 			mono: blank,
 			sampleRate: 22050,
+			striker2: transcription(),
 			duration: 5,
 			hash: 'silent',
 			trackId: 'file-000000000000',
@@ -394,6 +393,7 @@ describe('degenerate input', () => {
 		const stub = analyzeTrack({
 			mono: new Float32Array(2205),
 			sampleRate: 22050,
+			striker2: transcription(),
 			duration: 0.1,
 			hash: 'stub',
 			trackId: 'file-000000000000',
@@ -444,14 +444,6 @@ describe('grid locking', () => {
 		const last = analysis.bars.length - 1;
 		expect(Math.abs(barTimeAt(analysis.tempo, last) - analysis.bars[last].t)).toBeLessThan(0.01);
 	});
-
-	it('completes a kick pattern rather than leaving gaps in it', () => {
-		const drop = analysis.sections.find((s) => s.kind === 'drop');
-		if (!drop) return;
-		const bars = analysis.bars.filter((b) => b.bar >= drop.startBar && b.bar < drop.endBar);
-		const withKick = bars.filter((b) => b.kicks > 0).length;
-		expect(withKick / bars.length).toBeGreaterThan(0.9);
-	});
 });
 
 describe('stereo', () => {
@@ -494,6 +486,7 @@ describe('metrical level', () => {
 		const doubled = analyzeTrack({
 			mono: fixture.mono,
 			sampleRate: fixture.sampleRate,
+			striker2: heard,
 			duration: fixture.duration,
 			hash: 'test',
 			trackId: 'file-000000000000',
@@ -512,6 +505,7 @@ describe('metrical level', () => {
 		const halved = analyzeTrack({
 			mono: fixture.mono,
 			sampleRate: fixture.sampleRate,
+			striker2: heard,
 			duration: fixture.duration,
 			hash: 'test',
 			trackId: 'file-000000000000',
@@ -583,6 +577,7 @@ describe('the ring-out', () => {
 		const a = analyzeTrack({
 			mono: rings.mono,
 			sampleRate: rings.sampleRate,
+			striker2: transcription(rings),
 			duration: rings.duration,
 			hash: 'rings-out',
 			trackId: 'file-000000000000',
@@ -608,6 +603,7 @@ describe('trailing silence', () => {
 		const a = analyzeTrack({
 			mono: fades.mono,
 			sampleRate: fades.sampleRate,
+			striker2: transcription(fades),
 			duration: fades.duration,
 			hash: 'fades-out',
 			trackId: 'file-000000000000',
@@ -624,6 +620,7 @@ describe('re-reading a settled grid', () => {
 		const again = analyzeTrack({
 			mono: fixture.mono,
 			sampleRate: fixture.sampleRate,
+			striker2: heard,
 			duration: fixture.duration,
 			hash: 'test',
 			trackId: 'file-000000000000',
@@ -651,6 +648,7 @@ describe('marked movements', () => {
 		analyzeTrack({
 			mono: fixture.mono,
 			sampleRate: fixture.sampleRate,
+			striker2: heard,
 			duration: fixture.duration,
 			hash: 'test',
 			trackId: 'file-000000000000',
@@ -662,6 +660,7 @@ describe('marked movements', () => {
 		const unmarked = analyzeTrack({
 			mono: fixture.mono,
 			sampleRate: fixture.sampleRate,
+			striker2: heard,
 			duration: fixture.duration,
 			hash: 'test',
 			trackId: 'file-000000000000',
@@ -682,6 +681,7 @@ describe('marked movements', () => {
 		const base = {
 			mono: fixture.mono,
 			sampleRate: fixture.sampleRate,
+			striker2: heard,
 			duration: fixture.duration,
 			hash: 'test',
 			trackId: 'file-000000000000' as const,
@@ -813,62 +813,15 @@ describe('pushOntoDeparture', () => {
 	});
 });
 
-describe('Striker', () => {
-	const frames = Math.ceil(fixture.duration * 100) + 1;
-	const activations = (times: Record<number, readonly number[]>) => {
-		const act = new Float32Array(frames * 5);
-		for (const [channel, list] of Object.entries(times)) {
-			for (const t of list) act[Math.round(t * 100) * 5 + Number(channel)] = 0.9;
-		}
-		return act;
-	};
-	const stem = activations({ 0: fixture.kick, 1: fixture.snare, 3: fixture.hat });
-	const silence = new Float32Array(fixture.mono.length);
-	const stemSplit = (column: number) => ({ feature: [column], threshold: [0.5], left: [~0], right: [~1], leaf: [-4, 4] });
-	const inputs = {
-		mono: fixture.mono, sampleRate: fixture.sampleRate, duration: fixture.duration, hash: 'test',
-		trackId: 'file-000000000000', title: 'Synthetic Arrangement',
-		drums: { ...onsetsFromActivations(new Float32Array(frames * 5)) },
-		separatedDrums: { kick: silence, snare: silence, hat: silence, cymbal: silence, sampleRate: fixture.sampleRate },
-		stemActivations: stem,
-		sourceActivations: { kick: stem, snare: stem, hat: stem, cymbal: stem }
-	};
-	const model: StrikerModel = {
-		version: 'test', candidates: CANDIDATE_REVISION, features: [...STRIKER_FEATURES],
-		classes: {
-			kick: { threshold: 0.5, trees: [stemSplit(STRIKER_FEATURES.indexOf('stem0'))] },
-			snare: { threshold: 0.5, trees: [stemSplit(STRIKER_FEATURES.indexOf('stem1'))] },
-			hat: { threshold: 0.5, trees: [stemSplit(STRIKER_FEATURES.indexOf('stem3'))] },
-			cymbal: { threshold: 0.5, trees: [stemSplit(STRIKER_FEATURES.indexOf('stem4'))] },
-			tom: { threshold: 0.5, trees: [stemSplit(STRIKER_FEATURES.indexOf('stem2'))] }
-		}
-	};
-
-	it('takes every class from the classifier instead of the rule-based merges', () => {
-		const withStriker = analyzeTrack({ ...inputs, striker: model });
-		expect(withStriker.striker).toBe('test');
-		expect(analyzeTrack({ ...inputs, sourceActivations: undefined, striker: model }).striker).toBeUndefined();
-		expect(fMeasure(fixture.kick, withStriker.onsets.kick.times, 0.05).f).toBeGreaterThan(0.95);
-		expect(fMeasure(fixture.snare, withStriker.onsets.snare.times, 0.05).f).toBeGreaterThan(0.95);
-		expect(fMeasure(fixture.hat, withStriker.onsets.hat.times, 0.05).f).toBeGreaterThan(0.95);
-		const withoutStriker = analyzeTrack(inputs);
-		expect(withoutStriker.onsets.kick.times.length).toBeLessThan(fixture.kick.length / 2);
-	});
-});
-
 describe('Striker 2.0', () => {
-	const stream = (times: readonly number[], level = 0.8): DrumStream => ({
-		times: [...times], levels: times.map(() => level), curve: new Float32Array(0), fps: 100
-	});
+	const stream = (times: readonly number[], level = 0.8) => ({ times: [...times], levels: times.map(() => level) });
 	const late = (times: readonly number[]) => times.map((t) => Math.round((t + 0.02) * 1000) / 1000);
-	const result: Striker2Result = {
+	const result: Transcription = {
 		name: 'Striker 2.0 (test)',
 		drums: {
 			kick: stream(late(fixture.kick)), snare: stream(late(fixture.snare)), hat: stream(late(fixture.hat), 0.5),
 			cymbal: stream([1], 0.9), tom: stream([2.5])
 		},
-		beats: [],
-		downbeats: [],
 		bass: { times: [1.004, 3.5], levels: [0.51, 0.02] },
 		activity: { drums: [[7.5, 30]], bass: [[0, 30]], vocals: [], other: [[0, 12.25]] }
 	};
@@ -876,8 +829,6 @@ describe('Striker 2.0', () => {
 		mono: fixture.mono, sampleRate: fixture.sampleRate, duration: fixture.duration, hash: 'test',
 		trackId: 'file-000000000000', title: 'Synthetic Arrangement'
 	};
-	const error = (times: number[], truth: readonly number[]) =>
-		times.reduce((sum, t) => sum + Math.min(...truth.map((r) => Math.abs(r - t))), 0) / times.length;
 
 	it('takes every drum stream from it unsnapped, with cymbals in the hat stream and its name second', () => {
 		const probe: { striker: { classes?: Record<string, { times: number[] }> } } = { striker: {} };
@@ -894,10 +845,8 @@ describe('Striker 2.0', () => {
 		expect(analysis.activity).toEqual(result.activity);
 	});
 
-	it('snaps its hits to broadband onsets only when asked', () => {
-		const snapped = analyzeTrack({ ...base, striker2: result, striker2Snap: true });
-		expect(error(snapped.onsets.kick.times, fixture.kick)).toBeLessThan(0.015);
-		expect(analysis.bass).toBeUndefined();
-		expect(analysis.activity).toBeUndefined();
+	it('keeps one hit of two that sounded as one attack, the stronger', () => {
+		const doubled = { ...result, drums: { ...result.drums, kick: { times: [1, 1.02, 2], levels: [0.4, 0.9, 0.5] } } };
+		expect(analyzeTrack({ ...base, striker2: doubled }).onsets.kick).toEqual({ times: [1.02, 2], levels: [0.9, 0.5] });
 	});
 });

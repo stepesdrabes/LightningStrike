@@ -24,23 +24,6 @@ import { levelTrack } from './level.ts';
 import { detectBeats, type BeatGrid } from './beats.ts';
 import { beatSynchronous } from './beatsync.ts';
 import { estimateKey, estimateKeySpan } from './chroma.ts';
-import {
-	detectDrums,
-	dropUnconfirmed,
-	gateByEvidence,
-	mergeStreams,
-	modelDeafToHats,
-	withModelPeakFrames,
-	snapTimesToOnsets,
-	type DrumStream
-} from './drums.ts';
-import {
-	detectSeparatedDrums,
-	mergeSeparatedSnare,
-	sourceOnsets,
-	type SeparatedDrumAudio,
-	type SourceOnsets
-} from './separatedDrums.ts';
 import { detectMeter, type Meter } from './downbeats.ts';
 import { barStartsAtCuts, deriveGridCuts, resyncedCuts } from './gridedits.ts';
 import { acceptedRestarts, barLinesFrom, openingRun, phaseRuns, phaseSegments, type PhaseRun } from './downbeatPhase.ts';
@@ -48,19 +31,8 @@ import { handMapFingerprint, handSectionBars, type HandSection } from './handSec
 import { judgeSeams, proposeSeams, repairGrid, witnessBarLines } from './movements.ts';
 import { applyHeadLabels, type SectionPosteriors } from './headLabels.ts';
 import { assessMetricalLevel } from './metricalLevel.ts';
-import { barGroups, quantiseOnsets } from './quantise.ts';
-import { mergeKickEvidence } from './kickEvidence.ts';
-import {
-	BENCHMARK_KINDS,
-	STRIKER_KINDS,
-	runStriker,
-	strikerCandidates,
-	type Candidates,
-	type StrikerInputs,
-	type StrikerKind,
-	type StrikerModel
-} from './striker.ts';
-import type { Striker2Result } from './striker2.ts';
+import type { Transcription } from './striker2.ts';
+import type { Striker2Class } from './striker2Decode.ts';
 import { analysisPrelude, type AnalysisPrelude } from './prelude.ts';
 import { consolidateSections } from './consolidate.ts';
 import {
@@ -114,36 +86,11 @@ interface AnalyzeInput {
 	bpmHint?: number;
 	/** Metrical multiplier for either tracker: 2 doubles tempo, 0.5 halves it, 1.5 reads three for two. */
 	metricalLevel?: number;
-	/** External beat/downbeat times, seconds. Supplied by an async caller; absent uses the DSP tracker. */
+	/** Striker 2.0's beats and downbeats, seconds. With eight beats or fewer the onset tracker reads the grid. */
 	beats?: readonly number[];
 	downbeats?: readonly number[];
-	/**
-	 * Optional model drum streams; absent uses band-flux DSP. Broadband onsets place model hits.
-	 * Cymbals join the hat stream as timekeeping; evidence recorded before them has none.
-	 */
-	drums?: {
-		kick: DrumStream;
-		snare: DrumStream;
-		hat: DrumStream;
-		cymbal?: DrumStream;
-		snareClicks?: number[];
-		/** The model's raw activations the streams were picked from. */
-		activations?: Float32Array;
-	};
-	/** Optional individual drum sources, resampled to 22050 Hz after two-stage separation. */
-	separatedDrums?: SeparatedDrumAudio;
-	/** `sourceOnsets` of separatedDrums' sources, computed ahead. */
-	separatedOnsets?: Partial<Record<'kick' | 'snare' | 'hat' | 'cymbal', SourceOnsets>>;
-	/** ADTOF activations of each separated source, in `drums.activations` layout. */
-	sourceActivations?: Record<'kick' | 'snare' | 'hat' | 'cymbal', Float32Array>;
-	/** ADTOF activations of the separated drum stem, in `drums.activations` layout. */
-	stemActivations?: Float32Array;
-	/** Striker model; replaces the rule-based drum merges when every input is present. */
-	striker?: StrikerModel;
-	/** Striker 2.0's streams; they replace every other drum source and bring bass and activity. */
-	striker2?: Striker2Result;
-	/** Snap Striker 2.0's hits to broadband onsets as Striker 1.1's are; off until measured. */
-	striker2Snap?: boolean;
+	/** Striker 2.0's transcription: every drum hit, the bass onsets and stem activity, its name. */
+	striker2: Transcription;
 	/** `analysisPrelude` of mono, left, right and sampleRate, computed ahead. */
 	prelude?: AnalysisPrelude;
 	/** Optional genre family and synced lyrics for section vocabulary and chorus location. */
@@ -193,40 +140,15 @@ interface AnalyzeInput {
 		stages?: { name: string; bounds: number[] }[];
 		/** The downbeat phase walk's runs and the restarts the grid took, as beat indices. */
 		phase?: { runs: PhaseRun[]; cuts: number[]; opening: number };
-		/**
-		 * Set to an empty object to receive Striker candidates even without a model, and with one,
-		 * each class's hits as analysis would emit that class alone.
-		 */
-		striker?: {
-			candidates?: Partial<Record<StrikerKind, Candidates>>;
-			classes?: Partial<Record<StrikerKind, ReturnType<typeof attackHits>>>;
-		};
-		drums?: {
-			dsp: { kick: DrumStream; snare: DrumStream; hat: DrumStream };
-			detected: { kick: DrumStream; snare: DrumStream; hat: DrumStream };
-			quantiseOptions: Parameters<typeof quantiseOnsets>[1];
-			final: { kick: ReturnType<typeof quantiseOnsets>; snare: ReturnType<typeof quantiseOnsets>; hat: ReturnType<typeof quantiseOnsets> };
-		};
+		/** Set to an empty object to receive each class's hits as analysis would emit that class alone. */
+		striker?: { classes?: Partial<Record<Striker2Class, OnsetStream>> };
 	};
 }
 
-/** Pattern-completion floors per class; see quantiseOptions. */
-const KICK_PROMOTE_FLOOR = 0.4;
-const SNARE_DEMOTE_FLOOR = 0.9;
-/**
- * A model hat needs some flux in the DSP hat band within this window: a sidechain swell
- * raises the class without a transient. Cymbals then join as timekeeping.
- */
-const HAT_EVIDENCE_S = 0.03;
-const HAT_EVIDENCE_FLOOR = 0.05;
+/** Cymbals join the hat stream as timekeeping; within this the stronger hit stands for both. */
 const CYMBAL_MERGE_S = 0.03;
-/** Hits this close after snapping sounded as one attack. */
-const SNAPPED_DUPLICATE_S = 0.03;
-/**
- * A snare the model half-hears under a hat click stays only with this much DSP snare-band
- * flux: a count-in click reads about 0.2 there, a clap under an open hat 0.3 and above.
- */
-const CLICK_SNARE_EVIDENCE = 0.3;
+/** Hits this close sounded as one attack. */
+const DUPLICATE_S = 0.03;
 
 /** A detection within this of a mark defers to the mark; within this of a veto it is refused. */
 const MARK_REACH_S = 8;
@@ -371,76 +293,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	}
 	bars ??= barSynchronous(beatFeatures, meter.beatsPerBar, barPhase);
 
-	// Detect drums before refining boundaries; quantisation waits for repeat groups.
-	const dspDrums = detectDrums(features.spec, { beatPeriod: grid.beatPeriod, odf: features.odf });
-	const { separatedDrums: sources, separatedOnsets } = input;
-	const s2 = input.striker2?.drums;
-	const strikerInputs: StrikerInputs | null = !s2 && input.drums?.activations && input.stemActivations
-		&& input.sourceActivations && sources?.hat && sources.cymbal && sources.sampleRate === sampleRate
-		? {
-				mix: input.drums.activations, stem: input.stemActivations, sourceActivations: input.sourceActivations,
-				sources: { ...sources, hat: sources.hat, cymbal: sources.cymbal },
-				sourceOnsets: {
-					kick: separatedOnsets?.kick ?? sourceOnsets(sources.kick, sampleRate),
-					snare: separatedOnsets?.snare ?? sourceOnsets(sources.snare, sampleRate),
-					hat: separatedOnsets?.hat ?? sourceOnsets(sources.hat, sampleRate),
-					cymbal: separatedOnsets?.cymbal ?? sourceOnsets(sources.cymbal, sampleRate)
-				},
-				audio: input.mono, odf: features.odf, odfFps: features.curves.fps, dsp: dspDrums,
-				beats: grid.beats, barTimes: bars.time
-			}
-		: null;
-	const candidates = strikerInputs && (input.striker || input.probe?.striker)
-		? strikerCandidates(strikerInputs, input.probe?.striker ? BENCHMARK_KINDS : STRIKER_KINDS)
-		: null;
-	if (candidates && input.probe?.striker) input.probe.striker.candidates = candidates;
-	const strikerDrums = strikerInputs && candidates && input.striker
-		? runStriker(input.striker, strikerInputs, candidates)
-		: null;
-	const snap = (stream: DrumStream) => snapStream(stream, features.odf, features.curves.fps, grid.beatPeriod);
-	const snap2 = (stream: DrumStream) => (input.striker2Snap ? snap(stream) : stream);
-	const primaryDrums = s2
-		? { kick: snap2(s2.kick), snare: snap2(s2.snare), hat: snap2(mergeStreams(s2.hat, s2.cymbal, CYMBAL_MERGE_S)) }
-		: strikerDrums
-		? {
-				kick: snap(strikerDrums.kick),
-				snare: snap(strikerDrums.snare),
-				hat: snap(mergeStreams(strikerDrums.hat, strikerDrums.cymbal, CYMBAL_MERGE_S))
-			}
-		: input.drums
-		? {
-				kick: snapStream(withModelPeakFrames(input.drums.kick), features.odf, features.curves.fps, grid.beatPeriod),
-				snare: snapStream(
-					withModelPeakFrames(
-						dropUnconfirmed(
-							input.drums.snare,
-							input.drums.snareClicks ?? [],
-							dspDrums.snare,
-							HAT_EVIDENCE_S,
-							CLICK_SNARE_EVIDENCE
-						)
-					),
-					features.odf,
-					features.curves.fps,
-					grid.beatPeriod
-				),
-				hat: snapStream(
-					hatStream(input.drums, dspDrums.hat, grid.beats.length),
-					features.odf,
-					features.curves.fps,
-					grid.beatPeriod
-				)
-			}
-		: dspDrums;
-	const separatedKit = separatedOnsets?.kick && separatedOnsets.snare
-		? { kick: separatedOnsets.kick, snare: separatedOnsets.snare }
-		: undefined;
-	const separated = sources && !strikerDrums && !s2
-		? detectSeparatedDrums(sources, input.mono, sampleRate, features.odf, features.curves.fps, primaryDrums,
-			input.drums ? dspDrums.snare : undefined, separatedKit)
-		: undefined;
-	// Kick source evidence is merged after pattern correction with independent model support.
-	const detected = separated ? { ...primaryDrums, snare: separated.snare } : primaryDrums;
+	const heard = input.striker2.drums;
+	const detected = { kick: heard.kick, snare: heard.snare, hat: mergeHits(heard.hat, heard.cymbal, CYMBAL_MERGE_S) };
 	const rawKicks = countPerBar(detected.kick.times, bars.time, bars.count);
 
 	// Compute lyric coverage before structure so voice entrances can contribute boundary evidence.
@@ -554,51 +408,17 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	const bounds =
 		hand?.bounds ?? [...new Set([...dpBounds, ...movementBars])].sort((a, b) => a - b);
 	const groups = groupSegments(sim, bars.count, bounds, movementBars);
-	const barGroup = barGroups(bounds, groups.group, bars.count);
 
-	const quantiseOptions = {
-		beats: grid.beats,
-		beatsPerBar: meter.beatsPerBar,
-		downbeatPhase: barPhase,
-		barGroup,
-		barTimes: bars.time,
-		duration
+	// Striker 2.0 already weighs bar repetition; completing its hits only adds false ones.
+	const drums = {
+		kick: attackHits(detected.kick, duration),
+		snare: attackHits(detected.snare, duration),
+		hat: attackHits(detected.hat, duration)
 	};
-	let drums: Record<'kick' | 'snare' | 'hat', ReturnType<typeof quantiseOnsets>>;
-	if (strikerDrums || s2) {
-		// Striker already weighs bar repetition; completing its hits only adds false ones.
-		drums = {
-			kick: attackHits(detected.kick, duration),
-			snare: attackHits(detected.snare, duration),
-			hat: attackHits(detected.hat, duration)
-		};
-	} else {
-		// Measured on MDB Drums: kick completion in cohorts under 0.4 is mostly false, snare
-		// thinning outside near-certain cohorts mostly removes real ghost notes.
-		const legacySnare = quantiseOnsets(primaryDrums.snare, { ...quantiseOptions, demoteFloor: SNARE_DEMOTE_FLOOR });
-		const legacyKick = quantiseOnsets(detected.kick, { ...quantiseOptions, promoteFloor: KICK_PROMOTE_FLOOR });
-		drums = {
-			kick: input.drums && sources?.sampleRate === sampleRate
-				? mergeKickEvidence(legacyKick, dspDrums.kick, sources.kick, input.mono, input.drums.kick, sampleRate)
-				: legacyKick,
-			snare: sources
-				? mergeSeparatedSnare(legacySnare, detected.snare, sources, input.mono, sampleRate,
-					input.drums ? dspDrums.snare : undefined)
-				: legacySnare,
-			hat: quantiseOnsets(detected.hat, quantiseOptions)
-		};
-	}
-	if (input.probe) input.probe.drums = { dsp: dspDrums, detected, quantiseOptions, final: drums };
-	if (s2 && input.probe?.striker) {
-		const alone = (stream: DrumStream) => attackHits(snap2(stream), duration);
+	if (input.probe?.striker) {
+		const alone = (stream: OnsetStream) => attackHits(stream, duration);
 		input.probe.striker.classes = {
-			kick: drums.kick, snare: drums.snare, hat: alone(s2.hat), cymbal: alone(s2.cymbal), tom: alone(s2.tom)
-		};
-	} else if (strikerDrums && input.probe?.striker) {
-		const alone = (stream: DrumStream) => attackHits(snap(stream), duration);
-		input.probe.striker.classes = {
-			kick: drums.kick, snare: drums.snare, hat: alone(strikerDrums.hat), cymbal: alone(strikerDrums.cymbal),
-			...(strikerDrums.tom ? { tom: alone(strikerDrums.tom) } : {})
+			kick: drums.kick, snare: drums.snare, hat: alone(heard.hat), cymbal: alone(heard.cymbal), tom: alone(heard.tom)
 		};
 	}
 	const kicks = countPerBar(drums.kick.times, bars.time, bars.count);
@@ -905,7 +725,7 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 	};
 	return {
 		version: ANALYSIS_VERSION,
-		...(input.striker2 ? { striker: input.striker2.name } : strikerDrums ? { striker: input.striker!.version } : {}),
+		striker: input.striker2.name,
 		hash: input.hash,
 		trackId: input.trackId,
 		title: input.title,
@@ -966,7 +786,8 @@ export function analyzeTrack(input: AnalyzeInput): TrackAnalysis {
 		integratedLufs: round1(Math.max(loudness.integrated, SILENCE_LUFS)),
 		loudnessRange: round1(loudness.range),
 		peakToLoudness: round1(Number.isFinite(loudness.peakToLoudness) ? loudness.peakToLoudness : 0),
-		...(input.striker2 ? { bass: roundStream(input.striker2.bass), activity: input.striker2.activity } : {})
+		bass: roundStream(input.striker2.bass),
+		activity: input.striker2.activity
 	};
 }
 
@@ -1067,25 +888,26 @@ function meterFromDownbeats(beats: Float64Array, downbeats: readonly number[]): 
 	return { beatsPerBar, phase, confidence: Math.max(0, Math.min(1, votes[phase] / total)) };
 }
 
-/**
- * The shipped hat stream: model hats with an air transient, or the DSP hats where the model
- * is deaf to the kit's sampled hats, plus ride and crash strikes either way.
- */
-function hatStream(
-	drums: NonNullable<AnalyzeInput['drums']>,
-	dspHat: DrumStream,
-	beats: number
-): DrumStream {
-	// A ride or crash keeping time counts as the model hearing the top kit.
-	const heard = drums.cymbal ? mergeStreams(drums.hat, drums.cymbal, CYMBAL_MERGE_S) : drums.hat;
-	const hats = modelDeafToHats(heard, dspHat, beats).deaf
-		? dspHat
-		: gateByEvidence(drums.hat, dspHat, HAT_EVIDENCE_S, HAT_EVIDENCE_FLOOR);
-	return drums.cymbal ? mergeStreams(hats, drums.cymbal, CYMBAL_MERGE_S) : hats;
+/** Union of two streams in time order; within `gap` seconds the stronger hit stands for both. */
+function mergeHits(a: OnsetStream, b: OnsetStream, gap: number): OnsetStream {
+	const hits = a.times
+		.map((time, i) => ({ time, level: a.levels[i] ?? 1 }))
+		.concat(b.times.map((time, i) => ({ time, level: b.levels[i] ?? 1 })))
+		.sort((x, y) => x.time - y.time);
+	const out: { time: number; level: number }[] = [];
+	for (const hit of hits) {
+		const last = out[out.length - 1];
+		if (last && hit.time - last.time < gap) {
+			if (hit.level > last.level) out[out.length - 1] = hit;
+			continue;
+		}
+		out.push(hit);
+	}
+	return { times: out.map((h) => h.time), levels: out.map((h) => h.level) };
 }
 
-/** Snapped hits inside the track; two that snapped onto one attack keep the stronger. */
-function attackHits(stream: DrumStream, duration: number): { times: number[]; levels: number[]; invented: boolean[] } {
+/** Hits inside the track; two that sounded as one attack keep the stronger. */
+function attackHits(stream: OnsetStream, duration: number): OnsetStream {
 	const hits: { time: number; level: number }[] = [];
 	stream.times
 		.map((time, i) => ({ time, level: stream.levels[i] ?? 1 }))
@@ -1093,24 +915,11 @@ function attackHits(stream: DrumStream, duration: number): { times: number[]; le
 		.sort((a, b) => a.time - b.time)
 		.forEach((hit) => {
 			const last = hits[hits.length - 1];
-			if (last && hit.time - last.time < SNAPPED_DUPLICATE_S) {
+			if (last && hit.time - last.time < DUPLICATE_S) {
 				if (hit.level > last.level) hits[hits.length - 1] = hit;
 			} else hits.push(hit);
 		});
-	return { times: hits.map((h) => h.time), levels: hits.map((h) => h.level), invented: hits.map(() => false) };
-}
-
-/** Align model hits to broadband onsets, removing the low-band window's timing bias. */
-function snapStream(
-	stream: DrumStream,
-	odf: Float32Array,
-	fps: number,
-	beatPeriod: number
-): DrumStream {
-	return {
-		...stream,
-		times: snapTimesToOnsets(stream.times, odf, fps, Math.min(0.05, beatPeriod / 8))
-	};
+	return { times: hits.map((h) => h.time), levels: hits.map((h) => h.level) };
 }
 
 function countPerBar(times: readonly number[], barTime: Float64Array, count: number): Int32Array {
@@ -1181,8 +990,22 @@ function describe(ev: string, row: BarRow): string {
 	}
 }
 
-function roundStream(stream: { times: number[]; levels: number[] }): OnsetStream {
+function roundStream(stream: OnsetStream): OnsetStream {
 	return { times: stream.times.map(round3), levels: stream.levels.map(round2) };
+}
+
+/**
+ * The transcription a stored analysis holds, for re-reading its grid without the model: the hat
+ * stream already carries its cymbals. Null for an analysis Striker 2.0 did not make.
+ */
+export function storedTranscription(analysis: TrackAnalysis): Transcription | null {
+	if (!analysis.striker || !analysis.bass || !analysis.activity) return null;
+	const none = { times: [], levels: [] };
+	const { kick, snare, hat } = analysis.onsets;
+	return {
+		name: analysis.striker, drums: { kick, snare, hat, cymbal: none, tom: none },
+		bass: analysis.bass, activity: analysis.activity
+	};
 }
 
 function pct(v: number): number {

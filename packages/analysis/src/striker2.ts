@@ -4,7 +4,6 @@ import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { ACTIVITY_STEMS, type ActivityStem, type OnsetStream } from '@mv/core';
 import { hashFile } from './fileHash.ts';
-import type { DrumStream } from './drums.ts';
 import { QUIET_THREADS, openSession, type OnnxSession, type OpenSession } from './onnxSession.ts';
 import {
 	STRIKER2_CLASSES, activitySpans, bassOnsets, coarseHits, type PeakRule, type Striker2Class
@@ -42,13 +41,16 @@ export interface Striker2Model {
 export interface Striker2Result {
 	/** The model's name (see `Striker2Model.name`). */
 	name: string;
-	drums: Record<Striker2Class, DrumStream>;
+	drums: Record<Striker2Class, OnsetStream>;
 	/** DBN beats and downbeats, seconds to 1 ms, every downbeat one of the beats. */
 	beats: number[];
 	downbeats: number[];
 	bass: OnsetStream;
 	activity: Record<ActivityStem, [number, number][]>;
 }
+
+/** What analysis takes from Striker 2.0 besides the beats and downbeats, which set the grid. */
+export type Transcription = Omit<Striker2Result, 'beats' | 'downbeats'>;
 
 type Json = Record<string, unknown>;
 

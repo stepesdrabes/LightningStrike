@@ -11,10 +11,9 @@ shows/
 .claude/settings.local.json
 bench/corpus/
 bench/reports/
-# Striker is ours and ships here. A directory-level ignore cannot re-include a file
-# under it, so the contents are ignored instead of the directory.
+# Models are copied in by hand; only Striker 2.0's notice is committed. A directory-level ignore
+# cannot re-include a file under it, so the contents are ignored instead of the directory.
 /models/*
-!/models/striker.json
 !/models/striker2.NOTICE
 bench/clicktests/
 bench/renders/

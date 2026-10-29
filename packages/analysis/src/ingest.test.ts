@@ -11,7 +11,7 @@ import { artworkHue } from './artwork.ts';
 import { enrichTrack } from './enrich.ts';
 import { GenreClassifier } from './genreModel.ts';
 import { handMapStale, ingest, type TrackMeta } from './ingest.ts';
-import { Striker2 } from './striker2.ts';
+import { Striker2, type Striker2Result } from './striker2.ts';
 
 const cache = vi.hoisted(() => ({ dir: '' }));
 vi.mock('./paths.ts', () => ({
@@ -63,7 +63,7 @@ beforeEach(async () => {
 		sampleRate: 22050, duration: 160, hash: 'fixture'
 	});
 	vi.mocked(analyzeTrack).mockImplementation((input) => ({
-		...fixtureAnalysis(), trackId: input.trackId, title: input.title, hash: input.hash, striker: input.striker2?.name
+		...fixtureAnalysis(), trackId: input.trackId, title: input.title, hash: input.hash, striker: input.striker2.name
 	}));
 });
 
@@ -95,8 +95,9 @@ describe('queue cache refresh', () => {
 		expect(decodeAudio).toHaveBeenCalledWith(join(cache.dir, `${youtubeId}.m4a`), 44100);
 		const input = vi.mocked(analyzeTrack).mock.lastCall![0];
 		expect(input.striker2).toMatchObject({ name: MODEL_NAME, drums: expect.any(Object), bass: expect.any(Object) });
-		expect(input.beats).toBe(input.striker2?.beats);
-		expect(input.downbeats).toBe(input.striker2?.downbeats);
+		const heard = input.striker2 as Striker2Result;
+		expect(input.beats).toBe(heard.beats);
+		expect(input.downbeats).toBe(heard.downbeats);
 		const stamp = await preparation();
 		expect(stamp).toMatchObject({ striker: MODEL_NAME, striker2: { name: MODEL_NAME } });
 		expect(Object.keys(stamp.stagesMs)).toEqual(['sourceAndMetadata', 'decode', 'genre', 'striker2', 'analysis', 'persistence']);

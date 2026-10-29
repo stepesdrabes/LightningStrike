@@ -11,7 +11,7 @@ import type {
 	TrackContext
 } from '@mv/core';
 import { BUILT_IN_EFFECTS, barAtTime, barTimeAt, compileGenerated, measureEffect } from '@mv/core';
-import { analyzeTrack, decodeAudio } from '@mv/analysis';
+import { analyzeTrack, decodeAudio, storedTranscription } from '@mv/analysis';
 import { renderArrangementChart, renderBarTable, renderCatalog } from './catalog.ts';
 import { formatFindings, formatReading, lintShow, measureShow } from '@mv/author-engine';
 import { coerceShow, showSchema } from './showSchema.ts';
@@ -237,6 +237,11 @@ export function buildTools(session: AuthorSession, phase: ToolPhase = 'build') {
 			if (!session.audioPath) {
 				return text('No audio file is available, so re-analysis is not possible.');
 			}
+			// The drums Striker 2.0 heard stay; only the grid is read again.
+			const heard = storedTranscription(session.analysis);
+			if (!heard) {
+				return text('This analysis predates Striker 2.0, so re-analysis is not possible until the song is prepared again.');
+			}
 			const before = session.analysis.tempo.bpm;
 			const decoded = await decodeAudio(session.audioPath);
 			const next = analyzeTrack({
@@ -246,7 +251,8 @@ export function buildTools(session: AuthorSession, phase: ToolPhase = 'build') {
 				hash: decoded.hash,
 				trackId: session.analysis.trackId,
 				title: session.analysis.title,
-				bpmHint: bpm
+				bpmHint: bpm,
+				striker2: heard
 			});
 
 			if (Math.abs(next.tempo.bpm - bpm) > bpm * 0.06) {

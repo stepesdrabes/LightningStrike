@@ -2,9 +2,6 @@
 # Windows cannot commit a whole file back as CRLF.
 * text=auto eol=lf
 
-# A generated model blob: keep it byte-exact, never line-ending converted or diffed.
-models/striker.json binary
-
 # Golden fixtures of the Striker 2.0 tests (striker-2 tools/m7_fixtures.py): raw samples and graph.
 packages/analysis/src/testdata/striker2/*.f32 binary
 packages/analysis/src/testdata/striker2/*.s16 binary
