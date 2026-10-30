@@ -14,7 +14,7 @@ import {
 
 /**
  * `analysisProvider` in settings.json. `auto` tries the platform's graphics provider first (Core ML
- * on Apple silicon, DirectML on Windows); `cpu` is the CPU alone.
+ * on Apple silicon, DirectML on Windows, CUDA on Linux); `cpu` is the CPU alone.
  */
 export const ANALYSIS_PROVIDERS = ['auto', 'cpu'] as const;
 export type AnalysisProvider = (typeof ANALYSIS_PROVIDERS)[number];
@@ -25,7 +25,7 @@ export function isAnalysisProvider(value: unknown): value is AnalysisProvider {
 }
 
 export interface ExecutionProvider {
-	name: 'cpu' | 'coreml' | 'dml' | 'webgpu';
+	name: 'cpu' | 'coreml' | 'dml' | 'cuda' | 'webgpu';
 	/** onnxruntime-node's options for it, such as `coreMlFlags` or `deviceId`. */
 	options?: Readonly<Record<string, number | string>>;
 	/** Intra-op threads; absent is onnxruntime's default. */
@@ -36,8 +36,9 @@ export const CPU: ExecutionProvider = { name: 'cpu' };
 /** MLProgram 0x10, static input shapes 0x08, CPU and GPU 0x20; float32 never reaches the Neural Engine. */
 export const COREML: ExecutionProvider = { name: 'coreml', options: { coreMlFlags: 0x38 } };
 export const DIRECTML: ExecutionProvider = { name: 'dml', options: { deviceId: 0 } };
+export const CUDA: ExecutionProvider = { name: 'cuda', options: { deviceId: 0 } };
 
-/** `cpu`, `coreml:56`, `dml:0`; a thread count is appended when set. */
+/** `cpu`, `coreml:56`, `dml:0`, `cuda:0`; a thread count is appended when set. */
 export function providerLabel(provider: ExecutionProvider): string {
 	const options = Object.values(provider.options ?? {});
 	const threads = provider.threads ? ` threads=${provider.threads}` : '';
@@ -55,7 +56,7 @@ export function providerSession(provider: ExecutionProvider): Record<string, unk
 	};
 }
 
-/** The providers to try, in order, the CPU always last. Core ML and DirectML get only a static graph. */
+/** The providers to try, in order, the CPU always last. The graphics providers get only a static graph. */
 export function providerCandidates(
 	setting: AnalysisProvider, staticGraph: boolean, platform: string = process.platform,
 	arch: string = process.arch
@@ -63,6 +64,7 @@ export function providerCandidates(
 	if (!staticGraph || setting === 'cpu') return [CPU];
 	if (platform === 'darwin' && arch === 'arm64') return [COREML, CPU];
 	if (platform === 'win32' && arch === 'x64') return [DIRECTML, CPU];
+	if (platform === 'linux' && arch === 'x64') return [CUDA, CPU];
 	return [CPU];
 }
 

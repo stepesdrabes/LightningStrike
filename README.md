@@ -176,8 +176,8 @@ model change, are re-analysed when next prepared. `.preparation.json` records st
 the model's name, provider and warnings, or the error.
 
 Where Striker 2.0 runs is the dialog's other Analysis setting (`analysisProvider`): Auto tries
-the graphics card first (Core ML on Apple silicon, DirectML on Windows), CPU is the processor
-alone. Only a static graph goes to Core ML or DirectML. Before a provider is used on
+the graphics card first (Core ML on Apple silicon, DirectML on Windows, CUDA on Linux), CPU is
+the processor alone. Only a static graph goes to a graphics provider. Before a provider is used on
 a machine it runs the manifest's golden chunks and must match PyTorch: every output within 1e-3,
 every decoded event the same, within one frame and 0.01 in level. Otherwise the next one is tried,
 ending with the CPU, which is checked too and runs whatever its verdict. Verdicts are kept per

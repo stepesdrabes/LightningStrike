@@ -58,7 +58,7 @@
 	);
 	const chosen = $derived(settings.analysisModels.find((m) => m.id === settings.analysisModel));
 	const providerOptions: { id: AnalysisProvider; label: string; title: string }[] = [
-		{ id: 'auto', label: 'Auto', title: 'The graphics card (Core ML or DirectML) once it passes its check, else the CPU' },
+		{ id: 'auto', label: 'Auto', title: 'The graphics card (Core ML, DirectML or CUDA) once it passes its check, else the CPU' },
 		{ id: 'cpu', label: 'CPU', title: 'The processor only' }
 	];
 

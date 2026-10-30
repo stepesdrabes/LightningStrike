@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { openSession, type OnnxSession, type OnnxTensor } from './onnxSession.ts';
 import { readStriker2, type Striker2Model } from './striker2.ts';
 import {
-	COREML, CPU, DIRECTML, PROVIDER_CHECKS, checkKey, openChecked, providerCandidates, providerLabel,
+	COREML, CPU, CUDA, DIRECTML, PROVIDER_CHECKS, checkKey, openChecked, providerCandidates, providerLabel,
 	providerSession, readVerdicts, type ExecutionProvider, type Machine
 } from './striker2Provider.ts';
 
@@ -72,18 +72,23 @@ describe('provider candidates', () => {
 		['win32', 'x64', 'auto', false, [CPU]],
 		['win32', 'x64', 'cpu', true, [CPU]],
 		['win32', 'arm64', 'auto', true, [CPU]],
-		['linux', 'x64', 'auto', true, [CPU]]
+		['linux', 'x64', 'auto', true, [CUDA, CPU]],
+		['linux', 'x64', 'auto', false, [CPU]],
+		['linux', 'x64', 'cpu', true, [CPU]],
+		['linux', 'arm64', 'auto', true, [CPU]]
 	] as const)('%s %s, %s, static %s', (platform, arch, setting, graph, want) => {
 		expect(providerCandidates(setting, graph, platform, arch)).toEqual(want);
 	});
 
-	it('opens Core ML as MLProgram with static shapes on the CPU and GPU, and DirectML as it needs', () => {
+	it('opens Core ML as MLProgram with static shapes on the CPU and GPU, DirectML and CUDA as they need', () => {
 		expect(providerLabel(COREML)).toBe('coreml:56');
 		expect(providerSession(COREML)).toEqual({ executionProviders: [{ name: 'coreml', coreMlFlags: 56 }, 'cpu'] });
 		expect(providerLabel(DIRECTML)).toBe('dml:0');
 		expect(providerSession(DIRECTML)).toEqual({
 			executionProviders: [{ name: 'dml', deviceId: 0 }, 'cpu'], enableMemPattern: false, executionMode: 'sequential'
 		});
+		expect(providerLabel(CUDA)).toBe('cuda:0');
+		expect(providerSession(CUDA)).toEqual({ executionProviders: [{ name: 'cuda', deviceId: 0 }, 'cpu'] });
 		expect(providerSession(CPU)).toEqual({ executionProviders: ['cpu'] });
 		const threads: ExecutionProvider = { name: 'cpu', threads: 8 };
 		expect([providerLabel(threads), providerSession(threads)])
