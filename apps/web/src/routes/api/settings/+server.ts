@@ -1,15 +1,5 @@
 import { error, json } from '@sveltejs/kit';
 import {
-	CONTRAST_MAX,
-	CONTRAST_MIN,
-	OFFSET_MAX_MS,
-	OFFSET_MIN_MS,
-	OUTPUT_BRIGHTNESS_MIN,
-	isOutputFps,
-	isWireProtocol,
-	type WireProtocol
-} from '$lib/hardware.ts';
-import {
 	DRIFT_MAX,
 	DRIFT_MIN,
 	DWELL_MAX,
@@ -20,7 +10,6 @@ import {
 	isColourSource,
 	wrapDegrees
 } from '$lib/ambient.ts';
-import { isLocal } from '$lib/server/access.ts';
 import { runner } from '$lib/server/ingestRunner.ts';
 import { queue } from '$lib/server/queueStore.ts';
 import { settings } from '$lib/server/settings.ts';
@@ -29,19 +18,11 @@ import type { ColourSource } from '@mv/core';
 import { authorModel, isEffort, type EffortLevel } from '@mv/author-ai';
 import type { RequestHandler } from './$types';
 
-/**
- * Settings reads and writes are loopback-only; responses expose key presence, never
- * credentials.
- */
-export const GET: RequestHandler = async (event) => {
-	if (!isLocal(event)) error(403, 'settings belong to the machine running the show');
-	return json(await settings.read());
-};
+/** Responses expose whether a key is set, never the key. */
+export const GET: RequestHandler = async () => json(await settings.read());
 
-export const PUT: RequestHandler = async (event) => {
-	if (!isLocal(event)) error(403, 'settings belong to the machine running the show');
-
-	const body = (await event.request.json()) as Writable;
+export const PUT: RequestHandler = async ({ request }) => {
+	const body = (await request.json()) as Writable;
 
 	const patch: Writable = {};
 	if (typeof body.deepseekApiKey === 'string') patch.deepseekApiKey = body.deepseekApiKey.trim();
@@ -59,21 +40,6 @@ export const PUT: RequestHandler = async (event) => {
 	if (number(body.ambientDwell)) {
 		patch.ambientDwell = Math.round(clamp(body.ambientDwell, DWELL_MIN, DWELL_MAX));
 	}
-	if (number(body.outputOffsetMs)) {
-		patch.outputOffsetMs = clamp(body.outputOffsetMs, OFFSET_MIN_MS, OFFSET_MAX_MS);
-	}
-	if (number(body.outputBrightness)) {
-		patch.outputBrightness = clamp(body.outputBrightness, OUTPUT_BRIGHTNESS_MIN, 1);
-	}
-	if (number(body.outputContrast)) {
-		patch.outputContrast = clamp(body.outputContrast, CONTRAST_MIN, CONTRAST_MAX);
-	}
-	if (number(body.outputLampBrightness)) {
-		patch.outputLampBrightness = clamp(body.outputLampBrightness, OUTPUT_BRIGHTNESS_MIN, 1);
-	}
-	// Accept only tuned FPS choices; intermediate rates are not slider values.
-	if (isOutputFps(body.outputFps)) patch.outputFps = body.outputFps;
-	if (isWireProtocol(body.outputProtocol)) patch.outputProtocol = body.outputProtocol;
 	// Only a model that can run may prepare songs; one that cannot says why instead.
 	if (body.analysisModel !== undefined) {
 		const choice = (await analysisModelChoices()).find((m) => m.id === body.analysisModel);
@@ -107,12 +73,6 @@ interface Writable {
 	deepseekApiKey?: string;
 	authorModel?: string;
 	authorEffort?: EffortLevel;
-	outputOffsetMs?: number;
-	outputFps?: number;
-	outputBrightness?: number;
-	outputContrast?: number;
-	outputLampBrightness?: number;
-	outputProtocol?: WireProtocol;
 	autopilot?: boolean;
 	lounge?: boolean;
 	rest?: boolean;

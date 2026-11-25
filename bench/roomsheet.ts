@@ -134,11 +134,13 @@ if (positional[0]) {
 }
 if (snaps.length === 0) throw new Error('nothing captured');
 
-// Frame N at the top, Frame E to the right.
+// The Frame as drawn, metres, with Frame N at the top and Frame E to the right.
+const FRAME_WIDTH = 3;
+const FRAME_DEPTH = 2;
 const SCALE = 92;
 const PAD = 12;
-const W = Math.round(3 * SCALE) + PAD * 2;
-const H = Math.round(2 * SCALE) + PAD * 2 + 10;
+const W = Math.round(FRAME_WIDTH * SCALE) + PAD * 2;
+const H = Math.round(FRAME_DEPTH * SCALE) + PAD * 2 + 10;
 const width = cols * W;
 const height = Math.ceil(snaps.length / cols) * H;
 const img = new Float32Array(width * height * 3).fill(0.0012);
@@ -169,8 +171,8 @@ snaps.forEach((snap, k) => {
 		const r = (snap.bytes[i * 3] / 255) * exposure;
 		const gg = (snap.bytes[i * 3 + 1] / 255) * exposure;
 		const b = (snap.bytes[i * 3 + 2] / 255) * exposure;
-		const cx = ox + PAD + (g.x[i] + DEFAULT_ROOM.fixture.width / 2) * SCALE;
-		const cy = oy + PAD + (DEFAULT_ROOM.fixture.depth / 2 - g.y[i]) * SCALE;
+		const cx = ox + PAD + (g.x[i] + FRAME_WIDTH / 2) * SCALE;
+		const cy = oy + PAD + (FRAME_DEPTH / 2 - g.y[i]) * SCALE;
 		for (let dy = -3; dy <= 3; dy++) {
 			for (let dx = -3; dx <= 3; dx++) {
 				const px = Math.round(cx) + dx;

@@ -3,7 +3,6 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { BUILT_IN_EFFECTS, type Show, type TrackAnalysis } from '@mv/core';
 import { analysisPath, isValidId, readContext, readMeta, showPath } from '@mv/analysis';
 import { composeShow, formatFindings, lintShow } from '@mv/author-engine';
-import { isLocal } from '$lib/server/access.ts';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = async ({ params }) => {
@@ -15,24 +14,15 @@ export const GET: RequestHandler = async ({ params }) => {
 	}
 };
 
-export const PUT: RequestHandler = async ({ params, request }) => {
-	if (!isValidId(params.id)) error(400, 'invalid track id');
-	const body = await request.text();
-	if (!body) error(400, 'empty body');
-	await writeFile(showPath(params.id), body);
-	return new Response(null, { status: 204 });
-};
-
 /** Use Numerical Recipes' LCG so rerolls form a reproducible sequence. */
 function nextSeed(from: number): number {
 	return (Math.imul(from, 1664525) + 1013904223) >>> 0 || 1;
 }
 
 /** Persist rerolls so preview and hardware, which loads from disk, play the same composition. */
-export const POST: RequestHandler = async (event) => {
-	const id = event.params.id;
+export const POST: RequestHandler = async ({ params }) => {
+	const id = params.id;
 	if (!isValidId(id)) error(400, 'invalid track id');
-	if (!isLocal(event)) error(403, 'composing belongs to the machine running the show');
 
 	let analysis: TrackAnalysis;
 	try {

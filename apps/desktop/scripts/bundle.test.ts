@@ -50,7 +50,8 @@ describe('desktop runtime packaging', () => {
 	it('bundles only the models the app reads, and refuses to bundle without Striker 2.0', () => {
 		const root = fixture();
 		const retired = ['htdemucs.onnx', 'drumsep-mdx23c.onnx', 'drumsep-mdx23c.NOTICE', 'adtof_frame_rnn.onnx',
-			'beat_this.onnx', 'mel-filterbank.bin', 'striker.json', 'README.md'];
+			'beat_this.onnx', 'mel-filterbank.bin', 'striker.json', 'README.md', 'musicfm_encoder_int8.onnx',
+			'musicfm_config.json'];
 		for (const name of retired) write(root, name);
 		expect(() => bundledModels(root)).toThrow('no striker2.json');
 		write(root, 'striker2.json', JSON.stringify({ file: 'striker2.onnx' }));

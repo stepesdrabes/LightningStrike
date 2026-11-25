@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import type { BloomEffect, EffectComposer } from 'postprocessing';
-import type { Geometry } from '@mv/core';
+import type { RoomModel } from '@mv/core';
 import { CameraRig } from './CameraRig.ts';
 import { createComposer } from './post.ts';
+import { PULSE_RATE } from './scene/highlight.ts';
 import { RoomScene } from './scene/RoomScene.ts';
-import type { CameraView, RoomRendererOptions, Viewport } from './types.ts';
+import type { CameraView, Viewport } from './types.ts';
 
 /**
  * Cap bloom device pixels to preserve 60 fps; its soft glow benefits less from retina
@@ -15,13 +16,22 @@ const PIXEL_BUDGET = 3_000_000;
 /** The room in a canvas: a scene, a camera rig and the post chain that makes LEDs read as LEDs. */
 export class RoomRenderer {
 	private readonly renderer: THREE.WebGLRenderer;
-	private readonly room: RoomScene;
+	private readonly scene = new THREE.Scene();
+	private room: RoomScene;
+	/**
+	 * Rooms replaced since the last frame. They are disposed after it, once their successors hold
+	 * the shader programs they share, so an edit does not recompile the same shaders.
+	 */
+	private readonly retired: RoomScene[] = [];
 	private readonly rig: CameraRig;
 	private readonly composer: EffectComposer;
 	private readonly bloom: BloomEffect;
+	/** The highlight's pulse phase, 0..1, kept small so it stays precise however long it runs. */
+	private readonly pulse = { value: 0 };
+	private highlighted: string | null = null;
 	private disposed = false;
 
-	constructor(canvas: HTMLCanvasElement, geometry: Geometry, opts: RoomRendererOptions) {
+	constructor(canvas: HTMLCanvasElement, model: RoomModel) {
 		this.renderer = new THREE.WebGLRenderer({
 			canvas,
 			antialias: false,
@@ -34,16 +44,36 @@ export class RoomRenderer {
 		this.renderer.toneMapping = THREE.NoToneMapping;
 		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
-		this.room = new RoomScene(geometry, opts.spec);
-		this.rig = new CameraRig(canvas, opts.spec);
+		this.scene.background = new THREE.Color(0x05050a);
+		this.room = new RoomScene(model, this.pulse);
+		this.scene.add(this.room.root);
+		this.rig = new CameraRig(canvas, model.layout);
 
-		const post = createComposer(this.renderer, this.room.scene, this.rig.camera);
+		const post = createComposer(this.renderer, this.scene, this.rig.camera);
 		this.composer = post.composer;
 		this.bloom = post.bloom;
 	}
 
 	set bloomIntensity(v: number) {
 		this.bloom.intensity = v;
+	}
+
+	/** Draw another room, or an edited one, keeping the camera unless the room box changed. */
+	setRoom(model: RoomModel): void {
+		if (this.disposed) return;
+		this.scene.remove(this.room.root);
+		this.retired.push(this.room);
+		this.room = new RoomScene(model, this.pulse);
+		this.room.setHighlight(this.highlighted);
+		this.scene.add(this.room.root);
+		this.rig.setLayout(model.layout);
+	}
+
+	/** Pick out one light by id for setup, or none. The show's colours are left alone. */
+	highlight(lightId: string | null): void {
+		if (this.disposed) return;
+		this.highlighted = lightId;
+		this.room.setHighlight(lightId);
 	}
 
 	setView(view: CameraView): void {
@@ -65,11 +95,18 @@ export class RoomRenderer {
 		this.composer.setSize(width, height);
 	}
 
-	render(bytes: Uint8Array, dt: number, bounce?: Uint8Array): void {
+	/**
+	 * `bytes` is the effect buffer, 3 gamma-encoded bytes per geometry pixel; `lamps` holds 3 per
+	 * summary lamp in `model.lamps` order.
+	 */
+	render(bytes: Uint8Array, dt: number, lamps?: Uint8Array): void {
 		if (this.disposed) return;
-		this.room.update(bytes, bounce);
+		this.pulse.value = (this.pulse.value + dt * PULSE_RATE) % 1;
+		this.room.update(bytes, lamps);
 		this.rig.update(dt);
 		this.composer.render(dt);
+		for (const room of this.retired) room.dispose();
+		this.retired.length = 0;
 	}
 
 	dispose(): void {
@@ -78,6 +115,8 @@ export class RoomRenderer {
 		this.rig.dispose();
 		this.composer.dispose();
 		this.room.dispose();
+		for (const room of this.retired) room.dispose();
+		this.retired.length = 0;
 		this.renderer.dispose();
 	}
 }

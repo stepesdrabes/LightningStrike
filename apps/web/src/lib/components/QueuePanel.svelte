@@ -7,7 +7,7 @@
 	import Button from '$lib/ui/Button.svelte';
 	import Badge from '$lib/ui/Badge.svelte';
 	import Spinner from '$lib/ui/Spinner.svelte';
-	import RoomInvite from './RoomInvite.svelte';
+	import InviteCard from './InviteCard.svelte';
 
 	let {
 		items = [],
@@ -274,7 +274,7 @@
 		{/if}
 	</div>
 
-	<RoomInvite />
+	<InviteCard />
 </aside>
 
 <style>

@@ -27,6 +27,8 @@ export const discoBall: EffectDef = {
 	},
 	params: [INTENSITY, param('density', 'Glint density', 0.5)],
 	create(g) {
+		// No more glints than pixels, or a tiny room stacks them all on one.
+		const glints = Math.min(MAX_GLINTS, g.count);
 		const idx = new Uint16Array(MAX_GLINTS);
 		const phase = new Float32Array(MAX_GLINTS);
 		for (let k = 0; k < MAX_GLINTS; k++) {
@@ -45,7 +47,7 @@ export const discoBall: EffectDef = {
 
 				level = envelope(level, clamp(0.2 + f.energy), f.dt, 0.1, 0.8);
 				const rot = (f.barIndex + f.barPhase) / 4;
-				const count = Math.floor(MAX_GLINTS * (0.3 + p.density * 0.7));
+				const count = Math.min(glints, Math.floor(MAX_GLINTS * (0.3 + p.density * 0.7)));
 				const gain = (0.5 + p.intensity) * level * trailDeposit(f.dt, 0.08);
 
 				for (let k = 0; k < count; k++) {

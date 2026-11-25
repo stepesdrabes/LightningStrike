@@ -1,5 +1,5 @@
-# Assembled by scripts/bundle.js, not authored. Between them these are about 270 MB: a copy
-# of the Node runtime and the node_modules the server build leaves external.
+# Assembled by scripts/bundle.js, not authored: a copy of the Node runtime, the node_modules
+# the server build leaves external, and links to the models the app loads.
 src-tauri/binaries/
 src-tauri/runtime/
 src-tauri/target/

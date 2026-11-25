@@ -161,7 +161,7 @@ describe('two rooms', () => {
 			frame++;
 			if (frame % 5 !== 0) continue;
 			expect(Array.from(rooms[1].bytes), `frame ${frame}`).toEqual(Array.from(rooms[0].bytes));
-			expect(Array.from(rooms[1].bounce)).toEqual(Array.from(rooms[0].bounce));
+			expect(Array.from(rooms[1].lamps)).toEqual(Array.from(rooms[0].lamps));
 		}
 	});
 

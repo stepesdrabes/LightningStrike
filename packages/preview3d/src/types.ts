@@ -1,5 +1,3 @@
-import type { RoomSpec } from '@mv/core';
-
 export type CameraView = 'orbit' | 'top' | 'front';
 
 /**
@@ -11,8 +9,4 @@ export interface Viewport {
 	y: number;
 	width: number;
 	height: number;
-}
-
-export interface RoomRendererOptions {
-	spec: RoomSpec;
 }

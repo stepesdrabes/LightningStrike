@@ -5,6 +5,7 @@ import {
 	canGuestRemove,
 	clearQueue,
 	currentItem,
+	guestView,
 	jumpTo,
 	moveItem,
 	nextItem,
@@ -218,6 +219,18 @@ describe('what a guest may take back', () => {
 	it('refuses an unnamed guest and an unknown row', () => {
 		expect(canGuestRemove(withGuests(), 'k1', '')).toBe(false);
 		expect(canGuestRemove(withGuests(), 'nope', 'Ada')).toBe(false);
+	});
+});
+
+describe('what a guest sees', () => {
+	it("keeps the host's paths and error text off the phone", () => {
+		let state = addItems(EMPTY_QUEUE, [{ source: '/Users/host/Music/demo.m4a', title: 'demo' }], keys, 1);
+		state = patchItem(state, 'k0', { status: 'error', message: 'No such file: /Users/host/Music/demo.m4a' });
+		const [row] = guestView(state).items;
+		expect(row.source).toBe('');
+		expect(row.message).toBe('');
+		expect(row.title).toBe('demo');
+		expect(row.status).toBe('error');
 	});
 });
 

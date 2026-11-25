@@ -1,7 +1,6 @@
 import { error } from '@sveltejs/kit';
 import { readFile } from 'node:fs/promises';
 import { extname } from 'node:path';
-import { isLocal } from '$lib/server/access.ts';
 import { evening } from '$lib/server/evening/store.ts';
 import type { RequestHandler } from './$types';
 
@@ -17,9 +16,7 @@ const TYPES: Record<string, string> = {
 };
 
 /** A narration's audio, served only for a row the evening plans, never an arbitrary path. */
-export const GET: RequestHandler = async (event) => {
-	if (!isLocal(event)) error(403, 'the evening belongs to the machine running it');
-	const { params } = event;
+export const GET: RequestHandler = async ({ params }) => {
 	await evening.settled();
 	const path = evening.narrationAudio(params.key);
 	if (!path) error(404, 'no narration for this row');

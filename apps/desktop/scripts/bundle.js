@@ -4,6 +4,7 @@ import { execFileSync, execSync } from 'node:child_process';
 import {
 	cpSync,
 	existsSync,
+	linkSync,
 	mkdirSync,
 	readdirSync,
 	renameSync,
@@ -151,11 +152,17 @@ if (!existsSync(join(runtime, 'onnxruntime-node'))) {
 	console.log(`author CLI  ${mb(sizeOf(join(runtime, cli)))}  ${cli}`);
 }
 
-// Only the models the app reads; the folder may also hold retired ones.
+// Only the models the app reads, linked where the volume allows rather than copied again; the
+// folder may also hold retired ones.
 rmSync(models, { recursive: true, force: true });
 mkdirSync(models, { recursive: true });
 for (const name of bundledModels(join(root, 'models'))) {
-	cpSync(join(root, 'models', name), join(models, name));
+	const from = join(root, 'models', name);
+	try {
+		linkSync(from, join(models, name));
+	} catch {
+		cpSync(from, join(models, name));
+	}
 	console.log(`model       ${mb(sizeOf(join(models, name)))}  ${name}`);
 }
 

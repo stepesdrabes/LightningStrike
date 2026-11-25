@@ -79,8 +79,8 @@ async function walk(id: string): Promise<Sample[] | null> {
 		const f = director.update(t, DT, state);
 		out.push({
 			t,
-			light: fixtureLight(director.bounce),
-			wire: wireLevel(director.bounce),
+			light: fixtureLight(director.lamps),
+			wire: wireLevel(director.lamps),
 			kick: f.kick,
 			section: f.section
 		});

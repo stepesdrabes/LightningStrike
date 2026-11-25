@@ -182,7 +182,7 @@ function render(plan: SilentPlan | NarrationPlan, length: number): void {
 			if (v > peak) peak = v;
 		}
 		const mean = sum / (px.length / 3);
-		const lamp = Math.max(director.bounce[0], director.bounce[1], director.bounce[2]);
+		const lamp = Math.max(director.lamps[0], director.lamps[1], director.lamps[2]);
 		console.log(
 			`${t.toFixed(2).padStart(6)} ${mean.toFixed(0).padStart(4)} ${peak.toString().padStart(4)} ${lit
 				.toString()
@@ -361,7 +361,7 @@ show(result.findings);
 const script = result.script;
 if (!script) process.exit(1);
 console.log(
-	`effects: ${script.effects.map((e) => `${e.id}${e.admitted ? '' : ' NOT ADMITTED'}`).join(', ')}`
+	`effects: ${script.effects.map((e) => `${e.id}${e.admittedOn ? '' : ' NOT ADMITTED'}`).join(', ')}`
 );
 
 const tracks = await library();

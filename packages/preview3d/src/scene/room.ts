@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { RoomSpec } from '@mv/core';
+import type { RoomLayout } from '@mv/core';
 import type { SurfaceFactory } from './surfaceMaterial.ts';
 
 const UP = new THREE.Vector3(0, 0, 1);
@@ -14,7 +14,7 @@ function orient(mesh: THREE.Object3D, dir: THREE.Vector3, up: THREE.Vector3): vo
 }
 
 /** The box the fixture hangs in: four walls, a ceiling and a floor. */
-export function buildRoom(spec: RoomSpec, surfaces: SurfaceFactory): THREE.Mesh[] {
+export function buildRoom(spec: RoomLayout, surfaces: SurfaceFactory): THREE.Mesh[] {
 	const hw = spec.width / 2;
 	const hd = spec.depth / 2;
 	const H = spec.height;

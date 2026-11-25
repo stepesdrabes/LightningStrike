@@ -1,10 +1,14 @@
 <script lang="ts">
+	import type { Geometry } from '@mv/core';
 	import type { Viz } from '$lib/viz.svelte.ts';
 
 	let { viz }: { viz: Viz | null } = $props();
 
 	let canvas: HTMLCanvasElement | undefined = $state();
 	let host: HTMLDivElement | undefined = $state();
+
+	/** The room the bands show; a room set up differently brings different strips. */
+	let geometry = $state.raw<Geometry | null>(null);
 
 	/**
 	 * Render exact wire bytes, including gamma and dither, for comparison with the 3D
@@ -14,21 +18,26 @@
 		const el = canvas;
 		const box = host;
 		if (!el || !box || !viz) return;
-
-		const geometry = viz.geometry;
-		const strips = geometry.strips;
-		const maxCount = Math.max(...strips.map((s) => s.count));
+		const ctx = el.getContext('2d', { alpha: false });
+		if (!ctx) return;
 
 		// One texel per LED, smoothed to show strip diffusion.
 		const src = document.createElement('canvas');
-		src.width = maxCount;
-		src.height = strips.length;
 		const srcCtx = src.getContext('2d', { alpha: false });
-		const ctx = el.getContext('2d', { alpha: false });
-		if (!srcCtx || !ctx) return;
+		if (!srcCtx) return;
+		let strips: Geometry['strips'] = [];
+		let maxCount = 1;
+		let image = srcCtx.createImageData(1, 1);
 
-		const image = srcCtx.createImageData(maxCount, strips.length);
-		image.data.fill(255);
+		const follow = (g: Geometry) => {
+			geometry = g;
+			strips = g.strips;
+			maxCount = Math.max(1, ...strips.map((s) => s.count));
+			src.width = maxCount;
+			src.height = Math.max(1, strips.length);
+			image = srcCtx.createImageData(maxCount, Math.max(1, strips.length));
+			image.data.fill(255);
+		};
 
 		let raf = 0;
 		let width = 0;
@@ -51,6 +60,7 @@
 
 		const draw = () => {
 			raf = requestAnimationFrame(draw);
+			if (viz.geometry !== geometry) follow(viz.geometry);
 			const bytes = viz.director.bytes;
 			const data = image.data;
 
@@ -80,7 +90,7 @@
 			ctx.imageSmoothingEnabled = true;
 			ctx.imageSmoothingQuality = 'high';
 
-			const rowH = height / strips.length;
+			const rowH = height / Math.max(1, strips.length);
 			const gap = Math.max(1, rowH * 0.22);
 			for (let s = 0; s < strips.length; s++) {
 				const strip = strips[s];
@@ -101,7 +111,7 @@
 		};
 	});
 
-	const names = $derived(viz ? viz.geometry.strips.map((s) => s.name) : []);
+	const names = $derived(geometry ? geometry.strips.map((s) => s.name) : []);
 </script>
 
 <div class="bands">

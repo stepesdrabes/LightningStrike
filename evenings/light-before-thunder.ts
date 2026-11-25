@@ -3,8 +3,8 @@
  * the room. A spark is born in the south-west corner above the Bounce Lamp at Go, returns as a
  * red reprise at eleven, and comes home to the same corner at the end.
  *
- * Ring pixels run 0-561 from the north-west corner (north 0-169 west to east, east 170-280,
- * south 281-450 east to west, west 451-561 south to north); the beam runs 562-670 from south to
+ * Ring pixels run 0-563 from the north-west corner (north 0-169 west to east, east 170-281,
+ * south 282-451 east to west, west 452-563 south to north); the beam runs 564-672 from south to
  * north. Landmarks derive from the run lengths, so they hold wherever the frame was cut; a glow
  * or a travel stays written in pixels, which at 60 LED/m is the same metre of strip either way.
  * Every effect is a function of time and the music, so the preview and the fixture draw

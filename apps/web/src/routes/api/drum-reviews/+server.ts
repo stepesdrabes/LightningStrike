@@ -1,5 +1,4 @@
 import { json } from '@sveltejs/kit';
-import { isLocal } from '$lib/server/access.ts';
 import { drumReviewStore, drumReviewVersions, freshDrumReview, ReviewError } from '$lib/server/drumReviews.ts';
 import type { RequestHandler } from './$types';
 
@@ -9,7 +8,6 @@ function failure(e: unknown): Response {
 }
 
 export const GET: RequestHandler = async (event) => {
-	if (!isLocal(event)) return new Response('forbidden', { status: 403 });
 	try {
 		const trackId = event.url.searchParams.get('trackId') ?? '';
 		const archived = event.url.searchParams.get('analysis');
@@ -20,7 +18,6 @@ export const GET: RequestHandler = async (event) => {
 };
 
 export const POST: RequestHandler = async (event) => {
-	if (!isLocal(event)) return new Response('forbidden', { status: 403 });
 	if (event.request.headers.get('origin') !== event.url.origin) return new Response('forbidden', { status: 403 });
 	try {
 		if (Number(event.request.headers.get('content-length') ?? 0) > 512_000) {

@@ -10,10 +10,6 @@ vi.mock('@mv/analysis', () => ({
 	offeredYouTubeBrowsers: () => ['brave', 'chrome', 'edge', 'firefox']
 }));
 vi.mock('@mv/author-ai', () => ({ authorModel: () => undefined, isEffort: () => false }));
-// The test runner does not resolve SvelteKit's $lib alias, so each module is named for it.
-vi.mock('$lib/hardware.ts', () => import('../../../lib/hardware.ts'));
-vi.mock('$lib/ambient.ts', () => import('../../../lib/ambient.ts'));
-vi.mock('$lib/server/access.ts', () => ({ isLocal: () => true }));
 vi.mock('$lib/server/settings.ts', () => ({ settings: { read: mocks.read, update: mocks.update } }));
 vi.mock('$lib/server/queueStore.ts', () => ({ queue: { prepareStaleAgain: mocks.stale } }));
 vi.mock('$lib/server/ingestRunner.ts', () => ({ runner: { pump: mocks.pump } }));

@@ -3,7 +3,7 @@ import type { GeneratedEffect } from '../contracts/show.ts';
 import { createShowFrame } from '../contracts/frame.ts';
 import { makePalette } from '../color/palette.ts';
 import { buildGeometry, DEFAULT_ROOM } from '../geometry.ts';
-import { compileGenerated, gateVerdicts } from './sandbox.ts';
+import { compileGenerated, gateVerdicts, roomKey } from './sandbox.ts';
 
 const g = buildGeometry(DEFAULT_ROOM);
 /** Core compiles without DOM or Node types; the sandbox logs through whichever console exists. */
@@ -56,14 +56,24 @@ describe('generated effects', () => {
 		expect([out[0], out[1], out[2], out[3]]).toEqual([0, 0, 0, expect.closeTo(0.3)]);
 	});
 
-	it('runs the gate unless the evening loader already admitted the effect', () => {
+	it('runs the gate unless the evening loader already admitted the effect in this room', () => {
 		const dark = 'function create(g) { return { render(out) { out.fill(0); } }; }';
 		expect(compileGenerated(generated(dark), g).failures).toEqual(['effect never emits light across the test journey']);
 		// The same verdict again, from memory.
 		expect(compileGenerated(generated(dark, { id: 'other' }), g).failures).toEqual(['effect never emits light across the test journey']);
-		expect(compileGenerated(generated(dark, { admitted: true }), g).def).not.toBeNull();
+		expect(compileGenerated(generated(dark, { admittedOn: roomKey(g) }), g).def).not.toBeNull();
 		// Admission never lets a banned construct through.
-		expect(compileGenerated(generated('function create(g) { return { render(out) { out.fill(Date.now()); } }; }', { admitted: true }), g).def).toBeNull();
+		expect(compileGenerated(generated('function create(g) { return { render(out) { out.fill(Date.now()); } }; }', { admittedOn: roomKey(g) }), g).def).toBeNull();
+	});
+
+	it('gates again in a room other than the one it was admitted in', () => {
+		const dark = generated('function create(g) { return { render(out) { out.fill(0); } }; }', { id: 'moved' });
+		const strip = buildGeometry({
+			...DEFAULT_ROOM,
+			lights: [{ id: 's', name: 'Strip', kind: 'path', points: [[-1, 0, 2], [1, 0, 2]], counts: [60], closed: false, density: 30, mount: 'ceiling', role: 'auto' }]
+		});
+		expect(roomKey(strip)).not.toBe(roomKey(g));
+		expect(compileGenerated({ ...dark, admittedOn: roomKey(g) }, strip).def).toBeNull();
 	});
 
 	it('takes verdicts reached on another thread instead of replaying the journey', async () => {

@@ -28,6 +28,7 @@ export const kitTicks: EffectDef = {
 	name: 'Kit Ticks',
 	role: 'transient',
 	blurb: 'Short marks on the beam where each hat, snare and kick falls in the bar; the count-in, visible.',
+	needs: ['spine'],
 	taste: {
 		energy: 2,
 		sections: ['intro', 'breakdown', 'outro'],
