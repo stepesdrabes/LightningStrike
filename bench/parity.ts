@@ -2,10 +2,10 @@
  * node bench/parity.ts --core DIR [--cache DIR] [--ids A,B,C] [--tracks N]
  *
  * Renders the same work through this checkout's core and another's (`--core`, its `src`
- * directory) and reports the first frame where they differ: the Frame's geometry, every
- * built-in effect over the gate journey, and cached shows through the room director and its
- * lamp across play, a seek, a pause into rest, lounge and a resume. A refactor that must not
- * change a show proves it here.
+ * directory) and reports the first frame where they differ, in the Frame's room and in the web
+ * club's: the geometry and summary lamps, every built-in effect over the gate journey, and
+ * cached shows through the room director and its lamp across play, a seek, a pause into rest,
+ * lounge and a resume. A refactor that must not change a show proves it here.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -14,6 +14,7 @@ import type { Geometry, Show, TrackAnalysis } from '@mv/core';
 import { benchmarkCache } from './cache.ts';
 
 type Core = typeof import('@mv/core');
+type Room = Parameters<Core['buildGeometry']>[0];
 
 const args = process.argv.slice(2);
 const option = (flag: string): string | undefined => {
@@ -45,53 +46,51 @@ function firstDifference(a: ArrayLike<number>, b: ArrayLike<number>): string | n
 	return null;
 }
 
-// 1. Geometry.
-const gBase = base.buildGeometry(base.DEFAULT_ROOM);
-const gHere = here.buildGeometry(here.DEFAULT_ROOM);
-const fields = ['x', 'y', 'z', 'nx', 'ny', 'nz', 'r', 'theta', 'dist', 'strip', 'local', 'perim', 'normal'] as const;
-for (const f of fields) report(`geometry ${f}`, firstDifference(gBase[f], gHere[f]));
-for (const f of ['count', 'pitch', 'extent', 'perimeterLength'] as const) {
-	report(`geometry ${f}`, gBase[f] === gHere[f] ? null : `${gBase[f]} vs ${gHere[f]}`);
-}
-const stripKeys = (g: Geometry) =>
-	JSON.stringify(g.strips.map((s) => [s.id, s.name, s.offset, s.count, s.start, s.end, s.normal, s.inPerimeter]));
-report('geometry strips', stripKeys(gBase) === stripKeys(gHere) ? null : `${stripKeys(gBase)}\n  vs ${stripKeys(gHere)}`);
-
-// 2. Every built-in effect over the gate journey.
-const framesBase = base.scriptFrames(130);
-const framesHere = here.scriptFrames(130);
-for (const defBase of base.BUILT_IN_EFFECTS) {
-	const defHere = here.BUILT_IN_EFFECTS.find((d) => d.id === defBase.id);
-	if (!defHere) {
-		report(`effect ${defBase.id}`, 'missing here');
-		continue;
-	}
-	const run = (core: Core, def: typeof defBase, g: Geometry, frames: typeof framesBase) => {
-		const effect = def.create(g);
-		const p: Record<string, number> = {};
-		for (const spec of def.params) p[spec.key] = spec.default;
-		if ('trigger' in p) p.trigger = 1;
-		const ctx = { g, f: frames[0], p, palette: core.makePalette({ base: 320, accent: 185 }), hueShift: 0, motion: 1 };
-		const out = new Float32Array(g.count * 3);
-		const snapshots: Float32Array[] = [];
-		for (const f of frames) {
-			ctx.f = f;
-			effect.render(out, ctx);
-			snapshots.push(Float32Array.from(out));
-		}
-		return snapshots;
-	};
-	const a = run(base, defBase, gBase, framesBase);
-	const b = run(here, defHere, gHere, framesHere);
-	let difference: string | null = null;
-	for (let i = 0; i < a.length && !difference; i++) {
-		const d = firstDifference(a[i], b[i]);
-		if (d) difference = `frame ${i}, ${d}`;
-	}
-	report(`effect ${defBase.id}`, difference);
+/**
+ * The web club's room in a core's own terms: its CLUB_ROOM, this checkout's on a core with rooms
+ * but no preset, or on a core from before rooms the club's CLUB_RIG (appmaxx
+ * club/lightshow/rig.ts), the Frame drawn 1.5 times as large.
+ */
+function clubRoom(core: Core): Room {
+	const older = core as Partial<Core> & Pick<Core, 'DEFAULT_ROOM'>;
+	if (older.CLUB_ROOM) return older.CLUB_ROOM;
+	if ('lights' in older.DEFAULT_ROOM) return here.CLUB_ROOM;
+	const frame = (older.DEFAULT_ROOM as unknown as { fixture: { width: number; depth: number; density: number } }).fixture;
+	return {
+		name: 'APPMAXX club',
+		width: 7,
+		depth: 6,
+		height: 2.7,
+		fixture: {
+			...frame,
+			width: frame.width * 1.5,
+			depth: frame.depth * 1.5,
+			height: 2.7 - 0.2,
+			density: frame.density / 1.5
+		},
+		bounce: { at: [0.38 - 7 / 2, 6 / 2 - 1.25], height: 1, diameter: 0.2 }
+	} as unknown as Room;
 }
 
-// 3. Cached shows through the director, lamp included.
+/** Each summary lamp as [x, y, z, height, diameter]: the room's lamps, or a room spec's Bounce Lamp. */
+function summaryLamps(core: Core, room: Room): number[][] {
+	const older = core as Partial<Core>;
+	if (older.roomModel) return older.roomModel(room).lamps.map((l) => [...l.at, l.height, l.diameter]);
+	const { at, height, diameter } = (room as unknown as { bounce: { at: number[]; height: number; diameter: number } }).bounce;
+	return [[at[0], at[1], 0, height, diameter]];
+}
+
+/** The first lamp's bytes, wherever this checkout keeps them. */
+function lampBytes(director: object): Uint8Array {
+	const d = director as { bounce?: Uint8Array; lamps?: Uint8Array };
+	return d.lamps ?? d.bounce!;
+}
+
+const rooms: { name: string; base: Room; here: Room }[] = [
+	{ name: 'frame', base: base.DEFAULT_ROOM as Room, here: here.DEFAULT_ROOM },
+	{ name: 'club', base: clubRoom(base), here: clubRoom(here) }
+];
+
 function tracks(): { id: string; analysis: TrackAnalysis; show: Show }[] {
 	if (!existsSync(cache)) return [];
 	const ids = wanted ?? readdirSync(cache).filter((f) => f.endsWith('.show.json')).map((f) => f.slice(0, -'.show.json'.length));
@@ -107,12 +106,6 @@ function tracks(): { id: string; analysis: TrackAnalysis; show: Show }[] {
 		if (out.length >= trackLimit) break;
 	}
 	return out;
-}
-
-/** The first lamp's bytes, wherever this checkout keeps them. */
-function lampBytes(director: object): Uint8Array {
-	const d = director as { bounce?: Uint8Array; lamps?: Uint8Array };
-	return d.lamps ?? d.bounce!;
 }
 
 type Step = { t: number; playing: boolean; lounge: boolean; seek?: boolean };
@@ -138,27 +131,79 @@ function journey(analysis: TrackAnalysis): Step[] {
 	return steps;
 }
 
-for (const track of tracks()) {
-	const directors = [base, here].map((core) => {
-		const g = core === base ? gBase : gHere;
-		const d = new core.RoomDirector(g, new core.EffectRegistry());
-		d.load(track.analysis, track.show);
-		return d;
-	});
-	let difference: string | null = null;
-	const steps = journey(track.analysis);
-	for (let i = 0; i < steps.length && !difference; i++) {
-		const s = steps[i];
-		for (const d of directors) {
-			if (s.seek) d.seek();
-			d.update(s.t, 1 / 60, { playing: s.playing, hasShow: true, lounge: s.lounge, rest: true });
-		}
-		const bytes = firstDifference(directors[0].bytes, directors[1].bytes);
-		const lamp = firstDifference(lampBytes(directors[0]), lampBytes(directors[1]));
-		if (bytes) difference = `frame ${i} bytes ${bytes}`;
-		else if (lamp) difference = `frame ${i} lamp ${lamp}`;
+const shows = tracks();
+const fields = ['x', 'y', 'z', 'nx', 'ny', 'nz', 'r', 'theta', 'dist', 'strip', 'local', 'perim', 'normal'] as const;
+const stripKeys = (g: Geometry) =>
+	JSON.stringify(g.strips.map((s) => [s.id, s.name, s.offset, s.count, s.start, s.end, s.normal, s.inPerimeter]));
+const framesBase = base.scriptFrames(130);
+const framesHere = here.scriptFrames(130);
+
+for (const room of rooms) {
+	// 1. Geometry and the lamps reduced from it.
+	const gBase = base.buildGeometry(room.base);
+	const gHere = here.buildGeometry(room.here);
+	for (const f of fields) report(`${room.name} geometry ${f}`, firstDifference(gBase[f], gHere[f]));
+	for (const f of ['count', 'pitch', 'extent', 'perimeterLength'] as const) {
+		report(`${room.name} geometry ${f}`, gBase[f] === gHere[f] ? null : `${gBase[f]} vs ${gHere[f]}`);
 	}
-	report(`show ${track.id} (${track.show.title ?? ''}, ${steps.length} frames)`, difference);
+	report(`${room.name} geometry strips`, stripKeys(gBase) === stripKeys(gHere) ? null : `${stripKeys(gBase)}\n  vs ${stripKeys(gHere)}`);
+	const lamps = [summaryLamps(base, room.base), summaryLamps(here, room.here)].map((l) => JSON.stringify(l));
+	report(`${room.name} summary lamps`, lamps[0] === lamps[1] ? null : `${lamps[0]} vs ${lamps[1]}`);
+
+	// 2. Every built-in effect over the gate journey.
+	for (const defBase of base.BUILT_IN_EFFECTS) {
+		const defHere = here.BUILT_IN_EFFECTS.find((d) => d.id === defBase.id);
+		if (!defHere) {
+			report(`${room.name} effect ${defBase.id}`, 'missing here');
+			continue;
+		}
+		const run = (core: Core, def: typeof defBase, g: Geometry, frames: typeof framesBase) => {
+			const effect = def.create(g);
+			const p: Record<string, number> = {};
+			for (const spec of def.params) p[spec.key] = spec.default;
+			if ('trigger' in p) p.trigger = 1;
+			const ctx = { g, f: frames[0], p, palette: core.makePalette({ base: 320, accent: 185 }), hueShift: 0, motion: 1 };
+			const out = new Float32Array(g.count * 3);
+			const snapshots: Float32Array[] = [];
+			for (const f of frames) {
+				ctx.f = f;
+				effect.render(out, ctx);
+				snapshots.push(Float32Array.from(out));
+			}
+			return snapshots;
+		};
+		const a = run(base, defBase, gBase, framesBase);
+		const b = run(here, defHere, gHere, framesHere);
+		let difference: string | null = null;
+		for (let i = 0; i < a.length && !difference; i++) {
+			const d = firstDifference(a[i], b[i]);
+			if (d) difference = `frame ${i}, ${d}`;
+		}
+		report(`${room.name} effect ${defBase.id}`, difference);
+	}
+
+	// 3. Cached shows through the director, lamp included.
+	for (const track of shows) {
+		const directors = [
+			new base.RoomDirector(gBase, new base.EffectRegistry()),
+			new here.RoomDirector(gHere, new here.EffectRegistry())
+		];
+		for (const d of directors) d.load(track.analysis, track.show);
+		let difference: string | null = null;
+		const steps = journey(track.analysis);
+		for (let i = 0; i < steps.length && !difference; i++) {
+			const s = steps[i];
+			for (const d of directors) {
+				if (s.seek) d.seek();
+				d.update(s.t, 1 / 60, { playing: s.playing, hasShow: true, lounge: s.lounge, rest: true });
+			}
+			const bytes = firstDifference(directors[0].bytes, directors[1].bytes);
+			const lamp = firstDifference(lampBytes(directors[0]), lampBytes(directors[1]));
+			if (bytes) difference = `frame ${i} bytes ${bytes}`;
+			else if (lamp) difference = `frame ${i} lamp ${lamp}`;
+		}
+		report(`${room.name} show ${track.id} (${track.show.title ?? ''}, ${steps.length} frames)`, difference);
+	}
 }
 
 console.log(failures === 0 ? '\nidentical' : `\n${failures} difference(s)`);
