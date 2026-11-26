@@ -118,7 +118,7 @@ function lampBytes(director: object): Uint8Array {
 type Step = { t: number; playing: boolean; lounge: boolean; seek?: boolean };
 function journey(analysis: TrackAnalysis): Step[] {
 	const dt = 1 / 60;
-	const drop = analysis.sections.find((s) => s.kind === 'drop' || s.kind === 'chorus')?.start ?? 30;
+	const drop = analysis.sections.find((s) => s.kind === 'drop' || s.kind === 'chorus')?.startTime ?? 30;
 	const steps: Step[] = [];
 	let t = 0;
 	const play = (seconds: number, lounge = false) => {
