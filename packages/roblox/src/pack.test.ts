@@ -251,9 +251,13 @@ describe('a Track Pack', () => {
 			['an unknown section kind', (s) => (s.analysis.sections[1].kind = 'bridge' as never)],
 			['a non-finite cue level', (s) => (s.show.cues[1].intensity = Number.NaN)],
 			['an unknown hit kind', (s) => (s.show.hits[0].kind = 'flash' as never)],
-			['a ragged spectrum', (s) => (s.analysis.spectrum.bands = 19)]
+			['a ragged spectrum', (s) => (s.analysis.spectrum.bands = 19)],
+			['a trackId past its DataStore key', (s) => (s.meta.trackId = 'x'.repeat(39))],
+			['a trackId of 40 bytes in 20 characters', (s) => (s.meta.trackId = 'č'.repeat(20))],
+			['no trackId', (s) => (s.meta.trackId = '')]
 		];
 		for (const [what, edit] of refusals) expect(() => encodePack(edited(edit)), what).toThrow();
+		expect(() => encodePack(edited((s) => (s.meta.trackId = 'x'.repeat(38))))).not.toThrow();
 	});
 
 	it('refuses packs it cannot read', () => {

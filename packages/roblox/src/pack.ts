@@ -54,6 +54,8 @@ export const PACK_VERSION = 1;
 
 const MAGIC = 'LSPK';
 const GRID_TRUSTED = 1;
+/** `pk/<trackId>/<engineSet>` has to fit a DataStore key's 50 bytes. */
+const TRACK_ID_BYTES = 38;
 /** What String(x) writes for a finite double. */
 const NUMBER_TEXT = /^-?\d+(?:\.\d+)?(?:e[+-]\d+)?$/;
 /** v1's section codes. Frozen: a kind added upstream needs a new pack version. */
@@ -67,7 +69,7 @@ const BUILT_IN = new Set(BUILT_IN_EFFECTS.map((d) => d.id));
 
 /** What the box knows about a song beyond its analysis and show. */
 export interface PackMeta {
-	/** The box's id for the song. It keys `pk/<trackId>/<engineSet>` in a DataStore. */
+	/** The box's id for the song, 1 to 38 bytes: it keys `pk/<trackId>/<engineSet>` in a DataStore. */
 	trackId: string;
 	title: string;
 	artist: string;
@@ -121,6 +123,10 @@ export function encodePack({ analysis, show, meta }: PackInput): Uint8Array {
 		throw new Error('a show with generated effects cannot be packed');
 	}
 	if (typeof meta.gridTrusted !== 'boolean') throw new Error('gridTrusted has to be a boolean');
+	const idBytes = Buffer.byteLength(text(meta.trackId, 'trackId'));
+	if (idBytes === 0 || idBytes > TRACK_ID_BYTES) {
+		throw new Error(`trackId "${meta.trackId}" is ${idBytes} bytes; its DataStore key holds 1 to ${TRACK_ID_BYTES}`);
+	}
 	const body = packShow(show);
 	const header: PackHeader = {
 		trackId: text(meta.trackId, 'trackId'),
