@@ -40,7 +40,10 @@ import { HIT_EFFECT } from './effects.ts';
  *   u32 n | show, n bytes of ASCII JSON (PackShow): palette, defaults, cues and hits as the
  *       player reads them, exposure for the director, ending for the player
  *
- * Section kinds are indices into KINDS. Lossless by construction upstream and checked here:
+ * Section kinds are indices into KINDS. Each JSON number is a string, "#" and its shortest
+ * round-trip text ("#-0" for negative zero), because Luau's tonumber reads that exactly where
+ * JSON decoders may round; a string that starts with "#" gains another, and a raw JSON number
+ * is refused. Lossless by construction upstream and checked here:
  * bar and beat levels are whole percentages 0..100, pan, width and onset levels whole
  * hundredths, spectrum and level bytes. Times and tempo stay f64. Not shipped: bar drum
  * counts, vocal and events, key, movements, moments, beats, bass, activity, loudness, the
@@ -51,6 +54,8 @@ export const PACK_VERSION = 1;
 
 const MAGIC = 'LSPK';
 const GRID_TRUSTED = 1;
+/** What String(x) writes for a finite double. */
+const NUMBER_TEXT = /^-?\d+(?:\.\d+)?(?:e[+-]\d+)?$/;
 /** v1's section codes. Frozen: a kind added upstream needs a new pack version. */
 const KINDS: readonly SectionKind[] = [
 	'intro', 'groove', 'verse', 'breakdown', 'build', 'void', 'drop', 'chorus', 'outro'
@@ -547,12 +552,35 @@ function hundredths(v: number, lo: number, hi: number, what: string): number {
 	return q;
 }
 
-/** JSON with every non-ASCII character escaped, so each byte is one character. */
-function ascii(value: unknown): string {
-	return JSON.stringify(value).replace(
-		/[\u0080-￿]/g,
-		(c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`
-	);
+/** A JSON block: numbers as "#" text, "#" strings escaped, non-ASCII escaped so a byte is a character. */
+function packJson(value: unknown): string {
+	const text = JSON.stringify(value, (_key, v: unknown) => {
+		if (typeof v === 'number') {
+			if (!Number.isFinite(v)) throw new Error(`${v} cannot be packed`);
+			return Object.is(v, -0) ? '#-0' : `#${v}`;
+		}
+		return typeof v === 'string' && v.startsWith('#') ? `#${v}` : v;
+	});
+	return text.replace(/[^\x00-\x7f]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
+}
+
+/** packJson's values back: "#" numbers parsed exactly, "##" strings unescaped, raw numbers refused. */
+function unpackJson(value: unknown, path: string): unknown {
+	if (typeof value === 'number') throw new Error(`raw JSON number at ${path}`);
+	if (typeof value === 'string') {
+		if (value.startsWith('##')) return value.slice(1);
+		if (!value.startsWith('#')) return value;
+		const text = value.slice(1);
+		if (text === '-0') return -0;
+		const n = Number(text);
+		if (!NUMBER_TEXT.test(text) || !Number.isFinite(n)) throw new Error(`bad number ${value} at ${path}`);
+		return n;
+	}
+	if (Array.isArray(value)) return value.map((item, i) => unpackJson(item, `${path}[${i}]`));
+	if (value !== null && typeof value === 'object') {
+		return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, unpackJson(v, `${path}.${k}`)]));
+	}
+	return value;
 }
 
 class Writer {
@@ -592,7 +620,7 @@ class Writer {
 	}
 
 	json(value: unknown): void {
-		const s = ascii(value);
+		const s = packJson(value);
 		this.u32(s.length);
 		const at = this.room(s.length);
 		for (let i = 0; i < s.length; i++) this.buf[at + i] = s.charCodeAt(i);
@@ -667,7 +695,7 @@ class Reader {
 			if (this.src[i] > 0x7f) throw new Error(`the ${what} is not ASCII`);
 			s += String.fromCharCode(this.src[i]);
 		}
-		return JSON.parse(s);
+		return unpackJson(JSON.parse(s), what);
 	}
 
 	private take(n: number, what: string): number {

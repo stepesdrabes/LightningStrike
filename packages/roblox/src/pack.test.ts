@@ -6,6 +6,44 @@ import { compareJourney } from './journey.ts';
 import { PACK_VERSION, decodePack, encodePack, type PackInput } from './pack.ts';
 import { compressPack, decompressPack, packFromWire, packToWire } from './wire.ts';
 
+/**
+ * Every number above 15 significant digits in the 27 cached shows: 65 values, 279 occurrences,
+ * in palettes, opacities and intensities. JSON decoders that are not correctly rounded miss some.
+ */
+const LONG_FLOATS = [
+	0.08399999999999999, 0.08800000000000001, 0.10400000000000001, 0.11200000000000002,
+	0.11900000000000001, 0.14450000000000002, 0.21000000000000002, 0.22499999999999998,
+	0.36000000000000004, 0.36432000000000003, 0.44592000000000004, 0.44639999999999996,
+	0.44736000000000004, 0.46559999999999996, 0.46895999999999993, 0.5136000000000001,
+	0.5336000000000001, 0.5367999999999999, 0.5448000000000001, 0.5496000000000001,
+	0.5640000000000001, 0.5720000000000001, 0.5760000000000001, 0.5880000000000001,
+	0.5920000000000001, 0.6000000000000001, 0.6072000000000001, 0.6648000000000001,
+	0.7392000000000001, 0.7424000000000001, 0.7432000000000001, 0.7472000000000001,
+	0.7504000000000001, 0.7575999999999999, 0.8644999999999999, 0.8954880000000001,
+	0.9011699999999999, 0.9035452800000001, 0.9128592000000001, 0.9177000000000001,
+	0.9206207999999999, 0.9241689599999999, 0.9272736000000001, 0.9306000000000001,
+	0.9424800000000001, 0.9449327359999999, 0.9702000000000001, 0.9765000000000001,
+	0.9814031999999999, 0.9878669999999999, 0.9906132599999999, 0.9926400000000001,
+	0.9938519999999998, 0.9955278000000001, 0.9960300000000002, 0.9966647599999998,
+	0.9974429999999999, 13.899999999999977, 90.05000000000001, 102.80000000000001,
+	153.64999999999998, 228.64999999999998, 259.04999999999995, 259.54999999999995,
+	278.29999999999995
+];
+
+/** A JSON block as the Luau decoder reads it: "#" text through exact parsing, "##" unescaped. */
+function restore(value: unknown): unknown {
+	if (typeof value === 'number') throw new Error('a raw JSON number');
+	if (typeof value === 'string') {
+		if (value.startsWith('##')) return value.slice(1);
+		return value.startsWith('#') ? (value === '#-0' ? -0 : Number(value.slice(1))) : value;
+	}
+	if (Array.isArray(value)) return value.map(restore);
+	if (value !== null && typeof value === 'object') {
+		return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, restore(v)]));
+	}
+	return value;
+}
+
 const room = roomModel(DEFAULT_ROOM);
 const one = fixtureSong(1);
 const two = fixtureSong(2);
@@ -82,7 +120,7 @@ describe('a Track Pack', () => {
 		const f64 = () => view.getFloat64(step(8), true);
 		const json = () => {
 			const n = u32();
-			return JSON.parse(String.fromCharCode(...bytes.subarray(step(n), at)));
+			return restore(JSON.parse(String.fromCharCode(...bytes.subarray(step(n), at))));
 		};
 		const kinds = ['intro', 'groove', 'verse', 'breakdown', 'build', 'void', 'drop', 'chorus', 'outro'];
 		const a = one.analysis;
@@ -143,6 +181,34 @@ describe('a Track Pack', () => {
 			hits: body.hits.map(withoutNote)
 		});
 		expect(at).toBe(bytes.length);
+	});
+
+	it('writes every JSON number as exact text and keeps strings that start with "#"', () => {
+		const song = edited((s) => {
+			const params = Object.fromEntries(LONG_FLOATS.map((v, i) => [`p${i}`, v]));
+			s.show.cues[0].layers.bed = { effect: 'wash', params };
+			s.show.cues[1].intensity = -0;
+			s.meta.title = '#1 Crush';
+			s.meta.artist = '##';
+		});
+		const bytes = encodePack(song);
+		const text = Buffer.from(bytes).toString('latin1');
+		const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+		const block = (at: number) => JSON.parse(text.slice(at + 4, at + 4 + view.getUint32(at, true)));
+		const raw = (v: unknown): boolean =>
+			typeof v === 'number' || (typeof v === 'object' && v !== null && Object.values(v).some(raw));
+		const showAt = text.lastIndexOf('{"palette"') - 4;
+		expect(raw(block(8))).toBe(false);
+		expect(raw(block(showAt))).toBe(false);
+		for (const v of LONG_FLOATS) expect(text).toContain(`"#${v}"`);
+		expect(text).toContain('"intensity":"#-0"');
+		expect(text).toContain('"title":"##1 Crush","artist":"###"');
+
+		const { show, meta } = decodePack(bytes);
+		const params = show.cues[0].layers.bed!.params!;
+		expect(LONG_FLOATS.filter((v, i) => !Object.is(params[`p${i}`], v))).toEqual([]);
+		expect(Object.is(show.cues[1].intensity, -0)).toBe(true);
+		expect([meta.title, meta.artist]).toEqual(['#1 Crush', '##']);
 	});
 
 	it('has a code for every section kind', () => {
@@ -208,6 +274,14 @@ describe('a Track Pack', () => {
 		const text = String.fromCharCode(...bytes.subarray(0, 600));
 		const wash = text.indexOf('"wash"');
 		expect(() => decodePack(patched(wash + 2, 'e'.charCodeAt(0)))).toThrow('other effects');
+		const version = text.indexOf('"#37"');
+		const rewritten = (replacement: string) => {
+			const copy = bytes.slice();
+			for (let i = 0; i < replacement.length; i++) copy[version + i] = replacement.charCodeAt(i);
+			return copy;
+		};
+		expect(() => decodePack(rewritten('  37 '))).toThrow('raw JSON number');
+		expect(() => decodePack(rewritten('"#3x"'))).toThrow('bad number');
 	});
 });
 
