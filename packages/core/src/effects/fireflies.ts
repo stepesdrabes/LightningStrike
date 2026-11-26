@@ -80,12 +80,17 @@ export const fireflies: EffectDef = {
 		const heard = new Follower(0.3, 1.2);
 		let count = 0;
 		let onBeam = 0;
+		/** The flies the layout was made for; a room with fewer pixels holds fewer. */
+		let laid = 0;
 		let scatters = 0;
 		let started = false;
 
 		const layout = (flies: number) => {
-			count = flies;
-			onBeam = Math.max(2, Math.round(flies * BEAM_SHARE));
+			laid = flies;
+			const share = Math.max(2, Math.round(flies * BEAM_SHARE));
+			// No more flies than pixels, or a tiny room piles them onto each other.
+			onBeam = Math.min(share, beam.length);
+			count = Math.min(flies - share, ring.length) + onBeam;
 			const around = count - onBeam;
 			for (let i = 0; i < count; i++) {
 				const beamFly = i >= around;
@@ -120,7 +125,7 @@ export const fireflies: EffectDef = {
 				const { f, p, palette, hueShift, motion } = ctx;
 				const flies = Math.max(8, Math.min(MAX_FLIES, Math.round(p.flies)));
 				const bands = Math.min(SPECTRUM_BANDS, f.spectrum.length);
-				if (!started || flies !== count) {
+				if (!started || flies !== laid) {
 					started = true;
 					layout(flies);
 					scatterPhases();
