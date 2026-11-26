@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { PathLight } from './contracts/room.ts';
 import { stripAxis } from './dsl/space.ts';
-import { DEFAULT_ROOM, buildGeometry } from './geometry.ts';
+import { CLUB_ROOM, DEFAULT_ROOM, buildGeometry, roomModel } from './geometry.ts';
+import { readLayout } from './room/validate.ts';
 
 const g = buildGeometry(DEFAULT_ROOM);
 const [ring, beam] = DEFAULT_ROOM.lights as PathLight[];
@@ -74,5 +75,28 @@ describe('normalisation', () => {
 	it('converts metres per second with the fixture pitch', () => {
 		expect(g.pitch).toBeCloseTo(1 / 60);
 		expect(g.perimeterLength).toBeCloseTo(10);
+	});
+});
+
+describe('the club room', () => {
+	const model = roomModel(CLUB_ROOM);
+	const club = model.geometry;
+
+	it('is the Frame drawn half as large again, every run keeping its LEDs', () => {
+		expect(readLayout(JSON.parse(JSON.stringify(CLUB_ROOM)))).toEqual({ layout: CLUB_ROOM });
+		const runs = (x: typeof g) => x.strips.map((s) => [s.name, s.offset, s.count]);
+		expect(runs(club)).toEqual(runs(g));
+		expect(club.local).toEqual(g.local);
+		expect(club.strip).toEqual(g.strip);
+		expect(club.spine).toBe(true);
+		expect(club.extent).toBe(4.5);
+		expect(club.perimeterLength).toBe(15);
+		expect(club.pitch).toBe(1 / 40);
+		for (let i = 0; i < club.count; i++) expect(club.z[i]).toBe(2.5);
+	});
+
+	it('reduces the room to the Bounce Lamp in its corner', () => {
+		expect(model.lamps).toEqual([CLUB_ROOM.lights[2]]);
+		expect(model.lamps[0]).toMatchObject({ at: [-3.12, 1.75, 0], height: 1, diameter: 0.2 });
 	});
 });

@@ -57,6 +57,59 @@ export const DEFAULT_ROOM: RoomLayout = {
 	]
 };
 
+/**
+ * The web club's rig: the Frame scaled 1.5 times in a 7x6 m room, 0.2 m under its 2.7 m ceiling,
+ * at two thirds the density so every run keeps its count, and the Bounce Lamp a 1 m column in
+ * the north-west corner. Nothing is wired: the club draws it in the browser.
+ */
+export const CLUB_ROOM: RoomLayout = {
+	width: 7,
+	depth: 6,
+	height: 2.7,
+	front: 'south',
+	lights: [
+		{
+			id: 'frame',
+			name: 'Frame',
+			kind: 'path',
+			points: [
+				[-2.25, 1.5, 2.5],
+				[2.25, 1.5, 2.5],
+				[2.25, -1.5, 2.5],
+				[-2.25, -1.5, 2.5]
+			],
+			counts: [170, 112, 170, 112],
+			closed: true,
+			density: 40,
+			mount: 'ceiling',
+			role: 'ring'
+		},
+		{
+			id: 'beam',
+			name: 'Beam',
+			kind: 'path',
+			points: [
+				[0, -1.5, 2.5],
+				[0, 1.5, 2.5]
+			],
+			counts: [109],
+			closed: false,
+			density: 40,
+			mount: 'ceiling',
+			role: 'spine'
+		},
+		{
+			id: 'bounce',
+			name: 'Bounce Lamp',
+			kind: 'lamp',
+			at: [-3.12, 1.75, 0],
+			height: 1,
+			diameter: 0.2,
+			mode: 'summary'
+		}
+	]
+};
+
 export function roomModel(layout: RoomLayout = DEFAULT_ROOM): RoomModel {
 	return buildRoomModel(layout, DEFAULT_ROOM);
 }

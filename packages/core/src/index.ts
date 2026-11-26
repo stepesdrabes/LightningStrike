@@ -53,7 +53,7 @@ export type { Cue, CuePalette, GeneratedEffect, Hit, LayerSpec, Show } from './c
 export { HIT_RULES, SHOW_VERSION, STROBE_MAX_HZ, strobePerBeat } from './contracts/show.ts';
 export { gridTrust } from './trust.ts';
 export type { LedFrame, LedSink, LedSinkStats } from './contracts/sink.ts';
-export { DEFAULT_ROOM, buildGeometry, roomModel } from './geometry.ts';
+export { CLUB_ROOM, DEFAULT_ROOM, buildGeometry, roomModel } from './geometry.ts';
 export { ledCount, matrixOrder, mountNormal, planeOf } from './room/lights.ts';
 export { toShowFrame } from './room/model.ts';
 export { MAX_LEDS, MAX_RUN, readLayout } from './room/validate.ts';
