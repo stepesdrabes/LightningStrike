@@ -9,3 +9,4 @@ export {
 	type PackShow
 } from './pack.ts';
 export { compressPack, decompressPack, packFromWire, packToWire } from './wire.ts';
+export { HIT_EFFECTS, engineSetDigest, portedEffects, type EngineSet } from './effects.ts';
